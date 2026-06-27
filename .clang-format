@@ -1,0 +1,23 @@
+BasedOnStyle: LLVM
+IndentWidth: 2
+ContinuationIndentWidth: 2
+ColumnLimit: 100
+
+AlignAfterOpenBracket: Align
+BinPackArguments: false
+BinPackParameters: false
+Cpp11BracedListStyle: true
+
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+
+BreakConstructorInitializers: BeforeColon
+ConstructorInitializerIndentWidth: 2
+PackConstructorInitializers: Never
+
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false

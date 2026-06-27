@@ -3,11 +3,22 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C" {
-#endif
+namespace expo::jsi {
+class RuntimeHandle;
+class ValueHandle;
+} // namespace expo::jsi
 
+using expo_jsi_runtime_t = expo::jsi::RuntimeHandle;
+using expo_jsi_value_t = expo::jsi::ValueHandle;
+
+extern "C" {
+
+typedef expo_jsi_runtime_t *expo_jsi_runtime_handle;
+typedef expo_jsi_value_t *expo_jsi_value_handle;
+#else
 typedef struct expo_jsi_runtime_t *expo_jsi_runtime_handle;
 typedef struct expo_jsi_value_t *expo_jsi_value_handle;
+#endif
 
 typedef enum expo_jsi_value_kind {
   EXPO_JSI_VALUE_UNDEFINED = 0,
@@ -32,23 +43,19 @@ typedef struct expo_jsi_value_result {
   expo_jsi_error error;
 } expo_jsi_value_result;
 
-typedef expo_jsi_value_result (*expo_jsi_create_number_fn)(
-  expo_jsi_runtime_handle runtime,
-  double value);
+typedef expo_jsi_value_result (*expo_jsi_create_number_fn)(expo_jsi_runtime_handle runtime,
+                                                           double value);
 
-typedef expo_jsi_value_kind (*expo_jsi_get_value_kind_fn)(
-  expo_jsi_runtime_handle runtime,
-  expo_jsi_value_handle value,
-  expo_jsi_error *error);
+typedef expo_jsi_value_kind (*expo_jsi_get_value_kind_fn)(expo_jsi_runtime_handle runtime,
+                                                          expo_jsi_value_handle value,
+                                                          expo_jsi_error *error);
 
-typedef double (*expo_jsi_get_double_fn)(
-  expo_jsi_runtime_handle runtime,
-  expo_jsi_value_handle value,
-  expo_jsi_error *error);
+typedef double (*expo_jsi_get_double_fn)(expo_jsi_runtime_handle runtime,
+                                         expo_jsi_value_handle value,
+                                         expo_jsi_error *error);
 
-typedef void (*expo_jsi_release_value_fn)(
-  expo_jsi_runtime_handle runtime,
-  expo_jsi_value_handle value);
+typedef void (*expo_jsi_release_value_fn)(expo_jsi_runtime_handle runtime,
+                                          expo_jsi_value_handle value);
 
 typedef struct expo_jsi_api {
   uint32_t size;

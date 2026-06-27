@@ -8,33 +8,89 @@
 
 #include "JsiRuntimeConnector.h"
 
-struct expo_jsi_runtime_t {
-  expo::jsi::JsiRuntimeConnector *connector;
-  uint32_t released_value_count;
+namespace expo::jsi {
+
+class RuntimeHandle final {
+public:
+  explicit RuntimeHandle(JsiRuntimeConnector &connector)
+    : connector_(&connector)
+  {
+  }
+
+  facebook::jsi::Runtime &runtime()
+  {
+    if (connector_ == nullptr || !connector_->isRuntimeValid()) {
+      throw std::runtime_error("Runtime connector is invalid.");
+    }
+    return connector_->runtime();
+  }
+
+  void recordValueRelease()
+  {
+    releasedValueCount_++;
+  }
+
+  uint32_t releasedValueCount() const
+  {
+    return releasedValueCount_;
+  }
+
+private:
+  JsiRuntimeConnector *connector_;
+  uint32_t releasedValueCount_ = 0;
 };
 
-struct expo_jsi_value_t {
-  std::unique_ptr<facebook::jsi::Value> owned_value;
-  const facebook::jsi::Value *borrowed_value;
+class ValueHandle final {
+public:
+  static std::unique_ptr<ValueHandle> owned(facebook::jsi::Value value)
+  {
+    return std::unique_ptr<ValueHandle>(
+      new ValueHandle(std::make_unique<facebook::jsi::Value>(std::move(value))));
+  }
+
+  static std::unique_ptr<ValueHandle> borrowed(const facebook::jsi::Value &value)
+  {
+    return std::unique_ptr<ValueHandle>(new ValueHandle(&value));
+  }
 
   facebook::jsi::Value &value()
   {
-    return owned_value != nullptr
-      ? *owned_value
-      : *const_cast<facebook::jsi::Value *>(borrowed_value);
+    return ownedValue_ != nullptr ? *ownedValue_
+                                  : *const_cast<facebook::jsi::Value *>(borrowedValue_);
   }
 
   const facebook::jsi::Value &value() const
   {
-    return owned_value != nullptr ? *owned_value : *borrowed_value;
+    return ownedValue_ != nullptr ? *ownedValue_ : *borrowedValue_;
   }
+
+  bool isOwned() const
+  {
+    return ownedValue_ != nullptr;
+  }
+
+private:
+  explicit ValueHandle(std::unique_ptr<facebook::jsi::Value> value)
+    : ownedValue_(std::move(value))
+  {
+  }
+
+  explicit ValueHandle(const facebook::jsi::Value *value)
+    : borrowedValue_(value)
+  {
+  }
+
+  std::unique_ptr<facebook::jsi::Value> ownedValue_;
+  const facebook::jsi::Value *borrowedValue_ = nullptr;
 };
+
+} // namespace expo::jsi
 
 namespace {
 
 constexpr uint32_t kApiVersion = 1;
 
-expo_jsi_error make_error(int32_t code, const char *message)
+expo_jsi_error makeError(int32_t code, const char *message)
 {
   return expo_jsi_error{
     code,
@@ -43,34 +99,37 @@ expo_jsi_error make_error(int32_t code, const char *message)
   };
 }
 
-void write_error(expo_jsi_error *error, int32_t code, const char *message)
+void writeError(expo_jsi_error *error, int32_t code, const char *message)
 {
   if (error != nullptr) {
-    *error = make_error(code, message);
+    *error = makeError(code, message);
   }
 }
 
-void clear_error(expo_jsi_error *error)
+void clearError(expo_jsi_error *error)
 {
   if (error != nullptr) {
     *error = expo_jsi_error{0, nullptr, 0};
   }
 }
 
-facebook::jsi::Runtime *try_runtime(expo_jsi_runtime_handle runtime, expo_jsi_error *error)
+expo::jsi::RuntimeHandle *tryRuntimeHandle(expo_jsi_runtime_handle runtime, expo_jsi_error *error)
 {
-  if (runtime == nullptr || runtime->connector == nullptr) {
-    write_error(error, 1, "Runtime handle is null.");
+  auto *handle = runtime;
+  if (handle == nullptr) {
+    writeError(error, 1, "Runtime handle is null.");
     return nullptr;
   }
-  if (!runtime->connector->isRuntimeValid()) {
-    write_error(error, 2, "Runtime connector is invalid.");
+  try {
+    (void)handle->runtime();
+  } catch (const std::exception &ex) {
+    writeError(error, 2, ex.what());
     return nullptr;
   }
-  return &runtime->connector->runtime();
+  return handle;
 }
 
-expo_jsi_value_result make_value_result(std::unique_ptr<expo_jsi_value_t> value)
+expo_jsi_value_result makeValueResult(std::unique_ptr<expo::jsi::ValueHandle> value)
 {
   return expo_jsi_value_result{
     1,
@@ -79,51 +138,50 @@ expo_jsi_value_result make_value_result(std::unique_ptr<expo_jsi_value_t> value)
   };
 }
 
-expo_jsi_value_result make_error_result(int32_t code, const char *message)
+expo_jsi_value_result makeErrorResult(int32_t code, const char *message)
 {
   return expo_jsi_value_result{
     0,
     nullptr,
-    make_error(code, message),
+    makeError(code, message),
   };
 }
 
-expo_jsi_value_result create_number(expo_jsi_runtime_handle runtime, double number)
+expo_jsi_value_result createNumber(expo_jsi_runtime_handle runtime, double number)
 {
   expo_jsi_error error{};
-  auto *js_runtime = try_runtime(runtime, &error);
-  if (js_runtime == nullptr) {
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
     return expo_jsi_value_result{0, nullptr, error};
   }
 
   try {
-    (void)js_runtime;
-    return make_value_result(std::make_unique<expo_jsi_value_t>(
-      expo_jsi_value_t{std::make_unique<facebook::jsi::Value>(number), nullptr}));
+    (void)runtimeHandle;
+    return makeValueResult(expo::jsi::ValueHandle::owned(facebook::jsi::Value(number)));
   } catch (const std::exception &ex) {
-    return make_error_result(3, ex.what());
+    return makeErrorResult(3, ex.what());
   } catch (...) {
-    return make_error_result(4, "Unknown native exception while creating number.");
+    return makeErrorResult(4, "Unknown native exception while creating number.");
   }
 }
 
-expo_jsi_value_kind get_value_kind(
-  expo_jsi_runtime_handle runtime,
-  expo_jsi_value_handle value,
-  expo_jsi_error *error)
+expo_jsi_value_kind
+getValueKind(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value, expo_jsi_error *error)
 {
-  auto *js_runtime = try_runtime(runtime, error);
-  if (js_runtime == nullptr) {
+  auto *runtimeHandle = tryRuntimeHandle(runtime, error);
+  if (runtimeHandle == nullptr) {
     return EXPO_JSI_VALUE_UNDEFINED;
   }
-  if (value == nullptr) {
-    write_error(error, 5, "Value handle is null.");
+  auto *valueHandle = value;
+  if (valueHandle == nullptr) {
+    writeError(error, 5, "Value handle is null.");
     return EXPO_JSI_VALUE_UNDEFINED;
   }
 
   try {
-    clear_error(error);
-    auto &js_value = value->value();
+    auto &jsRuntime = runtimeHandle->runtime();
+    clearError(error);
+    auto &js_value = valueHandle->value();
     if (js_value.isUndefined()) {
       return EXPO_JSI_VALUE_UNDEFINED;
     }
@@ -140,128 +198,122 @@ expo_jsi_value_kind get_value_kind(
       return EXPO_JSI_VALUE_STRING;
     }
     if (js_value.isObject()) {
-      auto object = js_value.asObject(*js_runtime);
-      if (object.isFunction(*js_runtime)) {
+      auto object = js_value.asObject(jsRuntime);
+      if (object.isFunction(jsRuntime)) {
         return EXPO_JSI_VALUE_FUNCTION;
       }
-      if (object.isArrayBuffer(*js_runtime)) {
+      if (object.isArrayBuffer(jsRuntime)) {
         return EXPO_JSI_VALUE_ARRAY_BUFFER;
       }
       return EXPO_JSI_VALUE_OBJECT;
     }
     return EXPO_JSI_VALUE_UNDEFINED;
   } catch (const std::exception &ex) {
-    write_error(error, 6, ex.what());
+    writeError(error, 6, ex.what());
     return EXPO_JSI_VALUE_UNDEFINED;
   } catch (...) {
-    write_error(error, 7, "Unknown native exception while reading value kind.");
+    writeError(error, 7, "Unknown native exception while reading value kind.");
     return EXPO_JSI_VALUE_UNDEFINED;
   }
 }
 
-double get_double(
-  expo_jsi_runtime_handle runtime,
-  expo_jsi_value_handle value,
-  expo_jsi_error *error)
+double
+getDouble(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value, expo_jsi_error *error)
 {
-  if (try_runtime(runtime, error) == nullptr) {
+  if (tryRuntimeHandle(runtime, error) == nullptr) {
     return 0.0;
   }
-  if (value == nullptr) {
-    write_error(error, 8, "Value handle is null.");
+  auto *valueHandle = value;
+  if (valueHandle == nullptr) {
+    writeError(error, 8, "Value handle is null.");
     return 0.0;
   }
 
   try {
-    if (!value->value().isNumber()) {
-      write_error(error, 9, "Value is not a number.");
+    if (!valueHandle->value().isNumber()) {
+      writeError(error, 9, "Value is not a number.");
       return 0.0;
     }
-    clear_error(error);
-    return value->value().asNumber();
+    clearError(error);
+    return valueHandle->value().asNumber();
   } catch (const std::exception &ex) {
-    write_error(error, 10, ex.what());
+    writeError(error, 10, ex.what());
     return 0.0;
   } catch (...) {
-    write_error(error, 11, "Unknown native exception while reading number.");
+    writeError(error, 11, "Unknown native exception while reading number.");
     return 0.0;
   }
 }
 
-void release_value(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
+void releaseValue(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
 {
-  if (value != nullptr && value->owned_value == nullptr) {
+  auto *valueHandle = value;
+  if (valueHandle != nullptr && !valueHandle->isOwned()) {
     return;
   }
-  if (runtime != nullptr) {
-    runtime->released_value_count += value == nullptr ? 0 : 1;
+  if (auto *runtimeHandle = runtime) {
+    if (valueHandle != nullptr) {
+      runtimeHandle->recordValueRelease();
+    }
   }
-  delete value;
+  delete valueHandle;
 }
 
 const expo_jsi_api kApi{
   sizeof(expo_jsi_api),
   kApiVersion,
-  create_number,
-  get_value_kind,
-  get_double,
-  release_value,
+  createNumber,
+  getValueKind,
+  getDouble,
+  releaseValue,
 };
 
 } // namespace
 
 namespace expo::jsi {
 
-expo_jsi_runtime_handle create_runtime_handle(JsiRuntimeConnector *connector)
+expo_jsi_runtime_handle createRuntimeHandle(JsiRuntimeConnector &connector)
 {
-  if (connector == nullptr) {
-    return nullptr;
-  }
-  return new expo_jsi_runtime_t{connector, 0};
+  return new RuntimeHandle(connector);
 }
 
-void release_runtime_handle(expo_jsi_runtime_handle runtime)
+void releaseRuntimeHandle(expo_jsi_runtime_handle runtime)
 {
   delete runtime;
 }
 
-uint32_t released_value_count(expo_jsi_runtime_handle runtime)
+uint32_t releasedValueCount(expo_jsi_runtime_handle runtime)
 {
-  return runtime == nullptr ? 0 : runtime->released_value_count;
+  return runtime == nullptr ? 0 : runtime->releasedValueCount();
 }
 
-expo_jsi_value_handle create_borrowed_value_handle(const facebook::jsi::Value *value)
+expo_jsi_value_handle createBorrowedValueHandle(const facebook::jsi::Value &value)
 {
-  if (value == nullptr) {
-    return nullptr;
-  }
-  return new expo_jsi_value_t{nullptr, value};
+  return ValueHandle::borrowed(value).release();
 }
 
-void release_borrowed_value_handle(expo_jsi_value_handle value)
+void releaseBorrowedValueHandle(expo_jsi_value_handle value)
 {
   if (value == nullptr) {
     return;
   }
-  if (value->owned_value != nullptr) {
-    throw std::runtime_error("release_borrowed_value_handle received an owned value handle.");
+  if (value->isOwned()) {
+    throw std::runtime_error("releaseBorrowedValueHandle received an owned value handle.");
   }
   delete value;
 }
 
-facebook::jsi::Value copy_value_to_jsi(
-  expo_jsi_runtime_handle runtime,
-  expo_jsi_value_handle value)
+facebook::jsi::Value copyValueToJsi(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
 {
   expo_jsi_error error{};
-  auto *js_runtime = try_runtime(runtime, &error);
-  if (js_runtime == nullptr) {
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
     throw std::runtime_error(error.message == nullptr ? "Invalid runtime." : error.message);
   }
   if (value == nullptr) {
     throw std::runtime_error("Value handle is null.");
   }
-  return facebook::jsi::Value(*js_runtime, value->value());
+  return facebook::jsi::Value(runtimeHandle->runtime(), value->value());
 }
 
 const expo_jsi_api *api()
