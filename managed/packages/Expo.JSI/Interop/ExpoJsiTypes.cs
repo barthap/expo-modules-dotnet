@@ -37,4 +37,27 @@ internal readonly struct ExpoJsiValueResult
   public readonly int Ok;
   public readonly ExpoJsiValueHandle Value;
   public readonly ExpoJsiError Error;
+
+  public ExpoJsiValueResult(int ok, ExpoJsiValueHandle value, ExpoJsiError error)
+  {
+    Ok = ok;
+    Value = value;
+    Error = error;
+  }
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal readonly struct ExpoJsiObjectResult
+{
+  public readonly int Ok;
+  public readonly ExpoJsiObjectHandle Object;
+  public readonly ExpoJsiError Error;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal readonly struct ExpoJsiFunctionResult
+{
+  public readonly int Ok;
+  public readonly ExpoJsiFunctionHandle Function;
+  public readonly ExpoJsiError Error;
 }

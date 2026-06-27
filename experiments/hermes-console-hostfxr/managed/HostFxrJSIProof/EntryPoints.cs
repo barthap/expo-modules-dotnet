@@ -39,39 +39,21 @@ public static class EntryPoints
     }
 
     [UnmanagedCallersOnly(
-        EntryPoint = "hostfxr_jsi_proof_add_one",
+        EntryPoint = "hostfxr_jsi_register_modules",
         CallConvs = new[] { typeof(CallConvCdecl) }
     )]
-    public static nint AddOne(
-        nint api,
-        nint runtimeHandle,
-        nint valueHandle,
-        nint shouldAddOneHandle
-    )
+    public static int RegisterModules(nint api, nint runtimeHandle)
     {
         try
         {
             var runtime = JavaScriptRuntime.FromNative(api, runtimeHandle);
-            using var value = runtime.BorrowValue(valueHandle);
-            using var shouldAddOne = runtime.BorrowValue(shouldAddOneHandle);
-
-            var shouldAdd = shouldAddOne.AsBool();
-
-            if (value.Kind != JavaScriptValueKind.Number)
-            {
-                Console.Error.WriteLine($"Expected Number argument, got {value.Kind}.");
-                return 0;
-            }
-
-            var number = shouldAdd ? value.AsDouble() + 1.0 : value.AsDouble();
-            var result = runtime.CreateNumber(number);
-            Console.WriteLine("managed callback: AddOne(JavaScriptRuntime, JavaScriptValue)");
-            return result.Detach();
+            GeneratedModuleProvider.Register(runtime);
+            return 0;
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine(ex);
-            return 0;
+            return 1;
         }
     }
 }

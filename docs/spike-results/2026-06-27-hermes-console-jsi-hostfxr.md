@@ -3,13 +3,14 @@
 Date: 2026-06-27
 Machine: local macOS development machine
 Repo/path: `<repo>`
-Branch or commit: current `main`
+Branch or commit: current `codex/generated-module-dispatch`
 
 ## Question
 
 Can native C++ create a real Hermes-backed JSI runtime, pass a C ABI function
 table and opaque runtime handle into managed code through HostFXR, and let
-`Expo.JSI` create, inspect, read, and release a number value without P/Invoke?
+`Expo.JSI` create, inspect, read, return, and release JavaScript values without
+P/Invoke?
 
 ## Commands Run
 
@@ -33,8 +34,10 @@ Hermes macOS prebuilt ready:
 [100%] Built target hermes_console_hostfxr
 Loaded HostFXR path: <dotnet-root>/host/fxr/<version>/libhostfxr.dylib
 Created Hermes-backed JSI runtime
+registered generated-looking Math module
+JS called generated-looking C# module: 42.5
 managed JSI proof: number kind=Number value=42.5
-Released owned value handles: 1
+Released owned value handles: 6
 hermes console hostfxr proof: ok
 ```
 
@@ -48,13 +51,34 @@ hermes console hostfxr proof: ok
   capabilities.
 - Managed code creates a number value, reads `Number`, reads `42.5`, disposes
   the value, and exits 0.
+- JavaScript calls `global.expo.modules.Math.add(41.5, true)`.
+- Native C++ owns the JSI host-function plumbing and forwards borrowed `this`
+  and argument-buffer handles into C#.
+- Generated-looking managed code decodes a number argument and a boolean
+  argument through `JavaScriptArguments`, calls `MathModule.Add` directly,
+  creates an owned result value, and returns that handle to native C++ for
+  conversion back to JSI.
 
 ## Actual Result
 
 The proof succeeded. `HostFxrJSIProof.EntryPoints.Run` received the native API
 table and runtime handle, used `Expo.JSI.JavaScriptRuntime`, created a number
 through native JSI, read its kind and double value, and disposed the owned value
-handle. Native observed exactly one owned value handle release.
+handle.
+
+The proof also installed a generated-looking module graph at
+`global.expo.modules.Math.add`. JavaScript called it with a number and boolean.
+Native C++ created the host function and passed call-scoped borrowed `this` and
+argument-buffer handles into the managed callback. Generated-looking C# code
+read both arguments through `JavaScriptArguments`, called `MathModule.Add`
+directly, and returned a new owned number handle. Native copied that result back
+into JSI and released the owned handle exactly once.
+
+Native observed exactly six counted owned value handle releases through the API
+table: five registration-time value wrappers for the generated object graph and
+one value from the independent managed smoke entry point. Borrowed callback
+arguments were not released by C#. The callback return value is released by the
+native host-function bridge after copying it back into JSI.
 
 ## Artifacts
 
@@ -71,9 +95,19 @@ handle. Native observed exactly one owned value handle release.
 
 `HermesConsoleRuntimeConnector` owns the Hermes runtime for this console proof.
 The bridge runtime handle owns only bridge state and borrows the connector. The
-managed package owns `JavaScriptValue` wrapper lifetime and calls
-`release_value` once from `Dispose`. The native proof counts releases and fails
-unless exactly one owned value handle is released.
+managed package owns `JavaScriptValue`, `JavaScriptObject`, and
+`JavaScriptFunction` wrapper lifetime and calls the matching release function
+from `Dispose` or transfers value ownership with `Detach`. `JavaScriptArguments`
+and `JavaScriptBorrowedValue` are callback-scoped borrowed wrappers and are not
+released by C#.
+
+The host-function callback context is retained by a managed `GCHandle` and is
+released through native host-function context teardown. Return values from
+managed callbacks are owned handles copied back to JSI and released exactly once
+by native.
+
+The native proof counts API-table owned value releases and fails unless exactly
+six counted owned value handles are released.
 
 Future hosted connectors must release bridge-owned state without destroying a
 host-owned JSI runtime.
@@ -81,8 +115,8 @@ host-owned JSI runtime.
 ## Scheduler Findings
 
 The proof uses an immediate same-thread scheduler object because only
-synchronous number creation and reading are tested. No RN scheduler,
-call-invoker, or runtime executor behavior is proven here.
+synchronous value creation, reading, and JS host-function dispatch are tested.
+No RN scheduler, call-invoker, or runtime executor behavior is proven here.
 
 ## Platform Findings
 
@@ -99,6 +133,6 @@ bridge shape compatible with a later NativeAOT entry path.
 
 ## Stop/Go Decision
 
-Go. The next proof can build on the function-table and opaque-handle bridge
-shape to add more JSI value kinds or wrapper behavior while still staying
-headless.
+Go. The headless generated-looking dispatch shape works. Next slice should add
+string conversion or run a NativeAOT compatibility audit before real host
+adapter work.

@@ -96,10 +96,8 @@ load_assembly_and_get_function_pointer_fn get_dotnet_load_assembly(
 
 } // namespace
 
-using add_one_fn = expo_jsi_value_handle(CORECLR_DELEGATE_CALLTYPE *)(const expo_jsi_api *,
-                                                                      expo_jsi_runtime_handle,
-                                                                      expo_jsi_value_handle,
-                                                                      expo_jsi_value_handle);
+using register_modules_fn =
+  int(CORECLR_DELEGATE_CALLTYPE *)(const expo_jsi_api *, expo_jsi_runtime_handle);
 
 namespace jsi = facebook::jsi;
 
@@ -135,69 +133,27 @@ ReleaseCounter make_release_counter(const expo_jsi_api *inner_api)
 }
 
 struct CSharpAPI {
-  add_one_fn add_one;
+  register_modules_fn register_modules;
   const expo_jsi_api *api;
   expo_jsi_runtime_handle runtime_handle;
-
-  // TODO: make this struct own the ptrs and free them
-  ~CSharpAPI() {}
 };
 
-// actual JSI meat, with boilerplate left to main
 void jsi_main(jsi::Runtime &rt, CSharpAPI &cs)
 {
-  auto call_csharp = jsi::Function::createFromHostFunction(
-    rt,
-    jsi::PropNameID::forAscii(rt, "callCSharp"),
-    1,
-    [cs](jsi::Runtime &runtime, const facebook::jsi::Value &, const jsi::Value *args, size_t count)
-      -> jsi::Value {
-      if (count < 2) {
-        throw jsi::JSError(runtime, "callCSharp expects 2 arguments.");
-      }
-
-      auto borrowed_argument = expo::jsi::createBorrowedValueHandle(args[0]);
-      if (borrowed_argument == nullptr) {
-        throw jsi::JSError(runtime, "Failed to borrow argument handle.");
-      }
-
-      auto borrowed_argument2 = expo::jsi::createBorrowedValueHandle(args[1]);
-      if (borrowed_argument2 == nullptr) {
-        throw jsi::JSError(runtime, "Failed to borrow argument handle.");
-      }
-
-      expo_jsi_value_handle result = nullptr;
-      try {
-        result = cs.add_one(cs.api, cs.runtime_handle, borrowed_argument, borrowed_argument2);
-        expo::jsi::releaseBorrowedValueHandle(borrowed_argument);
-        expo::jsi::releaseBorrowedValueHandle(borrowed_argument2);
-        borrowed_argument = nullptr;
-        borrowed_argument2 = nullptr;
-        if (result == nullptr) {
-          throw std::runtime_error("Managed AddOne returned a null value handle.");
-        }
-
-        auto js_result = expo::jsi::copyValueToJsi(cs.runtime_handle, result);
-        cs.api->release_value(cs.runtime_handle, result);
-        return js_result;
-      } catch (const std::exception &ex) {
-        if (borrowed_argument != nullptr) {
-          expo::jsi::releaseBorrowedValueHandle(borrowed_argument);
-        }
-        if (result != nullptr) {
-          cs.api->release_value(cs.runtime_handle, result);
-        }
-        throw jsi::JSError(runtime, ex.what());
-      }
-    });
-  rt.global().setProperty(rt, "callCSharp", std::move(call_csharp));
+  int register_rc = cs.register_modules(cs.api, cs.runtime_handle);
+  if (register_rc != 0) {
+    throw std::runtime_error("Managed module registration failed with code " +
+                             std::to_string(register_rc));
+  }
 
   auto callback_result = rt.evaluateJavaScript(
-    std::make_unique<jsi::StringBuffer>("callCSharp(41.5, true);"), "hardcoded-csharp-call.js");
+    std::make_unique<jsi::StringBuffer>(
+      "global.expo.modules.Math.add(41.5, true);"),
+    "generated-module-dispatch.js");
   if (!callback_result.isNumber() || callback_result.asNumber() != 42.5) {
-    throw std::runtime_error("JS -> C# host function proof failed.");
+    throw std::runtime_error("Generated module dispatch proof failed.");
   }
-  std::cout << "JS called C# through JSI value handles: " << callback_result.asNumber()
+  std::cout << "JS called generated-looking C# module: " << callback_result.asNumber()
             << std::endl;
 }
 
@@ -217,7 +173,7 @@ int main()
       int(CORECLR_DELEGATE_CALLTYPE *)(const expo_jsi_api *, expo_jsi_runtime_handle);
 
     run_proof_fn run_proof = nullptr;
-    add_one_fn add_one = nullptr;
+    register_modules_fn register_modules = nullptr;
 
     int rc = load_assembly(assembly.c_str(),
                            "HostFxrJSIProof.EntryPoints, HostFxrJSIProof",
@@ -232,12 +188,12 @@ int main()
 
     rc = load_assembly(assembly.c_str(),
                        "HostFxrJSIProof.EntryPoints, HostFxrJSIProof",
-                       "AddOne",
+                       "RegisterModules",
                        UNMANAGEDCALLERSONLY_METHOD,
                        nullptr,
-                       reinterpret_cast<void **>(&add_one));
-    if (rc != 0 || add_one == nullptr) {
-      throw std::runtime_error("Failed to resolve managed AddOne entry point: " +
+                       reinterpret_cast<void **>(&register_modules));
+    if (rc != 0 || register_modules == nullptr) {
+      throw std::runtime_error("Failed to resolve managed RegisterModules entry point: " +
                                std::to_string(rc));
     }
 
@@ -252,7 +208,7 @@ int main()
     auto &rt = connector.runtime();
     auto release_counter = make_release_counter(expo::jsi::api());
     active_release_counter = &release_counter;
-    auto cs = CSharpAPI{add_one, &release_counter.api, runtime_handle};
+    auto cs = CSharpAPI{register_modules, &release_counter.api, runtime_handle};
 
     jsi_main(rt, cs);
 
@@ -263,8 +219,8 @@ int main()
 
     auto release_count = release_counter.value_release_count;
     std::cout << "Released owned value handles: " << release_count << std::endl;
-    if (release_count != 2) {
-      throw std::runtime_error("Expected exactly two owned value handle releases.");
+    if (release_count != 6) {
+      throw std::runtime_error("Expected exactly six counted owned value handle releases.");
     }
 
     expo::jsi::releaseRuntimeHandle(runtime_handle);

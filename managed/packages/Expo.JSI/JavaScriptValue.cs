@@ -3,25 +3,27 @@ namespace Expo.JSI;
 public sealed class JavaScriptValue : IDisposable
 {
     private readonly JavaScriptRuntime runtime;
-    private readonly bool ownsHandle;
     private ExpoJsiValueHandle handle;
 
-    private JavaScriptValue(JavaScriptRuntime runtime, ExpoJsiValueHandle handle, bool ownsHandle)
+    private JavaScriptValue(JavaScriptRuntime runtime, ExpoJsiValueHandle handle)
     {
         this.runtime = runtime;
         this.handle = handle;
-        this.ownsHandle = ownsHandle;
     }
 
     internal static JavaScriptValue FromOwnedHandle(
         JavaScriptRuntime runtime,
         ExpoJsiValueHandle handle
-    ) => new(runtime, handle, ownsHandle: true);
+    ) => new(runtime, handle);
 
-    internal static JavaScriptValue FromBorrowedHandle(
-        JavaScriptRuntime runtime,
-        ExpoJsiValueHandle handle
-    ) => new(runtime, handle, ownsHandle: false);
+    internal ExpoJsiValueHandle Handle
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return handle;
+        }
+    }
 
     public JavaScriptValueKind Kind
     {
@@ -46,7 +48,7 @@ public sealed class JavaScriptValue : IDisposable
 
     public void Dispose()
     {
-        if (handle != 0 && ownsHandle)
+        if (handle != 0)
         {
             runtime.ReleaseValue(handle);
         }
@@ -56,11 +58,6 @@ public sealed class JavaScriptValue : IDisposable
     public ExpoJsiValueHandle Detach()
     {
         ThrowIfDisposed();
-        if (!ownsHandle)
-        {
-            throw new InvalidOperationException("Borrowed JavaScript values cannot be detached.");
-        }
-
         var detached = handle;
         handle = 0;
         return detached;
