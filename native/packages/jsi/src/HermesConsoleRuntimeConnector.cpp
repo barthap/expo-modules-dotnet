@@ -6,15 +6,13 @@
 
 namespace expo::jsi {
 
-HermesConsoleRuntimeExecutor::HermesConsoleRuntimeExecutor(
-  HermesConsoleRuntimeConnector &connector)
+HermesConsoleRuntimeExecutor::HermesConsoleRuntimeExecutor(HermesConsoleRuntimeConnector &connector)
   : connector_(&connector)
 {
 }
 
 void HermesConsoleRuntimeExecutor::executeAsync(
-  JsiRuntimeTaskPriority priority,
-  std::function<void(facebook::jsi::Runtime &)> work) noexcept
+  JsiRuntimeTaskPriority priority, std::function<void(facebook::jsi::Runtime &)> work) noexcept
 {
   queue_.push_back(QueuedTask{priority, nextSequence_++, std::move(work)});
 }
@@ -24,8 +22,7 @@ bool HermesConsoleRuntimeExecutor::canExecuteSync() const noexcept
   return true;
 }
 
-void HermesConsoleRuntimeExecutor::executeSync(
-  std::function<void(facebook::jsi::Runtime &)> work)
+void HermesConsoleRuntimeExecutor::executeSync(std::function<void(facebook::jsi::Runtime &)> work)
 {
   runWithRuntime(std::move(work));
 }

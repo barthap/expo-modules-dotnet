@@ -149,11 +149,7 @@ expo_jsi_error countedScheduleTask(expo_jsi_runtime_handle runtime,
   auto *countedContext =
     new CountedTaskContext{testhost, callback, taskContext, releaseTaskContext};
   auto error = api->runtime_schedule_task(
-    runtime,
-    priority,
-    countedTaskCallback,
-    countedContext,
-    countedReleaseTaskContext);
+    runtime, priority, countedTaskCallback, countedContext, countedReleaseTaskContext);
   if (error.code != 0) {
     delete countedContext;
   }
@@ -182,8 +178,8 @@ expo_jsi_error countedExecuteSync(expo_jsi_runtime_handle runtime,
   const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
   auto *countedContext =
     new CountedTaskContext{testhost, callback, taskContext, releaseTaskContext};
-  auto error =
-    api->runtime_execute_sync(runtime, countedTaskCallback, countedContext, countedReleaseTaskContext);
+  auto error = api->runtime_execute_sync(
+    runtime, countedTaskCallback, countedContext, countedReleaseTaskContext);
   if (error.code != 0) {
     delete countedContext;
   }
@@ -303,8 +299,7 @@ extern "C" void expo_jsi_testhost_reset_counters(expo_jsi_testhost_runtime_handl
   }
 }
 
-extern "C" void expo_jsi_testhost_drain_tasks(
-  expo_jsi_testhost_runtime_handle testhostRuntime)
+extern "C" void expo_jsi_testhost_drain_tasks(expo_jsi_testhost_runtime_handle testhostRuntime)
 {
   auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
   if (testhost == nullptr) {
@@ -313,14 +308,13 @@ extern "C" void expo_jsi_testhost_drain_tasks(
   auto error = testhost->innerApi->runtime_drain_tasks(testhost->runtime);
   if (error.code != 0) {
     lastErrorMessage = error.message != nullptr
-      ? std::string(error.message, static_cast<size_t>(error.message_len))
-      : "Failed to drain runtime tasks.";
+                         ? std::string(error.message, static_cast<size_t>(error.message_len))
+                         : "Failed to drain runtime tasks.";
   }
 }
 
 extern "C" void expo_jsi_testhost_set_sync_execution_supported(
-  expo_jsi_testhost_runtime_handle testhostRuntime,
-  uint8_t supported)
+  expo_jsi_testhost_runtime_handle testhostRuntime, uint8_t supported)
 {
   auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
   if (testhost != nullptr) {

@@ -193,17 +193,17 @@ expo_jsi_error makeOk()
 expo::jsi::JsiRuntimeTaskPriority toRuntimeTaskPriority(expo_jsi_task_priority priority)
 {
   switch (priority) {
-    case EXPO_JSI_TASK_IMMEDIATE:
-      return expo::jsi::JsiRuntimeTaskPriority::Immediate;
-    case EXPO_JSI_TASK_USER_BLOCKING:
-      return expo::jsi::JsiRuntimeTaskPriority::UserBlocking;
-    case EXPO_JSI_TASK_LOW:
-      return expo::jsi::JsiRuntimeTaskPriority::Low;
-    case EXPO_JSI_TASK_IDLE:
-      return expo::jsi::JsiRuntimeTaskPriority::Idle;
-    case EXPO_JSI_TASK_NORMAL:
-    default:
-      return expo::jsi::JsiRuntimeTaskPriority::Normal;
+  case EXPO_JSI_TASK_IMMEDIATE:
+    return expo::jsi::JsiRuntimeTaskPriority::Immediate;
+  case EXPO_JSI_TASK_USER_BLOCKING:
+    return expo::jsi::JsiRuntimeTaskPriority::UserBlocking;
+  case EXPO_JSI_TASK_LOW:
+    return expo::jsi::JsiRuntimeTaskPriority::Low;
+  case EXPO_JSI_TASK_IDLE:
+    return expo::jsi::JsiRuntimeTaskPriority::Idle;
+  case EXPO_JSI_TASK_NORMAL:
+  default:
+    return expo::jsi::JsiRuntimeTaskPriority::Normal;
   }
 }
 

@@ -18,9 +18,8 @@ class JsiRuntimeExecutor {
 public:
   virtual ~JsiRuntimeExecutor() = default;
 
-  virtual void executeAsync(
-    JsiRuntimeTaskPriority priority,
-    std::function<void(facebook::jsi::Runtime &)> work) noexcept = 0;
+  virtual void executeAsync(JsiRuntimeTaskPriority priority,
+                            std::function<void(facebook::jsi::Runtime &)> work) noexcept = 0;
 
   virtual bool canExecuteSync() const noexcept = 0;
 

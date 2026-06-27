@@ -17,9 +17,8 @@ class HermesConsoleRuntimeExecutor final : public JsiRuntimeExecutor {
 public:
   explicit HermesConsoleRuntimeExecutor(HermesConsoleRuntimeConnector &connector);
 
-  void executeAsync(
-    JsiRuntimeTaskPriority priority,
-    std::function<void(facebook::jsi::Runtime &)> work) noexcept override;
+  void executeAsync(JsiRuntimeTaskPriority priority,
+                    std::function<void(facebook::jsi::Runtime &)> work) noexcept override;
 
   bool canExecuteSync() const noexcept override;
 
