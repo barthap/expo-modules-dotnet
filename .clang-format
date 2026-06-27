@@ -15,6 +15,7 @@ BraceWrapping:
 BreakConstructorInitializers: BeforeColon
 ConstructorInitializerIndentWidth: 2
 PackConstructorInitializers: Never
+PenaltyReturnTypeOnItsOwnLine: 1000000
 
 AllowShortBlocksOnASingleLine: Never
 AllowShortCaseLabelsOnASingleLine: false

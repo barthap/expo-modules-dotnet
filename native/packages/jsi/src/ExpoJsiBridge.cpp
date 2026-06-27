@@ -152,8 +152,9 @@ expo_jsi_value_result createNumber(expo_jsi_runtime_handle runtime, double numbe
   }
 }
 
-expo_jsi_value_kind
-getValueKind(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value, expo_jsi_error *error)
+expo_jsi_value_kind getValueKind(expo_jsi_runtime_handle runtime,
+                                 expo_jsi_value_handle value,
+                                 expo_jsi_error *error)
 {
   auto *runtimeHandle = tryRuntimeHandle(runtime, error);
   if (runtimeHandle == nullptr) {
@@ -233,8 +234,9 @@ uint8_t getBool(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value, ex
   }
 }
 
-double
-getDouble(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value, expo_jsi_error *error)
+double getDouble(expo_jsi_runtime_handle runtime,
+                 expo_jsi_value_handle value,
+                 expo_jsi_error *error)
 {
   if (tryRuntimeHandle(runtime, error) == nullptr) {
     return 0.0;

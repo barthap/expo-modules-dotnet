@@ -73,8 +73,8 @@ void load_hostfxr()
   }
 }
 
-load_assembly_and_get_function_pointer_fn
-get_dotnet_load_assembly(const std::filesystem::path &runtime_config)
+load_assembly_and_get_function_pointer_fn get_dotnet_load_assembly(
+  const std::filesystem::path &runtime_config)
 {
   hostfxr_handle context = nullptr;
   int rc = init_for_config(runtime_config.c_str(), nullptr, &context);
