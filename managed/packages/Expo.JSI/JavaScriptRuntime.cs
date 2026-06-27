@@ -358,7 +358,12 @@ public sealed unsafe class JavaScriptRuntime
         return;
       }
 
-      GCHandle.FromIntPtr(pointer).Free();
+      var handle = GCHandle.FromIntPtr(pointer);
+      if (handle.Target is RuntimeTaskContext context)
+      {
+        context.FaultIfReleasedBeforeRunning();
+      }
+      handle.Free();
     }
 
     public void Invoke()
@@ -377,6 +382,19 @@ public sealed unsafe class JavaScriptRuntime
       {
         completion.TrySetException(ex);
       }
+    }
+
+    private void FaultIfReleasedBeforeRunning()
+    {
+      if (completion.Task.IsCompleted)
+      {
+        return;
+      }
+
+      completion.TrySetException(new ObjectDisposedException(
+          nameof(JavaScriptRuntime),
+          "Scheduled JavaScript runtime work was released before it ran."
+      ));
     }
   }
 }

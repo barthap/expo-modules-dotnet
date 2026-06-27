@@ -4,7 +4,9 @@
 #include <cstring>
 #include <exception>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 
 #include "ExpoJsiBridge.h"
 #include "HermesConsoleRuntimeConnector.h"
@@ -37,12 +39,27 @@ expo_jsi_value_result makeErrorResult(int32_t code, const char *message)
   return expo_jsi_value_result{0, nullptr, makeError(code, message)};
 }
 
-expo_jsi_testhost_runtime_t *activeCounterRuntime = nullptr;
+std::mutex counterRuntimesMutex;
+std::unordered_map<expo_jsi_runtime_handle, expo_jsi_testhost_runtime_t *> counterRuntimes;
+
+void registerRuntimeForCounters(expo_jsi_testhost_runtime_t &runtime)
+{
+  std::lock_guard<std::mutex> lock(counterRuntimesMutex);
+  counterRuntimes[runtime.runtime] = &runtime;
+}
+
+void unregisterRuntimeForCounters(expo_jsi_runtime_handle runtime)
+{
+  std::lock_guard<std::mutex> lock(counterRuntimesMutex);
+  counterRuntimes.erase(runtime);
+}
 
 expo_jsi_testhost_runtime_t *runtimeFor(expo_jsi_runtime_handle runtime)
 {
-  if (activeCounterRuntime != nullptr && activeCounterRuntime->runtime == runtime) {
-    return activeCounterRuntime;
+  std::lock_guard<std::mutex> lock(counterRuntimesMutex);
+  auto iterator = counterRuntimes.find(runtime);
+  if (iterator != counterRuntimes.end()) {
+    return iterator->second;
   }
   return nullptr;
 }
@@ -218,7 +235,7 @@ extern "C" expo_jsi_testhost_create_result expo_jsi_testhost_create_runtime(void
       };
     }
 
-    activeCounterRuntime = testhost;
+    registerRuntimeForCounters(*testhost);
     return expo_jsi_testhost_create_result{
       1,
       makeCountedApi(*testhost),
@@ -328,9 +345,7 @@ extern "C" void expo_jsi_testhost_release_runtime(expo_jsi_testhost_runtime_hand
   if (testhost == nullptr) {
     return;
   }
-  if (activeCounterRuntime == testhost) {
-    activeCounterRuntime = nullptr;
-  }
+  unregisterRuntimeForCounters(testhost->runtime);
   expo::jsi::releaseRuntimeHandle(testhost->runtime);
   testhost->runtime = nullptr;
   testhost->connector.invalidate();

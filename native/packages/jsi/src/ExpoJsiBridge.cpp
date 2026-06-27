@@ -770,6 +770,51 @@ private:
   expo_jsi_runtime_handle runtimeHandle_;
 };
 
+class ScheduledTaskContext final {
+public:
+  ScheduledTaskContext(expo_jsi_task_callback_fn callback,
+                       void *taskContext,
+                       expo_jsi_release_task_context_fn releaseTaskContext)
+    : callback_(callback),
+      taskContext_(taskContext),
+      releaseTaskContext_(releaseTaskContext)
+  {
+  }
+
+  ~ScheduledTaskContext()
+  {
+    releaseOnce();
+  }
+
+  void invoke()
+  {
+    try {
+      callback_(taskContext_);
+      releaseOnce();
+    } catch (...) {
+      releaseOnce();
+      throw;
+    }
+  }
+
+private:
+  void releaseOnce() noexcept
+  {
+    if (released_) {
+      return;
+    }
+    released_ = true;
+    if (releaseTaskContext_ != nullptr) {
+      releaseTaskContext_(taskContext_);
+    }
+  }
+
+  expo_jsi_task_callback_fn callback_;
+  void *taskContext_;
+  expo_jsi_release_task_context_fn releaseTaskContext_;
+  bool released_ = false;
+};
+
 expo_jsi_function_result createHostFunction(
   expo_jsi_runtime_handle runtime,
   const char *name,
@@ -928,14 +973,9 @@ expo_jsi_error scheduleTask(expo_jsi_runtime_handle runtime,
   }
 
   try {
+    auto task = std::make_shared<ScheduledTaskContext>(callback, taskContext, releaseTaskContext);
     runtimeHandle->runtimeExecutor().executeAsync(
-      toRuntimeTaskPriority(priority),
-      [callback, taskContext, releaseTaskContext](facebook::jsi::Runtime &) {
-        callback(taskContext);
-        if (releaseTaskContext != nullptr) {
-          releaseTaskContext(taskContext);
-        }
-      });
+      toRuntimeTaskPriority(priority), [task](facebook::jsi::Runtime &) { task->invoke(); });
     return makeOk();
   } catch (const std::exception &ex) {
     return makeError(55, ex.what());
@@ -972,13 +1012,9 @@ expo_jsi_error executeSync(expo_jsi_runtime_handle runtime,
   }
 
   try {
+    auto task = std::make_shared<ScheduledTaskContext>(callback, taskContext, releaseTaskContext);
     runtimeHandle->runtimeExecutor().executeSync(
-      [callback, taskContext, releaseTaskContext](facebook::jsi::Runtime &) {
-        callback(taskContext);
-        if (releaseTaskContext != nullptr) {
-          releaseTaskContext(taskContext);
-        }
-      });
+      [task](facebook::jsi::Runtime &) { task->invoke(); });
     return makeOk();
   } catch (const std::exception &ex) {
     return makeError(59, ex.what());

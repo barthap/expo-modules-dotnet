@@ -194,4 +194,27 @@ public sealed class JavaScriptRuntimeExecutorTests
     await task;
     Assert.Equal(1u, fixture.Counters.ReleasedTaskContexts);
   }
+
+  [Fact]
+  public async Task PendingScheduledTaskFaultsWhenRuntimeIsDisposed()
+  {
+    var fixture = HermesRuntimeFixture.Create();
+    var ran = false;
+
+    var task = fixture.Runtime.ScheduleAsync(
+        _ =>
+        {
+          ran = true;
+        },
+        cancellationToken: TestContext.Current.CancellationToken
+    );
+
+    fixture.Dispose();
+
+    Assert.False(ran);
+    var error = await Assert.ThrowsAsync<ObjectDisposedException>(
+        async () => await task.WaitAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken)
+    );
+    Assert.Equal(nameof(JavaScriptRuntime), error.ObjectName);
+  }
 }
