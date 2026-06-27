@@ -13,12 +13,15 @@ public sealed class JavaScriptRuntimeExecutorTests
     using var fixture = HermesRuntimeFixture.Create();
     var ran = false;
 
-    var task = fixture.Runtime.ExecuteAsync(js =>
-    {
-      ran = true;
-      using var value = js.CreateNumber(42);
-      return value.AsDouble();
-    });
+    var task = fixture.Runtime.ExecuteAsync(
+        js =>
+        {
+          ran = true;
+          using var value = js.CreateNumber(42);
+          return value.AsDouble();
+        },
+        cancellationToken: TestContext.Current.CancellationToken
+    );
 
     Assert.False(ran);
     Assert.False(task.IsCompleted);
@@ -34,10 +37,13 @@ public sealed class JavaScriptRuntimeExecutorTests
   {
     using var fixture = HermesRuntimeFixture.Create();
 
-    var task = fixture.Runtime.ExecuteAsync<double>(_ =>
-    {
-      throw new InvalidOperationException("runtime body failed");
-    });
+    var task = fixture.Runtime.ExecuteAsync<double>(
+        _ =>
+        {
+          throw new InvalidOperationException("runtime body failed");
+        },
+        cancellationToken: TestContext.Current.CancellationToken
+    );
 
     fixture.DrainTasks();
 
@@ -50,10 +56,13 @@ public sealed class JavaScriptRuntimeExecutorTests
   {
     using var fixture = HermesRuntimeFixture.Create();
 
-    var task = fixture.Runtime.ScheduleAsync(_ =>
-    {
-      throw new InvalidOperationException("scheduled body failed");
-    });
+    var task = fixture.Runtime.ScheduleAsync(
+        _ =>
+        {
+          throw new InvalidOperationException("scheduled body failed");
+        },
+        cancellationToken: TestContext.Current.CancellationToken
+    );
 
     fixture.DrainTasks();
 
@@ -171,11 +180,14 @@ public sealed class JavaScriptRuntimeExecutorTests
     using var fixture = HermesRuntimeFixture.Create();
     fixture.ResetCounters();
 
-    var task = fixture.Runtime.ScheduleAsync(js =>
-    {
-      using var value = js.CreateBool(true);
-      Assert.True(value.AsBool());
-    });
+    var task = fixture.Runtime.ScheduleAsync(
+        js =>
+        {
+          using var value = js.CreateBool(true);
+          Assert.True(value.AsBool());
+        },
+        cancellationToken: TestContext.Current.CancellationToken
+    );
 
     fixture.DrainTasks();
 

@@ -1,9 +1,20 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Expo.JSI.Interop;
 
 namespace Expo.JSI;
+
+public enum JavaScriptTaskPriority
+{
+  Immediate = 1,
+  UserBlocking = 2,
+  Normal = 3,
+  Low = 4,
+  Idle = 5,
+}
 
 public sealed unsafe class JavaScriptRuntime
 {
@@ -48,6 +59,8 @@ public sealed unsafe class JavaScriptRuntime
 
     return new JavaScriptRuntime(nativeApi, runtimeHandle);
   }
+
+  public bool CanExecuteSync => context.Api->CanExecuteSync(context.RuntimeHandle);
 
   public JavaScriptValue CreateNumber(double value)
   {
@@ -133,6 +146,126 @@ public sealed unsafe class JavaScriptRuntime
     return new JavaScriptFunction(context, result.Function);
   }
 
+  public Task ScheduleAsync(
+      Action<JavaScriptRuntime> body,
+      JavaScriptTaskPriority priority = JavaScriptTaskPriority.Normal,
+      CancellationToken cancellationToken = default
+  )
+  {
+    ArgumentNullException.ThrowIfNull(body);
+    return ScheduleCore(
+        js =>
+        {
+          body(js);
+          return null;
+        },
+        priority,
+        cancellationToken
+    );
+  }
+
+  public Task<T> ExecuteAsync<T>(
+      Func<JavaScriptRuntime, T> body,
+      JavaScriptTaskPriority priority = JavaScriptTaskPriority.Immediate,
+      CancellationToken cancellationToken = default
+  )
+  {
+    ArgumentNullException.ThrowIfNull(body);
+    var scheduledTask = ScheduleCore(js => body(js), priority, cancellationToken);
+    var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+    scheduledTask.ContinueWith(
+        task =>
+        {
+          if (task.IsCanceled)
+          {
+            completion.TrySetCanceled(cancellationToken);
+            return;
+          }
+          if (task.IsFaulted)
+          {
+            completion.TrySetException(task.Exception!.InnerExceptions);
+            return;
+          }
+
+          completion.TrySetResult((T)task.Result!);
+        },
+        CancellationToken.None,
+        TaskContinuationOptions.ExecuteSynchronously,
+        TaskScheduler.Default
+    );
+    return completion.Task;
+  }
+
+  public T Execute<T>(Func<JavaScriptRuntime, T> body)
+  {
+    ArgumentNullException.ThrowIfNull(body);
+    if (!CanExecuteSync)
+    {
+      throw new NotSupportedException(
+          "Synchronous JavaScript runtime execution is not supported by this host."
+      );
+    }
+
+    var taskContext = RuntimeTaskContext.Allocate(context, js => body(js), CancellationToken.None);
+    var task = RuntimeTaskContext.TaskFor(taskContext);
+    var error = context.Api->ExecuteRuntimeTaskSync(
+        context.RuntimeHandle,
+        &InvokeScheduledRuntimeTask,
+        taskContext,
+        &ReleaseScheduledRuntimeTaskContext
+    );
+    if (error.Code != 0)
+    {
+      RuntimeTaskContext.Release(taskContext);
+      JsiContext.ThrowNativeError(error, "Failed to execute JavaScript runtime task.");
+    }
+
+    var result = task.GetAwaiter().GetResult();
+    return (T)result!;
+  }
+
+  private Task<object?> ScheduleCore(
+      Func<JavaScriptRuntime, object?> body,
+      JavaScriptTaskPriority priority,
+      CancellationToken cancellationToken
+  )
+  {
+    if (cancellationToken.IsCancellationRequested)
+    {
+      return Task.FromCanceled<object?>(cancellationToken);
+    }
+
+    var taskContext = RuntimeTaskContext.Allocate(context, body, cancellationToken);
+    var task = RuntimeTaskContext.TaskFor(taskContext);
+    var error = context.Api->ScheduleRuntimeTask(
+        context.RuntimeHandle,
+        ToNativePriority(priority),
+        &InvokeScheduledRuntimeTask,
+        taskContext,
+        &ReleaseScheduledRuntimeTaskContext
+    );
+    if (error.Code != 0)
+    {
+      RuntimeTaskContext.Release(taskContext);
+      JsiContext.ThrowNativeError(error, "Failed to schedule JavaScript runtime task.");
+      return task;
+    }
+
+    return task;
+  }
+
+  private static ExpoJsiTaskPriority ToNativePriority(JavaScriptTaskPriority priority)
+  {
+    return priority switch
+    {
+      JavaScriptTaskPriority.Immediate => ExpoJsiTaskPriority.Immediate,
+      JavaScriptTaskPriority.UserBlocking => ExpoJsiTaskPriority.UserBlocking,
+      JavaScriptTaskPriority.Low => ExpoJsiTaskPriority.Low,
+      JavaScriptTaskPriority.Idle => ExpoJsiTaskPriority.Idle,
+      _ => ExpoJsiTaskPriority.Normal,
+    };
+  }
+
   [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
   private static ExpoJsiValueResult InvokeHostFunction(
       nint callbackContext,
@@ -163,5 +296,87 @@ public sealed unsafe class JavaScriptRuntime
   private static void ReleaseHostFunctionContext(nint callbackContext)
   {
     HostFunctionContext.Release(callbackContext);
+  }
+
+  [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+  private static void InvokeScheduledRuntimeTask(nint taskContext)
+  {
+    RuntimeTaskContext.FromIntPtr(taskContext).Invoke();
+  }
+
+  [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+  private static void ReleaseScheduledRuntimeTaskContext(nint taskContext)
+  {
+    RuntimeTaskContext.Release(taskContext);
+  }
+
+  private sealed class RuntimeTaskContext
+  {
+    private readonly JsiContext context;
+    private readonly Func<JavaScriptRuntime, object?> body;
+    private readonly CancellationToken cancellationToken;
+    private readonly TaskCompletionSource<object?> completion =
+      new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private RuntimeTaskContext(
+        JsiContext context,
+        Func<JavaScriptRuntime, object?> body,
+        CancellationToken cancellationToken
+    )
+    {
+      this.context = context;
+      this.body = body;
+      this.cancellationToken = cancellationToken;
+    }
+
+    public Task<object?> Task => completion.Task;
+
+    public static nint Allocate(
+        JsiContext context,
+        Func<JavaScriptRuntime, object?> body,
+        CancellationToken cancellationToken
+    )
+    {
+      var handle = GCHandle.Alloc(new RuntimeTaskContext(context, body, cancellationToken));
+      return GCHandle.ToIntPtr(handle);
+    }
+
+    public static RuntimeTaskContext FromIntPtr(nint pointer)
+    {
+      return (RuntimeTaskContext)GCHandle.FromIntPtr(pointer).Target!;
+    }
+
+    public static Task<object?> TaskFor(nint pointer)
+    {
+      return FromIntPtr(pointer).Task;
+    }
+
+    public static void Release(nint pointer)
+    {
+      if (pointer == 0)
+      {
+        return;
+      }
+
+      GCHandle.FromIntPtr(pointer).Free();
+    }
+
+    public void Invoke()
+    {
+      if (cancellationToken.IsCancellationRequested)
+      {
+        completion.TrySetCanceled(cancellationToken);
+        return;
+      }
+
+      try
+      {
+        completion.TrySetResult(body(new JavaScriptRuntime(context)));
+      }
+      catch (Exception ex)
+      {
+        completion.TrySetException(ex);
+      }
+    }
   }
 }

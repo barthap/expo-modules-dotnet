@@ -152,6 +152,29 @@ internal readonly unsafe struct ExpoJsiApi
       ExpoJsiValueHandle,
       ExpoJsiStringResult> GetString;
 
+  private readonly delegate* unmanaged[Cdecl]<
+      ExpoJsiRuntimeHandle,
+      ExpoJsiTaskPriority,
+      delegate* unmanaged[Cdecl]<nint, void>,
+      nint,
+      delegate* unmanaged[Cdecl]<nint, void>,
+      ExpoJsiError> RuntimeScheduleTask;
+
+  private readonly delegate* unmanaged[Cdecl]<
+      ExpoJsiRuntimeHandle,
+      byte> RuntimeCanExecuteSync;
+
+  private readonly delegate* unmanaged[Cdecl]<
+      ExpoJsiRuntimeHandle,
+      delegate* unmanaged[Cdecl]<nint, void>,
+      nint,
+      delegate* unmanaged[Cdecl]<nint, void>,
+      ExpoJsiError> RuntimeExecuteSync;
+
+  private readonly delegate* unmanaged[Cdecl]<
+      ExpoJsiRuntimeHandle,
+      ExpoJsiError> RuntimeDrainTasks;
+
   private static readonly UTF8Encoding StrictUtf8 = new(
       encoderShouldEmitUTF8Identifier: false,
       throwOnInvalidBytes: true
@@ -195,6 +218,10 @@ internal readonly unsafe struct ExpoJsiApi
         || this.ReleaseValue is null
         || this.CreateString is null
         || this.GetString is null
+        || this.RuntimeScheduleTask is null
+        || this.RuntimeCanExecuteSync is null
+        || this.RuntimeExecuteSync is null
+        || this.RuntimeDrainTasks is null
     )
     {
       throw new InvalidOperationException(
@@ -455,6 +482,37 @@ internal readonly unsafe struct ExpoJsiApi
     ReleaseValue(runtimeHandle, valueHandle);
   }
 
+  public ExpoJsiError ScheduleRuntimeTask(
+      ExpoJsiRuntimeHandle runtimeHandle,
+      ExpoJsiTaskPriority priority,
+      delegate* unmanaged[Cdecl]<nint, void> callback,
+      nint taskContext,
+      delegate* unmanaged[Cdecl]<nint, void> releaseTaskContext
+  )
+  {
+    return RuntimeScheduleTask(runtimeHandle, priority, callback, taskContext, releaseTaskContext);
+  }
+
+  public bool CanExecuteSync(ExpoJsiRuntimeHandle runtimeHandle)
+  {
+    return RuntimeCanExecuteSync(runtimeHandle) != 0;
+  }
+
+  public ExpoJsiError ExecuteRuntimeTaskSync(
+      ExpoJsiRuntimeHandle runtimeHandle,
+      delegate* unmanaged[Cdecl]<nint, void> callback,
+      nint taskContext,
+      delegate* unmanaged[Cdecl]<nint, void> releaseTaskContext
+  )
+  {
+    return RuntimeExecuteSync(runtimeHandle, callback, taskContext, releaseTaskContext);
+  }
+
+  public ExpoJsiError DrainRuntimeTasks(ExpoJsiRuntimeHandle runtimeHandle)
+  {
+    return RuntimeDrainTasks(runtimeHandle);
+  }
+
   public static uint ExpectedSize => (uint)sizeof(ExpoJsiApi);
-  public const uint ExpectedVersion = 4;
+  public const uint ExpectedVersion = 5;
 }

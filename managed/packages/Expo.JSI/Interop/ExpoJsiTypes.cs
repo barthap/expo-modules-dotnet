@@ -15,6 +15,15 @@ internal enum ExpoJsiValueKind : int
   ArrayBuffer = 7,
 }
 
+internal enum ExpoJsiTaskPriority : int
+{
+  Immediate = 1,
+  UserBlocking = 2,
+  Normal = 3,
+  Low = 4,
+  Idle = 5,
+}
+
 [StructLayout(LayoutKind.Sequential)]
 internal readonly unsafe struct ExpoJsiError
 {
