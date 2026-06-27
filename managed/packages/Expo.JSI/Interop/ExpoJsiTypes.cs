@@ -22,6 +22,13 @@ internal readonly unsafe struct ExpoJsiError
   public readonly byte* Message;
   public readonly int MessageLength;
 
+  public ExpoJsiError(int code, byte* message, int messageLength)
+  {
+    Code = code;
+    Message = message;
+    MessageLength = messageLength;
+  }
+
   public string GetMessage()
   {
     if (Message is null || MessageLength <= 0)

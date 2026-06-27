@@ -141,9 +141,10 @@ public sealed unsafe class JavaScriptRuntime
       ExpoJsiArgumentsHandle argumentsHandle
   )
   {
+    HostFunctionContext? context = null;
     try
     {
-      var context = HostFunctionContext.FromIntPtr(callbackContext);
+      context = HostFunctionContext.FromIntPtr(callbackContext);
       var jsiContext = new JsiContext(context.Api, runtimeHandle);
       var runtime = new JavaScriptRuntime(jsiContext);
       var thisValue = new JavaScriptBorrowedValue(jsiContext, thisValueHandle);
@@ -154,7 +155,7 @@ public sealed unsafe class JavaScriptRuntime
     catch (Exception ex)
     {
       Console.Error.WriteLine(ex);
-      return new ExpoJsiValueResult(0, 0, default);
+      return new ExpoJsiValueResult(0, 0, context?.CaptureException(ex) ?? default);
     }
   }
 

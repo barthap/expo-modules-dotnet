@@ -94,7 +94,8 @@ void countedReleaseString(void *releaseContext)
   delete context;
 }
 
-expo_jsi_string_result countedGetString(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
+expo_jsi_string_result countedGetString(expo_jsi_runtime_handle runtime,
+                                        expo_jsi_value_handle value)
 {
   auto *testhost = runtimeFor(runtime);
   const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
@@ -103,8 +104,7 @@ expo_jsi_string_result countedGetString(expo_jsi_runtime_handle runtime, expo_js
     return result;
   }
 
-  auto *context =
-    new CountedStringReleaseContext{testhost, result.release, result.release_context};
+  auto *context = new CountedStringReleaseContext{testhost, result.release, result.release_context};
   result.release_context = context;
   result.release = countedReleaseString;
   return result;
@@ -186,9 +186,9 @@ extern "C" expo_jsi_value_result expo_jsi_testhost_evaluate_script(
     auto script =
       std::string(reinterpret_cast<const char *>(source), static_cast<size_t>(sourceLength));
     auto url = sourceUrl == nullptr || sourceUrlLength == 0
-      ? std::string("expo-jsi-test.js")
-      : std::string(reinterpret_cast<const char *>(sourceUrl),
-                    static_cast<size_t>(sourceUrlLength));
+                 ? std::string("expo-jsi-test.js")
+                 : std::string(reinterpret_cast<const char *>(sourceUrl),
+                               static_cast<size_t>(sourceUrlLength));
     auto value =
       runtime.evaluateJavaScript(std::make_unique<facebook::jsi::StringBuffer>(script), url);
     return expo_jsi_value_result{
@@ -212,8 +212,7 @@ extern "C" expo_jsi_testhost_counters expo_jsi_testhost_get_counters(
   return testhost == nullptr ? expo_jsi_testhost_counters{} : testhost->counters;
 }
 
-extern "C" void expo_jsi_testhost_reset_counters(
-  expo_jsi_testhost_runtime_handle testhostRuntime)
+extern "C" void expo_jsi_testhost_reset_counters(expo_jsi_testhost_runtime_handle testhostRuntime)
 {
   auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
   if (testhost != nullptr) {
@@ -221,8 +220,7 @@ extern "C" void expo_jsi_testhost_reset_counters(
   }
 }
 
-extern "C" void expo_jsi_testhost_release_runtime(
-  expo_jsi_testhost_runtime_handle testhostRuntime)
+extern "C" void expo_jsi_testhost_release_runtime(expo_jsi_testhost_runtime_handle testhostRuntime)
 {
   auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
   if (testhost == nullptr) {
