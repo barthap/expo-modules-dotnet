@@ -162,15 +162,12 @@ typedef uint32_t (*expo_jsi_array_get_length_fn)(expo_jsi_runtime_handle runtime
                                                  expo_jsi_error *error);
 
 typedef expo_jsi_value_result (*expo_jsi_array_get_value_at_index_fn)(
-  expo_jsi_runtime_handle runtime,
-  expo_jsi_array_handle array,
-  uint32_t index);
+  expo_jsi_runtime_handle runtime, expo_jsi_array_handle array, uint32_t index);
 
-typedef expo_jsi_error (*expo_jsi_array_set_value_at_index_fn)(
-  expo_jsi_runtime_handle runtime,
-  expo_jsi_array_handle array,
-  uint32_t index,
-  expo_jsi_value_handle value);
+typedef expo_jsi_error (*expo_jsi_array_set_value_at_index_fn)(expo_jsi_runtime_handle runtime,
+                                                               expo_jsi_array_handle array,
+                                                               uint32_t index,
+                                                               expo_jsi_value_handle value);
 
 typedef expo_jsi_error (*expo_jsi_object_set_property_fn)(expo_jsi_runtime_handle runtime,
                                                           expo_jsi_object_handle object,
