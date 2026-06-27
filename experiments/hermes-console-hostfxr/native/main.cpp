@@ -102,8 +102,40 @@ using add_one_fn = expo_jsi_value_handle(CORECLR_DELEGATE_CALLTYPE *)(const expo
 
 namespace jsi = facebook::jsi;
 
+struct ReleaseCounter {
+  expo_jsi_api api;
+  const expo_jsi_api *inner_api;
+  uint32_t value_release_count = 0;
+};
+
+ReleaseCounter *active_release_counter = nullptr;
+
+void counted_release_value(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
+{
+  if (active_release_counter == nullptr) {
+    expo::jsi::api()->release_value(runtime, value);
+    return;
+  }
+  if (value != nullptr) {
+    active_release_counter->value_release_count++;
+  }
+  active_release_counter->inner_api->release_value(runtime, value);
+}
+
+ReleaseCounter make_release_counter(const expo_jsi_api *inner_api)
+{
+  if (inner_api == nullptr || inner_api->release_value == nullptr) {
+    throw std::runtime_error("Expo JSI API does not provide release_value.");
+  }
+
+  auto counter = ReleaseCounter{*inner_api, inner_api, 0};
+  counter.api.release_value = counted_release_value;
+  return counter;
+}
+
 struct CSharpAPI {
   add_one_fn add_one;
+  const expo_jsi_api *api;
   expo_jsi_runtime_handle runtime_handle;
 
   // TODO: make this struct own the ptrs and free them
@@ -130,7 +162,7 @@ void jsi_main(jsi::Runtime &rt, CSharpAPI &cs)
 
       expo_jsi_value_handle result = nullptr;
       try {
-        result = cs.add_one(expo::jsi::api(), cs.runtime_handle, borrowed_argument);
+          result = cs.add_one(cs.api, cs.runtime_handle, borrowed_argument);
         expo::jsi::releaseBorrowedValueHandle(borrowed_argument);
         borrowed_argument = nullptr;
         if (result == nullptr) {
@@ -138,14 +170,14 @@ void jsi_main(jsi::Runtime &rt, CSharpAPI &cs)
         }
 
         auto js_result = expo::jsi::copyValueToJsi(cs.runtime_handle, result);
-        expo::jsi::api()->release_value(cs.runtime_handle, result);
+        cs.api->release_value(cs.runtime_handle, result);
         return js_result;
       } catch (const std::exception &ex) {
         if (borrowed_argument != nullptr) {
           expo::jsi::releaseBorrowedValueHandle(borrowed_argument);
         }
         if (result != nullptr) {
-          expo::jsi::api()->release_value(cs.runtime_handle, result);
+          cs.api->release_value(cs.runtime_handle, result);
         }
         throw jsi::JSError(runtime, ex.what());
       }
@@ -210,16 +242,18 @@ int main()
     std::cout << "Created Hermes-backed JSI runtime" << std::endl;
 
     auto &rt = connector.runtime();
-    auto cs = CSharpAPI{add_one, runtime_handle};
+    auto release_counter = make_release_counter(expo::jsi::api());
+    active_release_counter = &release_counter;
+    auto cs = CSharpAPI{add_one, &release_counter.api, runtime_handle};
 
     jsi_main(rt, cs);
 
-    rc = run_proof(expo::jsi::api(), runtime_handle);
+    rc = run_proof(&release_counter.api, runtime_handle);
     if (rc != 0) {
       throw std::runtime_error("Managed JSI proof failed with code " + std::to_string(rc));
     }
 
-    auto release_count = expo::jsi::releasedValueCount(runtime_handle);
+    auto release_count = release_counter.value_release_count;
     std::cout << "Released owned value handles: " << release_count << std::endl;
     if (release_count != 2) {
       throw std::runtime_error("Expected exactly two owned value handle releases.");
@@ -227,6 +261,7 @@ int main()
 
     expo::jsi::releaseRuntimeHandle(runtime_handle);
     runtime_handle = nullptr;
+    active_release_counter = nullptr;
     connector.invalidate();
 
     std::cout << "hermes console hostfxr proof: ok" << std::endl;
@@ -235,6 +270,7 @@ int main()
     if (runtime_handle != nullptr) {
       expo::jsi::releaseRuntimeHandle(runtime_handle);
     }
+    active_release_counter = nullptr;
     std::cerr << "hermes_console_hostfxr failed: " << error.what() << std::endl;
     return 1;
   }

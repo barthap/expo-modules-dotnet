@@ -4,94 +4,90 @@ namespace Expo.JSI;
 
 public sealed unsafe class JavaScriptRuntime
 {
-  private readonly ExpoJsiApi* api;
-  private readonly nint runtimeHandle;
+    private readonly ExpoJsiApi* api;
+    private readonly ExpoJsiRuntimeHandle runtimeHandle;
 
-  private JavaScriptRuntime(ExpoJsiApi* api, nint runtimeHandle)
-  {
-    this.api = api;
-    this.runtimeHandle = runtimeHandle;
-  }
-
-  public static JavaScriptRuntime FromNative(nint api, nint runtimeHandle)
-  {
-    if (api == 0) {
-      throw new ArgumentNullException(nameof(api));
-    }
-    if (runtimeHandle == 0) {
-      throw new ArgumentNullException(nameof(runtimeHandle));
+    private JavaScriptRuntime(ExpoJsiApi* api, ExpoJsiRuntimeHandle runtimeHandle)
+    {
+        this.api = api;
+        this.runtimeHandle = runtimeHandle;
     }
 
-    var nativeApi = (ExpoJsiApi*)api;
-    if (nativeApi->Size < ExpoJsiApi.ExpectedSize) {
-      throw new InvalidOperationException(
-        $"Expo JSI API table is too small. Expected at least {ExpoJsiApi.ExpectedSize}, got {nativeApi->Size}.");
+    public static JavaScriptRuntime FromNative(
+        ExpoJsiApiHandle api,
+        ExpoJsiRuntimeHandle runtimeHandle
+    )
+    {
+        if (api == 0)
+        {
+            throw new ArgumentNullException(nameof(api));
+        }
+        if (runtimeHandle == 0)
+        {
+            throw new ArgumentNullException(nameof(runtimeHandle));
+        }
+
+        var nativeApi = (ExpoJsiApi*)api;
+        nativeApi->Validate();
+
+        return new JavaScriptRuntime(nativeApi, runtimeHandle);
     }
-    if (nativeApi->Version != ExpoJsiApi.ExpectedVersion) {
-      throw new InvalidOperationException(
-        $"Unsupported Expo JSI API version {nativeApi->Version}.");
+
+    public JavaScriptValue CreateNumber(double value)
+    {
+        var result = api->CreateNumberValue(runtimeHandle, value);
+        if (result.Ok == 0 || result.Value == 0)
+        {
+            ThrowNativeError(result.Error, "Failed to create JavaScript number.");
+        }
+        return JavaScriptValue.FromOwnedHandle(this, result.Value);
     }
-    if (nativeApi->CreateNumber is null ||
-        nativeApi->GetValueKind is null ||
-        nativeApi->GetDouble is null ||
-        nativeApi->ReleaseValue is null) {
-      throw new InvalidOperationException("Expo JSI API table is missing required functions.");
+
+    public JavaScriptValue BorrowValue(ExpoJsiValueHandle valueHandle)
+    {
+        if (valueHandle == 0)
+        {
+            throw new ArgumentNullException(nameof(valueHandle));
+        }
+        return JavaScriptValue.FromBorrowedHandle(this, valueHandle);
     }
 
-    return new JavaScriptRuntime(nativeApi, runtimeHandle);
-  }
-
-  public JavaScriptValue CreateNumber(double value)
-  {
-    var result = api->CreateNumber(runtimeHandle, value);
-    if (result.Ok == 0 || result.Value == 0) {
-      ThrowNativeError(result.Error, "Failed to create JavaScript number.");
+    internal JavaScriptValueKind GetValueKind(ExpoJsiValueHandle valueHandle)
+    {
+        ExpoJsiError error;
+        var kind = api->GetKind(runtimeHandle, valueHandle, &error);
+        ThrowIfError(error, "Failed to read JavaScript value kind.");
+        return (JavaScriptValueKind)kind;
     }
-    return JavaScriptValue.FromOwnedHandle(this, result.Value);
-  }
 
-  public JavaScriptValue BorrowValue(nint valueHandle)
-  {
-    if (valueHandle == 0) {
-      throw new ArgumentNullException(nameof(valueHandle));
+    internal double GetDouble(ExpoJsiValueHandle valueHandle)
+    {
+        ExpoJsiError error;
+        var value = api->ReadDouble(runtimeHandle, valueHandle, &error);
+        ThrowIfError(error, "Failed to read JavaScript number.");
+        return value;
     }
-    return JavaScriptValue.FromBorrowedHandle(this, valueHandle);
-  }
 
-  internal JavaScriptValueKind GetValueKind(nint valueHandle)
-  {
-    ExpoJsiError error;
-    var kind = api->GetValueKind(runtimeHandle, valueHandle, &error);
-    ThrowIfError(error, "Failed to read JavaScript value kind.");
-    return (JavaScriptValueKind)kind;
-  }
-
-  internal double GetDouble(nint valueHandle)
-  {
-    ExpoJsiError error;
-    var value = api->GetDouble(runtimeHandle, valueHandle, &error);
-    ThrowIfError(error, "Failed to read JavaScript number.");
-    return value;
-  }
-
-  internal void ReleaseValue(nint valueHandle)
-  {
-    api->ReleaseValue(runtimeHandle, valueHandle);
-  }
-
-  private static void ThrowIfError(ExpoJsiError error, string fallback)
-  {
-    if (error.Code != 0) {
-      ThrowNativeError(error, fallback);
+    internal void ReleaseValue(ExpoJsiValueHandle valueHandle)
+    {
+        api->ReleaseValueHandle(runtimeHandle, valueHandle);
     }
-  }
 
-  private static void ThrowNativeError(ExpoJsiError error, string fallback)
-  {
-    var message = error.GetMessage();
-    if (string.IsNullOrEmpty(message)) {
-      message = fallback;
+    private static void ThrowIfError(ExpoJsiError error, string fallback)
+    {
+        if (error.Code != 0)
+        {
+            ThrowNativeError(error, fallback);
+        }
     }
-    throw new InvalidOperationException($"Native JSI error {error.Code}: {message}");
-  }
+
+    private static void ThrowNativeError(ExpoJsiError error, string fallback)
+    {
+        var message = error.GetMessage();
+        if (string.IsNullOrEmpty(message))
+        {
+            message = fallback;
+        }
+        throw new InvalidOperationException($"Native JSI error {error.Code}: {message}");
+    }
 }

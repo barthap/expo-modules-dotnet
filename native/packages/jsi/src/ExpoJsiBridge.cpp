@@ -25,19 +25,8 @@ public:
     return connector_->runtime();
   }
 
-  void recordValueRelease()
-  {
-    releasedValueCount_++;
-  }
-
-  uint32_t releasedValueCount() const
-  {
-    return releasedValueCount_;
-  }
-
 private:
   JsiRuntimeConnector *connector_;
-  uint32_t releasedValueCount_ = 0;
 };
 
 class ValueHandle final {
@@ -251,11 +240,7 @@ void releaseValue(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
   if (valueHandle != nullptr && !valueHandle->isOwned()) {
     return;
   }
-  if (auto *runtimeHandle = runtime) {
-    if (valueHandle != nullptr) {
-      runtimeHandle->recordValueRelease();
-    }
-  }
+  (void)runtime;
   delete valueHandle;
 }
 
@@ -280,11 +265,6 @@ expo_jsi_runtime_handle createRuntimeHandle(JsiRuntimeConnector &connector)
 void releaseRuntimeHandle(expo_jsi_runtime_handle runtime)
 {
   delete runtime;
-}
-
-uint32_t releasedValueCount(expo_jsi_runtime_handle runtime)
-{
-  return runtime == nullptr ? 0 : runtime->releasedValueCount();
 }
 
 expo_jsi_value_handle createBorrowedValueHandle(const facebook::jsi::Value &value)

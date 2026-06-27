@@ -35,6 +35,6 @@ internal readonly unsafe struct ExpoJsiError
 internal readonly struct ExpoJsiValueResult
 {
   public readonly int Ok;
-  public readonly nint Value;
+  public readonly ExpoJsiValueHandle Value;
   public readonly ExpoJsiError Error;
 }
