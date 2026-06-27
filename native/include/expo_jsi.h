@@ -50,6 +50,12 @@ typedef expo_jsi_value_kind (*expo_jsi_get_value_kind_fn)(expo_jsi_runtime_handl
                                                           expo_jsi_value_handle value,
                                                           expo_jsi_error *error);
 
+// Boolean ABI values are encoded as 0 or 1. Failures also return 0 and are
+// distinguished from false by the structured error out-parameter.
+typedef uint8_t (*expo_jsi_get_bool_fn)(expo_jsi_runtime_handle runtime,
+                                        expo_jsi_value_handle value,
+                                        expo_jsi_error *error);
+
 typedef double (*expo_jsi_get_double_fn)(expo_jsi_runtime_handle runtime,
                                          expo_jsi_value_handle value,
                                          expo_jsi_error *error);
@@ -63,6 +69,7 @@ typedef struct expo_jsi_api {
 
   expo_jsi_create_number_fn create_number;
   expo_jsi_get_value_kind_fn get_value_kind;
+  expo_jsi_get_bool_fn get_bool;
   expo_jsi_get_double_fn get_double;
   expo_jsi_release_value_fn release_value;
 } expo_jsi_api;

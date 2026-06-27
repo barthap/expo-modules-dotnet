@@ -28,6 +28,16 @@ internal readonly unsafe struct ExpoJsiApi
         ExpoJsiValueKind> GetValueKind;
 
     /// <summary>
+    /// Native function pointer for reading a JavaScript boolean value.
+    /// Signature: (runtimeHandle, valueHandle, error) => boolean byte.
+    /// </summary>
+    private readonly delegate* unmanaged[Cdecl]<
+        ExpoJsiRuntimeHandle,
+        ExpoJsiValueHandle,
+        ExpoJsiError*,
+        byte> GetBool;
+
+    /// <summary>
     /// Native function pointer for reading a JavaScript number value.
     /// Signature: (runtimeHandle, valueHandle, error) => value.
     /// </summary>
@@ -66,6 +76,7 @@ internal readonly unsafe struct ExpoJsiApi
         if (
             this.CreateNumber is null
             || this.GetValueKind is null
+            || this.GetBool is null
             || this.GetDouble is null
             || this.ReleaseValue is null
         )
@@ -99,6 +110,22 @@ internal readonly unsafe struct ExpoJsiApi
     )
     {
         return GetValueKind(runtimeHandle, valueHandle, error);
+    }
+
+    /// <summary>
+    /// Reads a JavaScript boolean value through the native API table.
+    /// </summary>
+    /// <param name="runtimeHandle">Opaque expo_jsi_runtime_handle.</param>
+    /// <param name="valueHandle">Opaque expo_jsi_value_handle.</param>
+    /// <param name="error">Receives structured error details.</param>
+    public bool ReadBool(
+        ExpoJsiRuntimeHandle runtimeHandle,
+        ExpoJsiValueHandle valueHandle,
+        ExpoJsiError* error
+    )
+    {
+        // Native bool payloads are ABI bytes. The error parameter carries failure state.
+        return GetBool(runtimeHandle, valueHandle, error) != 0;
     }
 
     /// <summary>

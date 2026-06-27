@@ -32,6 +32,12 @@ public sealed class JavaScriptValue : IDisposable
         }
     }
 
+    public bool AsBool()
+    {
+        ThrowIfDisposed();
+        return runtime.GetBool(handle);
+    }
+
     public double AsDouble()
     {
         ThrowIfDisposed();

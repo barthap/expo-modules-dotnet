@@ -60,6 +60,14 @@ public sealed unsafe class JavaScriptRuntime
         return (JavaScriptValueKind)kind;
     }
 
+    internal bool GetBool(ExpoJsiValueHandle valueHandle)
+    {
+        ExpoJsiError error;
+        var value = api->ReadBool(runtimeHandle, valueHandle, &error);
+        ThrowIfError(error, "Failed to read JavaScript boolean.");
+        return value;
+    }
+
     internal double GetDouble(ExpoJsiValueHandle valueHandle)
     {
         ExpoJsiError error;

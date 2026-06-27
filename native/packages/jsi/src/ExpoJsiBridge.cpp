@@ -139,13 +139,11 @@ expo_jsi_value_result makeErrorResult(int32_t code, const char *message)
 expo_jsi_value_result createNumber(expo_jsi_runtime_handle runtime, double number)
 {
   expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
-  if (runtimeHandle == nullptr) {
+  if (tryRuntimeHandle(runtime, &error) == nullptr) {
     return expo_jsi_value_result{0, nullptr, error};
   }
 
   try {
-    (void)runtimeHandle;
     return makeValueResult(expo::jsi::ValueHandle::owned(facebook::jsi::Value(number)));
   } catch (const std::exception &ex) {
     return makeErrorResult(3, ex.what());
@@ -206,6 +204,35 @@ getValueKind(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value, expo_
   }
 }
 
+uint8_t getBool(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value, expo_jsi_error *error)
+{
+  // The return value is only the bool payload. Error state is reported through `error`.
+  if (tryRuntimeHandle(runtime, error) == nullptr) {
+    return 0;
+  }
+
+  auto *valueHandle = value;
+  if (valueHandle == nullptr) {
+    writeError(error, 8, "Value handle is null.");
+    return 0;
+  }
+
+  try {
+    if (!valueHandle->value().isBool()) {
+      writeError(error, 9, "Value is not a boolean.");
+      return 0;
+    }
+    clearError(error);
+    return valueHandle->value().asBool() ? 1 : 0;
+  } catch (const std::exception &ex) {
+    writeError(error, 10, ex.what());
+    return 0;
+  } catch (...) {
+    writeError(error, 11, "Unknown native exception while reading boolean.");
+    return 0;
+  }
+}
+
 double
 getDouble(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value, expo_jsi_error *error)
 {
@@ -234,13 +261,12 @@ getDouble(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value, expo_jsi
   }
 }
 
-void releaseValue(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
+void releaseValue(expo_jsi_runtime_handle, expo_jsi_value_handle value)
 {
   auto *valueHandle = value;
   if (valueHandle != nullptr && !valueHandle->isOwned()) {
     return;
   }
-  (void)runtime;
   delete valueHandle;
 }
 
@@ -249,6 +275,7 @@ const expo_jsi_api kApi{
   kApiVersion,
   createNumber,
   getValueKind,
+  getBool,
   getDouble,
   releaseValue,
 };

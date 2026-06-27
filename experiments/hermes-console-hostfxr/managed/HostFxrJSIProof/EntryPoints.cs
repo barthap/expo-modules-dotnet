@@ -42,12 +42,20 @@ public static class EntryPoints
         EntryPoint = "hostfxr_jsi_proof_add_one",
         CallConvs = new[] { typeof(CallConvCdecl) }
     )]
-    public static nint AddOne(nint api, nint runtimeHandle, nint valueHandle)
+    public static nint AddOne(
+        nint api,
+        nint runtimeHandle,
+        nint valueHandle,
+        nint shouldAddOneHandle
+    )
     {
         try
         {
             var runtime = JavaScriptRuntime.FromNative(api, runtimeHandle);
             using var value = runtime.BorrowValue(valueHandle);
+            using var shouldAddOne = runtime.BorrowValue(shouldAddOneHandle);
+
+            var shouldAdd = shouldAddOne.AsBool();
 
             if (value.Kind != JavaScriptValueKind.Number)
             {
@@ -55,7 +63,8 @@ public static class EntryPoints
                 return 0;
             }
 
-            var result = runtime.CreateNumber(value.AsDouble() + 1.0);
+            var number = shouldAdd ? value.AsDouble() + 1.0 : value.AsDouble();
+            var result = runtime.CreateNumber(number);
             Console.WriteLine("managed callback: AddOne(JavaScriptRuntime, JavaScriptValue)");
             return result.Detach();
         }

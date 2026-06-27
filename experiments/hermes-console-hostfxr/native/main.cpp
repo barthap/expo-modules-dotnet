@@ -98,6 +98,7 @@ get_dotnet_load_assembly(const std::filesystem::path &runtime_config)
 
 using add_one_fn = expo_jsi_value_handle(CORECLR_DELEGATE_CALLTYPE *)(const expo_jsi_api *,
                                                                       expo_jsi_runtime_handle,
+                                                                      expo_jsi_value_handle,
                                                                       expo_jsi_value_handle);
 
 namespace jsi = facebook::jsi;
@@ -151,8 +152,8 @@ void jsi_main(jsi::Runtime &rt, CSharpAPI &cs)
     1,
     [cs](jsi::Runtime &runtime, const facebook::jsi::Value &, const jsi::Value *args, size_t count)
       -> jsi::Value {
-      if (count == 0) {
-        throw jsi::JSError(runtime, "callCSharp expects one argument.");
+      if (count < 2) {
+        throw jsi::JSError(runtime, "callCSharp expects 2 arguments.");
       }
 
       auto borrowed_argument = expo::jsi::createBorrowedValueHandle(args[0]);
@@ -160,11 +161,18 @@ void jsi_main(jsi::Runtime &rt, CSharpAPI &cs)
         throw jsi::JSError(runtime, "Failed to borrow argument handle.");
       }
 
+      auto borrowed_argument2 = expo::jsi::createBorrowedValueHandle(args[1]);
+      if (borrowed_argument2 == nullptr) {
+        throw jsi::JSError(runtime, "Failed to borrow argument handle.");
+      }
+
       expo_jsi_value_handle result = nullptr;
       try {
-          result = cs.add_one(cs.api, cs.runtime_handle, borrowed_argument);
+        result = cs.add_one(cs.api, cs.runtime_handle, borrowed_argument, borrowed_argument2);
         expo::jsi::releaseBorrowedValueHandle(borrowed_argument);
+        expo::jsi::releaseBorrowedValueHandle(borrowed_argument2);
         borrowed_argument = nullptr;
+        borrowed_argument2 = nullptr;
         if (result == nullptr) {
           throw std::runtime_error("Managed AddOne returned a null value handle.");
         }
@@ -185,7 +193,7 @@ void jsi_main(jsi::Runtime &rt, CSharpAPI &cs)
   rt.global().setProperty(rt, "callCSharp", std::move(call_csharp));
 
   auto callback_result = rt.evaluateJavaScript(
-    std::make_unique<jsi::StringBuffer>("callCSharp(41.5);"), "hardcoded-csharp-call.js");
+    std::make_unique<jsi::StringBuffer>("callCSharp(41.5, true);"), "hardcoded-csharp-call.js");
   if (!callback_result.isNumber() || callback_result.asNumber() != 42.5) {
     throw std::runtime_error("JS -> C# host function proof failed.");
   }
