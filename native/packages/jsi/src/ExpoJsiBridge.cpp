@@ -889,6 +889,11 @@ void releaseRuntimeHandle(expo_jsi_runtime_handle runtime)
   delete runtime;
 }
 
+expo_jsi_value_handle createOwnedValueHandle(facebook::jsi::Value value)
+{
+  return ValueHandle::owned(std::move(value)).release();
+}
+
 const expo_jsi_api *api()
 {
   return &kApi;
