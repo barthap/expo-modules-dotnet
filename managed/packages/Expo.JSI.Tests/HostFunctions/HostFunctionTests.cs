@@ -30,4 +30,18 @@ public sealed class HostFunctionTests
     Assert.Equal(JavaScriptValueKind.Number, result.Kind);
     Assert.Equal(42.5, result.AsDouble());
   }
+
+  [Fact]
+  public void DisposingEvaluatedResultIncrementsReleaseCounter()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+
+    using (fixture.Evaluate("21 + 21", "counter-evaluate.js"))
+    {
+    }
+
+    var counters = fixture.Counters;
+    Assert.True(counters.ReleasedValues >= 1);
+  }
 }

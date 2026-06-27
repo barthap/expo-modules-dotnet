@@ -64,4 +64,18 @@ public sealed class JavaScriptPrimitiveTests
     Assert.Equal(JavaScriptValueKind.String, value.Kind);
     Assert.Equal("a\0b", value.AsString());
   }
+
+  [Fact]
+  public void DisposingOwnedValueIncrementsReleaseCounter()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+
+    using (fixture.Runtime.CreateNumber(1))
+    {
+    }
+
+    var counters = fixture.Counters;
+    Assert.True(counters.ReleasedValues >= 1);
+  }
 }
