@@ -41,6 +41,10 @@ contain machine-specific paths or local workflow notes. Do not commit it.
 
 ## Verification
 
+Before finishing code changes, run `scripts/format.sh --check --all`. If it
+fails because files need formatting, run `scripts/format.sh` and then repeat
+the check.
+
 Each spike must record:
 
 - hypothesis
