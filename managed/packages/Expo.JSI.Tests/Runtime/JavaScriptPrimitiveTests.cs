@@ -61,6 +61,19 @@ public sealed class JavaScriptPrimitiveTests
     Assert.True(counters.ReleasedValues >= 1);
   }
 
+  [Fact]
+  public void ReadingStringReleasesNativeStringResultBuffer()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    using var value = fixture.Runtime.CreateString("hello");
+    fixture.ResetCounters();
+
+    Assert.Equal("hello", value.AsString());
+
+    var counters = fixture.Counters;
+    Assert.True(counters.ReleasedStrings >= 1);
+  }
+
   private static void AssertJavaScriptString(JavaScriptValue value, string expected)
   {
     Assert.Equal(JavaScriptValueKind.String, value.Kind);

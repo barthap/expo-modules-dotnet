@@ -663,8 +663,10 @@ expo_jsi_error objectSetProperty(expo_jsi_runtime_handle runtime,
   }
 
   try {
-    auto propertyName = std::string(name, static_cast<size_t>(name_len));
-    object->object().setProperty(runtimeHandle->runtime(), propertyName.c_str(), value->value());
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto propertyName = facebook::jsi::PropNameID::forUtf8(
+      jsRuntime, reinterpret_cast<const uint8_t *>(name), static_cast<size_t>(name_len));
+    object->object().setProperty(jsRuntime, propertyName, value->value());
     return expo_jsi_error{0, nullptr, 0};
   } catch (const std::exception &ex) {
     return makeError(25, ex.what());
@@ -690,9 +692,11 @@ expo_jsi_value_result objectGetProperty(expo_jsi_runtime_handle runtime,
   }
 
   try {
-    auto propertyName = std::string(name, static_cast<size_t>(name_len));
-    return makeValueResult(expo::jsi::ValueHandle::owned(
-      object->object().getProperty(runtimeHandle->runtime(), propertyName.c_str())));
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto propertyName = facebook::jsi::PropNameID::forUtf8(
+      jsRuntime, reinterpret_cast<const uint8_t *>(name), static_cast<size_t>(name_len));
+    return makeValueResult(
+      expo::jsi::ValueHandle::owned(object->object().getProperty(jsRuntime, propertyName)));
   } catch (const std::exception &ex) {
     return makeErrorResult(52, ex.what());
   } catch (...) {

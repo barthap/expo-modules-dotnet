@@ -47,4 +47,32 @@ public sealed class JavaScriptObjectTests
     Assert.Equal(JavaScriptValueKind.String, actual.Kind);
     Assert.Equal("hello from JS", actual.AsString());
   }
+
+  [Fact]
+  public void Utf8PropertyNameRoundTrips()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    using var target = fixture.Runtime.CreateObject();
+    using var expected = fixture.Runtime.CreateString("ok");
+
+    target.SetProperty("zażółć", expected);
+
+    using var actual = target.GetProperty("zażółć");
+    Assert.Equal(JavaScriptValueKind.String, actual.Kind);
+    Assert.Equal("ok", actual.AsString());
+  }
+
+  [Fact]
+  public void DisposingObjectIncrementsReleaseCounter()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+
+    using (fixture.Runtime.CreateObject())
+    {
+    }
+
+    var counters = fixture.Counters;
+    Assert.True(counters.ReleasedObjects >= 1);
+  }
 }
