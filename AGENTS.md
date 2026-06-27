@@ -34,6 +34,10 @@ contain machine-specific paths or local workflow notes. Do not commit it.
 - Do not use runtime hot-path reflection for v2 generated bindings.
 - Prefer HostFXR for early development, but keep ABI and generated bindings NativeAOT-compatible.
 - Do not create GitHub PRs, publish packages, or post comments without explicit user approval.
+- Do not commit local absolute paths, usernames, machine names, private hostnames,
+  concrete local repo paths, or machine-specific install paths. Use repo-relative
+  paths or placeholders such as `<repo>`, `<dotnet-root>`, and
+  `<windows-test-machine>` in committed docs and examples.
 
 ## Verification
 

@@ -1,7 +1,7 @@
 # Result: NativeAOT Loader Proof
 
 Date: 2026-06-26
-Machine: macOS local development machine
+Machine: local macOS development machine
 Repo/path: <repo>
 Branch or commit: main, working tree implementation
 

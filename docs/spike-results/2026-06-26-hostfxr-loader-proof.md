@@ -1,7 +1,7 @@
 # Result: HostFXR Loader Proof
 
 Date: 2026-06-26
-Machine: macOS local development machine
+Machine: local macOS development machine
 Repo/path: <repo>
 Branch or commit: main, final implementation commit containing this note
 
@@ -43,7 +43,7 @@ Runtime Environment:
  OS Name:     macOS
  OS Platform: Darwin
  RID:         osx-arm64
- Base Path:   <dotnet-root>/sdk/10.0.201/
+ Base Path:   <dotnet-sdk-dir>/
 
 .NET workloads installed:
 There are no installed workloads to display.
@@ -56,14 +56,14 @@ Host:
   Commit:       a612c2a105
 
 .NET SDKs installed:
-  8.0.419 [<dotnet-root>/sdk]
-  10.0.201 [<dotnet-root>/sdk]
+  8.0.419 [<dotnet-sdk-root>]
+  10.0.201 [<dotnet-sdk-root>]
 
 .NET runtimes installed:
-  Microsoft.AspNetCore.App 8.0.25 [<dotnet-root>/shared/Microsoft.AspNetCore.App]
-  Microsoft.AspNetCore.App 10.0.5 [<dotnet-root>/shared/Microsoft.AspNetCore.App]
-  Microsoft.NETCore.App 8.0.25 [<dotnet-root>/shared/Microsoft.NETCore.App]
-  Microsoft.NETCore.App 10.0.5 [<dotnet-root>/shared/Microsoft.NETCore.App]
+  Microsoft.AspNetCore.App 8.0.25 [<dotnet-shared-root>/Microsoft.AspNetCore.App]
+  Microsoft.AspNetCore.App 10.0.5 [<dotnet-shared-root>/Microsoft.AspNetCore.App]
+  Microsoft.NETCore.App 8.0.25 [<dotnet-shared-root>/Microsoft.NETCore.App]
+  Microsoft.NETCore.App 10.0.5 [<dotnet-shared-root>/Microsoft.NETCore.App]
 
 Other architectures found:
   None

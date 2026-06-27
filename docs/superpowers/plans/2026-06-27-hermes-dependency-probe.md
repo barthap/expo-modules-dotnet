@@ -32,7 +32,7 @@ Optional temporary files during probing:
 - `$PROBE_DIR/CMakeLists.txt`
 - `$PROBE_DIR/main.cpp`
 
-Do not commit temporary probe files under `<temp-dir>`.
+Do not commit temporary probe files.
 
 Delete stale plan:
 
@@ -79,7 +79,7 @@ If Step 2 does not find `jsi/jsi.h`, Hermes runtime headers, and a linkable Herm
 # Result: Hermes Dependency Probe
 
 Date: 2026-06-27
-Machine: macOS local development machine
+Machine: local macOS development machine
 Repo/path: <repo>
 Branch or commit: current branch
 
@@ -136,8 +136,8 @@ Stop after the commit.
 Run:
 
 ```bash
-rm -rf $PROBE_DIR
-mkdir -p $PROBE_DIR
+PROBE_DIR="$(mktemp -d -t expo-csharp-hermes-probe)"
+mkdir -p "$PROBE_DIR"
 ```
 
 Create `$PROBE_DIR/main.cpp` with:
@@ -200,9 +200,9 @@ If the exact CMake file cannot be written without broad app-build internals, sto
 Run:
 
 ```bash
-cmake -S $PROBE_DIR -B $PROBE_DIR/build
-cmake --build $PROBE_DIR/build --target hermes_probe
-$PROBE_DIR/build/hermes_probe
+cmake -S "$PROBE_DIR" -B "$PROBE_DIR/build"
+cmake --build "$PROBE_DIR/build" --target hermes_probe
+"$PROBE_DIR/build/hermes_probe"
 ```
 
 Expected output:
@@ -219,7 +219,7 @@ Create `docs/spike-results/2026-06-27-hermes-dependency-probe.md` with:
 # Result: Hermes Dependency Probe
 
 Date: 2026-06-27
-Machine: macOS local development machine
+Machine: local macOS development machine
 Repo/path: <repo>
 Branch or commit: current branch
 

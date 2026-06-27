@@ -185,10 +185,21 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(DOTNET_ROOT_DEFAULT "<dotnet-root>")
 set(DOTNET_ROOT "$ENV{DOTNET_ROOT}")
 if(NOT DOTNET_ROOT)
-  set(DOTNET_ROOT "${DOTNET_ROOT_DEFAULT}")
+  find_program(DOTNET_EXECUTABLE dotnet REQUIRED)
+  execute_process(
+    COMMAND "${DOTNET_EXECUTABLE}" --info
+    OUTPUT_VARIABLE DOTNET_INFO
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    COMMAND_ERROR_IS_FATAL ANY
+  )
+  string(REGEX MATCH "Base Path:[ \t]*([^\n\r]+)" _dotnet_base_path "${DOTNET_INFO}")
+  if(NOT CMAKE_MATCH_1)
+    message(FATAL_ERROR "Could not discover DOTNET_ROOT. Set DOTNET_ROOT explicitly.")
+  endif()
+  get_filename_component(DOTNET_SDK_DIR "${CMAKE_MATCH_1}" ABSOLUTE)
+  get_filename_component(DOTNET_ROOT "${DOTNET_SDK_DIR}/../.." ABSOLUTE)
 endif()
 
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
@@ -412,7 +423,7 @@ Use the required result-note sections and paste exact observed output into the A
 # Result: HostFXR Loader Proof
 
 Date: 2026-06-26
-Machine: macOS local development machine
+Machine: local macOS development machine
 Repo/path: <repo>
 Branch or commit: current branch after implementation commits
 
