@@ -15,6 +15,7 @@ struct expo_jsi_testhost_runtime_t {
   expo_jsi_api countedApi{};
   const expo_jsi_api *innerApi = nullptr;
   expo_jsi_testhost_counters counters{};
+  bool syncExecutionSupported = true;
 };
 
 namespace {
@@ -110,6 +111,85 @@ expo_jsi_string_result countedGetString(expo_jsi_runtime_handle runtime,
   return result;
 }
 
+struct CountedTaskContext {
+  expo_jsi_testhost_runtime_t *testhost;
+  expo_jsi_task_callback_fn callback;
+  void *taskContext;
+  expo_jsi_release_task_context_fn release;
+};
+
+void countedTaskCallback(void *taskContext)
+{
+  auto *context = static_cast<CountedTaskContext *>(taskContext);
+  if (context->callback != nullptr) {
+    context->callback(context->taskContext);
+  }
+}
+
+void countedReleaseTaskContext(void *taskContext)
+{
+  auto *context = static_cast<CountedTaskContext *>(taskContext);
+  if (context->testhost != nullptr) {
+    context->testhost->counters.released_task_contexts++;
+  }
+  if (context->release != nullptr) {
+    context->release(context->taskContext);
+  }
+  delete context;
+}
+
+expo_jsi_error countedScheduleTask(expo_jsi_runtime_handle runtime,
+                                   expo_jsi_task_priority priority,
+                                   expo_jsi_task_callback_fn callback,
+                                   void *taskContext,
+                                   expo_jsi_release_task_context_fn releaseTaskContext)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
+  auto *countedContext =
+    new CountedTaskContext{testhost, callback, taskContext, releaseTaskContext};
+  auto error = api->runtime_schedule_task(
+    runtime,
+    priority,
+    countedTaskCallback,
+    countedContext,
+    countedReleaseTaskContext);
+  if (error.code != 0) {
+    delete countedContext;
+  }
+  return error;
+}
+
+uint8_t countedCanExecuteSync(expo_jsi_runtime_handle runtime)
+{
+  auto *testhost = runtimeFor(runtime);
+  if (testhost != nullptr && !testhost->syncExecutionSupported) {
+    return 0;
+  }
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
+  return api->runtime_can_execute_sync(runtime);
+}
+
+expo_jsi_error countedExecuteSync(expo_jsi_runtime_handle runtime,
+                                  expo_jsi_task_callback_fn callback,
+                                  void *taskContext,
+                                  expo_jsi_release_task_context_fn releaseTaskContext)
+{
+  auto *testhost = runtimeFor(runtime);
+  if (testhost != nullptr) {
+    testhost->counters.sync_execute_calls++;
+  }
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
+  auto *countedContext =
+    new CountedTaskContext{testhost, callback, taskContext, releaseTaskContext};
+  auto error =
+    api->runtime_execute_sync(runtime, countedTaskCallback, countedContext, countedReleaseTaskContext);
+  if (error.code != 0) {
+    delete countedContext;
+  }
+  return error;
+}
+
 const expo_jsi_api *makeCountedApi(expo_jsi_testhost_runtime_t &runtime)
 {
   runtime.innerApi = expo::jsi::api();
@@ -118,6 +198,9 @@ const expo_jsi_api *makeCountedApi(expo_jsi_testhost_runtime_t &runtime)
   runtime.countedApi.release_object = countedReleaseObject;
   runtime.countedApi.release_function = countedReleaseFunction;
   runtime.countedApi.get_string = countedGetString;
+  runtime.countedApi.runtime_schedule_task = countedScheduleTask;
+  runtime.countedApi.runtime_can_execute_sync = countedCanExecuteSync;
+  runtime.countedApi.runtime_execute_sync = countedExecuteSync;
   return &runtime.countedApi;
 }
 
@@ -217,6 +300,31 @@ extern "C" void expo_jsi_testhost_reset_counters(expo_jsi_testhost_runtime_handl
   auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
   if (testhost != nullptr) {
     testhost->counters = expo_jsi_testhost_counters{};
+  }
+}
+
+extern "C" void expo_jsi_testhost_drain_tasks(
+  expo_jsi_testhost_runtime_handle testhostRuntime)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  if (testhost == nullptr) {
+    return;
+  }
+  auto error = testhost->innerApi->runtime_drain_tasks(testhost->runtime);
+  if (error.code != 0) {
+    lastErrorMessage = error.message != nullptr
+      ? std::string(error.message, static_cast<size_t>(error.message_len))
+      : "Failed to drain runtime tasks.";
+  }
+}
+
+extern "C" void expo_jsi_testhost_set_sync_execution_supported(
+  expo_jsi_testhost_runtime_handle testhostRuntime,
+  uint8_t supported)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  if (testhost != nullptr) {
+    testhost->syncExecutionSupported = supported != 0;
   }
 }
 
