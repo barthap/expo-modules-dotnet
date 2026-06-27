@@ -78,6 +78,23 @@ public readonly struct JavaScriptBorrowedValue
     }
   }
 
+  public JavaScriptArray AsArray()
+  {
+    ThrowIfNull();
+    unsafe
+    {
+      var result = context.Api->ConvertValueToArray(context.RuntimeHandle, handle);
+      if (result.Ok == 0 || result.Array == 0)
+      {
+        JsiContext.ThrowNativeError(
+            result.Error,
+            "Failed to convert JavaScript value to array."
+        );
+      }
+      return new JavaScriptArray(context, result.Array);
+    }
+  }
+
   private void ThrowIfNull()
   {
     if (handle == 0)

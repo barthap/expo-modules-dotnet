@@ -114,6 +114,16 @@ public sealed unsafe class JavaScriptRuntime
     return new JavaScriptObject(context, result.Object);
   }
 
+  public JavaScriptArray CreateArray(uint length = 0)
+  {
+    var result = context.Api->CreateArrayValue(context.RuntimeHandle, length);
+    if (result.Ok == 0 || result.Array == 0)
+    {
+      JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript array.");
+    }
+    return new JavaScriptArray(context, result.Array);
+  }
+
   public JavaScriptFunction CreateHostFunction(
       string name,
       uint parameterCount,

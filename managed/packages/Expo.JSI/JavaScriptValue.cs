@@ -92,6 +92,23 @@ public sealed class JavaScriptValue : IDisposable
     }
   }
 
+  public JavaScriptArray AsArray()
+  {
+    ThrowIfDisposed();
+    unsafe
+    {
+      var result = context.Api->ConvertValueToArray(context.RuntimeHandle, handle);
+      if (result.Ok == 0 || result.Array == 0)
+      {
+        JsiContext.ThrowNativeError(
+            result.Error,
+            "Failed to convert JavaScript value to array."
+        );
+      }
+      return new JavaScriptArray(context, result.Array);
+    }
+  }
+
   public void Dispose()
   {
     if (handle != 0)

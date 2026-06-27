@@ -7,6 +7,7 @@ namespace expo::jsi {
 class RuntimeHandle;
 class ValueHandle;
 class ObjectHandle;
+class ArrayHandle;
 class FunctionHandle;
 class ArgumentsHandle;
 } // namespace expo::jsi
@@ -14,6 +15,7 @@ class ArgumentsHandle;
 using expo_jsi_runtime_t = expo::jsi::RuntimeHandle;
 using expo_jsi_value_t = expo::jsi::ValueHandle;
 using expo_jsi_object_t = expo::jsi::ObjectHandle;
+using expo_jsi_array_t = expo::jsi::ArrayHandle;
 using expo_jsi_function_t = expo::jsi::FunctionHandle;
 using expo_jsi_arguments_t = expo::jsi::ArgumentsHandle;
 
@@ -22,12 +24,14 @@ extern "C" {
 typedef expo_jsi_runtime_t *expo_jsi_runtime_handle;
 typedef expo_jsi_value_t *expo_jsi_value_handle;
 typedef expo_jsi_object_t *expo_jsi_object_handle;
+typedef expo_jsi_array_t *expo_jsi_array_handle;
 typedef expo_jsi_function_t *expo_jsi_function_handle;
 typedef expo_jsi_arguments_t *expo_jsi_arguments_handle;
 #else
 typedef struct expo_jsi_runtime_t *expo_jsi_runtime_handle;
 typedef struct expo_jsi_value_t *expo_jsi_value_handle;
 typedef struct expo_jsi_object_t *expo_jsi_object_handle;
+typedef struct expo_jsi_array_t *expo_jsi_array_handle;
 typedef struct expo_jsi_function_t *expo_jsi_function_handle;
 typedef struct expo_jsi_arguments_t *expo_jsi_arguments_handle;
 #endif
@@ -68,6 +72,12 @@ typedef struct expo_jsi_object_result {
   expo_jsi_object_handle object;
   expo_jsi_error error;
 } expo_jsi_object_result;
+
+typedef struct expo_jsi_array_result {
+  int32_t ok;
+  expo_jsi_array_handle array;
+  expo_jsi_error error;
+} expo_jsi_array_result;
 
 typedef struct expo_jsi_function_result {
   int32_t ok;
@@ -135,6 +145,33 @@ typedef expo_jsi_value_result (*expo_jsi_object_as_value_fn)(expo_jsi_runtime_ha
 typedef expo_jsi_object_result (*expo_jsi_value_as_object_fn)(expo_jsi_runtime_handle runtime,
                                                               expo_jsi_value_handle value);
 
+typedef expo_jsi_array_result (*expo_jsi_create_array_fn)(expo_jsi_runtime_handle runtime,
+                                                          uint32_t length);
+
+typedef expo_jsi_value_result (*expo_jsi_array_as_value_fn)(expo_jsi_runtime_handle runtime,
+                                                            expo_jsi_array_handle array);
+
+typedef expo_jsi_object_result (*expo_jsi_array_as_object_fn)(expo_jsi_runtime_handle runtime,
+                                                              expo_jsi_array_handle array);
+
+typedef expo_jsi_array_result (*expo_jsi_value_as_array_fn)(expo_jsi_runtime_handle runtime,
+                                                            expo_jsi_value_handle value);
+
+typedef uint32_t (*expo_jsi_array_get_length_fn)(expo_jsi_runtime_handle runtime,
+                                                 expo_jsi_array_handle array,
+                                                 expo_jsi_error *error);
+
+typedef expo_jsi_value_result (*expo_jsi_array_get_value_at_index_fn)(
+  expo_jsi_runtime_handle runtime,
+  expo_jsi_array_handle array,
+  uint32_t index);
+
+typedef expo_jsi_error (*expo_jsi_array_set_value_at_index_fn)(
+  expo_jsi_runtime_handle runtime,
+  expo_jsi_array_handle array,
+  uint32_t index,
+  expo_jsi_value_handle value);
+
 typedef expo_jsi_error (*expo_jsi_object_set_property_fn)(expo_jsi_runtime_handle runtime,
                                                           expo_jsi_object_handle object,
                                                           const char *name,
@@ -172,6 +209,9 @@ typedef void (*expo_jsi_release_value_fn)(expo_jsi_runtime_handle runtime,
 typedef void (*expo_jsi_release_object_fn)(expo_jsi_runtime_handle runtime,
                                            expo_jsi_object_handle object);
 
+typedef void (*expo_jsi_release_array_fn)(expo_jsi_runtime_handle runtime,
+                                          expo_jsi_array_handle array);
+
 typedef void (*expo_jsi_release_function_fn)(expo_jsi_runtime_handle runtime,
                                              expo_jsi_function_handle function);
 
@@ -205,6 +245,13 @@ typedef struct expo_jsi_api {
   expo_jsi_create_object_fn create_object;
   expo_jsi_object_as_value_fn object_as_value;
   expo_jsi_value_as_object_fn value_as_object;
+  expo_jsi_create_array_fn create_array;
+  expo_jsi_array_as_value_fn array_as_value;
+  expo_jsi_array_as_object_fn array_as_object;
+  expo_jsi_value_as_array_fn value_as_array;
+  expo_jsi_array_get_length_fn array_get_length;
+  expo_jsi_array_get_value_at_index_fn array_get_value_at_index;
+  expo_jsi_array_set_value_at_index_fn array_set_value_at_index;
   expo_jsi_object_set_property_fn object_set_property;
   expo_jsi_object_get_property_fn object_get_property;
   expo_jsi_create_host_function_fn create_host_function;
@@ -212,6 +259,7 @@ typedef struct expo_jsi_api {
   expo_jsi_get_arguments_count_fn get_arguments_count;
   expo_jsi_get_argument_value_fn get_argument_value;
   expo_jsi_release_object_fn release_object;
+  expo_jsi_release_array_fn release_array;
   expo_jsi_release_function_fn release_function;
   expo_jsi_release_value_fn release_value;
   expo_jsi_create_string_fn create_string;

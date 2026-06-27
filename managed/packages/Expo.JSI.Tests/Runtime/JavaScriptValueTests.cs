@@ -27,6 +27,7 @@ public sealed class JavaScriptValueTests
   [InlineData("'hello'", "number", "Value is not a number.")]
   [InlineData("true", "string", "Value is not a string.")]
   [InlineData("42", "object", "Value is not an object.")]
+  [InlineData("42", "array", "Value is not an array.")]
   public void WrongTypeConversionThrowsNativeJsiError(
       string source,
       string conversion,
@@ -68,6 +69,11 @@ public sealed class JavaScriptValueTests
         break;
       case "object":
         using (value.AsObject())
+        {
+        }
+        break;
+      case "array":
+        using (value.AsArray())
         {
         }
         break;

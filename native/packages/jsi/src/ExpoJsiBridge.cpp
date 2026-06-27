@@ -104,6 +104,28 @@ private:
   std::unique_ptr<facebook::jsi::Object> object_;
 };
 
+class ArrayHandle final {
+public:
+  static std::unique_ptr<ArrayHandle> owned(facebook::jsi::Array array)
+  {
+    return std::unique_ptr<ArrayHandle>(
+      new ArrayHandle(std::make_unique<facebook::jsi::Array>(std::move(array))));
+  }
+
+  facebook::jsi::Array &array()
+  {
+    return *array_;
+  }
+
+private:
+  explicit ArrayHandle(std::unique_ptr<facebook::jsi::Array> array)
+    : array_(std::move(array))
+  {
+  }
+
+  std::unique_ptr<facebook::jsi::Array> array_;
+};
+
 class FunctionHandle final {
 public:
   static std::unique_ptr<FunctionHandle> owned(facebook::jsi::Function function)
@@ -165,7 +187,7 @@ private:
 
 namespace {
 
-constexpr uint32_t kApiVersion = 5;
+constexpr uint32_t kApiVersion = 6;
 
 struct StringResultBuffer {
   explicit StringResultBuffer(std::string value)
@@ -351,6 +373,15 @@ expo_jsi_object_result makeObjectResult(std::unique_ptr<expo::jsi::ObjectHandle>
   };
 }
 
+expo_jsi_array_result makeArrayResult(std::unique_ptr<expo::jsi::ArrayHandle> array)
+{
+  return expo_jsi_array_result{
+    1,
+    array.release(),
+    expo_jsi_error{0, nullptr, 0},
+  };
+}
+
 expo_jsi_function_result makeFunctionResult(std::unique_ptr<expo::jsi::FunctionHandle> function)
 {
   return expo_jsi_function_result{
@@ -372,6 +403,11 @@ expo_jsi_value_result makeErrorResult(int32_t code, const char *message)
 expo_jsi_object_result makeObjectErrorResult(int32_t code, const char *message)
 {
   return expo_jsi_object_result{0, nullptr, makeError(code, message)};
+}
+
+expo_jsi_array_result makeArrayErrorResult(int32_t code, const char *message)
+{
+  return expo_jsi_array_result{0, nullptr, makeError(code, message)};
 }
 
 expo_jsi_function_result makeFunctionErrorResult(int32_t code, const char *message)
@@ -672,6 +708,169 @@ expo_jsi_object_result valueAsObject(expo_jsi_runtime_handle runtime, expo_jsi_v
   }
 }
 
+expo_jsi_array_result createArray(expo_jsi_runtime_handle runtime, uint32_t length)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_array_result{0, nullptr, error};
+  }
+
+  try {
+    return makeArrayResult(
+      expo::jsi::ArrayHandle::owned(facebook::jsi::Array(runtimeHandle->runtime(), length)));
+  } catch (const std::exception &ex) {
+    return makeArrayErrorResult(63, ex.what());
+  } catch (...) {
+    return makeArrayErrorResult(64, "Unknown native exception while creating array.");
+  }
+}
+
+expo_jsi_value_result arrayAsValue(expo_jsi_runtime_handle runtime, expo_jsi_array_handle array)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_value_result{0, nullptr, error};
+  }
+  if (array == nullptr) {
+    return makeErrorResult(65, "Array handle is null.");
+  }
+
+  try {
+    return makeValueResult(expo::jsi::ValueHandle::owned(
+      facebook::jsi::Value(runtimeHandle->runtime(), array->array())));
+  } catch (const std::exception &ex) {
+    return makeErrorResult(66, ex.what());
+  } catch (...) {
+    return makeErrorResult(67, "Unknown native exception while converting array to value.");
+  }
+}
+
+expo_jsi_object_result arrayAsObject(expo_jsi_runtime_handle runtime, expo_jsi_array_handle array)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_object_result{0, nullptr, error};
+  }
+  if (array == nullptr) {
+    return makeObjectErrorResult(68, "Array handle is null.");
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto arrayValue = facebook::jsi::Value(jsRuntime, array->array());
+    return makeObjectResult(expo::jsi::ObjectHandle::owned(arrayValue.asObject(jsRuntime)));
+  } catch (const std::exception &ex) {
+    return makeObjectErrorResult(69, ex.what());
+  } catch (...) {
+    return makeObjectErrorResult(70, "Unknown native exception while converting array to object.");
+  }
+}
+
+expo_jsi_array_result valueAsArray(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_array_result{0, nullptr, error};
+  }
+  if (value == nullptr) {
+    return makeArrayErrorResult(71, "Value handle is null.");
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    if (!value->value().isObject()) {
+      return makeArrayErrorResult(72, "Value is not an array.");
+    }
+    auto object = value->value().asObject(jsRuntime);
+    if (!object.isArray(jsRuntime)) {
+      return makeArrayErrorResult(73, "Value is not an array.");
+    }
+    return makeArrayResult(expo::jsi::ArrayHandle::owned(object.asArray(jsRuntime)));
+  } catch (const std::exception &ex) {
+    return makeArrayErrorResult(74, ex.what());
+  } catch (...) {
+    return makeArrayErrorResult(75, "Unknown native exception while converting value to array.");
+  }
+}
+
+uint32_t arrayGetLength(expo_jsi_runtime_handle runtime,
+                        expo_jsi_array_handle array,
+                        expo_jsi_error *error)
+{
+  auto *runtimeHandle = tryRuntimeHandle(runtime, error);
+  if (runtimeHandle == nullptr) {
+    return 0;
+  }
+  if (array == nullptr) {
+    writeError(error, 76, "Array handle is null.");
+    return 0;
+  }
+
+  try {
+    clearError(error);
+    return static_cast<uint32_t>(array->array().length(runtimeHandle->runtime()));
+  } catch (const std::exception &ex) {
+    writeError(error, 77, ex.what());
+    return 0;
+  } catch (...) {
+    writeError(error, 78, "Unknown native exception while reading array length.");
+    return 0;
+  }
+}
+
+expo_jsi_value_result arrayGetValueAtIndex(expo_jsi_runtime_handle runtime,
+                                           expo_jsi_array_handle array,
+                                           uint32_t index)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_value_result{0, nullptr, error};
+  }
+  if (array == nullptr) {
+    return makeErrorResult(79, "Array handle is null.");
+  }
+
+  try {
+    return makeValueResult(expo::jsi::ValueHandle::owned(
+      array->array().getValueAtIndex(runtimeHandle->runtime(), index)));
+  } catch (const std::exception &ex) {
+    return makeErrorResult(80, ex.what());
+  } catch (...) {
+    return makeErrorResult(81, "Unknown native exception while reading array value.");
+  }
+}
+
+expo_jsi_error arraySetValueAtIndex(expo_jsi_runtime_handle runtime,
+                                    expo_jsi_array_handle array,
+                                    uint32_t index,
+                                    expo_jsi_value_handle value)
+{
+  auto *runtimeHandle = tryRuntimeHandle(runtime, nullptr);
+  if (runtimeHandle == nullptr) {
+    return makeError(82, "Runtime handle is invalid.");
+  }
+  if (array == nullptr) {
+    return makeError(83, "Array handle is null.");
+  }
+  if (value == nullptr) {
+    return makeError(84, "Value handle is null.");
+  }
+
+  try {
+    array->array().setValueAtIndex(runtimeHandle->runtime(), index, value->value());
+    return makeOk();
+  } catch (const std::exception &ex) {
+    return makeError(85, ex.what());
+  } catch (...) {
+    return makeError(86, "Unknown native exception while setting array value.");
+  }
+}
+
 expo_jsi_error objectSetProperty(expo_jsi_runtime_handle runtime,
                                  expo_jsi_object_handle object,
                                  const char *name,
@@ -952,6 +1151,11 @@ void releaseObject(expo_jsi_runtime_handle, expo_jsi_object_handle object)
   delete object;
 }
 
+void releaseArray(expo_jsi_runtime_handle, expo_jsi_array_handle array)
+{
+  delete array;
+}
+
 void releaseFunction(expo_jsi_runtime_handle, expo_jsi_function_handle function)
 {
   delete function;
@@ -1053,6 +1257,13 @@ const expo_jsi_api kApi{
   createObject,
   objectAsValue,
   valueAsObject,
+  createArray,
+  arrayAsValue,
+  arrayAsObject,
+  valueAsArray,
+  arrayGetLength,
+  arrayGetValueAtIndex,
+  arraySetValueAtIndex,
   objectSetProperty,
   objectGetProperty,
   createHostFunction,
@@ -1060,6 +1271,7 @@ const expo_jsi_api kApi{
   getArgumentsCount,
   getArgumentValue,
   releaseObject,
+  releaseArray,
   releaseFunction,
   releaseValue,
   createString,

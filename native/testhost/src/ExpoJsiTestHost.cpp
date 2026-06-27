@@ -84,6 +84,16 @@ void countedReleaseObject(expo_jsi_runtime_handle runtime, expo_jsi_object_handl
   api->release_object(runtime, object);
 }
 
+void countedReleaseArray(expo_jsi_runtime_handle runtime, expo_jsi_array_handle array)
+{
+  auto *testhost = runtimeFor(runtime);
+  if (testhost != nullptr && array != nullptr) {
+    testhost->counters.released_objects++;
+  }
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
+  api->release_array(runtime, array);
+}
+
 void countedReleaseFunction(expo_jsi_runtime_handle runtime, expo_jsi_function_handle function)
 {
   auto *testhost = runtimeFor(runtime);
@@ -209,6 +219,7 @@ const expo_jsi_api *makeCountedApi(expo_jsi_testhost_runtime_t &runtime)
   runtime.countedApi = *runtime.innerApi;
   runtime.countedApi.release_value = countedReleaseValue;
   runtime.countedApi.release_object = countedReleaseObject;
+  runtime.countedApi.release_array = countedReleaseArray;
   runtime.countedApi.release_function = countedReleaseFunction;
   runtime.countedApi.get_string = countedGetString;
   runtime.countedApi.runtime_schedule_task = countedScheduleTask;
