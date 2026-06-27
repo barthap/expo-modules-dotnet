@@ -121,7 +121,8 @@ private:
 class ArgumentsHandle final {
 public:
   ArgumentsHandle(const facebook::jsi::Value *arguments, size_t count)
-    : arguments_(arguments), count_(count)
+    : arguments_(arguments),
+      count_(count)
   {
   }
 
@@ -156,7 +157,7 @@ private:
 
 namespace {
 
-constexpr uint32_t kApiVersion = 1;
+constexpr uint32_t kApiVersion = 2;
 
 expo_jsi_error makeError(int32_t code, const char *message)
 {
@@ -276,8 +277,7 @@ expo_jsi_value_result createBool(expo_jsi_runtime_handle runtime, uint8_t value)
   }
 
   try {
-    return makeValueResult(expo::jsi::ValueHandle::owned(
-      facebook::jsi::Value(value != 0)));
+    return makeValueResult(expo::jsi::ValueHandle::owned(facebook::jsi::Value(value != 0)));
   } catch (const std::exception &ex) {
     return makeErrorResult(12, ex.what());
   } catch (...) {
@@ -405,8 +405,7 @@ expo_jsi_object_result getGlobalObject(expo_jsi_runtime_handle runtime)
   }
 
   try {
-    return makeObjectResult(
-      expo::jsi::ObjectHandle::owned(runtimeHandle->runtime().global()));
+    return makeObjectResult(expo::jsi::ObjectHandle::owned(runtimeHandle->runtime().global()));
   } catch (const std::exception &ex) {
     return makeObjectErrorResult(14, ex.what());
   } catch (...) {
@@ -432,8 +431,7 @@ expo_jsi_object_result createObject(expo_jsi_runtime_handle runtime)
   }
 }
 
-expo_jsi_value_result objectAsValue(expo_jsi_runtime_handle runtime,
-                                    expo_jsi_object_handle object)
+expo_jsi_value_result objectAsValue(expo_jsi_runtime_handle runtime, expo_jsi_object_handle object)
 {
   expo_jsi_error error{};
   auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
@@ -445,12 +443,36 @@ expo_jsi_value_result objectAsValue(expo_jsi_runtime_handle runtime,
   }
 
   try {
-    return makeValueResult(
-      expo::jsi::ValueHandle::owned(facebook::jsi::Value(runtimeHandle->runtime(), object->object())));
+    return makeValueResult(expo::jsi::ValueHandle::owned(
+      facebook::jsi::Value(runtimeHandle->runtime(), object->object())));
   } catch (const std::exception &ex) {
     return makeErrorResult(19, ex.what());
   } catch (...) {
     return makeErrorResult(20, "Unknown native exception while converting object to value.");
+  }
+}
+
+expo_jsi_object_result valueAsObject(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_object_result{0, nullptr, error};
+  }
+  if (value == nullptr) {
+    return makeObjectErrorResult(38, "Value handle is null.");
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    if (!value->value().isObject()) {
+      return makeObjectErrorResult(39, "Value is not an object.");
+    }
+    return makeObjectResult(expo::jsi::ObjectHandle::owned(value->value().asObject(jsRuntime)));
+  } catch (const std::exception &ex) {
+    return makeObjectErrorResult(40, ex.what());
+  } catch (...) {
+    return makeObjectErrorResult(41, "Unknown native exception while converting value to object.");
   }
 }
 
@@ -558,9 +580,8 @@ expo_jsi_function_result createHostFunction(
         try {
           result = context->call(thisHandle.get(), &argumentsHandle);
           if (result.ok == 0 || result.value == nullptr) {
-            const char *message = result.error.message != nullptr
-              ? result.error.message
-              : "Managed host function failed.";
+            const char *message = result.error.message != nullptr ? result.error.message
+                                                                  : "Managed host function failed.";
             throw facebook::jsi::JSError(jsRuntime, message);
           }
           auto jsResult = facebook::jsi::Value(jsRuntime, result.value->value());
@@ -600,8 +621,8 @@ expo_jsi_value_result functionAsValue(expo_jsi_runtime_handle runtime,
   }
 
   try {
-    return makeValueResult(
-      expo::jsi::ValueHandle::owned(facebook::jsi::Value(runtimeHandle->runtime(), function->function())));
+    return makeValueResult(expo::jsi::ValueHandle::owned(
+      facebook::jsi::Value(runtimeHandle->runtime(), function->function())));
   } catch (const std::exception &ex) {
     return makeErrorResult(32, ex.what());
   } catch (...) {
@@ -665,24 +686,11 @@ void releaseFunction(expo_jsi_runtime_handle, expo_jsi_function_handle function)
 }
 
 const expo_jsi_api kApi{
-  sizeof(expo_jsi_api),
-  kApiVersion,
-  createNumber,
-  createBool,
-  getValueKind,
-  getBool,
-  getDouble,
-  getGlobalObject,
-  createObject,
-  objectAsValue,
-  objectSetProperty,
-  createHostFunction,
-  functionAsValue,
-  getArgumentsCount,
-  getArgumentValue,
-  releaseObject,
-  releaseFunction,
-  releaseValue,
+  sizeof(expo_jsi_api), kApiVersion,     createNumber,      createBool,
+  getValueKind,         getBool,         getDouble,         getGlobalObject,
+  createObject,         objectAsValue,   valueAsObject,     objectSetProperty,
+  createHostFunction,   functionAsValue, getArgumentsCount, getArgumentValue,
+  releaseObject,        releaseFunction, releaseValue,
 };
 
 } // namespace

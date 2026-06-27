@@ -102,6 +102,9 @@ typedef expo_jsi_object_result (*expo_jsi_create_object_fn)(expo_jsi_runtime_han
 typedef expo_jsi_value_result (*expo_jsi_object_as_value_fn)(expo_jsi_runtime_handle runtime,
                                                              expo_jsi_object_handle object);
 
+typedef expo_jsi_object_result (*expo_jsi_value_as_object_fn)(expo_jsi_runtime_handle runtime,
+                                                              expo_jsi_value_handle value);
+
 typedef expo_jsi_error (*expo_jsi_object_set_property_fn)(expo_jsi_runtime_handle runtime,
                                                           expo_jsi_object_handle object,
                                                           const char *name,
@@ -117,18 +120,16 @@ typedef expo_jsi_function_result (*expo_jsi_create_host_function_fn)(
   void *callback_context,
   expo_jsi_release_callback_context_fn release_callback_context);
 
-typedef expo_jsi_value_result (*expo_jsi_function_as_value_fn)(
-  expo_jsi_runtime_handle runtime,
-  expo_jsi_function_handle function);
+typedef expo_jsi_value_result (*expo_jsi_function_as_value_fn)(expo_jsi_runtime_handle runtime,
+                                                               expo_jsi_function_handle function);
 
 typedef uint32_t (*expo_jsi_get_arguments_count_fn)(expo_jsi_runtime_handle runtime,
                                                     expo_jsi_arguments_handle arguments,
                                                     expo_jsi_error *error);
 
-typedef expo_jsi_value_result (*expo_jsi_get_argument_value_fn)(
-  expo_jsi_runtime_handle runtime,
-  expo_jsi_arguments_handle arguments,
-  uint32_t index);
+typedef expo_jsi_value_result (*expo_jsi_get_argument_value_fn)(expo_jsi_runtime_handle runtime,
+                                                                expo_jsi_arguments_handle arguments,
+                                                                uint32_t index);
 
 typedef void (*expo_jsi_release_value_fn)(expo_jsi_runtime_handle runtime,
                                           expo_jsi_value_handle value);
@@ -151,6 +152,7 @@ typedef struct expo_jsi_api {
   expo_jsi_get_global_object_fn get_global_object;
   expo_jsi_create_object_fn create_object;
   expo_jsi_object_as_value_fn object_as_value;
+  expo_jsi_value_as_object_fn value_as_object;
   expo_jsi_object_set_property_fn object_set_property;
   expo_jsi_create_host_function_fn create_host_function;
   expo_jsi_function_as_value_fn function_as_value;

@@ -1,13 +1,15 @@
+using Expo.JSI.Interop;
+
 namespace Expo.JSI;
 
 public readonly struct JavaScriptArguments
 {
-    private readonly JavaScriptRuntime runtime;
+    private readonly JsiContext context;
     private readonly ExpoJsiArgumentsHandle handle;
 
-    internal JavaScriptArguments(JavaScriptRuntime runtime, ExpoJsiArgumentsHandle handle)
+    internal JavaScriptArguments(JsiContext context, ExpoJsiArgumentsHandle handle)
     {
-        this.runtime = runtime;
+        this.context = context;
         this.handle = handle;
     }
 
@@ -16,14 +18,28 @@ public readonly struct JavaScriptArguments
         get
         {
             ThrowIfNull();
-            return runtime.GetArgumentsCount(handle);
+            unsafe
+            {
+                ExpoJsiError error;
+                var count = context.Api->GetArgumentCount(context.RuntimeHandle, handle, &error);
+                context.ThrowIfError(error, "Failed to read JavaScript argument count.");
+                return count;
+            }
         }
     }
 
     public JavaScriptBorrowedValue GetBorrowedValue(uint index)
     {
         ThrowIfNull();
-        return runtime.GetBorrowedArgument(handle, index);
+        unsafe
+        {
+            var result = context.Api->GetArgument(context.RuntimeHandle, handle, index);
+            if (result.Ok == 0 || result.Value == 0)
+            {
+                JsiContext.ThrowNativeError(result.Error, "Failed to read JavaScript argument.");
+            }
+            return new JavaScriptBorrowedValue(context, result.Value);
+        }
     }
 
     private void ThrowIfNull()

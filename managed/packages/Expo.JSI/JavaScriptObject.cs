@@ -4,12 +4,12 @@ namespace Expo.JSI;
 
 public sealed class JavaScriptObject : IDisposable
 {
-    private readonly JavaScriptRuntime runtime;
+    private readonly JsiContext context;
     private ExpoJsiObjectHandle handle;
 
-    internal JavaScriptObject(JavaScriptRuntime runtime, ExpoJsiObjectHandle handle)
+    internal JavaScriptObject(JsiContext context, ExpoJsiObjectHandle handle)
     {
-        this.runtime = runtime;
+        this.context = context;
         this.handle = handle;
     }
 
@@ -20,20 +20,43 @@ public sealed class JavaScriptObject : IDisposable
         ArgumentNullException.ThrowIfNull(value);
 
         var nameBytes = Encoding.UTF8.GetBytes(name);
-        runtime.SetObjectProperty(handle, nameBytes, value.Handle);
+        unsafe
+        {
+            var error = context.Api->SetObjectProperty(
+                context.RuntimeHandle,
+                handle,
+                nameBytes,
+                value.Handle
+            );
+            context.ThrowIfError(error, "Failed to set JavaScript object property.");
+        }
     }
 
     public JavaScriptValue AsValue()
     {
         ThrowIfDisposed();
-        return runtime.ObjectAsValue(handle);
+        unsafe
+        {
+            var result = context.Api->ConvertObjectToValue(context.RuntimeHandle, handle);
+            if (result.Ok == 0 || result.Value == 0)
+            {
+                JsiContext.ThrowNativeError(
+                    result.Error,
+                    "Failed to convert JavaScript object to value."
+                );
+            }
+            return JavaScriptValue.FromOwnedHandle(context, result.Value);
+        }
     }
 
     public void Dispose()
     {
         if (handle != 0)
         {
-            runtime.ReleaseObject(handle);
+            unsafe
+            {
+                context.Api->ReleaseObjectHandle(context.RuntimeHandle, handle);
+            }
             handle = 0;
         }
     }
