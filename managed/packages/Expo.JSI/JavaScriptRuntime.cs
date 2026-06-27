@@ -47,7 +47,15 @@ public sealed unsafe class JavaScriptRuntime
     if (result.Ok == 0 || result.Value == 0) {
       ThrowNativeError(result.Error, "Failed to create JavaScript number.");
     }
-    return new JavaScriptValue(this, result.Value);
+    return JavaScriptValue.FromOwnedHandle(this, result.Value);
+  }
+
+  public JavaScriptValue BorrowValue(nint valueHandle)
+  {
+    if (valueHandle == 0) {
+      throw new ArgumentNullException(nameof(valueHandle));
+    }
+    return JavaScriptValue.FromBorrowedHandle(this, valueHandle);
   }
 
   internal JavaScriptValueKind GetValueKind(nint valueHandle)

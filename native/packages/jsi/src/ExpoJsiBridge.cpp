@@ -3,6 +3,7 @@
 #include <cstring>
 #include <exception>
 #include <memory>
+#include <stdexcept>
 #include <string>
 
 #include "JsiRuntimeConnector.h"
@@ -13,7 +14,20 @@ struct expo_jsi_runtime_t {
 };
 
 struct expo_jsi_value_t {
-  facebook::jsi::Value value;
+  std::unique_ptr<facebook::jsi::Value> owned_value;
+  const facebook::jsi::Value *borrowed_value;
+
+  facebook::jsi::Value &value()
+  {
+    return owned_value != nullptr
+      ? *owned_value
+      : *const_cast<facebook::jsi::Value *>(borrowed_value);
+  }
+
+  const facebook::jsi::Value &value() const
+  {
+    return owned_value != nullptr ? *owned_value : *borrowed_value;
+  }
 };
 
 namespace {
@@ -85,7 +99,7 @@ expo_jsi_value_result create_number(expo_jsi_runtime_handle runtime, double numb
   try {
     (void)js_runtime;
     return make_value_result(std::make_unique<expo_jsi_value_t>(
-      expo_jsi_value_t{facebook::jsi::Value(number)}));
+      expo_jsi_value_t{std::make_unique<facebook::jsi::Value>(number), nullptr}));
   } catch (const std::exception &ex) {
     return make_error_result(3, ex.what());
   } catch (...) {
@@ -109,7 +123,7 @@ expo_jsi_value_kind get_value_kind(
 
   try {
     clear_error(error);
-    auto &js_value = value->value;
+    auto &js_value = value->value();
     if (js_value.isUndefined()) {
       return EXPO_JSI_VALUE_UNDEFINED;
     }
@@ -159,12 +173,12 @@ double get_double(
   }
 
   try {
-    if (!value->value.isNumber()) {
+    if (!value->value().isNumber()) {
       write_error(error, 9, "Value is not a number.");
       return 0.0;
     }
     clear_error(error);
-    return value->value.asNumber();
+    return value->value().asNumber();
   } catch (const std::exception &ex) {
     write_error(error, 10, ex.what());
     return 0.0;
@@ -176,6 +190,9 @@ double get_double(
 
 void release_value(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
 {
+  if (value != nullptr && value->owned_value == nullptr) {
+    return;
+  }
   if (runtime != nullptr) {
     runtime->released_value_count += value == nullptr ? 0 : 1;
   }
@@ -211,6 +228,40 @@ void release_runtime_handle(expo_jsi_runtime_handle runtime)
 uint32_t released_value_count(expo_jsi_runtime_handle runtime)
 {
   return runtime == nullptr ? 0 : runtime->released_value_count;
+}
+
+expo_jsi_value_handle create_borrowed_value_handle(const facebook::jsi::Value *value)
+{
+  if (value == nullptr) {
+    return nullptr;
+  }
+  return new expo_jsi_value_t{nullptr, value};
+}
+
+void release_borrowed_value_handle(expo_jsi_value_handle value)
+{
+  if (value == nullptr) {
+    return;
+  }
+  if (value->owned_value != nullptr) {
+    throw std::runtime_error("release_borrowed_value_handle received an owned value handle.");
+  }
+  delete value;
+}
+
+facebook::jsi::Value copy_value_to_jsi(
+  expo_jsi_runtime_handle runtime,
+  expo_jsi_value_handle value)
+{
+  expo_jsi_error error{};
+  auto *js_runtime = try_runtime(runtime, &error);
+  if (js_runtime == nullptr) {
+    throw std::runtime_error(error.message == nullptr ? "Invalid runtime." : error.message);
+  }
+  if (value == nullptr) {
+    throw std::runtime_error("Value handle is null.");
+  }
+  return facebook::jsi::Value(*js_runtime, value->value());
 }
 
 const expo_jsi_api *api()
