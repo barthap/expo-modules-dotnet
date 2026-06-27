@@ -10,9 +10,12 @@ internal static class GeneratedModuleProvider
     using var expo = runtime.CreateObject();
     using var modules = runtime.CreateObject();
     using var math = runtime.CreateObject();
+    using var text = runtime.CreateObject();
 
-    var module = new MathModule();
-    using var add = runtime.CreateHostFunction("add", 2, MathAddHostFunction, module);
+    var mathModule = new MathModule();
+    var textModule = new TextModule();
+    using var add = runtime.CreateHostFunction("add", 2, MathAddHostFunction, mathModule);
+    using var greet = runtime.CreateHostFunction("greet", 1, TextGreetHostFunction, textModule);
 
     using var globalValue = global.AsValue();
     global.SetProperty("global", globalValue);
@@ -20,8 +23,14 @@ internal static class GeneratedModuleProvider
     using var addValue = add.AsValue();
     math.SetProperty("add", addValue);
 
+    using var greetValue = greet.AsValue();
+    text.SetProperty("greet", greetValue);
+
     using var mathValue = math.AsValue();
     modules.SetProperty("Math", mathValue);
+
+    using var textValue = text.AsValue();
+    modules.SetProperty("Text", textValue);
 
     using var modulesValue = modules.AsValue();
     expo.SetProperty("modules", modulesValue);
@@ -48,5 +57,22 @@ internal static class GeneratedModuleProvider
     var value = arguments.GetBorrowedValue(0).AsDouble();
     var shouldAddOne = arguments.GetBorrowedValue(1).AsBool();
     return runtime.CreateNumber(module.Add(value, shouldAddOne));
+  }
+
+  private static JavaScriptValue TextGreetHostFunction(
+      JavaScriptRuntime runtime,
+      JavaScriptBorrowedValue thisValue,
+      JavaScriptArguments arguments,
+      object context
+  )
+  {
+    if (arguments.Count != 1)
+    {
+      throw new ArgumentException($"Text.greet expects 1 argument, got {arguments.Count}.");
+    }
+
+    var module = (TextModule)context;
+    var name = arguments.GetBorrowedValue(0).AsString();
+    return runtime.CreateString(module.Greet(name));
   }
 }

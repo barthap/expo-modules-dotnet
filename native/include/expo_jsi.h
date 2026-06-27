@@ -67,6 +67,17 @@ typedef struct expo_jsi_function_result {
   expo_jsi_error error;
 } expo_jsi_function_result;
 
+typedef void (*expo_jsi_release_string_fn)(void *release_context);
+
+typedef struct expo_jsi_string_result {
+  int32_t ok;
+  const uint8_t *data;
+  int32_t length;
+  void *release_context;
+  expo_jsi_release_string_fn release;
+  expo_jsi_error error;
+} expo_jsi_string_result;
+
 typedef expo_jsi_value_result (*expo_jsi_host_function_callback_fn)(
   void *callback_context,
   expo_jsi_runtime_handle runtime,
@@ -81,6 +92,10 @@ typedef expo_jsi_value_result (*expo_jsi_create_number_fn)(expo_jsi_runtime_hand
 typedef expo_jsi_value_result (*expo_jsi_create_bool_fn)(expo_jsi_runtime_handle runtime,
                                                          uint8_t value);
 
+typedef expo_jsi_value_result (*expo_jsi_create_string_fn)(expo_jsi_runtime_handle runtime,
+                                                           const uint8_t *data,
+                                                           int32_t length);
+
 typedef expo_jsi_value_kind (*expo_jsi_get_value_kind_fn)(expo_jsi_runtime_handle runtime,
                                                           expo_jsi_value_handle value,
                                                           expo_jsi_error *error);
@@ -94,6 +109,9 @@ typedef uint8_t (*expo_jsi_get_bool_fn)(expo_jsi_runtime_handle runtime,
 typedef double (*expo_jsi_get_double_fn)(expo_jsi_runtime_handle runtime,
                                          expo_jsi_value_handle value,
                                          expo_jsi_error *error);
+
+typedef expo_jsi_string_result (*expo_jsi_get_string_fn)(expo_jsi_runtime_handle runtime,
+                                                         expo_jsi_value_handle value);
 
 typedef expo_jsi_object_result (*expo_jsi_get_global_object_fn)(expo_jsi_runtime_handle runtime);
 
@@ -161,6 +179,8 @@ typedef struct expo_jsi_api {
   expo_jsi_release_object_fn release_object;
   expo_jsi_release_function_fn release_function;
   expo_jsi_release_value_fn release_value;
+  expo_jsi_create_string_fn create_string;
+  expo_jsi_get_string_fn get_string;
 } expo_jsi_api;
 
 #ifdef __cplusplus

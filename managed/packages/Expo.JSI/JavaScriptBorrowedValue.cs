@@ -52,6 +52,15 @@ public readonly struct JavaScriptBorrowedValue
     }
   }
 
+  public string AsString()
+  {
+    ThrowIfNull();
+    unsafe
+    {
+      return context.Api->ReadString(context.RuntimeHandle, handle);
+    }
+  }
+
   public JavaScriptObject AsObject()
   {
     ThrowIfNull();

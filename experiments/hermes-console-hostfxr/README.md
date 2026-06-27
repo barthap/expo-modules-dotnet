@@ -10,6 +10,10 @@ through HostFXR, and verifies bridge paths without P/Invoke:
   `global.expo.modules.Math.add`. Native C++ owns the JSI host function
   plumbing, while C# generated-looking code decodes borrowed arguments, calls
   `MathModule.Add`, and returns an owned JavaScript value handle.
+- managed code can create and read JavaScript strings as strict UTF-8 text,
+  including non-ASCII data and embedded NUL bytes;
+- JavaScript installs and calls `global.expo.modules.Text.greet`, which decodes
+  a borrowed string argument in C# and returns a JavaScript string value.
 
 Build Hermes from the official repository first:
 

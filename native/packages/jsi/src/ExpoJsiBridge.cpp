@@ -157,7 +157,16 @@ private:
 
 namespace {
 
-constexpr uint32_t kApiVersion = 2;
+constexpr uint32_t kApiVersion = 3;
+
+struct StringResultBuffer {
+  explicit StringResultBuffer(std::string value)
+    : value(std::move(value))
+  {
+  }
+
+  std::string value;
+};
 
 expo_jsi_error makeError(int32_t code, const char *message)
 {
@@ -180,6 +189,93 @@ void clearError(expo_jsi_error *error)
   if (error != nullptr) {
     *error = expo_jsi_error{0, nullptr, 0};
   }
+}
+
+bool isUtf8Continuation(uint8_t value)
+{
+  return (value & 0xC0) == 0x80;
+}
+
+bool isValidUtf8(const uint8_t *data, int32_t length)
+{
+  if (length < 0 || (data == nullptr && length > 0)) {
+    return false;
+  }
+
+  int32_t index = 0;
+  while (index < length) {
+    const uint8_t first = data[index];
+    if (first <= 0x7F) {
+      index++;
+      continue;
+    }
+
+    if (first >= 0xC2 && first <= 0xDF) {
+      if (index + 1 >= length || !isUtf8Continuation(data[index + 1])) {
+        return false;
+      }
+      index += 2;
+      continue;
+    }
+
+    if (first == 0xE0) {
+      if (index + 2 >= length || data[index + 1] < 0xA0 || data[index + 1] > 0xBF ||
+          !isUtf8Continuation(data[index + 2])) {
+        return false;
+      }
+      index += 3;
+      continue;
+    }
+
+    if ((first >= 0xE1 && first <= 0xEC) || (first >= 0xEE && first <= 0xEF)) {
+      if (index + 2 >= length || !isUtf8Continuation(data[index + 1]) ||
+          !isUtf8Continuation(data[index + 2])) {
+        return false;
+      }
+      index += 3;
+      continue;
+    }
+
+    if (first == 0xED) {
+      if (index + 2 >= length || data[index + 1] < 0x80 || data[index + 1] > 0x9F ||
+          !isUtf8Continuation(data[index + 2])) {
+        return false;
+      }
+      index += 3;
+      continue;
+    }
+
+    if (first == 0xF0) {
+      if (index + 3 >= length || data[index + 1] < 0x90 || data[index + 1] > 0xBF ||
+          !isUtf8Continuation(data[index + 2]) || !isUtf8Continuation(data[index + 3])) {
+        return false;
+      }
+      index += 4;
+      continue;
+    }
+
+    if (first >= 0xF1 && first <= 0xF3) {
+      if (index + 3 >= length || !isUtf8Continuation(data[index + 1]) ||
+          !isUtf8Continuation(data[index + 2]) || !isUtf8Continuation(data[index + 3])) {
+        return false;
+      }
+      index += 4;
+      continue;
+    }
+
+    if (first == 0xF4) {
+      if (index + 3 >= length || data[index + 1] < 0x80 || data[index + 1] > 0x8F ||
+          !isUtf8Continuation(data[index + 2]) || !isUtf8Continuation(data[index + 3])) {
+        return false;
+      }
+      index += 4;
+      continue;
+    }
+
+    return false;
+  }
+
+  return true;
 }
 
 expo::jsi::RuntimeHandle *tryRuntimeHandle(expo_jsi_runtime_handle runtime, expo_jsi_error *error)
@@ -253,6 +349,24 @@ expo_jsi_function_result makeFunctionErrorResult(int32_t code, const char *messa
   return expo_jsi_function_result{0, nullptr, makeError(code, message)};
 }
 
+expo_jsi_string_result makeStringResult(std::string value)
+{
+  auto *buffer = new StringResultBuffer(std::move(value));
+  return expo_jsi_string_result{
+    1,
+    reinterpret_cast<const uint8_t *>(buffer->value.data()),
+    static_cast<int32_t>(buffer->value.size()),
+    buffer,
+    [](void *release_context) { delete static_cast<StringResultBuffer *>(release_context); },
+    expo_jsi_error{0, nullptr, 0},
+  };
+}
+
+expo_jsi_string_result makeStringErrorResult(int32_t code, const char *message)
+{
+  return expo_jsi_string_result{0, nullptr, 0, nullptr, nullptr, makeError(code, message)};
+}
+
 expo_jsi_value_result createNumber(expo_jsi_runtime_handle runtime, double number)
 {
   expo_jsi_error error{};
@@ -282,6 +396,33 @@ expo_jsi_value_result createBool(expo_jsi_runtime_handle runtime, uint8_t value)
     return makeErrorResult(12, ex.what());
   } catch (...) {
     return makeErrorResult(13, "Unknown native exception while creating boolean.");
+  }
+}
+
+expo_jsi_value_result createString(expo_jsi_runtime_handle runtime,
+                                   const uint8_t *data,
+                                   int32_t length)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_value_result{0, nullptr, error};
+  }
+  if (!isValidUtf8(data, length)) {
+    return makeErrorResult(42, "String data is not valid UTF-8.");
+  }
+
+  try {
+    const char *text = length == 0 ? "" : reinterpret_cast<const char *>(data);
+    auto value = facebook::jsi::Value(
+      runtimeHandle->runtime(),
+      facebook::jsi::String::createFromUtf8(runtimeHandle->runtime(),
+                                            std::string(text, static_cast<size_t>(length))));
+    return makeValueResult(expo::jsi::ValueHandle::owned(std::move(value)));
+  } catch (const std::exception &ex) {
+    return makeErrorResult(43, ex.what());
+  } catch (...) {
+    return makeErrorResult(44, "Unknown native exception while creating string.");
   }
 }
 
@@ -393,6 +534,31 @@ double getDouble(expo_jsi_runtime_handle runtime,
   } catch (...) {
     writeError(error, 11, "Unknown native exception while reading number.");
     return 0.0;
+  }
+}
+
+expo_jsi_string_result getString(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_string_result{0, nullptr, 0, nullptr, nullptr, error};
+  }
+  auto *valueHandle = value;
+  if (valueHandle == nullptr) {
+    return makeStringErrorResult(45, "Value handle is null.");
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    if (!valueHandle->value().isString()) {
+      return makeStringErrorResult(46, "Value is not a string.");
+    }
+    return makeStringResult(valueHandle->value().getString(jsRuntime).utf8(jsRuntime));
+  } catch (const std::exception &ex) {
+    return makeStringErrorResult(47, ex.what());
+  } catch (...) {
+    return makeStringErrorResult(48, "Unknown native exception while reading string.");
   }
 }
 
@@ -686,11 +852,27 @@ void releaseFunction(expo_jsi_runtime_handle, expo_jsi_function_handle function)
 }
 
 const expo_jsi_api kApi{
-  sizeof(expo_jsi_api), kApiVersion,     createNumber,      createBool,
-  getValueKind,         getBool,         getDouble,         getGlobalObject,
-  createObject,         objectAsValue,   valueAsObject,     objectSetProperty,
-  createHostFunction,   functionAsValue, getArgumentsCount, getArgumentValue,
-  releaseObject,        releaseFunction, releaseValue,
+  sizeof(expo_jsi_api),
+  kApiVersion,
+  createNumber,
+  createBool,
+  getValueKind,
+  getBool,
+  getDouble,
+  getGlobalObject,
+  createObject,
+  objectAsValue,
+  valueAsObject,
+  objectSetProperty,
+  createHostFunction,
+  functionAsValue,
+  getArgumentsCount,
+  getArgumentValue,
+  releaseObject,
+  releaseFunction,
+  releaseValue,
+  createString,
+  getString,
 };
 
 } // namespace

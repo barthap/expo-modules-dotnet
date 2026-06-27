@@ -59,6 +59,18 @@ public sealed unsafe class JavaScriptRuntime
     return JavaScriptValue.FromOwnedHandle(context, result.Value);
   }
 
+  public JavaScriptValue CreateString(string value)
+  {
+    ArgumentNullException.ThrowIfNull(value);
+
+    var result = context.Api->CreateStringValue(context.RuntimeHandle, value);
+    if (result.Ok == 0 || result.Value == 0)
+    {
+      JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript string.");
+    }
+    return JavaScriptValue.FromOwnedHandle(context, result.Value);
+  }
+
   public JavaScriptObject Global()
   {
     var result = context.Api->GetGlobal(context.RuntimeHandle);

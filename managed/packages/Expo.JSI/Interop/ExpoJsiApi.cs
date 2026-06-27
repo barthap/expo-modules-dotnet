@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace Expo.JSI.Interop;
 
@@ -133,6 +134,22 @@ internal readonly unsafe struct ExpoJsiApi
       ExpoJsiValueHandle,
       void> ReleaseValue;
 
+  private readonly delegate* unmanaged[Cdecl]<
+      ExpoJsiRuntimeHandle,
+      byte*,
+      int,
+      ExpoJsiValueResult> CreateString;
+
+  private readonly delegate* unmanaged[Cdecl]<
+      ExpoJsiRuntimeHandle,
+      ExpoJsiValueHandle,
+      ExpoJsiStringResult> GetString;
+
+  private static readonly UTF8Encoding StrictUtf8 = new(
+      encoderShouldEmitUTF8Identifier: false,
+      throwOnInvalidBytes: true
+  );
+
   /// <summary>
   /// Validates if everything is in place.
   /// </summary>
@@ -168,6 +185,8 @@ internal readonly unsafe struct ExpoJsiApi
         || this.ReleaseObject is null
         || this.ReleaseFunction is null
         || this.ReleaseValue is null
+        || this.CreateString is null
+        || this.GetString is null
     )
     {
       throw new InvalidOperationException(
@@ -189,6 +208,18 @@ internal readonly unsafe struct ExpoJsiApi
   public ExpoJsiValueResult CreateBoolValue(ExpoJsiRuntimeHandle runtimeHandle, bool value)
   {
     return CreateBool(runtimeHandle, value ? (byte)1 : (byte)0);
+  }
+
+  public ExpoJsiValueResult CreateStringValue(
+      ExpoJsiRuntimeHandle runtimeHandle,
+      string value
+  )
+  {
+    var bytes = StrictUtf8.GetBytes(value);
+    fixed (byte* bytesPtr = bytes)
+    {
+      return CreateString(runtimeHandle, bytesPtr, bytes.Length);
+    }
   }
 
   /// <summary>
@@ -235,6 +266,40 @@ internal readonly unsafe struct ExpoJsiApi
   )
   {
     return GetDouble(runtimeHandle, valueHandle, error);
+  }
+
+  public string ReadString(
+      ExpoJsiRuntimeHandle runtimeHandle,
+      ExpoJsiValueHandle valueHandle
+  )
+  {
+    var result = GetString(runtimeHandle, valueHandle);
+    if (result.Ok == 0)
+    {
+      ThrowNativeError(result.Error, "Failed to read JavaScript string.");
+    }
+
+    try
+    {
+      return StrictUtf8.GetString(new ReadOnlySpan<byte>(result.Data, result.Length));
+    }
+    finally
+    {
+      if (result.Release is not null)
+      {
+        result.Release(result.ReleaseContext);
+      }
+    }
+  }
+
+  private static void ThrowNativeError(ExpoJsiError error, string fallback)
+  {
+    var message = error.GetMessage();
+    if (string.IsNullOrEmpty(message))
+    {
+      message = fallback;
+    }
+    throw new InvalidOperationException($"Native JSI error {error.Code}: {message}");
   }
 
   public ExpoJsiObjectResult GetGlobal(ExpoJsiRuntimeHandle runtimeHandle)
@@ -366,5 +431,5 @@ internal readonly unsafe struct ExpoJsiApi
   }
 
   public static uint ExpectedSize => (uint)sizeof(ExpoJsiApi);
-  public const uint ExpectedVersion = 2;
+  public const uint ExpectedVersion = 3;
 }

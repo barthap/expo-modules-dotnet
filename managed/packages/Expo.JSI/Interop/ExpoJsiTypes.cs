@@ -62,3 +62,14 @@ internal readonly struct ExpoJsiFunctionResult
   public readonly ExpoJsiFunctionHandle Function;
   public readonly ExpoJsiError Error;
 }
+
+[StructLayout(LayoutKind.Sequential)]
+internal readonly unsafe struct ExpoJsiStringResult
+{
+  public readonly int Ok;
+  public readonly byte* Data;
+  public readonly int Length;
+  public readonly nint ReleaseContext;
+  public readonly delegate* unmanaged[Cdecl]<nint, void> Release;
+  public readonly ExpoJsiError Error;
+}

@@ -66,6 +66,15 @@ public sealed class JavaScriptValue : IDisposable
     }
   }
 
+  public string AsString()
+  {
+    ThrowIfDisposed();
+    unsafe
+    {
+      return context.Api->ReadString(context.RuntimeHandle, handle);
+    }
+  }
+
   public JavaScriptObject AsObject()
   {
     ThrowIfDisposed();

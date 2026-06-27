@@ -105,9 +105,15 @@ struct ReleaseCounter {
   expo_jsi_api api;
   const expo_jsi_api *inner_api;
   uint32_t value_release_count = 0;
+  uint32_t string_release_count = 0;
 };
 
 ReleaseCounter *active_release_counter = nullptr;
+
+struct CountedStringReleaseContext {
+  expo_jsi_release_string_fn release;
+  void *release_context;
+};
 
 void counted_release_value(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
 {
@@ -121,14 +127,44 @@ void counted_release_value(expo_jsi_runtime_handle runtime, expo_jsi_value_handl
   active_release_counter->inner_api->release_value(runtime, value);
 }
 
+void counted_release_string(void *release_context)
+{
+  auto *context = static_cast<CountedStringReleaseContext *>(release_context);
+  if (active_release_counter != nullptr) {
+    active_release_counter->string_release_count++;
+  }
+  if (context->release != nullptr) {
+    context->release(context->release_context);
+  }
+  delete context;
+}
+
+expo_jsi_string_result counted_get_string(expo_jsi_runtime_handle runtime,
+                                          expo_jsi_value_handle value)
+{
+  auto result = active_release_counter->inner_api->get_string(runtime, value);
+  if (result.ok == 0 || result.release == nullptr) {
+    return result;
+  }
+
+  auto *context = new CountedStringReleaseContext{result.release, result.release_context};
+  result.release_context = context;
+  result.release = counted_release_string;
+  return result;
+}
+
 ReleaseCounter make_release_counter(const expo_jsi_api *inner_api)
 {
   if (inner_api == nullptr || inner_api->release_value == nullptr) {
     throw std::runtime_error("Expo JSI API does not provide release_value.");
   }
+  if (inner_api->get_string == nullptr) {
+    throw std::runtime_error("Expo JSI API does not provide get_string.");
+  }
 
   auto counter = ReleaseCounter{*inner_api, inner_api, 0};
   counter.api.release_value = counted_release_value;
+  counter.api.get_string = counted_get_string;
   return counter;
 }
 
@@ -153,6 +189,25 @@ void jsi_main(jsi::Runtime &rt, CSharpAPI &cs)
     throw std::runtime_error("Generated module dispatch proof failed.");
   }
   std::cout << "JS called generated-looking C# module: " << callback_result.asNumber() << std::endl;
+
+  auto text_result = rt.evaluateJavaScript(
+    std::make_unique<jsi::StringBuffer>("global.expo.modules.Text.greet('Zoë\\u0000JS');"),
+    "generated-module-string-dispatch.js");
+  const auto expected_text = std::string("Hello, Zoë\0JS", sizeof("Hello, Zoë\0JS") - 1);
+  if (!text_result.isString() || text_result.asString(rt).utf8(rt) != expected_text) {
+    throw std::runtime_error("Generated string module dispatch proof failed.");
+  }
+  std::cout << "JS called generated-looking C# string module: " << text_result.asString(rt).utf8(rt)
+            << std::endl;
+
+  try {
+    rt.evaluateJavaScript(
+      std::make_unique<jsi::StringBuffer>("global.expo.modules.Text.greet(42);"),
+      "generated-module-string-type-error.js");
+    throw std::runtime_error("Expected wrong-type Text.greet call to throw.");
+  } catch (const jsi::JSError &) {
+    std::cout << "Wrong-type string argument produced a JS error" << std::endl;
+  }
 }
 
 int main()
@@ -215,10 +270,16 @@ int main()
       throw std::runtime_error("Managed JSI proof failed with code " + std::to_string(rc));
     }
 
-    auto release_count = release_counter.value_release_count;
-    std::cout << "Released owned value handles: " << release_count << std::endl;
-    if (release_count != 6) {
-      throw std::runtime_error("Expected exactly six counted owned value handle releases.");
+    auto value_release_count = release_counter.value_release_count;
+    std::cout << "Released owned value handles: " << value_release_count << std::endl;
+    if (value_release_count != 11) {
+      throw std::runtime_error("Expected exactly eleven counted owned value handle releases.");
+    }
+
+    auto string_release_count = release_counter.string_release_count;
+    std::cout << "Released string result buffers: " << string_release_count << std::endl;
+    if (string_release_count != 4) {
+      throw std::runtime_error("Expected exactly four counted string result buffer releases.");
     }
 
     expo::jsi::releaseRuntimeHandle(runtime_handle);

@@ -7,3 +7,11 @@ internal sealed class MathModule
     return shouldAddOne ? value + 1.0 : value;
   }
 }
+
+internal sealed class TextModule
+{
+  public string Greet(string name)
+  {
+    return $"Hello, {name}";
+  }
+}

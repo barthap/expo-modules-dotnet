@@ -9,8 +9,8 @@ Branch or commit: current `codex/generated-module-dispatch`
 
 Can native C++ create a real Hermes-backed JSI runtime, pass a C ABI function
 table and opaque runtime handle into managed code through HostFXR, and let
-`Expo.JSI` create, inspect, read, return, and release JavaScript values without
-P/Invoke?
+`Expo.JSI` create, inspect, read, return, and release JavaScript primitive
+values, including strings, without P/Invoke?
 
 ## Commands Run
 
@@ -36,8 +36,11 @@ Loaded HostFXR path: <dotnet-root>/host/fxr/<version>/libhostfxr.dylib
 Created Hermes-backed JSI runtime
 registered generated-looking Math module
 JS called generated-looking C# module: 42.5
-managed JSI proof: number kind=Number value=42.5
-Released owned value handles: 6
+JS called generated-looking C# string module: Hello, Zoë<NUL>JS
+Wrong-type string argument produced a JS error
+managed JSI proof: primitive strings round-tripped
+Released owned value handles: 11
+Released string result buffers: 4
 hermes console hostfxr proof: ok
 ```
 
@@ -51,13 +54,22 @@ hermes console hostfxr proof: ok
   capabilities.
 - Managed code creates a number value, reads `Number`, reads `42.5`, disposes
   the value, and exits 0.
+- Managed code creates JavaScript strings, reads them back as strict UTF-8
+  managed strings, preserves non-ASCII text, and preserves embedded NUL bytes.
 - JavaScript calls `global.expo.modules.Math.add(41.5, true)`.
+- JavaScript calls `global.expo.modules.Text.greet("Zoë\0JS")`.
+- JavaScript calls `global.expo.modules.Text.greet(42)` and receives a JS error
+  instead of letting an exception cross the unmanaged boundary.
 - Native C++ owns the JSI host-function plumbing and forwards borrowed `this`
   and argument-buffer handles into C#.
 - Generated-looking managed code decodes a number argument and a boolean
   argument through `JavaScriptArguments`, calls `MathModule.Add` directly,
   creates an owned result value, and returns that handle to native C++ for
   conversion back to JSI.
+- Generated-looking managed code decodes a borrowed string argument through
+  `JavaScriptBorrowedValue.AsString()`, calls `TextModule.Greet` directly,
+  creates an owned JavaScript string result, and returns that handle to native
+  C++ for conversion back to JSI.
 
 ## Actual Result
 
@@ -67,18 +79,27 @@ through native JSI, read its kind and double value, and disposed the owned value
 handle.
 
 The proof also installed a generated-looking module graph at
-`global.expo.modules.Math.add`. JavaScript called it with a number and boolean.
-Native C++ created the host function and passed call-scoped borrowed `this` and
-argument-buffer handles into the managed callback. Generated-looking C# code
-read both arguments through `JavaScriptArguments`, called `MathModule.Add`
-directly, and returned a new owned number handle. Native copied that result back
-into JSI and released the owned handle exactly once.
+`global.expo.modules.Math.add` and `global.expo.modules.Text.greet`.
+JavaScript called the math function with a number and boolean, then called the
+text function with a string containing non-ASCII text and an embedded NUL byte.
+Native C++ created the host functions and passed call-scoped borrowed `this`
+and argument-buffer handles into the managed callbacks. Generated-looking C#
+code read all arguments through `JavaScriptArguments`, called the authored C#
+modules directly, and returned new owned handles. Native copied those results
+back into JSI and released the owned handles exactly once.
 
-Native observed exactly six counted owned value handle releases through the API
-table: five registration-time value wrappers for the generated object graph and
-one value from the independent managed smoke entry point. Borrowed callback
-arguments were not released by C#. The callback return value is released by the
-native host-function bridge after copying it back into JSI.
+The wrong-type `Text.greet(42)` call produced a JS error. The current managed
+host-function trampoline logs caught managed exceptions to stderr before
+returning an error result, so this expected negative case still prints a
+managed stack trace during the proof.
+
+Native observed exactly eleven counted owned value handle releases through the
+API table: seven registration-time value wrappers for the generated object
+graph and four values from the independent managed smoke entry point. Native
+also observed exactly four string result buffer releases: three managed
+round-trip string reads and one borrowed string argument read. Borrowed callback
+arguments were not released by C#. Callback return values are released by the
+native host-function bridge after copying them back into JSI.
 
 ## Artifacts
 
@@ -101,13 +122,20 @@ from `Dispose` or transfers value ownership with `Detach`. `JavaScriptArguments`
 and `JavaScriptBorrowedValue` are callback-scoped borrowed wrappers and are not
 released by C#.
 
+String reads use native-owned UTF-8 result buffers. C# copies each result into a
+managed `string` with strict UTF-8 decoding and always invokes the native
+release callback in a `finally` block. String creation uses strict UTF-8
+encoding on the managed side and native UTF-8 validation before JSI string
+creation.
+
 The host-function callback context is retained by a managed `GCHandle` and is
 released through native host-function context teardown. Return values from
 managed callbacks are owned handles copied back to JSI and released exactly once
 by native.
 
-The native proof counts API-table owned value releases and fails unless exactly
-six counted owned value handles are released.
+The native proof counts API-table owned value releases and native string result
+buffer releases. It fails unless exactly eleven owned value handles and four
+string result buffers are released.
 
 Future hosted connectors must release bridge-owned state without destroying a
 host-owned JSI runtime.
@@ -133,6 +161,6 @@ bridge shape compatible with a later NativeAOT entry path.
 
 ## Stop/Go Decision
 
-Go. The headless generated-looking dispatch shape works. Next slice should add
-string conversion or run a NativeAOT compatibility audit before real host
-adapter work.
+Go. The headless generated-looking dispatch shape now works for primitive
+numbers, booleans, and strings. Next slice should run a NativeAOT compatibility
+audit or add the next minimal wrapper capability before real host adapter work.
