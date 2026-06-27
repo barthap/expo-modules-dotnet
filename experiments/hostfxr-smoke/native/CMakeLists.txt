@@ -15,9 +15,16 @@ if(NOT DOTNET_ROOT)
     OUTPUT_STRIP_TRAILING_WHITESPACE
     COMMAND_ERROR_IS_FATAL ANY
   )
-  string(REGEX MATCH "Base Path:[ \t]*([^\n\r]+)" _dotnet_base_path "${DOTNET_INFO}")
+  string(REGEX MATCH
+    "Base Path:[ \t]*([^\n\r]+)"
+    _dotnet_base_path
+    "${DOTNET_INFO}"
+  )
   if(NOT CMAKE_MATCH_1)
-    message(FATAL_ERROR "Could not discover DOTNET_ROOT. Set DOTNET_ROOT explicitly.")
+    message(
+      FATAL_ERROR
+      "Could not discover DOTNET_ROOT. Set DOTNET_ROOT explicitly."
+    )
   endif()
   get_filename_component(DOTNET_SDK_DIR "${CMAKE_MATCH_1}" ABSOLUTE)
   get_filename_component(DOTNET_ROOT "${DOTNET_SDK_DIR}/../.." ABSOLUTE)

@@ -1,5 +1,14 @@
-CompileFlags:
-  CompilationDatabase: build/hostfxr-smoke
-
 Diagnostics:
   UnusedIncludes: None
+---
+If:
+  PathMatch: experiments/hostfxr-smoke/native/.*
+
+CompileFlags:
+  CompilationDatabase: build/hostfxr-smoke
+---
+If:
+  PathMatch: (experiments/hermes-console-hostfxr/native/.*|native/include/.*|native/packages/jsi/(include|src)/.*)
+
+CompileFlags:
+  CompilationDatabase: build/hermes-console-hostfxr
