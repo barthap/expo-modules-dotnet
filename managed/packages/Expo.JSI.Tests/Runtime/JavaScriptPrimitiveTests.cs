@@ -35,34 +35,16 @@ public sealed class JavaScriptPrimitiveTests
     Assert.False(value.AsBool());
   }
 
-  [Fact]
-  public void CreateAsciiStringRoundTrips()
+  [Theory]
+  [InlineData("hello")]
+  [InlineData("Zoë")]
+  [InlineData("a\0b")]
+  public void CreateStringRoundTripsStrictUtf8(string expected)
   {
     using var fixture = HermesRuntimeFixture.Create();
-    using var value = fixture.Runtime.CreateString("hello");
+    using var value = fixture.Runtime.CreateString(expected);
 
-    Assert.Equal(JavaScriptValueKind.String, value.Kind);
-    Assert.Equal("hello", value.AsString());
-  }
-
-  [Fact]
-  public void CreateNonAsciiStringRoundTrips()
-  {
-    using var fixture = HermesRuntimeFixture.Create();
-    using var value = fixture.Runtime.CreateString("Zoë");
-
-    Assert.Equal(JavaScriptValueKind.String, value.Kind);
-    Assert.Equal("Zoë", value.AsString());
-  }
-
-  [Fact]
-  public void CreateEmbeddedNulStringRoundTrips()
-  {
-    using var fixture = HermesRuntimeFixture.Create();
-    using var value = fixture.Runtime.CreateString("a\0b");
-
-    Assert.Equal(JavaScriptValueKind.String, value.Kind);
-    Assert.Equal("a\0b", value.AsString());
+    AssertJavaScriptString(value, expected);
   }
 
   [Fact]
@@ -77,5 +59,11 @@ public sealed class JavaScriptPrimitiveTests
 
     var counters = fixture.Counters;
     Assert.True(counters.ReleasedValues >= 1);
+  }
+
+  private static void AssertJavaScriptString(JavaScriptValue value, string expected)
+  {
+    Assert.Equal(JavaScriptValueKind.String, value.Kind);
+    Assert.Equal(expected, value.AsString());
   }
 }

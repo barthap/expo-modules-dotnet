@@ -129,6 +129,11 @@ typedef expo_jsi_error (*expo_jsi_object_set_property_fn)(expo_jsi_runtime_handl
                                                           int32_t name_len,
                                                           expo_jsi_value_handle value);
 
+typedef expo_jsi_value_result (*expo_jsi_object_get_property_fn)(expo_jsi_runtime_handle runtime,
+                                                                 expo_jsi_object_handle object,
+                                                                 const char *name,
+                                                                 int32_t name_len);
+
 typedef expo_jsi_function_result (*expo_jsi_create_host_function_fn)(
   expo_jsi_runtime_handle runtime,
   const char *name,
@@ -172,6 +177,7 @@ typedef struct expo_jsi_api {
   expo_jsi_object_as_value_fn object_as_value;
   expo_jsi_value_as_object_fn value_as_object;
   expo_jsi_object_set_property_fn object_set_property;
+  expo_jsi_object_get_property_fn object_get_property;
   expo_jsi_create_host_function_fn create_host_function;
   expo_jsi_function_as_value_fn function_as_value;
   expo_jsi_get_arguments_count_fn get_arguments_count;

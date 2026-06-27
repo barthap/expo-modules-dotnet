@@ -85,6 +85,13 @@ internal readonly unsafe struct ExpoJsiApi
 
   private readonly delegate* unmanaged[Cdecl]<
       ExpoJsiRuntimeHandle,
+      ExpoJsiObjectHandle,
+      byte*,
+      int,
+      ExpoJsiValueResult> ObjectGetProperty;
+
+  private readonly delegate* unmanaged[Cdecl]<
+      ExpoJsiRuntimeHandle,
       byte*,
       int,
       uint,
@@ -178,6 +185,7 @@ internal readonly unsafe struct ExpoJsiApi
         || this.ObjectAsValue is null
         || this.ValueAsObject is null
         || this.ObjectSetProperty is null
+        || this.ObjectGetProperty is null
         || this.CreateHostFunction is null
         || this.FunctionAsValue is null
         || this.GetArgumentsCount is null
@@ -347,6 +355,23 @@ internal readonly unsafe struct ExpoJsiApi
     }
   }
 
+  public ExpoJsiValueResult GetObjectProperty(
+      ExpoJsiRuntimeHandle runtimeHandle,
+      ExpoJsiObjectHandle objectHandle,
+      ReadOnlySpan<byte> name
+  )
+  {
+    fixed (byte* namePtr = name)
+    {
+      return ObjectGetProperty(
+          runtimeHandle,
+          objectHandle,
+          namePtr,
+          name.Length
+      );
+    }
+  }
+
   public ExpoJsiFunctionResult CreateHostFunctionValue(
       ExpoJsiRuntimeHandle runtimeHandle,
       ReadOnlySpan<byte> name,
@@ -431,5 +456,5 @@ internal readonly unsafe struct ExpoJsiApi
   }
 
   public static uint ExpectedSize => (uint)sizeof(ExpoJsiApi);
-  public const uint ExpectedVersion = 3;
+  public const uint ExpectedVersion = 4;
 }

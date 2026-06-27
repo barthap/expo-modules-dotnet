@@ -32,6 +32,30 @@ public sealed class JavaScriptObject : IDisposable
     }
   }
 
+  public JavaScriptValue GetProperty(string name)
+  {
+    ThrowIfDisposed();
+    ArgumentNullException.ThrowIfNull(name);
+
+    var nameBytes = Encoding.UTF8.GetBytes(name);
+    unsafe
+    {
+      var result = context.Api->GetObjectProperty(
+          context.RuntimeHandle,
+          handle,
+          nameBytes
+      );
+      if (result.Ok == 0 || result.Value == 0)
+      {
+        JsiContext.ThrowNativeError(
+            result.Error,
+            "Failed to get JavaScript object property."
+        );
+      }
+      return JavaScriptValue.FromOwnedHandle(context, result.Value);
+    }
+  }
+
   public JavaScriptValue AsValue()
   {
     ThrowIfDisposed();

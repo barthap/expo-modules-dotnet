@@ -157,7 +157,7 @@ private:
 
 namespace {
 
-constexpr uint32_t kApiVersion = 3;
+constexpr uint32_t kApiVersion = 4;
 
 struct StringResultBuffer {
   explicit StringResultBuffer(std::string value)
@@ -673,6 +673,33 @@ expo_jsi_error objectSetProperty(expo_jsi_runtime_handle runtime,
   }
 }
 
+expo_jsi_value_result objectGetProperty(expo_jsi_runtime_handle runtime,
+                                        expo_jsi_object_handle object,
+                                        const char *name,
+                                        int32_t name_len)
+{
+  auto *runtimeHandle = tryRuntimeHandle(runtime, nullptr);
+  if (runtimeHandle == nullptr) {
+    return makeErrorResult(49, "Runtime handle is invalid.");
+  }
+  if (object == nullptr) {
+    return makeErrorResult(50, "Object handle is null.");
+  }
+  if (name == nullptr || name_len < 0) {
+    return makeErrorResult(51, "Property name is invalid.");
+  }
+
+  try {
+    auto propertyName = std::string(name, static_cast<size_t>(name_len));
+    return makeValueResult(expo::jsi::ValueHandle::owned(
+      object->object().getProperty(runtimeHandle->runtime(), propertyName.c_str())));
+  } catch (const std::exception &ex) {
+    return makeErrorResult(52, ex.what());
+  } catch (...) {
+    return makeErrorResult(53, "Unknown native exception while getting object property.");
+  }
+}
+
 class HostFunctionContext final {
 public:
   HostFunctionContext(expo_jsi_host_function_callback_fn callback,
@@ -864,6 +891,7 @@ const expo_jsi_api kApi{
   objectAsValue,
   valueAsObject,
   objectSetProperty,
+  objectGetProperty,
   createHostFunction,
   functionAsValue,
   getArgumentsCount,
