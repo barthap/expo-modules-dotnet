@@ -43,6 +43,14 @@ typedef enum expo_jsi_value_kind {
   EXPO_JSI_VALUE_ARRAY_BUFFER = 7
 } expo_jsi_value_kind;
 
+typedef enum expo_jsi_task_priority {
+  EXPO_JSI_TASK_IMMEDIATE = 1,
+  EXPO_JSI_TASK_USER_BLOCKING = 2,
+  EXPO_JSI_TASK_NORMAL = 3,
+  EXPO_JSI_TASK_LOW = 4,
+  EXPO_JSI_TASK_IDLE = 5
+} expo_jsi_task_priority;
+
 typedef struct expo_jsi_error {
   int32_t code;
   const char *message;
@@ -85,6 +93,10 @@ typedef expo_jsi_value_result (*expo_jsi_host_function_callback_fn)(
   expo_jsi_arguments_handle arguments);
 
 typedef void (*expo_jsi_release_callback_context_fn)(void *callback_context);
+
+typedef void (*expo_jsi_task_callback_fn)(void *task_context);
+
+typedef void (*expo_jsi_release_task_context_fn)(void *task_context);
 
 typedef expo_jsi_value_result (*expo_jsi_create_number_fn)(expo_jsi_runtime_handle runtime,
                                                            double value);
@@ -163,6 +175,23 @@ typedef void (*expo_jsi_release_object_fn)(expo_jsi_runtime_handle runtime,
 typedef void (*expo_jsi_release_function_fn)(expo_jsi_runtime_handle runtime,
                                              expo_jsi_function_handle function);
 
+typedef expo_jsi_error (*expo_jsi_runtime_schedule_task_fn)(
+  expo_jsi_runtime_handle runtime,
+  expo_jsi_task_priority priority,
+  expo_jsi_task_callback_fn callback,
+  void *task_context,
+  expo_jsi_release_task_context_fn release_task_context);
+
+typedef uint8_t (*expo_jsi_runtime_can_execute_sync_fn)(expo_jsi_runtime_handle runtime);
+
+typedef expo_jsi_error (*expo_jsi_runtime_execute_sync_fn)(
+  expo_jsi_runtime_handle runtime,
+  expo_jsi_task_callback_fn callback,
+  void *task_context,
+  expo_jsi_release_task_context_fn release_task_context);
+
+typedef expo_jsi_error (*expo_jsi_runtime_drain_tasks_fn)(expo_jsi_runtime_handle runtime);
+
 typedef struct expo_jsi_api {
   uint32_t size;
   uint32_t version;
@@ -187,6 +216,10 @@ typedef struct expo_jsi_api {
   expo_jsi_release_value_fn release_value;
   expo_jsi_create_string_fn create_string;
   expo_jsi_get_string_fn get_string;
+  expo_jsi_runtime_schedule_task_fn runtime_schedule_task;
+  expo_jsi_runtime_can_execute_sync_fn runtime_can_execute_sync;
+  expo_jsi_runtime_execute_sync_fn runtime_execute_sync;
+  expo_jsi_runtime_drain_tasks_fn runtime_drain_tasks;
 } expo_jsi_api;
 
 #ifdef __cplusplus

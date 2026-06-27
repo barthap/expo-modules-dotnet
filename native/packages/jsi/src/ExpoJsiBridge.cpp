@@ -26,6 +26,14 @@ public:
     return connector_->runtime();
   }
 
+  JsiRuntimeExecutor &runtimeExecutor()
+  {
+    if (connector_ == nullptr || !connector_->isRuntimeValid()) {
+      throw std::runtime_error("Runtime connector is invalid.");
+    }
+    return connector_->runtimeExecutor();
+  }
+
 private:
   JsiRuntimeConnector *connector_;
 };
@@ -157,7 +165,7 @@ private:
 
 namespace {
 
-constexpr uint32_t kApiVersion = 4;
+constexpr uint32_t kApiVersion = 5;
 
 struct StringResultBuffer {
   explicit StringResultBuffer(std::string value)
@@ -175,6 +183,28 @@ expo_jsi_error makeError(int32_t code, const char *message)
     message,
     static_cast<int32_t>(std::strlen(message)),
   };
+}
+
+expo_jsi_error makeOk()
+{
+  return expo_jsi_error{0, nullptr, 0};
+}
+
+expo::jsi::JsiRuntimeTaskPriority toRuntimeTaskPriority(expo_jsi_task_priority priority)
+{
+  switch (priority) {
+    case EXPO_JSI_TASK_IMMEDIATE:
+      return expo::jsi::JsiRuntimeTaskPriority::Immediate;
+    case EXPO_JSI_TASK_USER_BLOCKING:
+      return expo::jsi::JsiRuntimeTaskPriority::UserBlocking;
+    case EXPO_JSI_TASK_LOW:
+      return expo::jsi::JsiRuntimeTaskPriority::Low;
+    case EXPO_JSI_TASK_IDLE:
+      return expo::jsi::JsiRuntimeTaskPriority::Idle;
+    case EXPO_JSI_TASK_NORMAL:
+    default:
+      return expo::jsi::JsiRuntimeTaskPriority::Normal;
+  }
 }
 
 void writeError(expo_jsi_error *error, int32_t code, const char *message)
@@ -882,6 +912,99 @@ void releaseFunction(expo_jsi_runtime_handle, expo_jsi_function_handle function)
   delete function;
 }
 
+expo_jsi_error scheduleTask(expo_jsi_runtime_handle runtime,
+                            expo_jsi_task_priority priority,
+                            expo_jsi_task_callback_fn callback,
+                            void *taskContext,
+                            expo_jsi_release_task_context_fn releaseTaskContext)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return error;
+  }
+  if (callback == nullptr) {
+    return makeError(54, "Task callback is null.");
+  }
+
+  try {
+    runtimeHandle->runtimeExecutor().executeAsync(
+      toRuntimeTaskPriority(priority),
+      [callback, taskContext, releaseTaskContext](facebook::jsi::Runtime &) {
+        callback(taskContext);
+        if (releaseTaskContext != nullptr) {
+          releaseTaskContext(taskContext);
+        }
+      });
+    return makeOk();
+  } catch (const std::exception &ex) {
+    return makeError(55, ex.what());
+  } catch (...) {
+    return makeError(56, "Unknown native exception while scheduling runtime task.");
+  }
+}
+
+uint8_t canExecuteSync(expo_jsi_runtime_handle runtime)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return 0;
+  }
+  return runtimeHandle->runtimeExecutor().canExecuteSync() ? 1 : 0;
+}
+
+expo_jsi_error executeSync(expo_jsi_runtime_handle runtime,
+                           expo_jsi_task_callback_fn callback,
+                           void *taskContext,
+                           expo_jsi_release_task_context_fn releaseTaskContext)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return error;
+  }
+  if (callback == nullptr) {
+    return makeError(57, "Task callback is null.");
+  }
+  if (!runtimeHandle->runtimeExecutor().canExecuteSync()) {
+    return makeError(58, "Synchronous runtime execution is not supported.");
+  }
+
+  try {
+    runtimeHandle->runtimeExecutor().executeSync(
+      [callback, taskContext, releaseTaskContext](facebook::jsi::Runtime &) {
+        callback(taskContext);
+        if (releaseTaskContext != nullptr) {
+          releaseTaskContext(taskContext);
+        }
+      });
+    return makeOk();
+  } catch (const std::exception &ex) {
+    return makeError(59, ex.what());
+  } catch (...) {
+    return makeError(60, "Unknown native exception while executing runtime task.");
+  }
+}
+
+expo_jsi_error drainTasks(expo_jsi_runtime_handle runtime)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return error;
+  }
+
+  try {
+    runtimeHandle->runtimeExecutor().drain();
+    return makeOk();
+  } catch (const std::exception &ex) {
+    return makeError(61, ex.what());
+  } catch (...) {
+    return makeError(62, "Unknown native exception while draining runtime tasks.");
+  }
+}
+
 const expo_jsi_api kApi{
   sizeof(expo_jsi_api),
   kApiVersion,
@@ -905,6 +1028,10 @@ const expo_jsi_api kApi{
   releaseValue,
   createString,
   getString,
+  scheduleTask,
+  canExecuteSync,
+  executeSync,
+  drainTasks,
 };
 
 } // namespace

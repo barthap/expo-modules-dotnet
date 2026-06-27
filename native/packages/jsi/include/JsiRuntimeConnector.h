@@ -6,18 +6,27 @@
 
 namespace expo::jsi {
 
-class JsiScheduler {
-public:
-  virtual ~JsiScheduler() = default;
-  virtual void schedule(std::function<void()> work) = 0;
+enum class JsiRuntimeTaskPriority : int {
+  Immediate = 1,
+  UserBlocking = 2,
+  Normal = 3,
+  Low = 4,
+  Idle = 5,
 };
 
-class ImmediateJsiScheduler final : public JsiScheduler {
+class JsiRuntimeExecutor {
 public:
-  void schedule(std::function<void()> work) override
-  {
-    work();
-  }
+  virtual ~JsiRuntimeExecutor() = default;
+
+  virtual void executeAsync(
+    JsiRuntimeTaskPriority priority,
+    std::function<void(facebook::jsi::Runtime &)> work) noexcept = 0;
+
+  virtual bool canExecuteSync() const noexcept = 0;
+
+  virtual void executeSync(std::function<void(facebook::jsi::Runtime &)> work) = 0;
+
+  virtual void drain() = 0;
 };
 
 class JsiRuntimeConnector {
@@ -25,7 +34,7 @@ public:
   virtual ~JsiRuntimeConnector() = default;
 
   virtual facebook::jsi::Runtime &runtime() = 0;
-  virtual JsiScheduler &scheduler() = 0;
+  virtual JsiRuntimeExecutor &runtimeExecutor() = 0;
   virtual bool isRuntimeValid() const = 0;
   virtual void invalidate() = 0;
 };
