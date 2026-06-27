@@ -19,6 +19,16 @@ public sealed unsafe class JavaScriptRuntime
     this.context = context;
   }
 
+  internal JavaScriptValue FromOwnedValueHandle(ExpoJsiValueHandle valueHandle)
+  {
+    if (valueHandle == 0)
+    {
+      throw new ArgumentNullException(nameof(valueHandle));
+    }
+
+    return JavaScriptValue.FromOwnedHandle(context, valueHandle);
+  }
+
   public static JavaScriptRuntime FromNative(
       ExpoJsiApiHandle api,
       ExpoJsiRuntimeHandle runtimeHandle
