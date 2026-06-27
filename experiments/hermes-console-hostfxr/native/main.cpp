@@ -96,8 +96,8 @@ load_assembly_and_get_function_pointer_fn get_dotnet_load_assembly(
 
 } // namespace
 
-using register_modules_fn =
-  int(CORECLR_DELEGATE_CALLTYPE *)(const expo_jsi_api *, expo_jsi_runtime_handle);
+using register_modules_fn = int(CORECLR_DELEGATE_CALLTYPE *)(const expo_jsi_api *,
+                                                             expo_jsi_runtime_handle);
 
 namespace jsi = facebook::jsi;
 
@@ -147,14 +147,12 @@ void jsi_main(jsi::Runtime &rt, CSharpAPI &cs)
   }
 
   auto callback_result = rt.evaluateJavaScript(
-    std::make_unique<jsi::StringBuffer>(
-      "global.expo.modules.Math.add(41.5, true);"),
+    std::make_unique<jsi::StringBuffer>("global.expo.modules.Math.add(41.5, true);"),
     "generated-module-dispatch.js");
   if (!callback_result.isNumber() || callback_result.asNumber() != 42.5) {
     throw std::runtime_error("Generated module dispatch proof failed.");
   }
-  std::cout << "JS called generated-looking C# module: " << callback_result.asNumber()
-            << std::endl;
+  std::cout << "JS called generated-looking C# module: " << callback_result.asNumber() << std::endl;
 }
 
 int main()

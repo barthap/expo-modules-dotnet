@@ -4,49 +4,49 @@ namespace Expo.JSI;
 
 public readonly struct JavaScriptArguments
 {
-    private readonly JsiContext context;
-    private readonly ExpoJsiArgumentsHandle handle;
+  private readonly JsiContext context;
+  private readonly ExpoJsiArgumentsHandle handle;
 
-    internal JavaScriptArguments(JsiContext context, ExpoJsiArgumentsHandle handle)
-    {
-        this.context = context;
-        this.handle = handle;
-    }
+  internal JavaScriptArguments(JsiContext context, ExpoJsiArgumentsHandle handle)
+  {
+    this.context = context;
+    this.handle = handle;
+  }
 
-    public uint Count
+  public uint Count
+  {
+    get
     {
-        get
-        {
-            ThrowIfNull();
-            unsafe
-            {
-                ExpoJsiError error;
-                var count = context.Api->GetArgumentCount(context.RuntimeHandle, handle, &error);
-                context.ThrowIfError(error, "Failed to read JavaScript argument count.");
-                return count;
-            }
-        }
+      ThrowIfNull();
+      unsafe
+      {
+        ExpoJsiError error;
+        var count = context.Api->GetArgumentCount(context.RuntimeHandle, handle, &error);
+        context.ThrowIfError(error, "Failed to read JavaScript argument count.");
+        return count;
+      }
     }
+  }
 
-    public JavaScriptBorrowedValue GetBorrowedValue(uint index)
+  public JavaScriptBorrowedValue GetBorrowedValue(uint index)
+  {
+    ThrowIfNull();
+    unsafe
     {
-        ThrowIfNull();
-        unsafe
-        {
-            var result = context.Api->GetArgument(context.RuntimeHandle, handle, index);
-            if (result.Ok == 0 || result.Value == 0)
-            {
-                JsiContext.ThrowNativeError(result.Error, "Failed to read JavaScript argument.");
-            }
-            return new JavaScriptBorrowedValue(context, result.Value);
-        }
+      var result = context.Api->GetArgument(context.RuntimeHandle, handle, index);
+      if (result.Ok == 0 || result.Value == 0)
+      {
+        JsiContext.ThrowNativeError(result.Error, "Failed to read JavaScript argument.");
+      }
+      return new JavaScriptBorrowedValue(context, result.Value);
     }
+  }
 
-    private void ThrowIfNull()
+  private void ThrowIfNull()
+  {
+    if (handle == 0)
     {
-        if (handle == 0)
-        {
-            throw new ObjectDisposedException(nameof(JavaScriptArguments));
-        }
+      throw new ObjectDisposedException(nameof(JavaScriptArguments));
     }
+  }
 }

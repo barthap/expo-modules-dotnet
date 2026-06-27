@@ -4,107 +4,107 @@ namespace Expo.JSI;
 
 public sealed class JavaScriptValue : IDisposable
 {
-    private readonly JsiContext context;
-    private ExpoJsiValueHandle handle;
+  private readonly JsiContext context;
+  private ExpoJsiValueHandle handle;
 
-    private JavaScriptValue(JsiContext context, ExpoJsiValueHandle handle)
+  private JavaScriptValue(JsiContext context, ExpoJsiValueHandle handle)
+  {
+    this.context = context;
+    this.handle = handle;
+  }
+
+  internal static JavaScriptValue FromOwnedHandle(
+      JsiContext context,
+      ExpoJsiValueHandle handle
+  ) => new(context, handle);
+
+  internal ExpoJsiValueHandle Handle
+  {
+    get
     {
-        this.context = context;
-        this.handle = handle;
+      ThrowIfDisposed();
+      return handle;
     }
+  }
 
-    internal static JavaScriptValue FromOwnedHandle(
-        JsiContext context,
-        ExpoJsiValueHandle handle
-    ) => new(context, handle);
-
-    internal ExpoJsiValueHandle Handle
+  public JavaScriptValueKind Kind
+  {
+    get
     {
-        get
-        {
-            ThrowIfDisposed();
-            return handle;
-        }
+      ThrowIfDisposed();
+      unsafe
+      {
+        ExpoJsiError error;
+        var kind = context.Api->GetKind(context.RuntimeHandle, handle, &error);
+        context.ThrowIfError(error, "Failed to read JavaScript value kind.");
+        return (JavaScriptValueKind)kind;
+      }
     }
+  }
 
-    public JavaScriptValueKind Kind
+  public bool AsBool()
+  {
+    ThrowIfDisposed();
+    unsafe
     {
-        get
-        {
-            ThrowIfDisposed();
-            unsafe
-            {
-                ExpoJsiError error;
-                var kind = context.Api->GetKind(context.RuntimeHandle, handle, &error);
-                context.ThrowIfError(error, "Failed to read JavaScript value kind.");
-                return (JavaScriptValueKind)kind;
-            }
-        }
+      ExpoJsiError error;
+      var value = context.Api->ReadBool(context.RuntimeHandle, handle, &error);
+      context.ThrowIfError(error, "Failed to read JavaScript boolean.");
+      return value;
     }
+  }
 
-    public bool AsBool()
+  public double AsDouble()
+  {
+    ThrowIfDisposed();
+    unsafe
     {
-        ThrowIfDisposed();
-        unsafe
-        {
-            ExpoJsiError error;
-            var value = context.Api->ReadBool(context.RuntimeHandle, handle, &error);
-            context.ThrowIfError(error, "Failed to read JavaScript boolean.");
-            return value;
-        }
+      ExpoJsiError error;
+      var value = context.Api->ReadDouble(context.RuntimeHandle, handle, &error);
+      context.ThrowIfError(error, "Failed to read JavaScript number.");
+      return value;
     }
+  }
 
-    public double AsDouble()
+  public JavaScriptObject AsObject()
+  {
+    ThrowIfDisposed();
+    unsafe
     {
-        ThrowIfDisposed();
-        unsafe
-        {
-            ExpoJsiError error;
-            var value = context.Api->ReadDouble(context.RuntimeHandle, handle, &error);
-            context.ThrowIfError(error, "Failed to read JavaScript number.");
-            return value;
-        }
+      var result = context.Api->ConvertValueToObject(context.RuntimeHandle, handle);
+      if (result.Ok == 0 || result.Object == 0)
+      {
+        JsiContext.ThrowNativeError(
+            result.Error,
+            "Failed to convert JavaScript value to object."
+        );
+      }
+      return new JavaScriptObject(context, result.Object);
     }
+  }
 
-    public JavaScriptObject AsObject()
+  public void Dispose()
+  {
+    if (handle != 0)
     {
-        ThrowIfDisposed();
-        unsafe
-        {
-            var result = context.Api->ConvertValueToObject(context.RuntimeHandle, handle);
-            if (result.Ok == 0 || result.Object == 0)
-            {
-                JsiContext.ThrowNativeError(
-                    result.Error,
-                    "Failed to convert JavaScript value to object."
-                );
-            }
-            return new JavaScriptObject(context, result.Object);
-        }
+      unsafe
+      {
+        context.Api->ReleaseValueHandle(context.RuntimeHandle, handle);
+      }
     }
+    handle = 0;
+  }
 
-    public void Dispose()
-    {
-        if (handle != 0)
-        {
-            unsafe
-            {
-                context.Api->ReleaseValueHandle(context.RuntimeHandle, handle);
-            }
-        }
-        handle = 0;
-    }
+  public ExpoJsiValueHandle Detach()
+  {
+    ThrowIfDisposed();
+    var detached = handle;
+    handle = 0;
+    return detached;
+  }
 
-    public ExpoJsiValueHandle Detach()
-    {
-        ThrowIfDisposed();
-        var detached = handle;
-        handle = 0;
-        return detached;
-    }
-
-    private void ThrowIfDisposed()
-    {
-        ObjectDisposedException.ThrowIf(handle == 0, this);
-    }
+  private void ThrowIfDisposed()
+  {
+    ObjectDisposedException.ThrowIf(handle == 0, this);
+  }
 }

@@ -24,7 +24,8 @@ internal readonly unsafe struct ExpoJsiError
 
   public string GetMessage()
   {
-    if (Message is null || MessageLength <= 0) {
+    if (Message is null || MessageLength <= 0)
+    {
       return string.Empty;
     }
     return Encoding.UTF8.GetString(new ReadOnlySpan<byte>(Message, MessageLength));

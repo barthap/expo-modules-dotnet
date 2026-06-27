@@ -22,15 +22,16 @@ std::filesystem::path repo_root_from_current_directory()
 std::filesystem::path find_nativeaot_library()
 {
   auto library = repo_root_from_current_directory() /
-    "experiments/nativeaot-smoke/managed/NativeAotSmoke/bin/Release/net10.0/osx-arm64/publish/NativeAotSmoke.dylib";
+                 "experiments/nativeaot-smoke/managed/NativeAotSmoke/bin/"
+                 "Release/net10.0/osx-arm64/publish/NativeAotSmoke.dylib";
   if (!std::filesystem::exists(library)) {
-    throw std::runtime_error("NativeAOT smoke library does not exist. Run dotnet publish first: " + library.string());
+    throw std::runtime_error("NativeAOT smoke library does not exist. Run dotnet publish first: " +
+                             library.string());
   }
   return library;
 }
 
-template <typename Function>
-Function resolve_export(void *library, const char *name)
+template <typename Function> Function resolve_export(void *library, const char *name)
 {
   auto symbol = dlsym(library, name);
   if (symbol == nullptr) {
@@ -56,7 +57,8 @@ int main()
     using release_message_fn = void (*)(const char *);
 
     auto get_message = resolve_export<get_message_fn>(library, "nativeaot_smoke_get_message");
-    auto release_message = resolve_export<release_message_fn>(library, "nativeaot_smoke_release_message");
+    auto release_message =
+      resolve_export<release_message_fn>(library, "nativeaot_smoke_release_message");
 
     const char *message = get_message();
     std::cout << "Managed payload: " << message << std::endl;

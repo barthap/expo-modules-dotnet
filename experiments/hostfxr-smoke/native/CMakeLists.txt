@@ -12,19 +12,12 @@ if(NOT DOTNET_ROOT)
   execute_process(
     COMMAND "${DOTNET_EXECUTABLE}" --info
     OUTPUT_VARIABLE DOTNET_INFO
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    COMMAND_ERROR_IS_FATAL ANY
-  )
-  string(REGEX MATCH
-    "Base Path:[ \t]*([^\n\r]+)"
-    _dotnet_base_path
-    "${DOTNET_INFO}"
-  )
+    OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+  string(REGEX MATCH "Base Path:[ \t]*([^\n\r]+)" _dotnet_base_path
+               "${DOTNET_INFO}")
   if(NOT CMAKE_MATCH_1)
     message(
-      FATAL_ERROR
-      "Could not discover DOTNET_ROOT. Set DOTNET_ROOT explicitly."
-    )
+      FATAL_ERROR "Could not discover DOTNET_ROOT. Set DOTNET_ROOT explicitly.")
   endif()
   get_filename_component(DOTNET_SDK_DIR "${CMAKE_MATCH_1}" ABSOLUTE)
   get_filename_component(DOTNET_ROOT "${DOTNET_SDK_DIR}/../.." ABSOLUTE)
@@ -37,32 +30,29 @@ else()
 endif()
 
 set(DOTNET_HOST_PACK_DIR
-  "${DOTNET_ROOT}/packs/Microsoft.NETCore.App.Host.${DOTNET_HOST_RID}"
-)
+    "${DOTNET_ROOT}/packs/Microsoft.NETCore.App.Host.${DOTNET_HOST_RID}")
 
 file(GLOB DOTNET_HOST_NATIVE_DIRS
-  "${DOTNET_HOST_PACK_DIR}/*/runtimes/${DOTNET_HOST_RID}/native"
-)
+     "${DOTNET_HOST_PACK_DIR}/*/runtimes/${DOTNET_HOST_RID}/native")
 list(SORT DOTNET_HOST_NATIVE_DIRS COMPARE NATURAL)
 list(POP_BACK DOTNET_HOST_NATIVE_DIRS DOTNET_HOST_NATIVE_DIR)
 
 if(NOT DOTNET_HOST_NATIVE_DIR)
   message(
-    FATAL_ERROR
-    "Could not find Microsoft.NETCore.App.Host native assets for "
-    "${DOTNET_HOST_RID}. DOTNET_ROOT=${DOTNET_ROOT}"
-  )
+    FATAL_ERROR "Could not find Microsoft.NETCore.App.Host native assets for "
+                "${DOTNET_HOST_RID}. DOTNET_ROOT=${DOTNET_ROOT}")
 endif()
 
 add_executable(hostfxr_smoke main.cpp)
 target_include_directories(hostfxr_smoke PRIVATE "${DOTNET_HOST_NATIVE_DIR}")
 target_link_libraries(hostfxr_smoke
-  PRIVATE "${DOTNET_HOST_NATIVE_DIR}/libnethost.dylib"
-)
+                      PRIVATE "${DOTNET_HOST_NATIVE_DIR}/libnethost.dylib")
 
-add_custom_command(TARGET hostfxr_smoke POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+add_custom_command(
+  TARGET hostfxr_smoke
+  POST_BUILD
+  COMMAND
+    ${CMAKE_COMMAND} -E copy_if_different
     "${DOTNET_HOST_NATIVE_DIR}/libnethost.dylib"
     "$<TARGET_FILE_DIR:hostfxr_smoke>/libnethost.dylib"
-  COMMENT "Copying libnethost.dylib next to hostfxr_smoke"
-)
+  COMMENT "Copying libnethost.dylib next to hostfxr_smoke")

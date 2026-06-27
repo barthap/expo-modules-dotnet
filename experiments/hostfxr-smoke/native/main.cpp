@@ -30,10 +30,12 @@ std::filesystem::path repo_root_from_current_directory()
 
 std::filesystem::path find_smoke_assembly()
 {
-  auto assembly = repo_root_from_current_directory() /
+  auto assembly =
+    repo_root_from_current_directory() /
     "experiments/hostfxr-smoke/managed/HostFxrSmoke/bin/Debug/net10.0/HostFxrSmoke.dll";
   if (!std::filesystem::exists(assembly)) {
-    throw std::runtime_error("Managed smoke assembly does not exist. Run dotnet build first: " + assembly.string());
+    throw std::runtime_error("Managed smoke assembly does not exist. Run dotnet build first: " +
+                             assembly.string());
   }
   return assembly;
 }
@@ -65,12 +67,14 @@ void load_hostfxr()
   }
 }
 
-load_assembly_and_get_function_pointer_fn get_dotnet_load_assembly(const std::filesystem::path &runtime_config)
+load_assembly_and_get_function_pointer_fn get_dotnet_load_assembly(
+  const std::filesystem::path &runtime_config)
 {
   hostfxr_handle context = nullptr;
   int rc = init_for_config(runtime_config.c_str(), nullptr, &context);
   if (rc != 0 || context == nullptr) {
-    throw std::runtime_error("hostfxr_initialize_for_runtime_config failed with code " + std::to_string(rc));
+    throw std::runtime_error("hostfxr_initialize_for_runtime_config failed with code " +
+                             std::to_string(rc));
   }
 
   void *load_assembly = nullptr;
@@ -102,26 +106,26 @@ int main()
     get_message_fn get_message = nullptr;
     release_message_fn release_message = nullptr;
 
-    int rc = load_assembly(
-      assembly.c_str(),
-      "HostFxrSmoke.EntryPoints, HostFxrSmoke",
-      "GetMessage",
-      UNMANAGEDCALLERSONLY_METHOD,
-      nullptr,
-      reinterpret_cast<void **>(&get_message));
+    int rc = load_assembly(assembly.c_str(),
+                           "HostFxrSmoke.EntryPoints, HostFxrSmoke",
+                           "GetMessage",
+                           UNMANAGEDCALLERSONLY_METHOD,
+                           nullptr,
+                           reinterpret_cast<void **>(&get_message));
     if (rc != 0 || get_message == nullptr) {
-      throw std::runtime_error("Failed to resolve managed get_message entry point: " + std::to_string(rc));
+      throw std::runtime_error("Failed to resolve managed get_message entry point: " +
+                               std::to_string(rc));
     }
 
-    rc = load_assembly(
-      assembly.c_str(),
-      "HostFxrSmoke.EntryPoints, HostFxrSmoke",
-      "ReleaseMessage",
-      UNMANAGEDCALLERSONLY_METHOD,
-      nullptr,
-      reinterpret_cast<void **>(&release_message));
+    rc = load_assembly(assembly.c_str(),
+                       "HostFxrSmoke.EntryPoints, HostFxrSmoke",
+                       "ReleaseMessage",
+                       UNMANAGEDCALLERSONLY_METHOD,
+                       nullptr,
+                       reinterpret_cast<void **>(&release_message));
     if (rc != 0 || release_message == nullptr) {
-      throw std::runtime_error("Failed to resolve managed release_message entry point: " + std::to_string(rc));
+      throw std::runtime_error("Failed to resolve managed release_message entry point: " +
+                               std::to_string(rc));
     }
 
     const char *message = get_message();
