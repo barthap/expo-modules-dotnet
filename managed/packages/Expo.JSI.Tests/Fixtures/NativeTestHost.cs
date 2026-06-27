@@ -14,6 +14,8 @@ internal static unsafe class NativeTestHost
     evaluateScript;
   private static delegate* unmanaged[Cdecl]<nint, Counters> getCounters;
   private static delegate* unmanaged[Cdecl]<nint, void> resetCounters;
+  private static delegate* unmanaged[Cdecl]<nint, void> drainTasks;
+  private static delegate* unmanaged[Cdecl]<nint, byte, void> setSyncExecutionSupported;
   private static delegate* unmanaged[Cdecl]<nint, void> releaseRuntime;
 
   private static bool initialized;
@@ -35,6 +37,8 @@ internal static unsafe class NativeTestHost
     public readonly uint ReleasedObjects;
     public readonly uint ReleasedFunctions;
     public readonly uint ReleasedStrings;
+    public readonly uint ReleasedTaskContexts;
+    public readonly uint SyncExecuteCalls;
   }
 
   internal static CreateResult CreateRuntime()
@@ -88,6 +92,18 @@ internal static unsafe class NativeTestHost
     resetCounters(testHostRuntime);
   }
 
+  internal static void DrainTasks(nint testHostRuntime)
+  {
+    EnsureLoaded();
+    drainTasks(testHostRuntime);
+  }
+
+  internal static void SetSyncExecutionSupported(nint testHostRuntime, bool supported)
+  {
+    EnsureLoaded();
+    setSyncExecutionSupported(testHostRuntime, supported ? (byte)1 : (byte)0);
+  }
+
   internal static void ReleaseRuntime(nint testHostRuntime)
   {
     EnsureLoaded();
@@ -124,6 +140,16 @@ internal static unsafe class NativeTestHost
       (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
           library,
           "expo_jsi_testhost_reset_counters"
+      );
+    drainTasks =
+      (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
+          library,
+          "expo_jsi_testhost_drain_tasks"
+      );
+    setSyncExecutionSupported =
+      (delegate* unmanaged[Cdecl]<nint, byte, void>)LoadExport(
+          library,
+          "expo_jsi_testhost_set_sync_execution_supported"
       );
     releaseRuntime =
       (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
