@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace Expo.JSI;
 
 public sealed class JavaScriptObject : IJavaScriptValueRepresentable, IDisposable
@@ -13,65 +11,26 @@ public sealed class JavaScriptObject : IJavaScriptValueRepresentable, IDisposabl
     this.handle = handle;
   }
 
+  private JavaScriptObjectInner Inner
+  {
+    get
+    {
+      ThrowIfDisposed();
+      return new JavaScriptObjectInner(context, handle);
+    }
+  }
+
   public void SetProperty(string name, JavaScriptValue value)
   {
-    ThrowIfDisposed();
-    ArgumentNullException.ThrowIfNull(name);
     ArgumentNullException.ThrowIfNull(value);
-
-    var nameBytes = Encoding.UTF8.GetBytes(name);
-    unsafe
-    {
-      var error = context.Api->SetObjectProperty(
-          context.RuntimeHandle,
-          handle,
-          nameBytes,
-          value.Handle
-      );
-      context.ThrowIfError(error, "Failed to set JavaScript object property.");
-    }
+    Inner.SetProperty(name, value.Handle);
   }
 
-  public JavaScriptValue GetProperty(string name)
-  {
-    ThrowIfDisposed();
-    ArgumentNullException.ThrowIfNull(name);
+  public JavaScriptValue GetProperty(string name) =>
+    JavaScriptValue.FromOwnedHandle(context, Inner.GetProperty(name));
 
-    var nameBytes = Encoding.UTF8.GetBytes(name);
-    unsafe
-    {
-      var result = context.Api->GetObjectProperty(
-          context.RuntimeHandle,
-          handle,
-          nameBytes
-      );
-      if (result.Ok == 0 || result.Value == 0)
-      {
-        JsiContext.ThrowNativeError(
-            result.Error,
-            "Failed to get JavaScript object property."
-        );
-      }
-      return JavaScriptValue.FromOwnedHandle(context, result.Value);
-    }
-  }
-
-  public JavaScriptValue AsValue()
-  {
-    ThrowIfDisposed();
-    unsafe
-    {
-      var result = context.Api->ConvertObjectToValue(context.RuntimeHandle, handle);
-      if (result.Ok == 0 || result.Value == 0)
-      {
-        JsiContext.ThrowNativeError(
-            result.Error,
-            "Failed to convert JavaScript object to value."
-        );
-      }
-      return JavaScriptValue.FromOwnedHandle(context, result.Value);
-    }
-  }
+  public JavaScriptValue AsValue() =>
+    JavaScriptValue.FromOwnedHandle(context, Inner.AsValue());
 
   public void Dispose()
   {

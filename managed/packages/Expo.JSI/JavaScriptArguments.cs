@@ -38,8 +38,11 @@ public readonly struct JavaScriptArguments
       {
         JsiContext.ThrowNativeError(result.Error, "Failed to read JavaScript argument.");
       }
-      var scope = JsiRefScope.CurrentFor(context);
-      return new JavaScriptValueRef(context, scope, result.Value);
+      var scope = JavaScriptHandleScope.CurrentFor(context);
+      return JavaScriptValueRef.FromBorrowedRoot(
+          scope,
+          new JavaScriptValueInner(context, result.Value)
+      );
     }
   }
 

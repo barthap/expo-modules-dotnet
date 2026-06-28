@@ -114,16 +114,6 @@ void countedReleaseFunction(expo_jsi_runtime_handle runtime, expo_jsi_function_h
   api->release_function(runtime, function);
 }
 
-void countedReleaseRefScope(expo_jsi_runtime_handle runtime, expo_jsi_ref_scope_handle scope)
-{
-  auto *testhost = runtimeFor(runtime);
-  if (testhost != nullptr && scope != nullptr) {
-    testhost->counters.released_ref_scopes++;
-  }
-  const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
-  api->release_ref_scope(runtime, scope);
-}
-
 struct CountedStringReleaseContext {
   expo_jsi_testhost_runtime_t *testhost;
   expo_jsi_release_string_fn release;
@@ -240,7 +230,6 @@ const expo_jsi_api *makeCountedApi(expo_jsi_testhost_runtime_t &runtime)
   runtime.countedApi.release_array = countedReleaseArray;
   runtime.countedApi.release_promise = countedReleasePromise;
   runtime.countedApi.release_function = countedReleaseFunction;
-  runtime.countedApi.release_ref_scope = countedReleaseRefScope;
   runtime.countedApi.get_string = countedGetString;
   runtime.countedApi.runtime_schedule_task = countedScheduleTask;
   runtime.countedApi.runtime_can_execute_sync = countedCanExecuteSync;

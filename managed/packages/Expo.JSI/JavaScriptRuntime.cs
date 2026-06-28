@@ -335,8 +335,11 @@ public sealed unsafe class JavaScriptRuntime
       context = HostFunctionContext.FromIntPtr(callbackContext);
       var jsiContext = new JsiContext(context.Api, runtimeHandle);
       var runtime = new JavaScriptRuntime(jsiContext);
-      using var scope = JsiRefScope.Enter(jsiContext);
-      var thisValue = new JavaScriptValueRef(jsiContext, scope, thisValueHandle);
+      using var scope = JavaScriptHandleScope.Enter(jsiContext);
+      var thisValue = JavaScriptValueRef.FromBorrowedRoot(
+          scope,
+          new JavaScriptValueInner(jsiContext, thisValueHandle)
+      );
       var arguments = new JavaScriptArguments(jsiContext, argumentsHandle);
       using var result = context.Callback(runtime, thisValue, arguments, context.Context);
       return new ExpoJsiValueResult(1, result.Detach(), default);
@@ -432,7 +435,7 @@ public sealed unsafe class JavaScriptRuntime
 
       try
       {
-        using var scope = JsiRefScope.Enter(context);
+        using var scope = JavaScriptHandleScope.Enter(context);
         completion.TrySetResult(body(new JavaScriptRuntime(context)));
       }
       catch (Exception ex)

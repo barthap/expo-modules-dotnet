@@ -25,159 +25,42 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
     }
   }
 
-  public JavaScriptValueKind Kind
+  private JavaScriptValueInner Inner
   {
     get
     {
       ThrowIfDisposed();
-      unsafe
-      {
-        ExpoJsiError error;
-        var kind = context.Api->GetKind(context.RuntimeHandle, handle, &error);
-        context.ThrowIfError(error, "Failed to read JavaScript value kind.");
-        return (JavaScriptValueKind)kind;
-      }
+      return new JavaScriptValueInner(context, handle);
     }
   }
 
-  public bool IsPromise
-  {
-    get
-    {
-      ThrowIfDisposed();
-      unsafe
-      {
-        return context.Api->IsPromiseValue(context.RuntimeHandle, handle);
-      }
-    }
-  }
+  public JavaScriptValueKind Kind => Inner.Kind;
 
-  public bool IsError
-  {
-    get
-    {
-      ThrowIfDisposed();
-      unsafe
-      {
-        return context.Api->IsErrorValue(context.RuntimeHandle, handle);
-      }
-    }
-  }
+  public bool IsPromise => Inner.IsPromise;
 
-  public bool IsBool
-  {
-    get
-    {
-      ThrowIfDisposed();
-      return Kind == JavaScriptValueKind.Bool;
-    }
-  }
+  public bool IsError => Inner.IsError;
 
-  public bool IsNullish
-  {
-    get
-    {
-      ThrowIfDisposed();
-      return Kind is JavaScriptValueKind.Undefined or JavaScriptValueKind.Null;
-    }
-  }
+  public bool IsBool => Kind == JavaScriptValueKind.Bool;
 
-  public bool AsBool()
-  {
-    ThrowIfDisposed();
-    unsafe
-    {
-      ExpoJsiError error;
-      var value = context.Api->ReadBool(context.RuntimeHandle, handle, &error);
-      context.ThrowIfError(error, "Failed to read JavaScript boolean.");
-      return value;
-    }
-  }
+  public bool IsNullish => Inner.IsNullish;
 
-  public bool IsDouble
-  {
-    get
-    {
-      ThrowIfDisposed();
-      return Kind == JavaScriptValueKind.Number;
-    }
-  }
+  public bool AsBool() => Inner.AsBool();
 
-  public double AsDouble()
-  {
-    ThrowIfDisposed();
-    unsafe
-    {
-      ExpoJsiError error;
-      var value = context.Api->ReadDouble(context.RuntimeHandle, handle, &error);
-      context.ThrowIfError(error, "Failed to read JavaScript number.");
-      return value;
-    }
-  }
+  public bool IsDouble => Kind == JavaScriptValueKind.Number;
 
-  public bool IsString
-  {
-    get
-    {
-      ThrowIfDisposed();
-      return Kind == JavaScriptValueKind.String;
-    }
-  }
+  public double AsDouble() => Inner.AsDouble();
 
-  public string AsString()
-  {
-    ThrowIfDisposed();
-    unsafe
-    {
-      return context.Api->ReadString(context.RuntimeHandle, handle);
-    }
-  }
+  public bool IsString => Kind == JavaScriptValueKind.String;
 
-  internal string CoerceToString()
-  {
-    ThrowIfDisposed();
-    unsafe
-    {
-      return context.Api->CoerceJavaScriptValueToString(context.RuntimeHandle, handle);
-    }
-  }
+  public string AsString() => Inner.AsString();
 
-  public bool IsObject
-  {
-    get
-    {
-      ThrowIfDisposed();
-      return Kind == JavaScriptValueKind.Object;
-    }
-  }
+  internal string CoerceToString() => Inner.CoerceToString();
 
-  public JavaScriptObject AsObject()
-  {
-    ThrowIfDisposed();
-    unsafe
-    {
-      var result = context.Api->ConvertValueToObject(context.RuntimeHandle, handle);
-      if (result.Ok == 0 || result.Object == 0)
-      {
-        JsiContext.ThrowNativeError(result.Error, "Failed to convert JavaScript value to object.");
-      }
-      return new JavaScriptObject(context, result.Object);
-    }
-  }
+  public bool IsObject => Kind == JavaScriptValueKind.Object;
 
-  public JavaScriptArray AsArray()
-  {
-    ThrowIfDisposed();
-    unsafe
-    {
-      var result = context.Api->ConvertValueToArray(context.RuntimeHandle, handle);
-      if (result.Ok == 0 || result.Array == 0)
-      {
-        JsiContext.ThrowNativeError(result.Error, "Failed to convert JavaScript value to array.");
-      }
-      return new JavaScriptArray(context, result.Array);
-    }
-  }
+  public JavaScriptObject AsObject() => new(context, Inner.AsObject());
+
+  public JavaScriptArray AsArray() => new(context, Inner.AsArray());
 
   public JavaScriptPromiseValue AsPromiseValue()
   {
@@ -199,31 +82,15 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
     return new JavaScriptErrorObject(AsValue());
   }
 
-  public JavaScriptValue AsValue()
-  {
-    ThrowIfDisposed();
-    unsafe
-    {
-      var result = context.Api->CloneJavaScriptValue(context.RuntimeHandle, handle);
-      if (result.Ok == 0 || result.Value == 0)
-      {
-        JsiContext.ThrowNativeError(result.Error, "Failed to clone JavaScript value.");
-      }
-      return FromOwnedHandle(context, result.Value);
-    }
-  }
+  public JavaScriptValue AsValue() => FromOwnedHandle(context, Inner.Retain());
 
   public JavaScriptValue Retain() => AsValue();
 
-  public JavaScriptValueRef Ref
-  {
-    get
-    {
-      ThrowIfDisposed();
-      var scope = JsiRefScope.CurrentFor(context);
-      return new JavaScriptValueRef(context, scope, handle);
-    }
-  }
+  public JavaScriptValueRef Ref =>
+    JavaScriptValueRef.FromBorrowedRoot(
+        JavaScriptHandleScope.CurrentFor(context),
+        Inner
+    );
 
   public void Dispose()
   {

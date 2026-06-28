@@ -51,7 +51,7 @@ public sealed class JavaScriptScopedRefTests
   }
 
   [Fact]
-  public void RuntimeAccessReleasesRefScope()
+  public void RefTraversalReleasesTemporaryHandlesThroughExistingCounters()
   {
     using var fixture = HermesRuntimeFixture.Create();
     fixture.ResetCounters();
@@ -59,15 +59,21 @@ public sealed class JavaScriptScopedRefTests
     fixture.Runtime.Execute(_ =>
     {
       using var value = fixture.Evaluate(
-          "({ value: 42 })",
+          "({ user: { name: 'expo' } })",
           "scoped-ref-release.js"
       );
 
-      Assert.Equal(42, value.Ref.AsObject().GetProperty("value").AsDouble());
+      var name = value.Ref.AsObject()
+          .GetProperty("user")
+          .AsObject()
+          .GetProperty("name");
+
+      Assert.Equal("expo", name.AsString());
       return true;
     });
 
-    Assert.True(fixture.Counters.ReleasedRefScopes >= 1);
+    Assert.True(fixture.Counters.ReleasedObjects >= 1);
+    Assert.True(fixture.Counters.ReleasedValues >= 1);
   }
 
   [Fact]
@@ -85,7 +91,7 @@ public sealed class JavaScriptScopedRefTests
   public void DefaultRefFailsBeforeTouchingNative()
   {
     var error = Assert.Throws<ObjectDisposedException>(ReadDefaultRefString);
-    Assert.Equal("JsiRefScope", error.ObjectName);
+    Assert.Equal("JavaScriptHandleScope", error.ObjectName);
   }
 
   private static void ReadDefaultRefString()

@@ -1,69 +1,50 @@
-using System.Text;
-using Expo.JSI.Interop;
-
 namespace Expo.JSI;
 
 public readonly ref struct JavaScriptObjectRef
 {
-  private readonly JsiContext context;
-  private readonly JsiRefScope? scope;
-  private readonly ExpoJsiValueHandle valueHandle;
+  private readonly JavaScriptHandleScope? scope;
+  private readonly JavaScriptObjectInner inner;
 
-  internal JavaScriptObjectRef(
-      JsiContext context,
-      JsiRefScope scope,
-      ExpoJsiValueHandle valueHandle
-  )
+  private JavaScriptObjectRef(JavaScriptHandleScope scope, JavaScriptObjectInner inner)
   {
-    this.context = context;
     this.scope = scope;
-    this.valueHandle = valueHandle;
+    this.inner = inner;
   }
 
-  private ExpoJsiValueRef NativeRef
-  {
-    get
-    {
-      if (scope is null || valueHandle == 0)
-      {
-        throw new ObjectDisposedException(nameof(JsiRefScope));
-      }
-      return new ExpoJsiValueRef(scope!.Handle, valueHandle);
-    }
-  }
+  internal static JavaScriptObjectRef FromScopedHandle(
+      JavaScriptHandleScope scope,
+      JsiContext context,
+      ExpoJsiObjectHandle handle
+  ) => new(scope, new JavaScriptObjectInner(context, scope.TrackObject(handle)));
 
   public JavaScriptValueRef GetProperty(string name)
   {
-    ArgumentNullException.ThrowIfNull(name);
-
-    var nameBytes = Encoding.UTF8.GetBytes(name);
-    unsafe
-    {
-      var result = context.Api->GetValueRefProperty(
-          context.RuntimeHandle,
-          NativeRef,
-          nameBytes
-      );
-      if (result.Ok == 0 || result.Value.Value == 0)
-      {
-        JsiContext.ThrowNativeError(result.Error, "Failed to get JavaScript object ref property.");
-      }
-      return new JavaScriptValueRef(context, scope!, result.Value.Value);
-    }
+    var handle = Inner.GetProperty(name);
+    return JavaScriptValueRef.FromScopedHandle(Scope, Inner.Context, handle);
   }
 
   public JavaScriptObject Retain()
   {
-    unsafe
+    using var value = RetainAsValue();
+    return value.AsObject();
+  }
+
+  public JavaScriptValue RetainAsValue() =>
+    JavaScriptValue.FromOwnedHandle(Inner.Context, Inner.AsValue());
+
+  private JavaScriptObjectInner Inner
+  {
+    get
     {
-      var result = context.Api->RetainValueRefObject(context.RuntimeHandle, NativeRef);
-      if (result.Ok == 0 || result.Object == 0)
+      _ = Scope;
+      if (inner.Handle == 0)
       {
-        JsiContext.ThrowNativeError(result.Error, "Failed to retain JavaScript object ref.");
+        throw new ObjectDisposedException(nameof(JavaScriptHandleScope));
       }
-      return new JavaScriptObject(context, result.Object);
+      return inner;
     }
   }
 
-  public JavaScriptValue RetainAsValue() => new JavaScriptValueRef(context, scope!, valueHandle).Retain();
+  private JavaScriptHandleScope Scope =>
+    scope ?? throw new ObjectDisposedException(nameof(JavaScriptHandleScope));
 }

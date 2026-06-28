@@ -244,24 +244,11 @@ private:
   std::vector<std::unique_ptr<ValueHandle>> borrowedValues_;
 };
 
-class RefScopeHandle final {
-public:
-  expo_jsi_value_ref store(std::unique_ptr<ValueHandle> value)
-  {
-    auto *handle = value.get();
-    temporaryValues_.push_back(std::move(value));
-    return expo_jsi_value_ref{this, handle};
-  }
-
-private:
-  std::vector<std::unique_ptr<ValueHandle>> temporaryValues_;
-};
-
 } // namespace expo::jsi
 
 namespace {
 
-constexpr uint32_t kApiVersion = 11;
+constexpr uint32_t kApiVersion = 10;
 
 struct StringResultBuffer {
   explicit StringResultBuffer(std::string value)
@@ -453,15 +440,6 @@ expo_jsi_value_result makeBorrowedValueResult(expo_jsi_value_handle value)
   };
 }
 
-expo_jsi_value_ref_result makeValueRefResult(expo_jsi_value_ref value)
-{
-  return expo_jsi_value_ref_result{
-    1,
-    value,
-    expo_jsi_error{0, nullptr, 0},
-  };
-}
-
 expo_jsi_object_result makeObjectResult(std::unique_ptr<expo::jsi::ObjectHandle> object)
 {
   return expo_jsi_object_result{
@@ -503,15 +481,6 @@ expo_jsi_value_result makeErrorResult(int32_t code, const char *message)
   return expo_jsi_value_result{
     0,
     nullptr,
-    makeError(code, message),
-  };
-}
-
-expo_jsi_value_ref_result makeValueRefErrorResult(int32_t code, const char *message)
-{
-  return expo_jsi_value_ref_result{
-    0,
-    expo_jsi_value_ref{nullptr, nullptr},
     makeError(code, message),
   };
 }
@@ -816,252 +785,6 @@ expo_jsi_string_result coerceToString(expo_jsi_runtime_handle runtime, expo_jsi_
     return makeStringErrorResult(114, ex.what());
   } catch (...) {
     return makeStringErrorResult(115, "Unknown native exception while coercing value to string.");
-  }
-}
-
-expo_jsi_value_handle tryValueRef(expo_jsi_value_ref value, expo_jsi_error *error)
-{
-  if (value.scope == nullptr || value.value == nullptr) {
-    writeError(error, 116, "JavaScript value ref is invalid.");
-    return nullptr;
-  }
-  return value.value;
-}
-
-expo_jsi_ref_scope_handle createRefScope(expo_jsi_runtime_handle runtime)
-{
-  expo_jsi_error error{};
-  if (tryRuntimeHandle(runtime, &error) == nullptr) {
-    return nullptr;
-  }
-  return new expo::jsi::RefScopeHandle();
-}
-
-void releaseRefScope(expo_jsi_runtime_handle, expo_jsi_ref_scope_handle scope)
-{
-  delete scope;
-}
-
-expo_jsi_value_kind valueRefGetKind(expo_jsi_runtime_handle runtime,
-                                    expo_jsi_value_ref value,
-                                    expo_jsi_error *error)
-{
-  auto *valueHandle = tryValueRef(value, error);
-  if (valueHandle == nullptr) {
-    return EXPO_JSI_VALUE_UNDEFINED;
-  }
-  return getValueKind(runtime, valueHandle, error);
-}
-
-uint8_t valueRefGetBool(expo_jsi_runtime_handle runtime,
-                        expo_jsi_value_ref value,
-                        expo_jsi_error *error)
-{
-  auto *valueHandle = tryValueRef(value, error);
-  if (valueHandle == nullptr) {
-    return 0;
-  }
-  return getBool(runtime, valueHandle, error);
-}
-
-double valueRefGetDouble(expo_jsi_runtime_handle runtime,
-                         expo_jsi_value_ref value,
-                         expo_jsi_error *error)
-{
-  auto *valueHandle = tryValueRef(value, error);
-  if (valueHandle == nullptr) {
-    return 0;
-  }
-  return getDouble(runtime, valueHandle, error);
-}
-
-expo_jsi_string_result valueRefGetString(expo_jsi_runtime_handle runtime, expo_jsi_value_ref value)
-{
-  expo_jsi_error error{};
-  auto *valueHandle = tryValueRef(value, &error);
-  if (valueHandle == nullptr) {
-    return expo_jsi_string_result{0, nullptr, 0, nullptr, nullptr, error};
-  }
-  return getString(runtime, valueHandle);
-}
-
-expo_jsi_string_result valueRefCoerceToString(expo_jsi_runtime_handle runtime,
-                                              expo_jsi_value_ref value)
-{
-  expo_jsi_error error{};
-  auto *valueHandle = tryValueRef(value, &error);
-  if (valueHandle == nullptr) {
-    return expo_jsi_string_result{0, nullptr, 0, nullptr, nullptr, error};
-  }
-  return coerceToString(runtime, valueHandle);
-}
-
-expo_jsi_value_ref_result valueRefGetProperty(expo_jsi_runtime_handle runtime,
-                                              expo_jsi_value_ref value,
-                                              const char *name,
-                                              int32_t name_len)
-{
-  expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
-  if (runtimeHandle == nullptr) {
-    return expo_jsi_value_ref_result{0, expo_jsi_value_ref{nullptr, nullptr}, error};
-  }
-  auto *valueHandle = tryValueRef(value, &error);
-  if (valueHandle == nullptr) {
-    return expo_jsi_value_ref_result{0, expo_jsi_value_ref{nullptr, nullptr}, error};
-  }
-  if (name == nullptr || name_len < 0) {
-    return makeValueRefErrorResult(117, "Property name is invalid.");
-  }
-
-  try {
-    auto &jsRuntime = runtimeHandle->runtime();
-    if (!valueHandle->value().isObject()) {
-      return makeValueRefErrorResult(118, "Value ref is not an object.");
-    }
-    auto object = valueHandle->value().asObject(jsRuntime);
-    auto propertyName = facebook::jsi::PropNameID::forUtf8(
-      jsRuntime, reinterpret_cast<const uint8_t *>(name), static_cast<size_t>(name_len));
-    return makeValueRefResult(value.scope->store(
-      expo::jsi::ValueHandle::owned(object.getProperty(jsRuntime, propertyName))));
-  } catch (const std::exception &ex) {
-    return makeValueRefErrorResult(119, ex.what());
-  } catch (...) {
-    return makeValueRefErrorResult(120, "Unknown native exception while getting ref property.");
-  }
-}
-
-expo_jsi_value_ref_result valueRefGetValueAtIndex(expo_jsi_runtime_handle runtime,
-                                                  expo_jsi_value_ref value,
-                                                  uint32_t index)
-{
-  expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
-  if (runtimeHandle == nullptr) {
-    return expo_jsi_value_ref_result{0, expo_jsi_value_ref{nullptr, nullptr}, error};
-  }
-  auto *valueHandle = tryValueRef(value, &error);
-  if (valueHandle == nullptr) {
-    return expo_jsi_value_ref_result{0, expo_jsi_value_ref{nullptr, nullptr}, error};
-  }
-
-  try {
-    auto &jsRuntime = runtimeHandle->runtime();
-    if (!valueHandle->value().isObject()) {
-      return makeValueRefErrorResult(121, "Value ref is not an array.");
-    }
-    auto object = valueHandle->value().asObject(jsRuntime);
-    if (!object.isArray(jsRuntime)) {
-      return makeValueRefErrorResult(122, "Value ref is not an array.");
-    }
-    auto array = object.asArray(jsRuntime);
-    return makeValueRefResult(
-      value.scope->store(expo::jsi::ValueHandle::owned(array.getValueAtIndex(jsRuntime, index))));
-  } catch (const std::exception &ex) {
-    return makeValueRefErrorResult(123, ex.what());
-  } catch (...) {
-    return makeValueRefErrorResult(124, "Unknown native exception while getting ref array value.");
-  }
-}
-
-uint32_t valueRefGetArrayLength(expo_jsi_runtime_handle runtime,
-                                expo_jsi_value_ref value,
-                                expo_jsi_error *error)
-{
-  auto *runtimeHandle = tryRuntimeHandle(runtime, error);
-  if (runtimeHandle == nullptr) {
-    return 0;
-  }
-  auto *valueHandle = tryValueRef(value, error);
-  if (valueHandle == nullptr) {
-    return 0;
-  }
-
-  try {
-    auto &jsRuntime = runtimeHandle->runtime();
-    if (!valueHandle->value().isObject()) {
-      writeError(error, 125, "Value ref is not an array.");
-      return 0;
-    }
-    auto object = valueHandle->value().asObject(jsRuntime);
-    if (!object.isArray(jsRuntime)) {
-      writeError(error, 126, "Value ref is not an array.");
-      return 0;
-    }
-    clearError(error);
-    return static_cast<uint32_t>(object.asArray(jsRuntime).length(jsRuntime));
-  } catch (const std::exception &ex) {
-    writeError(error, 127, ex.what());
-    return 0;
-  } catch (...) {
-    writeError(error, 128, "Unknown native exception while reading ref array length.");
-    return 0;
-  }
-}
-
-expo_jsi_value_result valueRefRetain(expo_jsi_runtime_handle runtime, expo_jsi_value_ref value)
-{
-  expo_jsi_error error{};
-  auto *valueHandle = tryValueRef(value, &error);
-  if (valueHandle == nullptr) {
-    return expo_jsi_value_result{0, nullptr, error};
-  }
-  return cloneValue(runtime, valueHandle);
-}
-
-expo_jsi_object_result valueRefRetainObject(expo_jsi_runtime_handle runtime,
-                                            expo_jsi_value_ref value)
-{
-  expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
-  if (runtimeHandle == nullptr) {
-    return expo_jsi_object_result{0, nullptr, error};
-  }
-  auto *valueHandle = tryValueRef(value, &error);
-  if (valueHandle == nullptr) {
-    return expo_jsi_object_result{0, nullptr, error};
-  }
-
-  try {
-    auto &jsRuntime = runtimeHandle->runtime();
-    if (!valueHandle->value().isObject()) {
-      return makeObjectErrorResult(129, "Value ref is not an object.");
-    }
-    return makeObjectResult(
-      expo::jsi::ObjectHandle::owned(valueHandle->value().asObject(jsRuntime)));
-  } catch (const std::exception &ex) {
-    return makeObjectErrorResult(130, ex.what());
-  } catch (...) {
-    return makeObjectErrorResult(131, "Unknown native exception while retaining object ref.");
-  }
-}
-
-expo_jsi_array_result valueRefRetainArray(expo_jsi_runtime_handle runtime, expo_jsi_value_ref value)
-{
-  expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
-  if (runtimeHandle == nullptr) {
-    return expo_jsi_array_result{0, nullptr, error};
-  }
-  auto *valueHandle = tryValueRef(value, &error);
-  if (valueHandle == nullptr) {
-    return expo_jsi_array_result{0, nullptr, error};
-  }
-
-  try {
-    auto &jsRuntime = runtimeHandle->runtime();
-    if (!valueHandle->value().isObject()) {
-      return makeArrayErrorResult(132, "Value ref is not an array.");
-    }
-    auto object = valueHandle->value().asObject(jsRuntime);
-    if (!object.isArray(jsRuntime)) {
-      return makeArrayErrorResult(133, "Value ref is not an array.");
-    }
-    return makeArrayResult(expo::jsi::ArrayHandle::owned(object.asArray(jsRuntime)));
-  } catch (const std::exception &ex) {
-    return makeArrayErrorResult(134, ex.what());
-  } catch (...) {
-    return makeArrayErrorResult(135, "Unknown native exception while retaining array ref.");
   }
 }
 
@@ -1936,19 +1659,6 @@ const expo_jsi_api kApi{
   isPromise,
   isError,
   coerceToString,
-  createRefScope,
-  releaseRefScope,
-  valueRefGetKind,
-  valueRefGetBool,
-  valueRefGetDouble,
-  valueRefGetString,
-  valueRefCoerceToString,
-  valueRefGetProperty,
-  valueRefGetValueAtIndex,
-  valueRefGetArrayLength,
-  valueRefRetain,
-  valueRefRetainObject,
-  valueRefRetainArray,
 };
 
 } // namespace

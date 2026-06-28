@@ -11,7 +11,6 @@ class ArrayHandle;
 class PromiseHandle;
 class FunctionHandle;
 class ArgumentsHandle;
-class RefScopeHandle;
 } // namespace expo::jsi
 
 using expo_jsi_runtime_t = expo::jsi::RuntimeHandle;
@@ -21,7 +20,6 @@ using expo_jsi_array_t = expo::jsi::ArrayHandle;
 using expo_jsi_promise_t = expo::jsi::PromiseHandle;
 using expo_jsi_function_t = expo::jsi::FunctionHandle;
 using expo_jsi_arguments_t = expo::jsi::ArgumentsHandle;
-using expo_jsi_ref_scope_t = expo::jsi::RefScopeHandle;
 
 extern "C" {
 
@@ -32,7 +30,6 @@ typedef expo_jsi_array_t *expo_jsi_array_handle;
 typedef expo_jsi_promise_t *expo_jsi_promise_handle;
 typedef expo_jsi_function_t *expo_jsi_function_handle;
 typedef expo_jsi_arguments_t *expo_jsi_arguments_handle;
-typedef expo_jsi_ref_scope_t *expo_jsi_ref_scope_handle;
 #else
 typedef struct expo_jsi_runtime_t *expo_jsi_runtime_handle;
 typedef struct expo_jsi_value_t *expo_jsi_value_handle;
@@ -41,7 +38,6 @@ typedef struct expo_jsi_array_t *expo_jsi_array_handle;
 typedef struct expo_jsi_promise_t *expo_jsi_promise_handle;
 typedef struct expo_jsi_function_t *expo_jsi_function_handle;
 typedef struct expo_jsi_arguments_t *expo_jsi_arguments_handle;
-typedef struct expo_jsi_ref_scope_t *expo_jsi_ref_scope_handle;
 #endif
 
 typedef enum expo_jsi_value_kind {
@@ -74,17 +70,6 @@ typedef struct expo_jsi_value_result {
   expo_jsi_value_handle value;
   expo_jsi_error error;
 } expo_jsi_value_result;
-
-typedef struct expo_jsi_value_ref {
-  expo_jsi_ref_scope_handle scope;
-  expo_jsi_value_handle value;
-} expo_jsi_value_ref;
-
-typedef struct expo_jsi_value_ref_result {
-  int32_t ok;
-  expo_jsi_value_ref value;
-  expo_jsi_error error;
-} expo_jsi_value_ref_result;
 
 typedef struct expo_jsi_object_result {
   int32_t ok;
@@ -288,48 +273,6 @@ typedef uint8_t (*expo_jsi_is_error_fn)(expo_jsi_runtime_handle runtime,
 typedef expo_jsi_string_result (*expo_jsi_coerce_to_string_fn)(expo_jsi_runtime_handle runtime,
                                                                expo_jsi_value_handle value);
 
-typedef expo_jsi_ref_scope_handle (*expo_jsi_create_ref_scope_fn)(expo_jsi_runtime_handle runtime);
-
-typedef void (*expo_jsi_release_ref_scope_fn)(expo_jsi_runtime_handle runtime,
-                                              expo_jsi_ref_scope_handle scope);
-
-typedef expo_jsi_value_kind (*expo_jsi_value_ref_get_kind_fn)(expo_jsi_runtime_handle runtime,
-                                                              expo_jsi_value_ref value,
-                                                              expo_jsi_error *error);
-
-typedef uint8_t (*expo_jsi_value_ref_get_bool_fn)(expo_jsi_runtime_handle runtime,
-                                                  expo_jsi_value_ref value,
-                                                  expo_jsi_error *error);
-
-typedef double (*expo_jsi_value_ref_get_double_fn)(expo_jsi_runtime_handle runtime,
-                                                   expo_jsi_value_ref value,
-                                                   expo_jsi_error *error);
-
-typedef expo_jsi_string_result (*expo_jsi_value_ref_get_string_fn)(expo_jsi_runtime_handle runtime,
-                                                                   expo_jsi_value_ref value);
-
-typedef expo_jsi_string_result (*expo_jsi_value_ref_coerce_to_string_fn)(
-  expo_jsi_runtime_handle runtime, expo_jsi_value_ref value);
-
-typedef expo_jsi_value_ref_result (*expo_jsi_value_ref_get_property_fn)(
-  expo_jsi_runtime_handle runtime, expo_jsi_value_ref value, const char *name, int32_t name_len);
-
-typedef expo_jsi_value_ref_result (*expo_jsi_value_ref_get_value_at_index_fn)(
-  expo_jsi_runtime_handle runtime, expo_jsi_value_ref value, uint32_t index);
-
-typedef uint32_t (*expo_jsi_value_ref_get_array_length_fn)(expo_jsi_runtime_handle runtime,
-                                                           expo_jsi_value_ref value,
-                                                           expo_jsi_error *error);
-
-typedef expo_jsi_value_result (*expo_jsi_value_ref_retain_fn)(expo_jsi_runtime_handle runtime,
-                                                              expo_jsi_value_ref value);
-
-typedef expo_jsi_object_result (*expo_jsi_value_ref_retain_object_fn)(
-  expo_jsi_runtime_handle runtime, expo_jsi_value_ref value);
-
-typedef expo_jsi_array_result (*expo_jsi_value_ref_retain_array_fn)(expo_jsi_runtime_handle runtime,
-                                                                    expo_jsi_value_ref value);
-
 typedef struct expo_jsi_api {
   uint32_t size;
   uint32_t version;
@@ -376,19 +319,6 @@ typedef struct expo_jsi_api {
   expo_jsi_is_promise_fn is_promise;
   expo_jsi_is_error_fn is_error;
   expo_jsi_coerce_to_string_fn coerce_to_string;
-  expo_jsi_create_ref_scope_fn create_ref_scope;
-  expo_jsi_release_ref_scope_fn release_ref_scope;
-  expo_jsi_value_ref_get_kind_fn value_ref_get_kind;
-  expo_jsi_value_ref_get_bool_fn value_ref_get_bool;
-  expo_jsi_value_ref_get_double_fn value_ref_get_double;
-  expo_jsi_value_ref_get_string_fn value_ref_get_string;
-  expo_jsi_value_ref_coerce_to_string_fn value_ref_coerce_to_string;
-  expo_jsi_value_ref_get_property_fn value_ref_get_property;
-  expo_jsi_value_ref_get_value_at_index_fn value_ref_get_value_at_index;
-  expo_jsi_value_ref_get_array_length_fn value_ref_get_array_length;
-  expo_jsi_value_ref_retain_fn value_ref_retain;
-  expo_jsi_value_ref_retain_object_fn value_ref_retain_object;
-  expo_jsi_value_ref_retain_array_fn value_ref_retain_array;
 } expo_jsi_api;
 
 #ifdef __cplusplus

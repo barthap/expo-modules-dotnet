@@ -1,5 +1,3 @@
-using Expo.JSI.Interop;
-
 namespace Expo.JSI;
 
 public sealed class JavaScriptArray : IJavaScriptValueRepresentable, IDisposable
@@ -13,78 +11,30 @@ public sealed class JavaScriptArray : IJavaScriptValueRepresentable, IDisposable
     this.handle = handle;
   }
 
-  public uint Length
+  private JavaScriptArrayInner Inner
   {
     get
     {
       ThrowIfDisposed();
-      unsafe
-      {
-        ExpoJsiError error;
-        var length = context.Api->GetArrayLength(context.RuntimeHandle, handle, &error);
-        context.ThrowIfError(error, "Failed to read JavaScript array length.");
-        return length;
-      }
+      return new JavaScriptArrayInner(context, handle);
     }
   }
 
-  public JavaScriptValue GetValue(uint index)
-  {
-    ThrowIfDisposed();
-    unsafe
-    {
-      var result = context.Api->GetArrayValueAtIndex(context.RuntimeHandle, handle, index);
-      if (result.Ok == 0 || result.Value == 0)
-      {
-        JsiContext.ThrowNativeError(result.Error, "Failed to get JavaScript array value.");
-      }
-      return JavaScriptValue.FromOwnedHandle(context, result.Value);
-    }
-  }
+  public uint Length => Inner.Length;
+
+  public JavaScriptValue GetValue(uint index) =>
+    JavaScriptValue.FromOwnedHandle(context, Inner.GetValue(index));
 
   public void SetValue(uint index, JavaScriptValue value)
   {
-    ThrowIfDisposed();
     ArgumentNullException.ThrowIfNull(value);
-    unsafe
-    {
-      var error = context.Api->SetArrayValueAtIndex(
-        context.RuntimeHandle,
-        handle,
-        index,
-        value.Handle
-      );
-      context.ThrowIfError(error, "Failed to set JavaScript array value.");
-    }
+    Inner.SetValue(index, value.Handle);
   }
 
-  public JavaScriptObject AsObject()
-  {
-    ThrowIfDisposed();
-    unsafe
-    {
-      var result = context.Api->ConvertArrayToObject(context.RuntimeHandle, handle);
-      if (result.Ok == 0 || result.Object == 0)
-      {
-        JsiContext.ThrowNativeError(result.Error, "Failed to convert JavaScript array to object.");
-      }
-      return new JavaScriptObject(context, result.Object);
-    }
-  }
+  public JavaScriptObject AsObject() => new(context, Inner.AsObject());
 
-  public JavaScriptValue AsValue()
-  {
-    ThrowIfDisposed();
-    unsafe
-    {
-      var result = context.Api->ConvertArrayToValue(context.RuntimeHandle, handle);
-      if (result.Ok == 0 || result.Value == 0)
-      {
-        JsiContext.ThrowNativeError(result.Error, "Failed to convert JavaScript array to value.");
-      }
-      return JavaScriptValue.FromOwnedHandle(context, result.Value);
-    }
-  }
+  public JavaScriptValue AsValue() =>
+    JavaScriptValue.FromOwnedHandle(context, Inner.AsValue());
 
   public void Dispose()
   {

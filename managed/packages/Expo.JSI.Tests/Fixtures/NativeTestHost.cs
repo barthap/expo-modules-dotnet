@@ -41,7 +41,6 @@ internal static unsafe class NativeTestHost
     public readonly uint ReleasedStrings;
     public readonly uint ReleasedTaskContexts;
     public readonly uint SyncExecuteCalls;
-    public readonly uint ReleasedRefScopes;
   }
 
   internal static CreateResult CreateRuntime()
