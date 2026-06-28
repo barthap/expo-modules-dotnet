@@ -9,30 +9,42 @@ public sealed class JavaScriptPrimitiveTests
   public void CreateNumberRoundTrips()
   {
     using var fixture = HermesRuntimeFixture.Create();
-    using var value = fixture.Runtime.CreateNumber(42.5);
 
-    Assert.Equal(JavaScriptValueKind.Number, value.Kind);
-    Assert.Equal(42.5, value.AsDouble());
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var value = runtime.CreateNumber(42.5);
+      Assert.Equal(JavaScriptValueKind.Number, value.Kind);
+      Assert.Equal(42.5, value.AsDouble());
+      return true;
+    });
   }
 
   [Fact]
   public void CreateBoolTrueRoundTrips()
   {
     using var fixture = HermesRuntimeFixture.Create();
-    using var value = fixture.Runtime.CreateBool(true);
 
-    Assert.Equal(JavaScriptValueKind.Bool, value.Kind);
-    Assert.True(value.AsBool());
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var value = runtime.CreateBool(true);
+      Assert.Equal(JavaScriptValueKind.Bool, value.Kind);
+      Assert.True(value.AsBool());
+      return true;
+    });
   }
 
   [Fact]
   public void CreateBoolFalseRoundTrips()
   {
     using var fixture = HermesRuntimeFixture.Create();
-    using var value = fixture.Runtime.CreateBool(false);
 
-    Assert.Equal(JavaScriptValueKind.Bool, value.Kind);
-    Assert.False(value.AsBool());
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var value = runtime.CreateBool(false);
+      Assert.Equal(JavaScriptValueKind.Bool, value.Kind);
+      Assert.False(value.AsBool());
+      return true;
+    });
   }
 
   [Theory]
@@ -42,9 +54,13 @@ public sealed class JavaScriptPrimitiveTests
   public void CreateStringRoundTripsStrictUtf8(string expected)
   {
     using var fixture = HermesRuntimeFixture.Create();
-    using var value = fixture.Runtime.CreateString(expected);
 
-    AssertJavaScriptString(value, expected);
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var value = runtime.CreateString(expected);
+      AssertJavaScriptString(value, expected);
+      return true;
+    });
   }
 
   [Fact]
@@ -53,9 +69,14 @@ public sealed class JavaScriptPrimitiveTests
     using var fixture = HermesRuntimeFixture.Create();
     fixture.ResetCounters();
 
-    using (fixture.Runtime.CreateNumber(1))
+    fixture.Runtime.Execute(runtime =>
     {
-    }
+      using (runtime.CreateNumber(1))
+      {
+      }
+
+      return true;
+    });
 
     var counters = fixture.Counters;
     Assert.True(counters.ReleasedValues >= 1);
@@ -65,10 +86,14 @@ public sealed class JavaScriptPrimitiveTests
   public void ReadingStringReleasesNativeStringResultBuffer()
   {
     using var fixture = HermesRuntimeFixture.Create();
-    using var value = fixture.Runtime.CreateString("hello");
     fixture.ResetCounters();
 
-    Assert.Equal("hello", value.AsString());
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var value = runtime.CreateString("hello");
+      Assert.Equal("hello", value.AsString());
+      return true;
+    });
 
     var counters = fixture.Counters;
     Assert.True(counters.ReleasedStrings >= 1);

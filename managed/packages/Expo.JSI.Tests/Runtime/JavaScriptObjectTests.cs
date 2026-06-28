@@ -9,57 +9,77 @@ public sealed class JavaScriptObjectTests
   public void GetPropertyReadsValueSetFromManagedObject()
   {
     using var fixture = HermesRuntimeFixture.Create();
-    using var target = fixture.Runtime.CreateObject();
-    using var expected = fixture.Runtime.CreateNumber(42.5);
 
-    target.SetProperty("answer", expected);
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var target = runtime.CreateObject();
+      using var expected = runtime.CreateNumber(42.5);
 
-    using var actual = target.GetProperty("answer");
-    Assert.Equal(JavaScriptValueKind.Number, actual.Kind);
-    Assert.Equal(42.5, actual.AsDouble());
+      target.SetProperty("answer", expected);
+
+      using var actual = target.GetProperty("answer");
+      Assert.Equal(JavaScriptValueKind.Number, actual.Kind);
+      Assert.Equal(42.5, actual.AsDouble());
+      return true;
+    });
   }
 
   [Fact]
   public void SetPropertyIsVisibleToJavaScript()
   {
     using var fixture = HermesRuntimeFixture.Create();
-    using var global = fixture.Runtime.Global();
-    using var target = fixture.Runtime.CreateObject();
-    using var expected = fixture.Runtime.CreateString("Zoë\0JS");
 
-    target.SetProperty("message", expected);
-    using var targetValue = target.AsValue();
-    global.SetProperty("managedObject", targetValue);
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      using var target = runtime.CreateObject();
+      using var expected = runtime.CreateString("Zoë\0JS");
 
-    using var actual = fixture.Evaluate("globalThis.managedObject.message", "object-property.js");
-    Assert.Equal(JavaScriptValueKind.String, actual.Kind);
-    Assert.Equal("Zoë\0JS", actual.AsString());
+      target.SetProperty("message", expected);
+      using var targetValue = target.AsValue();
+      global.SetProperty("managedObject", targetValue);
+
+      using var actual = fixture.Evaluate("globalThis.managedObject.message", "object-property.js");
+      Assert.Equal(JavaScriptValueKind.String, actual.Kind);
+      Assert.Equal("Zoë\0JS", actual.AsString());
+      return true;
+    });
   }
 
   [Fact]
   public void GetPropertyReadsValueCreatedByJavaScript()
   {
     using var fixture = HermesRuntimeFixture.Create();
-    using var value = fixture.Evaluate("({ message: 'hello from JS' })", "object-literal.js");
-    using var target = value.AsObject();
 
-    using var actual = target.GetProperty("message");
-    Assert.Equal(JavaScriptValueKind.String, actual.Kind);
-    Assert.Equal("hello from JS", actual.AsString());
+    fixture.Runtime.Execute(_ =>
+    {
+      using var value = fixture.Evaluate("({ message: 'hello from JS' })", "object-literal.js");
+      using var target = value.AsObject();
+
+      using var actual = target.GetProperty("message");
+      Assert.Equal(JavaScriptValueKind.String, actual.Kind);
+      Assert.Equal("hello from JS", actual.AsString());
+      return true;
+    });
   }
 
   [Fact]
   public void Utf8PropertyNameRoundTrips()
   {
     using var fixture = HermesRuntimeFixture.Create();
-    using var target = fixture.Runtime.CreateObject();
-    using var expected = fixture.Runtime.CreateString("ok");
 
-    target.SetProperty("zażółć", expected);
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var target = runtime.CreateObject();
+      using var expected = runtime.CreateString("ok");
 
-    using var actual = target.GetProperty("zażółć");
-    Assert.Equal(JavaScriptValueKind.String, actual.Kind);
-    Assert.Equal("ok", actual.AsString());
+      target.SetProperty("zażółć", expected);
+
+      using var actual = target.GetProperty("zażółć");
+      Assert.Equal(JavaScriptValueKind.String, actual.Kind);
+      Assert.Equal("ok", actual.AsString());
+      return true;
+    });
   }
 
   [Fact]
@@ -68,9 +88,14 @@ public sealed class JavaScriptObjectTests
     using var fixture = HermesRuntimeFixture.Create();
     fixture.ResetCounters();
 
-    using (fixture.Runtime.CreateObject())
+    fixture.Runtime.Execute(runtime =>
     {
-    }
+      using (runtime.CreateObject())
+      {
+      }
+
+      return true;
+    });
 
     var counters = fixture.Counters;
     Assert.True(counters.ReleasedObjects >= 1);

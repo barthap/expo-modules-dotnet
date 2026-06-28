@@ -9,25 +9,30 @@ public sealed class HostFunctionErrorTests
   public void HostFunctionManagedExceptionIsCatchableInJavaScript()
   {
     using var fixture = HermesRuntimeFixture.Create();
-    using var global = fixture.Runtime.Global();
-    using var function = fixture.Runtime.CreateHostFunction(
-        "throwFromManaged",
-        0,
-        static (runtime, thisValue, arguments, context) =>
-        {
-          throw new InvalidOperationException("managed boom");
-        },
-        new object()
-    );
-    using var functionValue = function.AsValue();
-    global.SetProperty("throwFromManaged", functionValue);
 
-    using var result = fixture.Evaluate(
-        "try { globalThis.throwFromManaged(); 'no error'; } catch (e) { e.message; }",
-        "host-function-error.js"
-    );
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      using var function = runtime.CreateHostFunction(
+          "throwFromManaged",
+          0,
+          static (callbackRuntime, thisValue, arguments, context) =>
+          {
+            throw new InvalidOperationException("managed boom");
+          },
+          new object()
+      );
+      using var functionValue = function.AsValue();
+      global.SetProperty("throwFromManaged", functionValue);
 
-    Assert.Equal(JavaScriptValueKind.String, result.Kind);
-    Assert.Contains("managed boom", result.AsString());
+      using var result = fixture.Evaluate(
+          "try { globalThis.throwFromManaged(); 'no error'; } catch (e) { e.message; }",
+          "host-function-error.js"
+      );
+
+      Assert.Equal(JavaScriptValueKind.String, result.Kind);
+      Assert.Contains("managed boom", result.AsString());
+      return true;
+    });
   }
 }

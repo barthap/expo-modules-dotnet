@@ -11,30 +11,40 @@ public sealed class ArrayConversionTests
   public void GeneratedLookingCodeDecodesJavaScriptArrayIntoReadOnlyListParameter()
   {
     using var fixture = HermesRuntimeFixture.Create();
-    GeneratedArrayModuleProvider.Register(fixture.Runtime);
 
-    using var result = fixture.Evaluate(
-        "globalThis.expo.modules.Array.sum([1, 2, 3.5])",
-        "array-sum.js"
-    );
+    fixture.Runtime.Execute(runtime =>
+    {
+      GeneratedArrayModuleProvider.Register(runtime);
 
-    Assert.Equal(JavaScriptValueKind.Number, result.Kind);
-    Assert.Equal(6.5, result.AsDouble());
+      using var result = fixture.Evaluate(
+          "globalThis.expo.modules.Array.sum([1, 2, 3.5])",
+          "array-sum.js"
+      );
+
+      Assert.Equal(JavaScriptValueKind.Number, result.Kind);
+      Assert.Equal(6.5, result.AsDouble());
+      return true;
+    });
   }
 
   [Fact]
   public void GeneratedLookingCodeEncodesReadOnlyListReturnAsJavaScriptArray()
   {
     using var fixture = HermesRuntimeFixture.Create();
-    GeneratedArrayModuleProvider.Register(fixture.Runtime);
 
-    using var result = fixture.Evaluate(
-        "const labels = globalThis.expo.modules.Array.labels(); Array.isArray(labels) && labels.join(',')",
-        "array-labels.js"
-    );
+    fixture.Runtime.Execute(runtime =>
+    {
+      GeneratedArrayModuleProvider.Register(runtime);
 
-    Assert.Equal(JavaScriptValueKind.String, result.Kind);
-    Assert.Equal("one,two", result.AsString());
+      using var result = fixture.Evaluate(
+          "const labels = globalThis.expo.modules.Array.labels(); Array.isArray(labels) && labels.join(',')",
+          "array-labels.js"
+      );
+
+      Assert.Equal(JavaScriptValueKind.String, result.Kind);
+      Assert.Equal("one,two", result.AsString());
+      return true;
+    });
   }
 
   private sealed class ArrayModule

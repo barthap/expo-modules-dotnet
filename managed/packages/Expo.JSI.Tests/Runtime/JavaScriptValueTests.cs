@@ -17,9 +17,13 @@ public sealed class JavaScriptValueTests
   public void EvaluatedJavaScriptValuesReportKind(string source, JavaScriptValueKind expected)
   {
     using var fixture = HermesRuntimeFixture.Create();
-    using var value = fixture.Evaluate(source, "value-kind.js");
 
-    Assert.Equal(expected, value.Kind);
+    fixture.Runtime.Execute(_ =>
+    {
+      using var value = fixture.Evaluate(source, "value-kind.js");
+      Assert.Equal(expected, value.Kind);
+      return true;
+    });
   }
 
   [Theory]
@@ -35,23 +39,31 @@ public sealed class JavaScriptValueTests
   )
   {
     using var fixture = HermesRuntimeFixture.Create();
-    using var value = fixture.Evaluate(source, "wrong-type.js");
 
-    var exception = Assert.Throws<InvalidOperationException>(
-        () => ReadWithConversion(value, conversion)
-    );
-    Assert.Contains(expectedMessage, exception.Message);
+    fixture.Runtime.Execute(_ =>
+    {
+      using var value = fixture.Evaluate(source, "wrong-type.js");
+      var exception = Assert.Throws<InvalidOperationException>(
+          () => ReadWithConversion(value, conversion)
+      );
+      Assert.Contains(expectedMessage, exception.Message);
+      return true;
+    });
   }
 
   [Fact]
   public void UsingDisposedValueThrowsObjectDisposedException()
   {
     using var fixture = HermesRuntimeFixture.Create();
-    var value = fixture.Runtime.CreateNumber(1);
 
-    value.Dispose();
+    fixture.Runtime.Execute(runtime =>
+    {
+      var value = runtime.CreateNumber(1);
+      value.Dispose();
 
-    Assert.Throws<ObjectDisposedException>(() => value.Kind);
+      Assert.Throws<ObjectDisposedException>(() => value.Kind);
+      return true;
+    });
   }
 
   private static void ReadWithConversion(JavaScriptValue value, string conversion)

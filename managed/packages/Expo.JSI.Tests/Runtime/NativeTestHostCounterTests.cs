@@ -13,9 +13,14 @@ public sealed class NativeTestHostCounterTests
     first.ResetCounters();
     second.ResetCounters();
 
-    using (first.Runtime.CreateNumber(1))
+    first.Runtime.Execute(runtime =>
     {
-    }
+      using (runtime.CreateNumber(1))
+      {
+      }
+
+      return true;
+    });
 
     Assert.True(first.Counters.ReleasedValues >= 1);
     Assert.Equal(0u, second.Counters.ReleasedValues);
