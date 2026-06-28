@@ -226,7 +226,8 @@ public sealed unsafe class JavaScriptRuntime
     );
     if (error.Code != 0)
     {
-      RuntimeTaskContext.Release(taskContext);
+      // The native runtime-task ABI owns taskContext after this call returns,
+      // including failure paths where queued sync work is released during shutdown.
       JsiContext.ThrowNativeError(error, "Failed to execute JavaScript runtime task.");
     }
 
@@ -256,7 +257,8 @@ public sealed unsafe class JavaScriptRuntime
     );
     if (error.Code != 0)
     {
-      RuntimeTaskContext.Release(taskContext);
+      // The native runtime-task ABI owns taskContext after this call returns,
+      // including early errors after native wraps the managed callback.
       JsiContext.ThrowNativeError(error, "Failed to schedule JavaScript runtime task.");
       return task;
     }

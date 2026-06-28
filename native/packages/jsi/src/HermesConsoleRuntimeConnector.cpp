@@ -64,6 +64,8 @@ void HermesConsoleRuntimeExecutor::executeAsync(
       if (state_ != State::Running) {
         return;
       }
+      // The queue stores owning callables. Dropping a callable during shutdown
+      // must release any captured managed task context without invoking it.
       queue_.push_back(QueuedTask{priority, nextSequence_++, std::move(work), nullptr});
     }
     workAvailable_.notify_one();
@@ -99,6 +101,8 @@ void HermesConsoleRuntimeExecutor::executeSync(std::function<void(facebook::jsi:
   }
   workAvailable_.notify_one();
 
+  // Wait on SyncResult rather than mutex_ so the executor can acquire mutex_,
+  // pop this task, run it, and publish completion without a lock cycle.
   std::unique_lock<std::mutex> resultLock(result->mutex);
   result->condition.wait(resultLock, [result]() { return result->finished; });
   if (result->cancelled) {
@@ -127,6 +131,8 @@ void HermesConsoleRuntimeExecutor::shutdown() noexcept
     std::lock_guard<std::mutex> lock(mutex_);
     if (state_ != State::Stopped) {
       state_ = State::Stopping;
+      // Queued work has not started, so it is released rather than invoked.
+      // A running task is allowed to finish on the executor thread below.
       releaseQueuedTasksLocked();
     }
   }
@@ -167,6 +173,9 @@ void HermesConsoleRuntimeExecutor::threadMain()
         workAvailable_.wait(lock,
                             [this]() { return state_ == State::Stopping || !queue_.empty(); });
 
+        // Shutdown drains the queue by release, not execution. Once the current
+        // task is done and the queue is empty, the runtime can be destroyed on
+        // the executor thread that owns it.
         if (state_ == State::Stopping && queue_.empty()) {
           state_ = State::Stopped;
           runtime_.reset();
@@ -178,6 +187,8 @@ void HermesConsoleRuntimeExecutor::threadMain()
         auto index = nextTaskIndexLocked();
         task = std::move(queue_[index]);
         queue_.erase(queue_.begin() + static_cast<std::ptrdiff_t>(index));
+        // activeTasks_ keeps drain()/WaitUntilIdle from observing idle between
+        // queue pop and the task's post-callback microtask checkpoint.
         activeTasks_++;
       }
 
@@ -231,6 +242,8 @@ size_t HermesConsoleRuntimeExecutor::nextTaskIndexLocked() const
 void HermesConsoleRuntimeExecutor::runTask(std::function<void(facebook::jsi::Runtime &)> work)
 {
   if (isExecuting_) {
+    // Reentrant sync execution is already inside an executor-owned runtime
+    // task. Running inline avoids deadlock and preserves one outer checkpoint.
     work(runtime());
     return;
   }
@@ -268,6 +281,8 @@ void HermesConsoleRuntimeExecutor::releaseQueuedTasksLocked()
 {
   for (auto &task : queue_) {
     if (task.syncResult != nullptr) {
+      // Wake sync callers whose work was accepted but never ran. Async callers
+      // are notified by destruction of their captured ScheduledTaskContext.
       {
         std::lock_guard<std::mutex> resultLock(task.syncResult->mutex);
         task.syncResult->cancelled = true;

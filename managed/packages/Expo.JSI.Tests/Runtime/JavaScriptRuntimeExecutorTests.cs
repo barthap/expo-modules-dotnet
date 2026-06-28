@@ -344,4 +344,71 @@ public sealed class JavaScriptRuntimeExecutorTests
     );
     Assert.Equal(nameof(JavaScriptRuntime), error.ObjectName);
   }
+
+  [Fact]
+  public async Task PendingExecuteSyncFaultsOnceWhenRuntimeIsDisposed()
+  {
+    var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+    using var blockerStarted = new ManualResetEventSlim(false);
+    using var releaseBlocker = new ManualResetEventSlim(false);
+    using var executeStarted = new ManualResetEventSlim(false);
+    var testCancellation = TestContext.Current.CancellationToken;
+    var syncBodyRan = false;
+
+    var blockerTask = fixture.Runtime.ScheduleAsync(
+        _ =>
+        {
+          blockerStarted.Set();
+          if (!releaseBlocker.Wait(TimeSpan.FromSeconds(5), testCancellation))
+          {
+            throw new TimeoutException("Timed out waiting to release executor blocker.");
+          }
+        },
+        priority: JavaScriptTaskPriority.Immediate,
+        cancellationToken: testCancellation
+    );
+
+    Assert.True(blockerStarted.Wait(TimeSpan.FromSeconds(1), testCancellation));
+
+    var executeTask = Task.Run(() =>
+    {
+      executeStarted.Set();
+      return fixture.Runtime.Execute(js =>
+      {
+        syncBodyRan = true;
+        using var value = js.CreateNumber(1);
+        return value.AsDouble();
+      });
+    }, testCancellation);
+
+    Assert.True(executeStarted.Wait(TimeSpan.FromSeconds(1), testCancellation));
+
+    var observedNativeSyncCall = false;
+    for (var attempt = 0; attempt < 50; attempt++)
+    {
+      if (fixture.Counters.SyncExecuteCalls >= 1)
+      {
+        observedNativeSyncCall = true;
+        break;
+      }
+      await Task.Delay(TimeSpan.FromMilliseconds(10), testCancellation);
+    }
+    Assert.True(observedNativeSyncCall);
+
+    var releaseTask = Task.Run(async () =>
+    {
+      await Task.Delay(TimeSpan.FromMilliseconds(50), testCancellation);
+      releaseBlocker.Set();
+    }, testCancellation);
+
+    fixture.Dispose();
+    await releaseTask.WaitAsync(TimeSpan.FromSeconds(1), testCancellation);
+    await blockerTask.WaitAsync(TimeSpan.FromSeconds(1), testCancellation);
+
+    Assert.False(syncBodyRan);
+    await Assert.ThrowsAsync<InvalidOperationException>(
+        async () => await executeTask.WaitAsync(TimeSpan.FromSeconds(1), testCancellation)
+    );
+  }
 }

@@ -175,11 +175,10 @@ expo_jsi_error countedScheduleTask(expo_jsi_runtime_handle runtime,
   const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
   auto *countedContext =
     new CountedTaskContext{testhost, callback, taskContext, releaseTaskContext};
+  // runtime_schedule_task owns countedContext after this call, including error
+  // paths where the inner ABI validates the runtime before queueing work.
   auto error = api->runtime_schedule_task(
     runtime, priority, countedTaskCallback, countedContext, countedReleaseTaskContext);
-  if (error.code != 0) {
-    delete countedContext;
-  }
   return error;
 }
 
@@ -205,11 +204,10 @@ expo_jsi_error countedExecuteSync(expo_jsi_runtime_handle runtime,
   const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
   auto *countedContext =
     new CountedTaskContext{testhost, callback, taskContext, releaseTaskContext};
+  // runtime_execute_sync owns countedContext after this call. In particular,
+  // shutdown may release queued sync work before returning an error here.
   auto error = api->runtime_execute_sync(
     runtime, countedTaskCallback, countedContext, countedReleaseTaskContext);
-  if (error.code != 0) {
-    delete countedContext;
-  }
   return error;
 }
 

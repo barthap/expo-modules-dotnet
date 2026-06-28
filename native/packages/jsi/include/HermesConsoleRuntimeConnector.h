@@ -45,6 +45,9 @@ private:
     Stopped,
   };
 
+  // Used only by executeSync callers that are not on the runtime thread. This
+  // has its own mutex so the caller can block without holding the queue mutex
+  // needed by the executor thread.
   struct SyncResult {
     bool finished = false;
     bool cancelled = false;
@@ -68,6 +71,8 @@ private:
   void notifyIdleIfNeededLocked();
 
   HermesConsoleRuntimeConnector *connector_;
+  // Protects lifecycle state, queue_, runtime publication, runtimeThreadId_,
+  // and activeTasks_. It must never be held while running user/managed code.
   mutable std::mutex mutex_;
   std::condition_variable workAvailable_;
   std::condition_variable idleChanged_;
@@ -76,7 +81,11 @@ private:
   std::unique_ptr<facebook::jsi::Runtime> runtime_;
   std::thread::id runtimeThreadId_;
   uint64_t nextSequence_ = 0;
+  // Counts executor-thread callbacks that have been popped from the queue but
+  // have not yet completed their microtask checkpoint.
   uint32_t activeTasks_ = 0;
+  // Executor-thread-only reentrancy marker. Nested executeSync calls run inline
+  // and defer the microtask checkpoint to the outermost runtime task.
   bool isExecuting_ = false;
   State state_ = State::Created;
   std::exception_ptr startupException_;

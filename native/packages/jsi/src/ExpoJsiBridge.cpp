@@ -1034,6 +1034,21 @@ private:
   bool released_ = false;
 };
 
+std::shared_ptr<ScheduledTaskContext> makeScheduledTaskContext(
+  expo_jsi_task_callback_fn callback,
+  void *taskContext,
+  expo_jsi_release_task_context_fn releaseTaskContext)
+{
+  try {
+    return std::make_shared<ScheduledTaskContext>(callback, taskContext, releaseTaskContext);
+  } catch (...) {
+    if (releaseTaskContext != nullptr) {
+      releaseTaskContext(taskContext);
+    }
+    throw;
+  }
+}
+
 expo_jsi_function_result createHostFunction(
   expo_jsi_runtime_handle runtime,
   const char *name,
@@ -1187,17 +1202,21 @@ expo_jsi_error scheduleTask(expo_jsi_runtime_handle runtime,
                             void *taskContext,
                             expo_jsi_release_task_context_fn releaseTaskContext)
 {
-  expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandleWithoutAccess(runtime, &error);
-  if (runtimeHandle == nullptr) {
-    return error;
-  }
   if (callback == nullptr) {
     return makeError(54, "Task callback is null.");
   }
 
   try {
-    auto task = std::make_shared<ScheduledTaskContext>(callback, taskContext, releaseTaskContext);
+    // From this point native owns taskContext. If validation fails, the local
+    // RAII wrapper releases it before returning the error to managed code.
+    auto task = makeScheduledTaskContext(callback, taskContext, releaseTaskContext);
+
+    expo_jsi_error error{};
+    auto *runtimeHandle = tryRuntimeHandleWithoutAccess(runtime, &error);
+    if (runtimeHandle == nullptr) {
+      return error;
+    }
+
     runtimeHandle->runtimeExecutor().executeAsync(
       toRuntimeTaskPriority(priority), [task](facebook::jsi::Runtime &) { task->invoke(); });
     return makeOk();
@@ -1223,20 +1242,24 @@ expo_jsi_error executeSync(expo_jsi_runtime_handle runtime,
                            void *taskContext,
                            expo_jsi_release_task_context_fn releaseTaskContext)
 {
-  expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandleWithoutAccess(runtime, &error);
-  if (runtimeHandle == nullptr) {
-    return error;
-  }
   if (callback == nullptr) {
     return makeError(57, "Task callback is null.");
   }
-  if (!runtimeHandle->runtimeExecutor().canExecuteSync()) {
-    return makeError(58, "Synchronous runtime execution is not supported.");
-  }
 
   try {
-    auto task = std::make_shared<ScheduledTaskContext>(callback, taskContext, releaseTaskContext);
+    // From this point native owns taskContext. This avoids a double-release
+    // when shutdown clears queued sync work and executeSync returns an error.
+    auto task = makeScheduledTaskContext(callback, taskContext, releaseTaskContext);
+
+    expo_jsi_error error{};
+    auto *runtimeHandle = tryRuntimeHandleWithoutAccess(runtime, &error);
+    if (runtimeHandle == nullptr) {
+      return error;
+    }
+    if (!runtimeHandle->runtimeExecutor().canExecuteSync()) {
+      return makeError(58, "Synchronous runtime execution is not supported.");
+    }
+
     runtimeHandle->runtimeExecutor().executeSync(
       [task](facebook::jsi::Runtime &) { task->invoke(); });
     return makeOk();
