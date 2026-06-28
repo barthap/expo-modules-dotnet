@@ -15,6 +15,7 @@ internal static unsafe class NativeTestHost
   private static delegate* unmanaged[Cdecl]<nint, Counters> getCounters;
   private static delegate* unmanaged[Cdecl]<nint, void> resetCounters;
   private static delegate* unmanaged[Cdecl]<nint, void> drainTasks;
+  private static delegate* unmanaged[Cdecl]<nint, ExpoJsiError> waitUntilIdle;
   private static delegate* unmanaged[Cdecl]<nint, byte, void> setSyncExecutionSupported;
   private static delegate* unmanaged[Cdecl]<nint, void> releaseRuntime;
 
@@ -98,6 +99,16 @@ internal static unsafe class NativeTestHost
     drainTasks(testHostRuntime);
   }
 
+  internal static void WaitUntilIdle(nint testHostRuntime)
+  {
+    EnsureLoaded();
+    var error = waitUntilIdle(testHostRuntime);
+    if (error.Code != 0)
+    {
+      ThrowNativeError(error, "Failed to wait for Hermes runtime idle.");
+    }
+  }
+
   internal static void SetSyncExecutionSupported(nint testHostRuntime, bool supported)
   {
     EnsureLoaded();
@@ -145,6 +156,11 @@ internal static unsafe class NativeTestHost
       (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
           library,
           "expo_jsi_testhost_drain_tasks"
+      );
+    waitUntilIdle =
+      (delegate* unmanaged[Cdecl]<nint, ExpoJsiError>)LoadExport(
+          library,
+          "expo_jsi_testhost_wait_until_idle"
       );
     setSyncExecutionSupported =
       (delegate* unmanaged[Cdecl]<nint, byte, void>)LoadExport(

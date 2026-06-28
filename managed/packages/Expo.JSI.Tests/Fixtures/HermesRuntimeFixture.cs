@@ -42,6 +42,11 @@ public sealed class HermesRuntimeFixture : IDisposable
     NativeTestHost.DrainTasks(testHostRuntime);
   }
 
+  public void WaitUntilIdle()
+  {
+    NativeTestHost.WaitUntilIdle(testHostRuntime);
+  }
+
   public void DisableSyncExecutionForTesting()
   {
     NativeTestHost.SetSyncExecutionSupported(testHostRuntime, false);

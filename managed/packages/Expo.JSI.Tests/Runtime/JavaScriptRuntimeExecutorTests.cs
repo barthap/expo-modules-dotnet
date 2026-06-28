@@ -8,28 +8,90 @@ namespace Expo.JSI.Tests.Runtime;
 public sealed class JavaScriptRuntimeExecutorTests
 {
   [Fact]
-  public async Task ExecuteAsyncRunsOnlyAfterDrain()
+  public async Task ExecuteAsyncRunsOnExecutorThreadWithoutManualDrain()
   {
     using var fixture = HermesRuntimeFixture.Create();
-    var ran = false;
+    var callerThread = Environment.CurrentManagedThreadId;
 
-    var task = fixture.Runtime.ExecuteAsync(
+    var executorThread = await fixture.Runtime.ExecuteAsync(
         js =>
         {
-          ran = true;
           using var value = js.CreateNumber(42);
-          return value.AsDouble();
+          Assert.Equal(42, value.AsDouble());
+          return Environment.CurrentManagedThreadId;
+        },
+        cancellationToken: TestContext.Current.CancellationToken
+    ).WaitAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
+
+    Assert.NotEqual(callerThread, executorThread);
+  }
+
+  [Fact]
+  public void ExecuteFromOutsideRuntimeThreadPostsAndWaits()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var callerThread = Environment.CurrentManagedThreadId;
+
+    var executorThread = fixture.Runtime.Execute(js =>
+    {
+      using var value = js.CreateNumber(7);
+      Assert.Equal(7, value.AsDouble());
+      return Environment.CurrentManagedThreadId;
+    });
+
+    Assert.NotEqual(callerThread, executorThread);
+  }
+
+  [Fact]
+  public void NestedExecuteFromExecutorThreadRunsInline()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    var result = fixture.Runtime.Execute(js =>
+    {
+      var outerThread = Environment.CurrentManagedThreadId;
+      var innerThread = js.Execute(inner =>
+      {
+        using var value = inner.CreateBool(true);
+        Assert.True(value.AsBool());
+        return Environment.CurrentManagedThreadId;
+      });
+
+      return (outerThread, innerThread);
+    });
+
+    Assert.Equal(result.outerThread, result.innerThread);
+  }
+
+  [Fact]
+  public async Task WaitUntilIdleIncludesWorkQueuedByRunningWork()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var outerRan = false;
+    var innerRan = false;
+
+    var outerTask = fixture.Runtime.ScheduleAsync(
+        js =>
+        {
+          outerRan = true;
+          _ = js.ScheduleAsync(
+              inner =>
+              {
+                using var value = inner.CreateString("inner");
+                Assert.Equal("inner", value.AsString());
+                innerRan = true;
+              },
+              cancellationToken: TestContext.Current.CancellationToken
+          );
         },
         cancellationToken: TestContext.Current.CancellationToken
     );
 
-    Assert.False(ran);
-    Assert.False(task.IsCompleted);
+    fixture.WaitUntilIdle();
 
-    fixture.DrainTasks();
-
-    Assert.True(ran);
-    Assert.Equal(42, await task);
+    await outerTask.WaitAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
+    Assert.True(outerRan);
+    Assert.True(innerRan);
   }
 
   [Fact]
@@ -45,9 +107,12 @@ public sealed class JavaScriptRuntimeExecutorTests
         cancellationToken: TestContext.Current.CancellationToken
     );
 
-    fixture.DrainTasks();
-
-    var error = await Assert.ThrowsAsync<InvalidOperationException>(() => task);
+    var error = await Assert.ThrowsAsync<InvalidOperationException>(
+        async () => await task.WaitAsync(
+            TimeSpan.FromSeconds(1),
+            TestContext.Current.CancellationToken
+        )
+    );
     Assert.Equal("runtime body failed", error.Message);
   }
 
@@ -64,9 +129,12 @@ public sealed class JavaScriptRuntimeExecutorTests
         cancellationToken: TestContext.Current.CancellationToken
     );
 
-    fixture.DrainTasks();
-
-    var error = await Assert.ThrowsAsync<InvalidOperationException>(() => task);
+    var error = await Assert.ThrowsAsync<InvalidOperationException>(
+        async () => await task.WaitAsync(
+            TimeSpan.FromSeconds(1),
+            TestContext.Current.CancellationToken
+        )
+    );
     Assert.Equal("scheduled body failed", error.Message);
   }
 
@@ -95,24 +163,50 @@ public sealed class JavaScriptRuntimeExecutorTests
   {
     using var fixture = HermesRuntimeFixture.Create();
     fixture.ResetCounters();
+    using var blockerStarted = new ManualResetEventSlim(false);
+    using var releaseBlocker = new ManualResetEventSlim(false);
     using var cts = new CancellationTokenSource();
+    var testCancellation = TestContext.Current.CancellationToken;
     var ran = false;
+
+    var blockerTask = fixture.Runtime.ScheduleAsync(
+        _ =>
+        {
+          blockerStarted.Set();
+          if (!releaseBlocker.Wait(TimeSpan.FromSeconds(5), testCancellation))
+          {
+            throw new TimeoutException("Timed out waiting to release executor blocker.");
+          }
+        },
+        priority: JavaScriptTaskPriority.Immediate,
+        cancellationToken: testCancellation
+    );
+
+    Assert.True(blockerStarted.Wait(TimeSpan.FromSeconds(1), testCancellation));
 
     var task = fixture.Runtime.ScheduleAsync(
         _ =>
         {
           ran = true;
         },
+        priority: JavaScriptTaskPriority.Idle,
         cancellationToken: cts.Token
     );
 
     cts.Cancel();
-    fixture.DrainTasks();
+    releaseBlocker.Set();
+    fixture.WaitUntilIdle();
+    await blockerTask.WaitAsync(TimeSpan.FromSeconds(1), testCancellation);
 
     Assert.False(ran);
     Assert.True(task.IsCanceled);
-    await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
-    Assert.Equal(1u, fixture.Counters.ReleasedTaskContexts);
+    await Assert.ThrowsAnyAsync<OperationCanceledException>(
+        async () => await task.WaitAsync(
+            TimeSpan.FromSeconds(1),
+            testCancellation
+        )
+    );
+    Assert.Equal(2u, fixture.Counters.ReleasedTaskContexts);
   }
 
   [Fact]
@@ -133,10 +227,13 @@ public sealed class JavaScriptRuntimeExecutorTests
         cancellationToken: cts.Token
     );
 
-    fixture.DrainTasks();
+    var result = await task.WaitAsync(
+        TimeSpan.FromSeconds(1),
+        TestContext.Current.CancellationToken
+    );
 
     Assert.True(bodyStarted);
-    Assert.Equal("finished", await task);
+    Assert.Equal("finished", result);
   }
 
   [Fact]
@@ -189,9 +286,9 @@ public sealed class JavaScriptRuntimeExecutorTests
         cancellationToken: TestContext.Current.CancellationToken
     );
 
-    fixture.DrainTasks();
+    fixture.WaitUntilIdle();
 
-    await task;
+    await task.WaitAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
     Assert.Equal(1u, fixture.Counters.ReleasedTaskContexts);
   }
 
@@ -199,21 +296,51 @@ public sealed class JavaScriptRuntimeExecutorTests
   public async Task PendingScheduledTaskFaultsWhenRuntimeIsDisposed()
   {
     var fixture = HermesRuntimeFixture.Create();
-    var ran = false;
+    using var blockerStarted = new ManualResetEventSlim(false);
+    using var releaseBlocker = new ManualResetEventSlim(false);
+    var testCancellation = TestContext.Current.CancellationToken;
+    var pendingRan = false;
 
-    var task = fixture.Runtime.ScheduleAsync(
+    var blockerTask = fixture.Runtime.ScheduleAsync(
         _ =>
         {
-          ran = true;
+          blockerStarted.Set();
+          if (!releaseBlocker.Wait(TimeSpan.FromSeconds(5), testCancellation))
+          {
+            throw new TimeoutException("Timed out waiting to release executor blocker.");
+          }
         },
-        cancellationToken: TestContext.Current.CancellationToken
+        priority: JavaScriptTaskPriority.Immediate,
+        cancellationToken: testCancellation
     );
 
-    fixture.Dispose();
+    Assert.True(blockerStarted.Wait(TimeSpan.FromSeconds(1), testCancellation));
 
-    Assert.False(ran);
+    var pendingTask = fixture.Runtime.ScheduleAsync(
+        _ =>
+        {
+          pendingRan = true;
+        },
+        priority: JavaScriptTaskPriority.Idle,
+        cancellationToken: testCancellation
+    );
+
+    var releaseTask = Task.Run(async () =>
+    {
+      await Task.Delay(TimeSpan.FromMilliseconds(50), testCancellation);
+      releaseBlocker.Set();
+    }, testCancellation);
+
+    fixture.Dispose();
+    await releaseTask.WaitAsync(TimeSpan.FromSeconds(1), testCancellation);
+    await blockerTask.WaitAsync(TimeSpan.FromSeconds(1), testCancellation);
+
+    Assert.False(pendingRan);
     var error = await Assert.ThrowsAsync<ObjectDisposedException>(
-        async () => await task.WaitAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken)
+        async () => await pendingTask.WaitAsync(
+            TimeSpan.FromSeconds(1),
+            testCancellation
+        )
     );
     Assert.Equal(nameof(JavaScriptRuntime), error.ObjectName);
   }
