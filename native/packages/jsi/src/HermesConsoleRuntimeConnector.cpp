@@ -146,6 +146,9 @@ void HermesConsoleRuntimeExecutor::shutdown() noexcept
 
 void HermesConsoleRuntimeExecutor::threadMain()
 {
+  // This method is the only place that owns ordinary Hermes execution. The
+  // runtime is created here, all queued callbacks run here, and the runtime is
+  // destroyed here so JSI never migrates between host threads.
   {
     std::lock_guard<std::mutex> lock(mutex_);
     runtimeThreadId_ = std::this_thread::get_id();
@@ -241,6 +244,9 @@ size_t HermesConsoleRuntimeExecutor::nextTaskIndexLocked() const
 
 void HermesConsoleRuntimeExecutor::runTask(std::function<void(facebook::jsi::Runtime &)> work)
 {
+  // runTask is intentionally local to the executor thread. It assumes runtime
+  // ownership has already been established by the executor loop; reentrant
+  // sync execution reuses the active runtime task.
   if (isExecuting_) {
     // Reentrant sync execution is already inside an executor-owned runtime
     // task. Running inline avoids deadlock and preserves one outer checkpoint.

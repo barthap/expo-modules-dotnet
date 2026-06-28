@@ -23,18 +23,40 @@ public:
   explicit HermesConsoleRuntimeExecutor(HermesConsoleRuntimeConnector &connector);
   ~HermesConsoleRuntimeExecutor() override;
 
+  // Returns the Hermes runtime for code that is already running on the executor
+  // thread. This is an assertion boundary: non-executor callers must enter
+  // through executeAsync/executeSync instead of borrowing runtime access.
   facebook::jsi::Runtime &runtime();
+
+  // Passive lifecycle check used by ABI validation paths that must not touch
+  // Hermes from the caller thread.
   bool isRuntimeValid() const noexcept;
+
+  // Thread-affinity predicate for reentrant executor calls. The thread id is
+  // published during threadMain startup and remains stable until shutdown.
   bool isOnRuntimeThread() const noexcept;
 
+  // Enqueues work for the executor thread and returns after the queue accepts
+  // it. The callback always runs on the executor thread; callers that need
+  // completion should wait on the managed Task or drain the loop.
   void executeAsync(JsiRuntimeTaskPriority priority,
                     std::function<void(facebook::jsi::Runtime &)> work) noexcept override;
 
+  // A passive capability answer. This must not probe by calling executeSync,
+  // because probes can deadlock if the caller already holds a required lock.
   bool canExecuteSync() const noexcept override;
 
+  // Provides synchronous runtime access. Executor-thread callers run inline;
+  // other callers enqueue an Immediate task and block until that queued task
+  // either finishes, throws, or is cancelled by shutdown.
   void executeSync(std::function<void(facebook::jsi::Runtime &)> work) override;
 
+  // Waits for the loop to become idle. It does not manually execute queued
+  // work on the caller thread; the executor thread remains the only runner.
   void drain() override;
+
+  // Transitions the loop to Stopping, releases queued-but-not-running work, and
+  // joins the executor thread after any active task finishes.
   void shutdown() noexcept;
 
 private:
@@ -63,11 +85,26 @@ private:
     std::shared_ptr<SyncResult> syncResult;
   };
 
+  // Executor thread entry point. It creates and destroys the Hermes runtime on
+  // the same thread that runs all queued JSI work.
   void threadMain();
+
+  // Selects the next task by priority, then FIFO sequence. Caller must hold
+  // mutex_ and queue_ must be non-empty.
   size_t nextTaskIndexLocked() const;
+
+  // Runs a callback with executor-owned runtime access. This is local-only to
+  // the executor thread; external callers must use executeAsync/executeSync.
   void runTask(std::function<void(facebook::jsi::Runtime &)> work);
+
+  // Performs the host microtask checkpoint for the current runtime task.
   void drainMicrotasks();
+
+  // Releases queued work that will never run. Caller must hold mutex_.
   void releaseQueuedTasksLocked();
+
+  // Notifies drain waiters only when no queued or active task remains. Caller
+  // must hold mutex_.
   void notifyIdleIfNeededLocked();
 
   HermesConsoleRuntimeConnector *connector_;
