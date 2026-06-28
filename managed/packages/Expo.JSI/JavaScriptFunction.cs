@@ -1,5 +1,12 @@
 namespace Expo.JSI;
 
+/// <summary>
+/// Owns a JavaScript function handle.
+/// </summary>
+/// <remarks>
+/// Dispose this wrapper when the function handle is no longer needed. Use <see cref="AsValue" />
+/// to create an owned value wrapper for storing or passing the function as a JavaScript value.
+/// </remarks>
 public sealed class JavaScriptFunction : IJavaScriptValueRepresentable, IDisposable
 {
   private readonly JsiContext context;
@@ -11,6 +18,13 @@ public sealed class JavaScriptFunction : IJavaScriptValueRepresentable, IDisposa
     this.handle = handle;
   }
 
+  /// <summary>
+  /// Converts this function handle to an owned JavaScript value handle.
+  /// </summary>
+  /// <remarks>
+  /// The returned <see cref="JavaScriptValue" /> must be disposed independently. Disposing it does
+  /// not dispose this function wrapper.
+  /// </remarks>
   public JavaScriptValue AsValue()
   {
     ThrowIfDisposed();
@@ -28,6 +42,9 @@ public sealed class JavaScriptFunction : IJavaScriptValueRepresentable, IDisposa
     }
   }
 
+  /// <summary>
+  /// Releases the owned native function handle.
+  /// </summary>
   public void Dispose()
   {
     if (handle != 0)

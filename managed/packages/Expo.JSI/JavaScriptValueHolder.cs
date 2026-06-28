@@ -33,7 +33,5 @@ internal sealed class JavaScriptValueHolder : IJavaScriptValueRepresentable, IDi
   }
 
   [MemberNotNull(nameof(value))]
-  [MemberNotNull(nameof(value))]
-  private void ThrowIfDisposed() =>
-    ObjectDisposedException.ThrowIf(value is null, this);
+  private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(value is null, this);
 }

@@ -2,6 +2,13 @@ using Expo.JSI.Interop;
 
 namespace Expo.JSI;
 
+/// <summary>
+/// Owns a JavaScript promise capability handle.
+/// </summary>
+/// <remarks>
+/// Dispose this wrapper after resolving or rejecting the promise, or when abandoning the capability.
+/// The JavaScript promise object itself may still live in JavaScript after this handle is released.
+/// </remarks>
 public sealed class JavaScriptPromise : IJavaScriptValueRepresentable, IDisposable
 {
   private readonly JsiContext context;
@@ -13,6 +20,13 @@ public sealed class JavaScriptPromise : IJavaScriptValueRepresentable, IDisposab
     this.handle = handle;
   }
 
+  /// <summary>
+  /// Converts this promise handle to an owned JavaScript value handle.
+  /// </summary>
+  /// <remarks>
+  /// The returned <see cref="JavaScriptValue" /> must be disposed independently. Disposing it does
+  /// not dispose this promise wrapper.
+  /// </remarks>
   public JavaScriptValue AsValue()
   {
     ThrowIfDisposed();
@@ -30,16 +44,33 @@ public sealed class JavaScriptPromise : IJavaScriptValueRepresentable, IDisposab
     }
   }
 
+  /// <summary>
+  /// Resolves the JavaScript promise with an existing value.
+  /// </summary>
+  /// <remarks>
+  /// This method borrows <paramref name="value" /> for the duration of the call. Ownership of
+  /// <paramref name="value" /> stays with the caller.
+  /// </remarks>
   public void Resolve(JavaScriptValue value)
   {
     Settle(value, reject: false);
   }
 
+  /// <summary>
+  /// Rejects the JavaScript promise with an existing error or reason value.
+  /// </summary>
+  /// <remarks>
+  /// This method borrows <paramref name="error" /> for the duration of the call. Ownership of
+  /// <paramref name="error" /> stays with the caller.
+  /// </remarks>
   public void Reject(JavaScriptValue error)
   {
     Settle(error, reject: true);
   }
 
+  /// <summary>
+  /// Releases the owned native promise capability handle.
+  /// </summary>
   public void Dispose()
   {
     if (handle != 0)

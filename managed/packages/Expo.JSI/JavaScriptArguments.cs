@@ -2,6 +2,14 @@ using Expo.JSI.Interop;
 
 namespace Expo.JSI;
 
+/// <summary>
+/// Provides access to JavaScript arguments during a managed host-function callback.
+/// </summary>
+/// <remarks>
+/// Argument values are scoped to the callback invocation. Use <see cref="GetValue" /> to inspect an
+/// argument without creating an owned wrapper, and call <see cref="JavaScriptValueRef.Retain" /> if
+/// a value must escape the callback.
+/// </remarks>
 public readonly struct JavaScriptArguments
 {
   private readonly JsiContext context;
@@ -13,6 +21,9 @@ public readonly struct JavaScriptArguments
     this.handle = handle;
   }
 
+  /// <summary>
+  /// Gets the number of JavaScript arguments.
+  /// </summary>
   public uint Count
   {
     get
@@ -28,6 +39,13 @@ public readonly struct JavaScriptArguments
     }
   }
 
+  /// <summary>
+  /// Gets an argument as a scoped JavaScript value ref.
+  /// </summary>
+  /// <remarks>
+  /// The returned <see cref="JavaScriptValueRef" /> is valid only during the active host-function
+  /// callback. It does not own the argument handle.
+  /// </remarks>
   public JavaScriptValueRef GetValue(uint index)
   {
     ThrowIfNull();
