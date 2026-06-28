@@ -13,10 +13,8 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
     this.handle = handle;
   }
 
-  internal static JavaScriptValue FromOwnedHandle(
-      JsiContext context,
-      ExpoJsiValueHandle handle
-  ) => new(context, handle);
+  internal static JavaScriptValue FromOwnedHandle(JsiContext context, ExpoJsiValueHandle handle) =>
+    new(context, handle);
 
   internal ExpoJsiValueHandle Handle
   {
@@ -66,6 +64,15 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
     }
   }
 
+  public bool IsBool
+  {
+    get
+    {
+      ThrowIfDisposed();
+      return Kind == JavaScriptValueKind.Bool;
+    }
+  }
+
   public bool AsBool()
   {
     ThrowIfDisposed();
@@ -78,6 +85,15 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
     }
   }
 
+  public bool IsDouble
+  {
+    get
+    {
+      ThrowIfDisposed();
+      return Kind == JavaScriptValueKind.Number;
+    }
+  }
+
   public double AsDouble()
   {
     ThrowIfDisposed();
@@ -87,6 +103,15 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
       var value = context.Api->ReadDouble(context.RuntimeHandle, handle, &error);
       context.ThrowIfError(error, "Failed to read JavaScript number.");
       return value;
+    }
+  }
+
+  public bool IsString
+  {
+    get
+    {
+      ThrowIfDisposed();
+      return Kind == JavaScriptValueKind.String;
     }
   }
 
@@ -108,6 +133,15 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
     }
   }
 
+  public bool IsObject
+  {
+    get
+    {
+      ThrowIfDisposed();
+      return Kind == JavaScriptValueKind.Object;
+    }
+  }
+
   public JavaScriptObject AsObject()
   {
     ThrowIfDisposed();
@@ -116,10 +150,7 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
       var result = context.Api->ConvertValueToObject(context.RuntimeHandle, handle);
       if (result.Ok == 0 || result.Object == 0)
       {
-        JsiContext.ThrowNativeError(
-            result.Error,
-            "Failed to convert JavaScript value to object."
-        );
+        JsiContext.ThrowNativeError(result.Error, "Failed to convert JavaScript value to object.");
       }
       return new JavaScriptObject(context, result.Object);
     }
@@ -133,10 +164,7 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
       var result = context.Api->ConvertValueToArray(context.RuntimeHandle, handle);
       if (result.Ok == 0 || result.Array == 0)
       {
-        JsiContext.ThrowNativeError(
-            result.Error,
-            "Failed to convert JavaScript value to array."
-        );
+        JsiContext.ThrowNativeError(result.Error, "Failed to convert JavaScript value to array.");
       }
       return new JavaScriptArray(context, result.Array);
     }

@@ -14,268 +14,264 @@ internal readonly unsafe struct ExpoJsiApi
   /// Signature: (runtimeHandle, value) => result.
   /// </summary>
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      double,
-      ExpoJsiValueResult> CreateNumber;
+    ExpoJsiRuntimeHandle,
+    double,
+    ExpoJsiValueResult> CreateNumber;
 
   /// <summary>
   /// Native function pointer for creating an owned JavaScript boolean value.
   /// Signature: (runtimeHandle, value) => result.
   /// </summary>
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      byte,
-      ExpoJsiValueResult> CreateBool;
+    ExpoJsiRuntimeHandle,
+    byte,
+    ExpoJsiValueResult> CreateBool;
 
   /// <summary>
   /// Native function pointer for getting the kind of a JavaScript value.
   /// Signature: (runtimeHandle, valueHandle, error) => kind.
   /// </summary>
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiValueHandle,
-      ExpoJsiError*,
-      ExpoJsiValueKind> GetValueKind;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiError*,
+    ExpoJsiValueKind> GetValueKind;
 
   /// <summary>
   /// Native function pointer for reading a JavaScript boolean value.
   /// Signature: (runtimeHandle, valueHandle, error) => boolean byte.
   /// </summary>
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiValueHandle,
-      ExpoJsiError*,
-      byte> GetBool;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiError*,
+    byte> GetBool;
 
   /// <summary>
   /// Native function pointer for reading a JavaScript number value.
   /// Signature: (runtimeHandle, valueHandle, error) => value.
   /// </summary>
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiValueHandle,
-      ExpoJsiError*,
-      double> GetDouble;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiError*,
+    double> GetDouble;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiObjectResult> GetGlobalObject;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiObjectResult> GetGlobalObject;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiObjectResult> CreateObject;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiObjectResult> CreateObject;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiObjectHandle,
-      ExpoJsiValueResult> ObjectAsValue;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiObjectHandle,
+    ExpoJsiValueResult> ObjectAsValue;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiValueHandle,
-      ExpoJsiObjectResult> ValueAsObject;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiObjectResult> ValueAsObject;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      uint,
-      ExpoJsiArrayResult> CreateArray;
+    ExpoJsiRuntimeHandle,
+    uint,
+    ExpoJsiArrayResult> CreateArray;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiArrayHandle,
-      ExpoJsiValueResult> ArrayAsValue;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiArrayHandle,
+    ExpoJsiValueResult> ArrayAsValue;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiArrayHandle,
-      ExpoJsiObjectResult> ArrayAsObject;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiArrayHandle,
+    ExpoJsiObjectResult> ArrayAsObject;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiValueHandle,
-      ExpoJsiArrayResult> ValueAsArray;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiArrayResult> ValueAsArray;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiArrayHandle,
-      ExpoJsiError*,
-      uint> ArrayGetLength;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiArrayHandle,
+    ExpoJsiError*,
+    uint> ArrayGetLength;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiArrayHandle,
-      uint,
-      ExpoJsiValueResult> ArrayGetValueAtIndex;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiArrayHandle,
+    uint,
+    ExpoJsiValueResult> ArrayGetValueAtIndex;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiArrayHandle,
-      uint,
-      ExpoJsiValueHandle,
-      ExpoJsiError> ArraySetValueAtIndex;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiArrayHandle,
+    uint,
+    ExpoJsiValueHandle,
+    ExpoJsiError> ArraySetValueAtIndex;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiPromiseResult> CreatePromise;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiPromiseResult> CreatePromise;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiPromiseHandle,
-      ExpoJsiValueResult> PromiseAsValue;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiPromiseHandle,
+    ExpoJsiValueResult> PromiseAsValue;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiPromiseHandle,
-      ExpoJsiValueHandle,
-      ExpoJsiError> PromiseResolve;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiPromiseHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiError> PromiseResolve;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiPromiseHandle,
-      ExpoJsiValueHandle,
-      ExpoJsiError> PromiseReject;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiPromiseHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiError> PromiseReject;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiObjectHandle,
-      byte*,
-      int,
-      ExpoJsiValueHandle,
-      ExpoJsiError> ObjectSetProperty;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiObjectHandle,
+    byte*,
+    int,
+    ExpoJsiValueHandle,
+    ExpoJsiError> ObjectSetProperty;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiObjectHandle,
-      byte*,
-      int,
-      ExpoJsiValueResult> ObjectGetProperty;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiObjectHandle,
+    byte*,
+    int,
+    ExpoJsiValueResult> ObjectGetProperty;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      byte*,
-      int,
-      uint,
-      delegate* unmanaged[Cdecl]<
-          nint,
-          ExpoJsiRuntimeHandle,
-          ExpoJsiValueHandle,
-          ExpoJsiArgumentsHandle,
-          ExpoJsiValueResult>,
+    ExpoJsiRuntimeHandle,
+    byte*,
+    int,
+    uint,
+    delegate* unmanaged[Cdecl]<
       nint,
-      delegate* unmanaged[Cdecl]<nint, void>,
-      ExpoJsiFunctionResult> CreateHostFunction;
-
-  private readonly delegate* unmanaged[Cdecl]<
       ExpoJsiRuntimeHandle,
-      ExpoJsiFunctionHandle,
-      ExpoJsiValueResult> FunctionAsValue;
-
-  private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
+      ExpoJsiValueHandle,
       ExpoJsiArgumentsHandle,
-      ExpoJsiError*,
-      uint> GetArgumentsCount;
+      ExpoJsiValueResult>,
+    nint,
+    delegate* unmanaged[Cdecl]<nint, void>,
+    ExpoJsiFunctionResult> CreateHostFunction;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiArgumentsHandle,
-      uint,
-      ExpoJsiValueResult> GetArgumentValue;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiFunctionHandle,
+    ExpoJsiValueResult> FunctionAsValue;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiObjectHandle,
-      void> ReleaseObject;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiArgumentsHandle,
+    ExpoJsiError*,
+    uint> GetArgumentsCount;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiArrayHandle,
-      void> ReleaseArray;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiArgumentsHandle,
+    uint,
+    ExpoJsiValueResult> GetArgumentValue;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiPromiseHandle,
-      void> ReleasePromise;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiObjectHandle,
+    void> ReleaseObject;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiFunctionHandle,
-      void> ReleaseFunction;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiArrayHandle,
+    void> ReleaseArray;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiPromiseHandle,
+    void> ReleasePromise;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiFunctionHandle,
+    void> ReleaseFunction;
 
   /// <summary>
   /// Native function pointer for releasing an owned JavaScript value handle.
   /// Signature: (runtimeHandle, valueHandle) => void.
   /// </summary>
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiValueHandle,
-      void> ReleaseValue;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    void> ReleaseValue;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      byte*,
-      int,
-      ExpoJsiValueResult> CreateString;
+    ExpoJsiRuntimeHandle,
+    byte*,
+    int,
+    ExpoJsiValueResult> CreateString;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiValueHandle,
-      ExpoJsiValueResult> CloneValue;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiValueResult> CloneValue;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      byte*,
-      int,
-      ExpoJsiValueResult> CreateError;
+    ExpoJsiRuntimeHandle,
+    byte*,
+    int,
+    ExpoJsiValueResult> CreateError;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiValueHandle,
-      ExpoJsiStringResult> GetString;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiStringResult> GetString;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiTaskPriority,
-      delegate* unmanaged[Cdecl]<nint, void>,
-      nint,
-      delegate* unmanaged[Cdecl]<nint, void>,
-      ExpoJsiError> RuntimeScheduleTask;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiTaskPriority,
+    delegate* unmanaged[Cdecl]<nint, void>,
+    nint,
+    delegate* unmanaged[Cdecl]<nint, void>,
+    ExpoJsiError> RuntimeScheduleTask;
+
+  private readonly delegate* unmanaged[Cdecl]<ExpoJsiRuntimeHandle, byte> RuntimeCanExecuteSync;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      byte> RuntimeCanExecuteSync;
+    ExpoJsiRuntimeHandle,
+    delegate* unmanaged[Cdecl]<nint, void>,
+    nint,
+    delegate* unmanaged[Cdecl]<nint, void>,
+    ExpoJsiError> RuntimeExecuteSync;
+
+  private readonly delegate* unmanaged[Cdecl]<ExpoJsiRuntimeHandle, ExpoJsiError> RuntimeDrainTasks;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      delegate* unmanaged[Cdecl]<nint, void>,
-      nint,
-      delegate* unmanaged[Cdecl]<nint, void>,
-      ExpoJsiError> RuntimeExecuteSync;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiError*,
+    byte> IsPromise;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiError> RuntimeDrainTasks;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiError*,
+    byte> IsError;
 
   private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiValueHandle,
-      ExpoJsiError*,
-      byte> IsPromise;
-
-  private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiValueHandle,
-      ExpoJsiError*,
-      byte> IsError;
-
-  private readonly delegate* unmanaged[Cdecl]<
-      ExpoJsiRuntimeHandle,
-      ExpoJsiValueHandle,
-      ExpoJsiStringResult> CoerceToString;
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiStringResult> CoerceToString;
 
   private static readonly UTF8Encoding StrictUtf8 = new(
-      encoderShouldEmitUTF8Identifier: false,
-      throwOnInvalidBytes: true
+    encoderShouldEmitUTF8Identifier: false,
+    throwOnInvalidBytes: true
   );
 
   /// <summary>
@@ -286,63 +282,59 @@ internal readonly unsafe struct ExpoJsiApi
     if (this.Size < ExpoJsiApi.ExpectedSize)
     {
       throw new InvalidOperationException(
-          $"Expo JSI API table is too small. Expected at least {ExpoJsiApi.ExpectedSize}, got {this.Size}."
+        $"Expo JSI API table is too small. Expected at least {ExpoJsiApi.ExpectedSize}, got {this.Size}."
       );
     }
     if (this.Version != ExpoJsiApi.ExpectedVersion)
     {
-      throw new InvalidOperationException(
-          $"Unsupported Expo JSI API version {this.Version}."
-      );
+      throw new InvalidOperationException($"Unsupported Expo JSI API version {this.Version}.");
     }
     if (
-        this.CreateNumber is null
-        || this.CreateBool is null
-        || this.GetValueKind is null
-        || this.GetBool is null
-        || this.GetDouble is null
-        || this.GetGlobalObject is null
-        || this.CreateObject is null
-        || this.ObjectAsValue is null
-        || this.ValueAsObject is null
-        || this.CreateArray is null
-        || this.ArrayAsValue is null
-        || this.ArrayAsObject is null
-        || this.ValueAsArray is null
-        || this.ArrayGetLength is null
-        || this.ArrayGetValueAtIndex is null
-        || this.ArraySetValueAtIndex is null
-        || this.CreatePromise is null
-        || this.PromiseAsValue is null
-        || this.PromiseResolve is null
-        || this.PromiseReject is null
-        || this.ObjectSetProperty is null
-        || this.ObjectGetProperty is null
-        || this.CreateHostFunction is null
-        || this.FunctionAsValue is null
-        || this.GetArgumentsCount is null
-        || this.GetArgumentValue is null
-        || this.ReleaseObject is null
-        || this.ReleaseArray is null
-        || this.ReleasePromise is null
-        || this.ReleaseFunction is null
-        || this.ReleaseValue is null
-        || this.CreateString is null
-        || this.CloneValue is null
-        || this.CreateError is null
-        || this.GetString is null
-        || this.RuntimeScheduleTask is null
-        || this.RuntimeCanExecuteSync is null
-        || this.RuntimeExecuteSync is null
-        || this.RuntimeDrainTasks is null
-        || this.IsPromise is null
-        || this.IsError is null
-        || this.CoerceToString is null
+      this.CreateNumber is null
+      || this.CreateBool is null
+      || this.GetValueKind is null
+      || this.GetBool is null
+      || this.GetDouble is null
+      || this.GetGlobalObject is null
+      || this.CreateObject is null
+      || this.ObjectAsValue is null
+      || this.ValueAsObject is null
+      || this.CreateArray is null
+      || this.ArrayAsValue is null
+      || this.ArrayAsObject is null
+      || this.ValueAsArray is null
+      || this.ArrayGetLength is null
+      || this.ArrayGetValueAtIndex is null
+      || this.ArraySetValueAtIndex is null
+      || this.CreatePromise is null
+      || this.PromiseAsValue is null
+      || this.PromiseResolve is null
+      || this.PromiseReject is null
+      || this.ObjectSetProperty is null
+      || this.ObjectGetProperty is null
+      || this.CreateHostFunction is null
+      || this.FunctionAsValue is null
+      || this.GetArgumentsCount is null
+      || this.GetArgumentValue is null
+      || this.ReleaseObject is null
+      || this.ReleaseArray is null
+      || this.ReleasePromise is null
+      || this.ReleaseFunction is null
+      || this.ReleaseValue is null
+      || this.CreateString is null
+      || this.CloneValue is null
+      || this.CreateError is null
+      || this.GetString is null
+      || this.RuntimeScheduleTask is null
+      || this.RuntimeCanExecuteSync is null
+      || this.RuntimeExecuteSync is null
+      || this.RuntimeDrainTasks is null
+      || this.IsPromise is null
+      || this.IsError is null
+      || this.CoerceToString is null
     )
     {
-      throw new InvalidOperationException(
-          "Expo JSI API table is missing required functions."
-      );
+      throw new InvalidOperationException("Expo JSI API table is missing required functions.");
     }
   }
 
@@ -361,10 +353,7 @@ internal readonly unsafe struct ExpoJsiApi
     return CreateBool(runtimeHandle, value ? (byte)1 : (byte)0);
   }
 
-  public ExpoJsiValueResult CreateStringValue(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      string value
-  )
+  public ExpoJsiValueResult CreateStringValue(ExpoJsiRuntimeHandle runtimeHandle, string value)
   {
     var bytes = StrictUtf8.GetBytes(value);
     fixed (byte* bytesPtr = bytes)
@@ -374,17 +363,14 @@ internal readonly unsafe struct ExpoJsiApi
   }
 
   public ExpoJsiValueResult CloneJavaScriptValue(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiValueHandle valueHandle
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueHandle valueHandle
   )
   {
     return CloneValue(runtimeHandle, valueHandle);
   }
 
-  public ExpoJsiValueResult CreateErrorValue(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      string message
-  )
+  public ExpoJsiValueResult CreateErrorValue(ExpoJsiRuntimeHandle runtimeHandle, string message)
   {
     var bytes = StrictUtf8.GetBytes(message);
     fixed (byte* bytesPtr = bytes)
@@ -393,10 +379,7 @@ internal readonly unsafe struct ExpoJsiApi
     }
   }
 
-  public bool IsPromiseValue(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiValueHandle valueHandle
-  )
+  public bool IsPromiseValue(ExpoJsiRuntimeHandle runtimeHandle, ExpoJsiValueHandle valueHandle)
   {
     ExpoJsiError error;
     var result = IsPromise(runtimeHandle, valueHandle, &error);
@@ -407,10 +390,7 @@ internal readonly unsafe struct ExpoJsiApi
     return result != 0;
   }
 
-  public bool IsErrorValue(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiValueHandle valueHandle
-  )
+  public bool IsErrorValue(ExpoJsiRuntimeHandle runtimeHandle, ExpoJsiValueHandle valueHandle)
   {
     ExpoJsiError error;
     var result = IsError(runtimeHandle, valueHandle, &error);
@@ -422,8 +402,8 @@ internal readonly unsafe struct ExpoJsiApi
   }
 
   public string CoerceJavaScriptValueToString(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiValueHandle valueHandle
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueHandle valueHandle
   )
   {
     var result = CoerceToString(runtimeHandle, valueHandle);
@@ -437,9 +417,9 @@ internal readonly unsafe struct ExpoJsiApi
   /// <param name="valueHandle">Opaque expo_jsi_value_handle.</param>
   /// <param name="error">Receives structured error details.</param>
   public ExpoJsiValueKind GetKind(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiValueHandle valueHandle,
-      ExpoJsiError* error
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueHandle valueHandle,
+    ExpoJsiError* error
   )
   {
     return GetValueKind(runtimeHandle, valueHandle, error);
@@ -452,9 +432,9 @@ internal readonly unsafe struct ExpoJsiApi
   /// <param name="valueHandle">Opaque expo_jsi_value_handle.</param>
   /// <param name="error">Receives structured error details.</param>
   public bool ReadBool(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiValueHandle valueHandle,
-      ExpoJsiError* error
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueHandle valueHandle,
+    ExpoJsiError* error
   )
   {
     // Native bool payloads are ABI bytes. The error parameter carries failure state.
@@ -468,18 +448,15 @@ internal readonly unsafe struct ExpoJsiApi
   /// <param name="valueHandle">Opaque expo_jsi_value_handle.</param>
   /// <param name="error">Receives structured error details.</param>
   public double ReadDouble(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiValueHandle valueHandle,
-      ExpoJsiError* error
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueHandle valueHandle,
+    ExpoJsiError* error
   )
   {
     return GetDouble(runtimeHandle, valueHandle, error);
   }
 
-  public string ReadString(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiValueHandle valueHandle
-  )
+  public string ReadString(ExpoJsiRuntimeHandle runtimeHandle, ExpoJsiValueHandle valueHandle)
   {
     var result = GetString(runtimeHandle, valueHandle);
     return DecodeStringResult(result, "Failed to read JavaScript string.");
@@ -526,76 +503,73 @@ internal readonly unsafe struct ExpoJsiApi
   }
 
   public ExpoJsiValueResult ConvertObjectToValue(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiObjectHandle objectHandle
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiObjectHandle objectHandle
   )
   {
     return ObjectAsValue(runtimeHandle, objectHandle);
   }
 
   public ExpoJsiObjectResult ConvertValueToObject(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiValueHandle valueHandle
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueHandle valueHandle
   )
   {
     return ValueAsObject(runtimeHandle, valueHandle);
   }
 
-  public ExpoJsiArrayResult CreateArrayValue(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      uint length
-  )
+  public ExpoJsiArrayResult CreateArrayValue(ExpoJsiRuntimeHandle runtimeHandle, uint length)
   {
     return CreateArray(runtimeHandle, length);
   }
 
   public ExpoJsiValueResult ConvertArrayToValue(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiArrayHandle arrayHandle
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiArrayHandle arrayHandle
   )
   {
     return ArrayAsValue(runtimeHandle, arrayHandle);
   }
 
   public ExpoJsiObjectResult ConvertArrayToObject(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiArrayHandle arrayHandle
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiArrayHandle arrayHandle
   )
   {
     return ArrayAsObject(runtimeHandle, arrayHandle);
   }
 
   public ExpoJsiArrayResult ConvertValueToArray(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiValueHandle valueHandle
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueHandle valueHandle
   )
   {
     return ValueAsArray(runtimeHandle, valueHandle);
   }
 
   public uint GetArrayLength(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiArrayHandle arrayHandle,
-      ExpoJsiError* error
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiArrayHandle arrayHandle,
+    ExpoJsiError* error
   )
   {
     return ArrayGetLength(runtimeHandle, arrayHandle, error);
   }
 
   public ExpoJsiValueResult GetArrayValueAtIndex(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiArrayHandle arrayHandle,
-      uint index
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiArrayHandle arrayHandle,
+    uint index
   )
   {
     return ArrayGetValueAtIndex(runtimeHandle, arrayHandle, index);
   }
 
   public ExpoJsiError SetArrayValueAtIndex(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiArrayHandle arrayHandle,
-      uint index,
-      ExpoJsiValueHandle valueHandle
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiArrayHandle arrayHandle,
+    uint index,
+    ExpoJsiValueHandle valueHandle
   )
   {
     return ArraySetValueAtIndex(runtimeHandle, arrayHandle, index, valueHandle);
@@ -607,148 +581,134 @@ internal readonly unsafe struct ExpoJsiApi
   }
 
   public ExpoJsiValueResult ConvertPromiseToValue(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiPromiseHandle promiseHandle
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiPromiseHandle promiseHandle
   )
   {
     return PromiseAsValue(runtimeHandle, promiseHandle);
   }
 
   public ExpoJsiError ResolvePromise(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiPromiseHandle promiseHandle,
-      ExpoJsiValueHandle valueHandle
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiPromiseHandle promiseHandle,
+    ExpoJsiValueHandle valueHandle
   )
   {
     return PromiseResolve(runtimeHandle, promiseHandle, valueHandle);
   }
 
   public ExpoJsiError RejectPromise(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiPromiseHandle promiseHandle,
-      ExpoJsiValueHandle valueHandle
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiPromiseHandle promiseHandle,
+    ExpoJsiValueHandle valueHandle
   )
   {
     return PromiseReject(runtimeHandle, promiseHandle, valueHandle);
   }
 
   public ExpoJsiError SetObjectProperty(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiObjectHandle objectHandle,
-      ReadOnlySpan<byte> name,
-      ExpoJsiValueHandle valueHandle
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiObjectHandle objectHandle,
+    ReadOnlySpan<byte> name,
+    ExpoJsiValueHandle valueHandle
   )
   {
     fixed (byte* namePtr = name)
     {
-      return ObjectSetProperty(
-          runtimeHandle,
-          objectHandle,
-          namePtr,
-          name.Length,
-          valueHandle
-      );
+      return ObjectSetProperty(runtimeHandle, objectHandle, namePtr, name.Length, valueHandle);
     }
   }
 
   public ExpoJsiValueResult GetObjectProperty(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiObjectHandle objectHandle,
-      ReadOnlySpan<byte> name
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiObjectHandle objectHandle,
+    ReadOnlySpan<byte> name
   )
   {
     fixed (byte* namePtr = name)
     {
-      return ObjectGetProperty(
-          runtimeHandle,
-          objectHandle,
-          namePtr,
-          name.Length
-      );
+      return ObjectGetProperty(runtimeHandle, objectHandle, namePtr, name.Length);
     }
   }
 
   public ExpoJsiFunctionResult CreateHostFunctionValue(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ReadOnlySpan<byte> name,
-      uint parameterCount,
-      delegate* unmanaged[Cdecl]<
-          nint,
-          ExpoJsiRuntimeHandle,
-          ExpoJsiValueHandle,
-          ExpoJsiArgumentsHandle,
-          ExpoJsiValueResult> callback,
-      nint callbackContext,
-      delegate* unmanaged[Cdecl]<nint, void> releaseCallbackContext
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ReadOnlySpan<byte> name,
+    uint parameterCount,
+    delegate* unmanaged[Cdecl]<
+      nint,
+      ExpoJsiRuntimeHandle,
+      ExpoJsiValueHandle,
+      ExpoJsiArgumentsHandle,
+      ExpoJsiValueResult> callback,
+    nint callbackContext,
+    delegate* unmanaged[Cdecl]<nint, void> releaseCallbackContext
   )
   {
     fixed (byte* namePtr = name)
     {
       return CreateHostFunction(
-          runtimeHandle,
-          namePtr,
-          name.Length,
-          parameterCount,
-          callback,
-          callbackContext,
-          releaseCallbackContext
+        runtimeHandle,
+        namePtr,
+        name.Length,
+        parameterCount,
+        callback,
+        callbackContext,
+        releaseCallbackContext
       );
     }
   }
 
   public ExpoJsiValueResult ConvertFunctionToValue(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiFunctionHandle functionHandle
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiFunctionHandle functionHandle
   )
   {
     return FunctionAsValue(runtimeHandle, functionHandle);
   }
 
   public uint GetArgumentCount(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiArgumentsHandle argumentsHandle,
-      ExpoJsiError* error
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiArgumentsHandle argumentsHandle,
+    ExpoJsiError* error
   )
   {
     return GetArgumentsCount(runtimeHandle, argumentsHandle, error);
   }
 
   public ExpoJsiValueResult GetArgument(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiArgumentsHandle argumentsHandle,
-      uint index
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiArgumentsHandle argumentsHandle,
+    uint index
   )
   {
     return GetArgumentValue(runtimeHandle, argumentsHandle, index);
   }
 
   public void ReleaseObjectHandle(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiObjectHandle objectHandle
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiObjectHandle objectHandle
   )
   {
     ReleaseObject(runtimeHandle, objectHandle);
   }
 
-  public void ReleaseArrayHandle(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiArrayHandle arrayHandle
-  )
+  public void ReleaseArrayHandle(ExpoJsiRuntimeHandle runtimeHandle, ExpoJsiArrayHandle arrayHandle)
   {
     ReleaseArray(runtimeHandle, arrayHandle);
   }
 
   public void ReleasePromiseHandle(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiPromiseHandle promiseHandle
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiPromiseHandle promiseHandle
   )
   {
     ReleasePromise(runtimeHandle, promiseHandle);
   }
 
   public void ReleaseFunctionHandle(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiFunctionHandle functionHandle
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiFunctionHandle functionHandle
   )
   {
     ReleaseFunction(runtimeHandle, functionHandle);
@@ -759,20 +719,17 @@ internal readonly unsafe struct ExpoJsiApi
   /// </summary>
   /// <param name="runtimeHandle">Opaque expo_jsi_runtime_handle.</param>
   /// <param name="valueHandle">Opaque expo_jsi_value_handle.</param>
-  public void ReleaseValueHandle(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiValueHandle valueHandle
-  )
+  public void ReleaseValueHandle(ExpoJsiRuntimeHandle runtimeHandle, ExpoJsiValueHandle valueHandle)
   {
     ReleaseValue(runtimeHandle, valueHandle);
   }
 
   public ExpoJsiError ScheduleRuntimeTask(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      ExpoJsiTaskPriority priority,
-      delegate* unmanaged[Cdecl]<nint, void> callback,
-      nint taskContext,
-      delegate* unmanaged[Cdecl]<nint, void> releaseTaskContext
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiTaskPriority priority,
+    delegate* unmanaged[Cdecl]<nint, void> callback,
+    nint taskContext,
+    delegate* unmanaged[Cdecl]<nint, void> releaseTaskContext
   )
   {
     return RuntimeScheduleTask(runtimeHandle, priority, callback, taskContext, releaseTaskContext);
@@ -784,10 +741,10 @@ internal readonly unsafe struct ExpoJsiApi
   }
 
   public ExpoJsiError ExecuteRuntimeTaskSync(
-      ExpoJsiRuntimeHandle runtimeHandle,
-      delegate* unmanaged[Cdecl]<nint, void> callback,
-      nint taskContext,
-      delegate* unmanaged[Cdecl]<nint, void> releaseTaskContext
+    ExpoJsiRuntimeHandle runtimeHandle,
+    delegate* unmanaged[Cdecl]<nint, void> callback,
+    nint taskContext,
+    delegate* unmanaged[Cdecl]<nint, void> releaseTaskContext
   )
   {
     return RuntimeExecuteSync(runtimeHandle, callback, taskContext, releaseTaskContext);

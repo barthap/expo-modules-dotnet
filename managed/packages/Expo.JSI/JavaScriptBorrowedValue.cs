@@ -28,6 +28,39 @@ public readonly struct JavaScriptBorrowedValue
     }
   }
 
+  public bool IsPromise
+  {
+    get
+    {
+      ThrowIfNull();
+      unsafe
+      {
+        return context.Api->IsPromiseValue(context.RuntimeHandle, handle);
+      }
+    }
+  }
+
+  public bool IsError
+  {
+    get
+    {
+      ThrowIfNull();
+      unsafe
+      {
+        return context.Api->IsErrorValue(context.RuntimeHandle, handle);
+      }
+    }
+  }
+
+  public bool IsBool
+  {
+    get
+    {
+      ThrowIfNull();
+      return Kind == JavaScriptValueKind.Bool;
+    }
+  }
+
   public bool AsBool()
   {
     ThrowIfNull();
@@ -37,6 +70,15 @@ public readonly struct JavaScriptBorrowedValue
       var value = context.Api->ReadBool(context.RuntimeHandle, handle, &error);
       context.ThrowIfError(error, "Failed to read JavaScript boolean.");
       return value;
+    }
+  }
+
+  public bool IsDouble
+  {
+    get
+    {
+      ThrowIfNull();
+      return Kind == JavaScriptValueKind.Number;
     }
   }
 
@@ -52,12 +94,30 @@ public readonly struct JavaScriptBorrowedValue
     }
   }
 
+  public bool IsString
+  {
+    get
+    {
+      ThrowIfNull();
+      return Kind == JavaScriptValueKind.String;
+    }
+  }
+
   public string AsString()
   {
     ThrowIfNull();
     unsafe
     {
       return context.Api->ReadString(context.RuntimeHandle, handle);
+    }
+  }
+
+  public bool IsObject
+  {
+    get
+    {
+      ThrowIfNull();
+      return Kind == JavaScriptValueKind.Object;
     }
   }
 
@@ -69,10 +129,7 @@ public readonly struct JavaScriptBorrowedValue
       var result = context.Api->ConvertValueToObject(context.RuntimeHandle, handle);
       if (result.Ok == 0 || result.Object == 0)
       {
-        JsiContext.ThrowNativeError(
-            result.Error,
-            "Failed to convert JavaScript value to object."
-        );
+        JsiContext.ThrowNativeError(result.Error, "Failed to convert JavaScript value to object.");
       }
       return new JavaScriptObject(context, result.Object);
     }
@@ -86,10 +143,7 @@ public readonly struct JavaScriptBorrowedValue
       var result = context.Api->ConvertValueToArray(context.RuntimeHandle, handle);
       if (result.Ok == 0 || result.Array == 0)
       {
-        JsiContext.ThrowNativeError(
-            result.Error,
-            "Failed to convert JavaScript value to array."
-        );
+        JsiContext.ThrowNativeError(result.Error, "Failed to convert JavaScript value to array.");
       }
       return new JavaScriptArray(context, result.Array);
     }
