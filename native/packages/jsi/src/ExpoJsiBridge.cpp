@@ -34,6 +34,11 @@ public:
     return connector_->runtimeExecutor();
   }
 
+  bool isRuntimeValid() const
+  {
+    return connector_ != nullptr && connector_->isRuntimeValid();
+  }
+
 private:
   JsiRuntimeConnector *connector_;
 };
@@ -341,6 +346,21 @@ expo::jsi::RuntimeHandle *tryRuntimeHandle(expo_jsi_runtime_handle runtime, expo
     (void)handle->runtime();
   } catch (const std::exception &ex) {
     writeError(error, 2, ex.what());
+    return nullptr;
+  }
+  return handle;
+}
+
+expo::jsi::RuntimeHandle *tryRuntimeHandleWithoutAccess(expo_jsi_runtime_handle runtime,
+                                                        expo_jsi_error *error)
+{
+  auto *handle = runtime;
+  if (handle == nullptr) {
+    writeError(error, 1, "Runtime handle is null.");
+    return nullptr;
+  }
+  if (!handle->isRuntimeValid()) {
+    writeError(error, 2, "Runtime connector is invalid.");
     return nullptr;
   }
   return handle;
@@ -1168,7 +1188,7 @@ expo_jsi_error scheduleTask(expo_jsi_runtime_handle runtime,
                             expo_jsi_release_task_context_fn releaseTaskContext)
 {
   expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  auto *runtimeHandle = tryRuntimeHandleWithoutAccess(runtime, &error);
   if (runtimeHandle == nullptr) {
     return error;
   }
@@ -1191,7 +1211,7 @@ expo_jsi_error scheduleTask(expo_jsi_runtime_handle runtime,
 uint8_t canExecuteSync(expo_jsi_runtime_handle runtime)
 {
   expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  auto *runtimeHandle = tryRuntimeHandleWithoutAccess(runtime, &error);
   if (runtimeHandle == nullptr) {
     return 0;
   }
@@ -1204,7 +1224,7 @@ expo_jsi_error executeSync(expo_jsi_runtime_handle runtime,
                            expo_jsi_release_task_context_fn releaseTaskContext)
 {
   expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  auto *runtimeHandle = tryRuntimeHandleWithoutAccess(runtime, &error);
   if (runtimeHandle == nullptr) {
     return error;
   }
@@ -1230,7 +1250,7 @@ expo_jsi_error executeSync(expo_jsi_runtime_handle runtime,
 expo_jsi_error drainTasks(expo_jsi_runtime_handle runtime)
 {
   expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  auto *runtimeHandle = tryRuntimeHandleWithoutAccess(runtime, &error);
   if (runtimeHandle == nullptr) {
     return error;
   }

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 
 namespace expo::jsi {
@@ -9,12 +10,66 @@ namespace expo::jsi {
 HermesConsoleRuntimeExecutor::HermesConsoleRuntimeExecutor(HermesConsoleRuntimeConnector &connector)
   : connector_(&connector)
 {
+  runtimeThread_ = std::thread([this]() { threadMain(); });
+
+  std::unique_lock<std::mutex> lock(mutex_);
+  idleChanged_.wait(lock, [this]() {
+    return state_ == State::Running || state_ == State::Stopped || startupException_ != nullptr;
+  });
+
+  if (startupException_ != nullptr) {
+    lock.unlock();
+    shutdown();
+    std::rethrow_exception(startupException_);
+  }
+  if (state_ != State::Running) {
+    throw std::runtime_error("Hermes runtime loop failed to start.");
+  }
+}
+
+HermesConsoleRuntimeExecutor::~HermesConsoleRuntimeExecutor()
+{
+  shutdown();
+}
+
+facebook::jsi::Runtime &HermesConsoleRuntimeExecutor::runtime()
+{
+  if (!isOnRuntimeThread()) {
+    throw std::runtime_error("Hermes runtime access is not on the executor thread.");
+  }
+  if (runtime_ == nullptr) {
+    throw std::runtime_error("Hermes runtime is invalid.");
+  }
+  return *runtime_;
+}
+
+bool HermesConsoleRuntimeExecutor::isRuntimeValid() const noexcept
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  return state_ == State::Running && runtime_ != nullptr;
+}
+
+bool HermesConsoleRuntimeExecutor::isOnRuntimeThread() const noexcept
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  return runtimeThreadId_ != std::thread::id{} && std::this_thread::get_id() == runtimeThreadId_;
 }
 
 void HermesConsoleRuntimeExecutor::executeAsync(
   JsiRuntimeTaskPriority priority, std::function<void(facebook::jsi::Runtime &)> work) noexcept
 {
-  queue_.push_back(QueuedTask{priority, nextSequence_++, std::move(work)});
+  try {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (state_ != State::Running) {
+        return;
+      }
+      queue_.push_back(QueuedTask{priority, nextSequence_++, std::move(work), nullptr});
+    }
+    workAvailable_.notify_one();
+  } catch (...) {
+    // executeAsync is noexcept; dropping the work releases captured managed state.
+  }
 }
 
 bool HermesConsoleRuntimeExecutor::canExecuteSync() const noexcept
@@ -24,20 +79,143 @@ bool HermesConsoleRuntimeExecutor::canExecuteSync() const noexcept
 
 void HermesConsoleRuntimeExecutor::executeSync(std::function<void(facebook::jsi::Runtime &)> work)
 {
-  runWithRuntime(std::move(work));
+  if (isOnRuntimeThread()) {
+    runTask(std::move(work));
+    return;
+  }
+
+  auto result = std::make_shared<SyncResult>();
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (state_ != State::Running) {
+      throw std::runtime_error("Hermes runtime loop is not running.");
+    }
+    queue_.push_back(QueuedTask{
+      JsiRuntimeTaskPriority::Immediate,
+      nextSequence_++,
+      [work = std::move(work)](facebook::jsi::Runtime &runtime) mutable { work(runtime); },
+      result,
+    });
+  }
+  workAvailable_.notify_one();
+
+  std::unique_lock<std::mutex> resultLock(result->mutex);
+  result->condition.wait(resultLock, [result]() { return result->finished; });
+  if (result->cancelled) {
+    throw std::runtime_error("Hermes runtime loop stopped before sync work ran.");
+  }
+  if (result->exception != nullptr) {
+    std::rethrow_exception(result->exception);
+  }
 }
 
 void HermesConsoleRuntimeExecutor::drain()
 {
-  while (!queue_.empty()) {
-    auto index = nextTaskIndex();
-    auto task = std::move(queue_[index]);
-    queue_.erase(queue_.begin() + static_cast<std::ptrdiff_t>(index));
-    runWithRuntime(std::move(task.work));
+  if (isOnRuntimeThread()) {
+    drainMicrotasks();
+    return;
+  }
+
+  std::unique_lock<std::mutex> lock(mutex_);
+  idleChanged_.wait(lock, [this]() {
+    return state_ == State::Stopped || (queue_.empty() && activeTasks_ == 0);
+  });
+}
+
+void HermesConsoleRuntimeExecutor::shutdown() noexcept
+{
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (state_ != State::Stopped) {
+      state_ = State::Stopping;
+      releaseQueuedTasksLocked();
+    }
+  }
+  workAvailable_.notify_all();
+  idleChanged_.notify_all();
+
+  if (runtimeThread_.joinable()) {
+    runtimeThread_.join();
   }
 }
 
-size_t HermesConsoleRuntimeExecutor::nextTaskIndex() const
+void HermesConsoleRuntimeExecutor::threadMain()
+{
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    runtimeThreadId_ = std::this_thread::get_id();
+  }
+
+  try {
+    auto runtime = facebook::hermes::makeHermesRuntime();
+    if (!runtime) {
+      throw std::runtime_error("Failed to create Hermes runtime.");
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      runtime_ = std::move(runtime);
+      state_ = State::Running;
+    }
+    idleChanged_.notify_all();
+    workAvailable_.notify_all();
+
+    while (true) {
+      QueuedTask task{};
+      {
+        std::unique_lock<std::mutex> lock(mutex_);
+        workAvailable_.wait(lock, [this]() {
+          return state_ == State::Stopping || !queue_.empty();
+        });
+
+        if (state_ == State::Stopping && queue_.empty()) {
+          state_ = State::Stopped;
+          runtime_.reset();
+          notifyIdleIfNeededLocked();
+          idleChanged_.notify_all();
+          return;
+        }
+
+        auto index = nextTaskIndexLocked();
+        task = std::move(queue_[index]);
+        queue_.erase(queue_.begin() + static_cast<std::ptrdiff_t>(index));
+        activeTasks_++;
+      }
+
+      try {
+        runTask(std::move(task.work));
+      } catch (...) {
+        if (task.syncResult != nullptr) {
+          task.syncResult->exception = std::current_exception();
+        }
+      }
+
+      if (task.syncResult != nullptr) {
+        {
+          std::lock_guard<std::mutex> resultLock(task.syncResult->mutex);
+          task.syncResult->finished = true;
+        }
+        task.syncResult->condition.notify_one();
+      }
+
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        activeTasks_--;
+        notifyIdleIfNeededLocked();
+      }
+    }
+  } catch (...) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    startupException_ = std::current_exception();
+    state_ = State::Stopped;
+    runtime_.reset();
+    releaseQueuedTasksLocked();
+    notifyIdleIfNeededLocked();
+  }
+  idleChanged_.notify_all();
+}
+
+size_t HermesConsoleRuntimeExecutor::nextTaskIndexLocked() const
 {
   size_t bestIndex = 0;
   for (size_t index = 1; index < queue_.size(); index++) {
@@ -51,35 +229,67 @@ size_t HermesConsoleRuntimeExecutor::nextTaskIndex() const
   return bestIndex;
 }
 
-void HermesConsoleRuntimeExecutor::runWithRuntime(
-  std::function<void(facebook::jsi::Runtime &)> work)
+void HermesConsoleRuntimeExecutor::runTask(std::function<void(facebook::jsi::Runtime &)> work)
 {
-  if (connector_ == nullptr) {
-    throw std::runtime_error("Hermes runtime connector is missing.");
-  }
-
   if (isExecuting_) {
-    work(connector_->runtime());
+    work(runtime());
     return;
   }
 
   isExecuting_ = true;
+  std::exception_ptr exception;
   try {
-    work(connector_->runtime());
-    isExecuting_ = false;
+    work(runtime());
   } catch (...) {
-    isExecuting_ = false;
-    throw;
+    exception = std::current_exception();
+  }
+
+  try {
+    drainMicrotasks();
+  } catch (...) {
+    if (exception == nullptr) {
+      exception = std::current_exception();
+    }
+  }
+
+  isExecuting_ = false;
+  if (exception != nullptr) {
+    std::rethrow_exception(exception);
+  }
+}
+
+void HermesConsoleRuntimeExecutor::drainMicrotasks()
+{
+  if (runtime_ != nullptr) {
+    runtime_->drainMicrotasks(-1);
+  }
+}
+
+void HermesConsoleRuntimeExecutor::releaseQueuedTasksLocked()
+{
+  for (auto &task : queue_) {
+    if (task.syncResult != nullptr) {
+      {
+        std::lock_guard<std::mutex> resultLock(task.syncResult->mutex);
+        task.syncResult->cancelled = true;
+        task.syncResult->finished = true;
+      }
+      task.syncResult->condition.notify_one();
+    }
+  }
+  queue_.clear();
+}
+
+void HermesConsoleRuntimeExecutor::notifyIdleIfNeededLocked()
+{
+  if (queue_.empty() && activeTasks_ == 0) {
+    idleChanged_.notify_all();
   }
 }
 
 HermesConsoleRuntimeConnector::HermesConsoleRuntimeConnector()
-  : runtimeExecutor_(*this),
-    runtime_(facebook::hermes::makeHermesRuntime())
+  : runtimeExecutor_(*this)
 {
-  if (!runtime_) {
-    throw std::runtime_error("Failed to create Hermes runtime.");
-  }
 }
 
 HermesConsoleRuntimeConnector::~HermesConsoleRuntimeConnector()
@@ -89,10 +299,7 @@ HermesConsoleRuntimeConnector::~HermesConsoleRuntimeConnector()
 
 facebook::jsi::Runtime &HermesConsoleRuntimeConnector::runtime()
 {
-  if (!runtime_) {
-    throw std::runtime_error("Hermes runtime is invalid.");
-  }
-  return *runtime_;
+  return runtimeExecutor_.runtime();
 }
 
 JsiRuntimeExecutor &HermesConsoleRuntimeConnector::runtimeExecutor()
@@ -102,12 +309,12 @@ JsiRuntimeExecutor &HermesConsoleRuntimeConnector::runtimeExecutor()
 
 bool HermesConsoleRuntimeConnector::isRuntimeValid() const
 {
-  return runtime_ != nullptr;
+  return runtimeExecutor_.isRuntimeValid();
 }
 
 void HermesConsoleRuntimeConnector::invalidate()
 {
-  runtime_.reset();
+  runtimeExecutor_.shutdown();
 }
 
 } // namespace expo::jsi
