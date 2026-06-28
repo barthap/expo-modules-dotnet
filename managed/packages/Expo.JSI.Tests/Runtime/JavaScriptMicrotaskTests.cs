@@ -6,7 +6,7 @@ namespace Expo.JSI.Tests.Runtime;
 public sealed class JavaScriptMicrotaskTests
 {
   [Fact]
-  public void PromiseThenRunsAfterScriptEvaluationCheckpoint()
+  public void QueueMicrotaskRunsAfterScriptEvaluationCheckpoint()
   {
     using var fixture = HermesRuntimeFixture.Create();
 
@@ -14,9 +14,9 @@ public sealed class JavaScriptMicrotaskTests
         """
         globalThis.done = false;
         globalThis.promiseValue = 0;
-        Promise.resolve(42).then(function (value) {
+        queueMicrotask(function () {
           globalThis.done = true;
-          globalThis.promiseValue = value;
+          globalThis.promiseValue = 42;
         });
         0;
         """,

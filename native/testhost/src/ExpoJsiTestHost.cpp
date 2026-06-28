@@ -228,6 +228,34 @@ const expo_jsi_api *makeCountedApi(expo_jsi_testhost_runtime_t &runtime)
   return &runtime.countedApi;
 }
 
+void installQueueMicrotask(expo_jsi_testhost_runtime_t &testhost)
+{
+  testhost.connector.runtimeExecutor().executeSync([](facebook::jsi::Runtime &runtime) {
+    auto queueMicrotask = facebook::jsi::Function::createFromHostFunction(
+      runtime,
+      facebook::jsi::PropNameID::forAscii(runtime, "queueMicrotask"),
+      1,
+      [](facebook::jsi::Runtime &runtime,
+         const facebook::jsi::Value &,
+         const facebook::jsi::Value *arguments,
+         size_t count) -> facebook::jsi::Value {
+        if (count < 1 || !arguments[0].isObject()) {
+          throw facebook::jsi::JSError(runtime, "queueMicrotask expects a function.");
+        }
+
+        auto callbackObject = arguments[0].asObject(runtime);
+        if (!callbackObject.isFunction(runtime)) {
+          throw facebook::jsi::JSError(runtime, "queueMicrotask expects a function.");
+        }
+
+        runtime.queueMicrotask(callbackObject.asFunction(runtime));
+        return facebook::jsi::Value::undefined();
+      });
+
+    runtime.global().setProperty(runtime, "queueMicrotask", queueMicrotask);
+  });
+}
+
 } // namespace
 
 extern "C" expo_jsi_testhost_create_result expo_jsi_testhost_create_runtime(void)
@@ -247,6 +275,7 @@ extern "C" expo_jsi_testhost_create_result expo_jsi_testhost_create_runtime(void
     }
 
     registerRuntimeForCounters(*testhost);
+    installQueueMicrotask(*testhost);
     return expo_jsi_testhost_create_result{
       1,
       makeCountedApi(*testhost),
@@ -289,20 +318,24 @@ extern "C" expo_jsi_value_result expo_jsi_testhost_evaluate_script(
   }
 
   try {
-    auto &runtime = testhost->connector.runtime();
     auto script =
       std::string(reinterpret_cast<const char *>(source), static_cast<size_t>(sourceLength));
     auto url = sourceUrl == nullptr || sourceUrlLength == 0
                  ? std::string("expo-jsi-test.js")
                  : std::string(reinterpret_cast<const char *>(sourceUrl),
                                static_cast<size_t>(sourceUrlLength));
-    auto value =
-      runtime.evaluateJavaScript(std::make_unique<facebook::jsi::StringBuffer>(script), url);
-    return expo_jsi_value_result{
-      1,
-      expo::jsi::createOwnedValueHandle(std::move(value)),
-      expo_jsi_error{0, nullptr, 0},
-    };
+
+    expo_jsi_value_result result{};
+    testhost->connector.runtimeExecutor().executeSync([&](facebook::jsi::Runtime &runtime) {
+      auto value =
+        runtime.evaluateJavaScript(std::make_unique<facebook::jsi::StringBuffer>(script), url);
+      result = expo_jsi_value_result{
+        1,
+        expo::jsi::createOwnedValueHandle(std::move(value)),
+        expo_jsi_error{0, nullptr, 0},
+      };
+    });
+    return result;
   } catch (const facebook::jsi::JSError &error) {
     return makeErrorResult(6, error.what());
   } catch (const std::exception &error) {
@@ -329,16 +362,22 @@ extern "C" void expo_jsi_testhost_reset_counters(expo_jsi_testhost_runtime_handl
 
 extern "C" void expo_jsi_testhost_drain_tasks(expo_jsi_testhost_runtime_handle testhostRuntime)
 {
-  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
-  if (testhost == nullptr) {
-    return;
-  }
-  auto error = testhost->innerApi->runtime_drain_tasks(testhost->runtime);
+  auto error = expo_jsi_testhost_wait_until_idle(testhostRuntime);
   if (error.code != 0) {
     lastErrorMessage = error.message != nullptr
                          ? std::string(error.message, static_cast<size_t>(error.message_len))
-                         : "Failed to drain runtime tasks.";
+                         : "Failed to wait for Hermes runtime idle.";
   }
+}
+
+extern "C" expo_jsi_error expo_jsi_testhost_wait_until_idle(
+  expo_jsi_testhost_runtime_handle testhostRuntime)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  if (testhost == nullptr) {
+    return makeError(9, "Testhost runtime is null.");
+  }
+  return testhost->innerApi->runtime_drain_tasks(testhost->runtime);
 }
 
 extern "C" void expo_jsi_testhost_set_sync_execution_supported(

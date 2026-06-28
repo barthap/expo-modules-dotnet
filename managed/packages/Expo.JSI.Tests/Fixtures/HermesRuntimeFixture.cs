@@ -39,7 +39,7 @@ public sealed class HermesRuntimeFixture : IDisposable
 
   public void DrainTasks()
   {
-    NativeTestHost.DrainTasks(testHostRuntime);
+    WaitUntilIdle();
   }
 
   public void WaitUntilIdle()

@@ -147,7 +147,8 @@ void HermesConsoleRuntimeExecutor::threadMain()
   }
 
   try {
-    auto runtime = facebook::hermes::makeHermesRuntime();
+    auto runtime = facebook::hermes::makeHermesRuntime(
+      ::hermes::vm::RuntimeConfig::Builder().withMicrotaskQueue(true).build());
     if (!runtime) {
       throw std::runtime_error("Failed to create Hermes runtime.");
     }

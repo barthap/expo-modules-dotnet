@@ -270,6 +270,15 @@ Avoid in this slice:
 Promise-oriented tests should use `Promise.prototype.then(function (...) { ...
 })` and should validate state after the host reaches idle.
 
+Implementation finding: this bare Hermes embedding does not provide the React
+Native `setImmediate` layer that this Hermes build's Promise bytecode uses
+when the host microtask queue is not enabled/configured. This slice should
+validate host microtask checkpoints with `queueMicrotask(function () { ... })`
+backed by `facebook::jsi::Runtime::queueMicrotask`, with the Hermes runtime
+created using `RuntimeConfig::Builder().withMicrotaskQueue(true)`. Promise
+settlement remains the next slice and should not smuggle in timers or a full
+macrotask queue here.
+
 ## Promise Follow-Up Shape
 
 Promise support should be implemented after the runtime loop exists.
@@ -306,8 +315,8 @@ Add Hermes-backed tests for the loop before promise support:
 - `WaitUntilIdle` returns after all work queued before the call has run;
 - work enqueued by running work is processed before idle is reported;
 - shutdown releases queued work and faults pending managed tasks;
-- microtasks queued by JS `Promise.resolve().then(...)` run after script
-  evaluation when the host reaches idle;
+- microtasks queued by JS `queueMicrotask(function () { ... })` run after
+  script evaluation when the host reaches idle;
 - microtasks queued by executor work run before idle is reported;
 - tests use conservative JavaScript syntax.
 
