@@ -26,6 +26,7 @@ typedef struct expo_jsi_testhost_counters {
   uint32_t released_strings;
   uint32_t released_task_contexts;
   uint32_t sync_execute_calls;
+  uint32_t released_ref_scopes;
 } expo_jsi_testhost_counters;
 
 expo_jsi_testhost_create_result expo_jsi_testhost_create_runtime(void);

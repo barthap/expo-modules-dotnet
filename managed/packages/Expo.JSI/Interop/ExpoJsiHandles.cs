@@ -8,3 +8,4 @@ global using ExpoJsiArrayHandle = System.IntPtr;
 global using ExpoJsiPromiseHandle = System.IntPtr;
 global using ExpoJsiFunctionHandle = System.IntPtr;
 global using ExpoJsiArgumentsHandle = System.IntPtr;
+global using ExpoJsiRefScopeHandle = System.IntPtr;

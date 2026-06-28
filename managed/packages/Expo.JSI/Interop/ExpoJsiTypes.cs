@@ -64,6 +64,27 @@ internal readonly struct ExpoJsiValueResult
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal readonly struct ExpoJsiValueRef
+{
+  public readonly ExpoJsiRefScopeHandle Scope;
+  public readonly ExpoJsiValueHandle Value;
+
+  public ExpoJsiValueRef(ExpoJsiRefScopeHandle scope, ExpoJsiValueHandle value)
+  {
+    Scope = scope;
+    Value = value;
+  }
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal readonly struct ExpoJsiValueRefResult
+{
+  public readonly int Ok;
+  public readonly ExpoJsiValueRef Value;
+  public readonly ExpoJsiError Error;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal readonly struct ExpoJsiObjectResult
 {
   public readonly int Ok;

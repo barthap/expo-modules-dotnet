@@ -28,7 +28,7 @@ public readonly struct JavaScriptArguments
     }
   }
 
-  public JavaScriptBorrowedValue GetBorrowedValue(uint index)
+  public JavaScriptValueRef GetValue(uint index)
   {
     ThrowIfNull();
     unsafe
@@ -38,7 +38,8 @@ public readonly struct JavaScriptArguments
       {
         JsiContext.ThrowNativeError(result.Error, "Failed to read JavaScript argument.");
       }
-      return new JavaScriptBorrowedValue(context, result.Value);
+      var scope = JsiRefScope.CurrentFor(context);
+      return new JavaScriptValueRef(context, scope, result.Value);
     }
   }
 

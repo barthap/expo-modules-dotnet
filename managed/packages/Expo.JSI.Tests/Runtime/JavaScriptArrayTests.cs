@@ -84,7 +84,7 @@ public sealed class JavaScriptArrayTests
   }
 
   [Fact]
-  public void JavaScriptBorrowedValueAsArrayWorksInsideHostFunction()
+  public void JavaScriptValueRefAsArrayWorksInsideHostFunction()
   {
     using var fixture = HermesRuntimeFixture.Create();
 
@@ -96,7 +96,7 @@ public sealed class JavaScriptArrayTests
           1,
           (callbackRuntime, thisValue, arguments, context) =>
           {
-            using var array = arguments.GetBorrowedValue(0).AsArray();
+            var array = arguments.GetValue(0).AsArray();
             return callbackRuntime.CreateNumber(array.Length);
           },
           new object()

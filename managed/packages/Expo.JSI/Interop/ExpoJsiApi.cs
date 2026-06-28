@@ -269,6 +269,77 @@ internal readonly unsafe struct ExpoJsiApi
     ExpoJsiValueHandle,
     ExpoJsiStringResult> CoerceToString;
 
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiRefScopeHandle> CreateRefScopeFunction;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiRefScopeHandle,
+    void> ReleaseRefScopeFunction;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueRef,
+    ExpoJsiError*,
+    ExpoJsiValueKind> ValueRefGetKind;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueRef,
+    ExpoJsiError*,
+    byte> ValueRefGetBool;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueRef,
+    ExpoJsiError*,
+    double> ValueRefGetDouble;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueRef,
+    ExpoJsiStringResult> ValueRefGetString;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueRef,
+    ExpoJsiStringResult> ValueRefCoerceToString;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueRef,
+    byte*,
+    int,
+    ExpoJsiValueRefResult> ValueRefGetProperty;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueRef,
+    uint,
+    ExpoJsiValueRefResult> ValueRefGetValueAtIndex;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueRef,
+    ExpoJsiError*,
+    uint> ValueRefGetArrayLength;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueRef,
+    ExpoJsiValueResult> ValueRefRetain;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueRef,
+    ExpoJsiObjectResult> ValueRefRetainObject;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueRef,
+    ExpoJsiArrayResult> ValueRefRetainArray;
+
   private static readonly UTF8Encoding StrictUtf8 = new(
     encoderShouldEmitUTF8Identifier: false,
     throwOnInvalidBytes: true
@@ -332,6 +403,19 @@ internal readonly unsafe struct ExpoJsiApi
       || this.IsPromise is null
       || this.IsError is null
       || this.CoerceToString is null
+      || this.CreateRefScopeFunction is null
+      || this.ReleaseRefScopeFunction is null
+      || this.ValueRefGetKind is null
+      || this.ValueRefGetBool is null
+      || this.ValueRefGetDouble is null
+      || this.ValueRefGetString is null
+      || this.ValueRefCoerceToString is null
+      || this.ValueRefGetProperty is null
+      || this.ValueRefGetValueAtIndex is null
+      || this.ValueRefGetArrayLength is null
+      || this.ValueRefRetain is null
+      || this.ValueRefRetainObject is null
+      || this.ValueRefRetainArray is null
     )
     {
       throw new InvalidOperationException("Expo JSI API table is missing required functions.");
@@ -408,6 +492,121 @@ internal readonly unsafe struct ExpoJsiApi
   {
     var result = CoerceToString(runtimeHandle, valueHandle);
     return DecodeStringResult(result, "Failed to coerce JavaScript value to string.");
+  }
+
+  public ExpoJsiRefScopeHandle CreateRefScope(ExpoJsiRuntimeHandle runtimeHandle)
+  {
+    return CreateRefScopeFunction(runtimeHandle);
+  }
+
+  public void ReleaseRefScope(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiRefScopeHandle refScopeHandle
+  )
+  {
+    ReleaseRefScopeFunction(runtimeHandle, refScopeHandle);
+  }
+
+  public ExpoJsiValueKind GetValueRefKind(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueRef valueRef,
+    ExpoJsiError* error
+  )
+  {
+    return ValueRefGetKind(runtimeHandle, valueRef, error);
+  }
+
+  public bool ReadValueRefBool(ExpoJsiRuntimeHandle runtimeHandle, ExpoJsiValueRef valueRef)
+  {
+    ExpoJsiError error;
+    var value = ValueRefGetBool(runtimeHandle, valueRef, &error) != 0;
+    if (error.Code != 0)
+    {
+      ThrowNativeError(error, "Failed to read JavaScript boolean ref.");
+    }
+    return value;
+  }
+
+  public double ReadValueRefDouble(ExpoJsiRuntimeHandle runtimeHandle, ExpoJsiValueRef valueRef)
+  {
+    ExpoJsiError error;
+    var value = ValueRefGetDouble(runtimeHandle, valueRef, &error);
+    if (error.Code != 0)
+    {
+      ThrowNativeError(error, "Failed to read JavaScript number ref.");
+    }
+    return value;
+  }
+
+  public string ReadValueRefString(ExpoJsiRuntimeHandle runtimeHandle, ExpoJsiValueRef valueRef)
+  {
+    var result = ValueRefGetString(runtimeHandle, valueRef);
+    return DecodeStringResult(result, "Failed to read JavaScript string ref.");
+  }
+
+  public string CoerceValueRefToString(ExpoJsiRuntimeHandle runtimeHandle, ExpoJsiValueRef valueRef)
+  {
+    var result = ValueRefCoerceToString(runtimeHandle, valueRef);
+    return DecodeStringResult(result, "Failed to coerce JavaScript value ref to string.");
+  }
+
+  public ExpoJsiValueRefResult GetValueRefProperty(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueRef valueRef,
+    ReadOnlySpan<byte> name
+  )
+  {
+    fixed (byte* namePtr = name)
+    {
+      return ValueRefGetProperty(runtimeHandle, valueRef, namePtr, name.Length);
+    }
+  }
+
+  public ExpoJsiValueRefResult GetValueRefAtIndex(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueRef valueRef,
+    uint index
+  )
+  {
+    return ValueRefGetValueAtIndex(runtimeHandle, valueRef, index);
+  }
+
+  public uint GetValueRefArrayLength(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueRef valueRef
+  )
+  {
+    ExpoJsiError error;
+    var length = ValueRefGetArrayLength(runtimeHandle, valueRef, &error);
+    if (error.Code != 0)
+    {
+      ThrowNativeError(error, "Failed to read JavaScript array ref length.");
+    }
+    return length;
+  }
+
+  public ExpoJsiValueResult RetainValueRef(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueRef valueRef
+  )
+  {
+    return ValueRefRetain(runtimeHandle, valueRef);
+  }
+
+  public ExpoJsiObjectResult RetainValueRefObject(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueRef valueRef
+  )
+  {
+    return ValueRefRetainObject(runtimeHandle, valueRef);
+  }
+
+  public ExpoJsiArrayResult RetainValueRefArray(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueRef valueRef
+  )
+  {
+    return ValueRefRetainArray(runtimeHandle, valueRef);
   }
 
   /// <summary>
@@ -756,5 +955,5 @@ internal readonly unsafe struct ExpoJsiApi
   }
 
   public static uint ExpectedSize => (uint)sizeof(ExpoJsiApi);
-  public const uint ExpectedVersion = 10;
+  public const uint ExpectedVersion = 11;
 }

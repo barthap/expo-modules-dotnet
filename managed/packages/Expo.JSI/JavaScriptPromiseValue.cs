@@ -9,7 +9,7 @@ public sealed class JavaScriptPromiseValue : IJavaScriptValueRepresentable, IDis
     holder = new JavaScriptValueHolder(value);
   }
 
-  public JavaScriptValue AsValue() => holder.AsValue(this);
+  public JavaScriptValue AsValue() => holder.AsValue();
 
   public void Dispose() => holder.Dispose();
 }

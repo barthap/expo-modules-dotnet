@@ -15,7 +15,7 @@ public sealed class JavaScriptErrorObject : IJavaScriptValueRepresentable, IDisp
 
   public string? Stack => GetNullableStringProperty("stack");
 
-  public JavaScriptValue AsValue() => holder.AsValue(this);
+  public JavaScriptValue AsValue() => holder.AsValue();
 
   public void Dispose() => holder.Dispose();
 
@@ -26,10 +26,8 @@ public sealed class JavaScriptErrorObject : IJavaScriptValueRepresentable, IDisp
 
   private string? GetNullableStringProperty(string name)
   {
-    using var value = holder.AsValue(this);
-    using var objectValue = value.AsObject();
-    using var property = objectValue.GetProperty(name);
-    return property.Kind is JavaScriptValueKind.Undefined or JavaScriptValueKind.Null
+    var property = holder.Ref.AsObject().GetProperty(name);
+    return property.IsNullish
         ? null
         : property.CoerceToString();
   }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Expo.JSI.Tests.Fixtures;
 using Xunit;
 
@@ -6,7 +7,7 @@ namespace Expo.JSI.Tests.HostFunctions;
 public sealed class HostFunctionTests
 {
   [Fact]
-  public void HostFunctionReceivesBorrowedArgumentAndReturnsOwnedValue()
+  public void HostFunctionReceivesArgumentRefAndReturnsOwnedValue()
   {
     using var fixture = HermesRuntimeFixture.Create();
 
@@ -19,7 +20,7 @@ public sealed class HostFunctionTests
           (callbackRuntime, thisValue, arguments, context) =>
           {
             Assert.Equal(1u, arguments.Count);
-            var input = arguments.GetBorrowedValue(0);
+            var input = arguments.GetValue(0);
             Assert.Equal(JavaScriptValueKind.Number, input.Kind);
             return callbackRuntime.CreateNumber(input.AsDouble() + 1);
           },
@@ -37,7 +38,7 @@ public sealed class HostFunctionTests
   }
 
   [Fact]
-  public void HostFunctionReadsBorrowedBoolStringAndObjectArguments()
+  public void HostFunctionReadsBoolStringAndObjectArgumentRefs()
   {
     using var fixture = HermesRuntimeFixture.Create();
 
@@ -50,16 +51,15 @@ public sealed class HostFunctionTests
           (callbackRuntime, thisValue, arguments, context) =>
           {
             Assert.Equal(3u, arguments.Count);
-            var enabled = arguments.GetBorrowedValue(0);
-            var label = arguments.GetBorrowedValue(1);
-            var options = arguments.GetBorrowedValue(2);
+            var enabled = arguments.GetValue(0);
+            var label = arguments.GetValue(1);
+            var options = arguments.GetValue(2);
 
             Assert.Equal(JavaScriptValueKind.Bool, enabled.Kind);
             Assert.Equal(JavaScriptValueKind.String, label.Kind);
             Assert.Equal(JavaScriptValueKind.Object, options.Kind);
 
-            using var optionsObject = options.AsObject();
-            using var name = optionsObject.GetProperty("name");
+            var name = options.AsObject().GetProperty("name");
             return callbackRuntime.CreateString(
                 $"{enabled.AsBool()}:{label.AsString()}:{name.AsString()}"
             );
@@ -96,9 +96,8 @@ public sealed class HostFunctionTests
           1,
           (callbackRuntime, thisValue, arguments, context) =>
           {
-            using var self = thisValue.AsObject();
-            using var offsetValue = self.GetProperty("offset");
-            var input = arguments.GetBorrowedValue(0);
+            var offsetValue = thisValue.AsObject().GetProperty("offset");
+            var input = arguments.GetValue(0);
             return callbackRuntime.CreateNumber(input.AsDouble() + offsetValue.AsDouble());
           },
           new object()
@@ -138,6 +137,46 @@ public sealed class HostFunctionTests
 
     var counters = fixture.Counters;
     Assert.True(counters.ReleasedFunctions >= 1);
+  }
+
+  [Fact]
+  public void HostFunctionReceivesScopedThisAndArgumentRefs()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      using var target = runtime.CreateObject();
+      using var offset = runtime.CreateNumber(1.5);
+      target.SetProperty("offset", offset);
+
+      using var function = runtime.CreateHostFunction(
+          "describe",
+          1,
+          (callbackRuntime, thisValue, arguments, context) =>
+          {
+            var offsetValue = thisValue.AsObject().GetProperty("offset");
+            var name = arguments.GetValue(0).AsObject().GetProperty("name");
+            return callbackRuntime.CreateString(
+                $"{name.AsString()}:{offsetValue.AsDouble().ToString(CultureInfo.InvariantCulture)}"
+            );
+          },
+          new object()
+      );
+      using var functionValue = function.AsValue();
+      target.SetProperty("describe", functionValue);
+      using var targetValue = target.AsValue();
+      global.SetProperty("target", targetValue);
+
+      using var result = fixture.Evaluate(
+          "globalThis.target.describe({ name: 'expo' })",
+          "host-function-scoped-refs.js"
+      );
+
+      Assert.Equal("expo:1.5", result.AsString());
+      return true;
+    });
   }
 
   [Fact]

@@ -56,14 +56,14 @@ public sealed class ArrayConversionTests
 
   private interface IJavaScriptCodec<T>
   {
-    static abstract T Decode(JavaScriptBorrowedValue value, JavaScriptRuntime runtime);
+    static abstract T Decode(JavaScriptValueRef value, JavaScriptRuntime runtime);
     static abstract T Decode(JavaScriptValue value, JavaScriptRuntime runtime);
     static abstract JavaScriptValue Encode(T value, JavaScriptRuntime runtime);
   }
 
   private readonly struct DoubleCodec : IJavaScriptCodec<double>
   {
-    public static double Decode(JavaScriptBorrowedValue value, JavaScriptRuntime runtime) =>
+    public static double Decode(JavaScriptValueRef value, JavaScriptRuntime runtime) =>
         value.AsDouble();
 
     public static double Decode(JavaScriptValue value, JavaScriptRuntime runtime) =>
@@ -75,7 +75,7 @@ public sealed class ArrayConversionTests
 
   private readonly struct StringCodec : IJavaScriptCodec<string>
   {
-    public static string Decode(JavaScriptBorrowedValue value, JavaScriptRuntime runtime) =>
+    public static string Decode(JavaScriptValueRef value, JavaScriptRuntime runtime) =>
         value.AsString();
 
     public static string Decode(JavaScriptValue value, JavaScriptRuntime runtime) =>
@@ -88,15 +88,15 @@ public sealed class ArrayConversionTests
   private static class JavaScriptArrayCodec<T, TCodec>
       where TCodec : IJavaScriptCodec<T>
   {
-    public static T[] DecodeToArray(JavaScriptBorrowedValue value, JavaScriptRuntime runtime)
+    public static T[] DecodeToArray(JavaScriptValueRef value, JavaScriptRuntime runtime)
     {
-      using var array = value.AsArray();
+      var array = value.AsArray();
       var length = checked((int)array.Length);
       var result = new T[length];
 
       for (var index = 0; index < length; index++)
       {
-        using var element = array.GetValue((uint)index);
+        var element = array.GetValue((uint)index);
         result[index] = TCodec.Decode(element, runtime);
       }
 
@@ -142,13 +142,13 @@ public sealed class ArrayConversionTests
 
     private static JavaScriptValue SumHostFunction(
         JavaScriptRuntime runtime,
-        JavaScriptBorrowedValue thisValue,
+        JavaScriptValueRef thisValue,
         JavaScriptArguments arguments,
         object context)
     {
       var module = (ArrayModule)context;
       var values = JavaScriptArrayCodec<double, DoubleCodec>.DecodeToArray(
-          arguments.GetBorrowedValue(0),
+          arguments.GetValue(0),
           runtime
       );
       return DoubleCodec.Encode(module.Sum(values), runtime);
@@ -156,7 +156,7 @@ public sealed class ArrayConversionTests
 
     private static JavaScriptValue LabelsHostFunction(
         JavaScriptRuntime runtime,
-        JavaScriptBorrowedValue thisValue,
+        JavaScriptValueRef thisValue,
         JavaScriptArguments arguments,
         object context)
     {

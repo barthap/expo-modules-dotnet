@@ -13,13 +13,17 @@ internal sealed class JavaScriptValueHolder : IJavaScriptValueRepresentable, IDi
 
   public JavaScriptValue AsValue()
   {
-    return AsValue(this);
+    ThrowIfDisposed();
+    return value.AsValue();
   }
 
-  internal JavaScriptValue AsValue(object owner)
+  public JavaScriptValueRef Ref
   {
-    ThrowIfDisposed(owner);
-    return value.AsValue();
+    get
+    {
+      ThrowIfDisposed();
+      return value.Ref;
+    }
   }
 
   public void Dispose()
@@ -29,9 +33,7 @@ internal sealed class JavaScriptValueHolder : IJavaScriptValueRepresentable, IDi
   }
 
   [MemberNotNull(nameof(value))]
-  private void ThrowIfDisposed() => ThrowIfDisposed(this);
-
   [MemberNotNull(nameof(value))]
-  private void ThrowIfDisposed(object owner) =>
-    ObjectDisposedException.ThrowIf(value is null, owner);
+  private void ThrowIfDisposed() =>
+    ObjectDisposedException.ThrowIf(value is null, this);
 }

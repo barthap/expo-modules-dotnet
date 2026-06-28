@@ -2,6 +2,6 @@ namespace Expo.JSI;
 
 public delegate JavaScriptValue JavaScriptHostFunction(
     JavaScriptRuntime runtime,
-    JavaScriptBorrowedValue thisValue,
+    JavaScriptValueRef thisValue,
     JavaScriptArguments arguments,
     object context);

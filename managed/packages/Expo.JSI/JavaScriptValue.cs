@@ -73,6 +73,15 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
     }
   }
 
+  public bool IsNullish
+  {
+    get
+    {
+      ThrowIfDisposed();
+      return Kind is JavaScriptValueKind.Undefined or JavaScriptValueKind.Null;
+    }
+  }
+
   public bool AsBool()
   {
     ThrowIfDisposed();
@@ -201,6 +210,18 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
         JsiContext.ThrowNativeError(result.Error, "Failed to clone JavaScript value.");
       }
       return FromOwnedHandle(context, result.Value);
+    }
+  }
+
+  public JavaScriptValue Retain() => AsValue();
+
+  public JavaScriptValueRef Ref
+  {
+    get
+    {
+      ThrowIfDisposed();
+      var scope = JsiRefScope.CurrentFor(context);
+      return new JavaScriptValueRef(context, scope, handle);
     }
   }
 
