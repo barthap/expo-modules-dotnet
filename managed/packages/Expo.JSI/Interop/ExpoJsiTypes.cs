@@ -80,6 +80,14 @@ internal readonly struct ExpoJsiArrayResult
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal readonly struct ExpoJsiPromiseResult
+{
+  public readonly int Ok;
+  public readonly ExpoJsiPromiseHandle Promise;
+  public readonly ExpoJsiError Error;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal readonly struct ExpoJsiFunctionResult
 {
   public readonly int Ok;

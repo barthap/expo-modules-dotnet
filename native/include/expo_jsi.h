@@ -8,6 +8,7 @@ class RuntimeHandle;
 class ValueHandle;
 class ObjectHandle;
 class ArrayHandle;
+class PromiseHandle;
 class FunctionHandle;
 class ArgumentsHandle;
 } // namespace expo::jsi
@@ -16,6 +17,7 @@ using expo_jsi_runtime_t = expo::jsi::RuntimeHandle;
 using expo_jsi_value_t = expo::jsi::ValueHandle;
 using expo_jsi_object_t = expo::jsi::ObjectHandle;
 using expo_jsi_array_t = expo::jsi::ArrayHandle;
+using expo_jsi_promise_t = expo::jsi::PromiseHandle;
 using expo_jsi_function_t = expo::jsi::FunctionHandle;
 using expo_jsi_arguments_t = expo::jsi::ArgumentsHandle;
 
@@ -25,6 +27,7 @@ typedef expo_jsi_runtime_t *expo_jsi_runtime_handle;
 typedef expo_jsi_value_t *expo_jsi_value_handle;
 typedef expo_jsi_object_t *expo_jsi_object_handle;
 typedef expo_jsi_array_t *expo_jsi_array_handle;
+typedef expo_jsi_promise_t *expo_jsi_promise_handle;
 typedef expo_jsi_function_t *expo_jsi_function_handle;
 typedef expo_jsi_arguments_t *expo_jsi_arguments_handle;
 #else
@@ -32,6 +35,7 @@ typedef struct expo_jsi_runtime_t *expo_jsi_runtime_handle;
 typedef struct expo_jsi_value_t *expo_jsi_value_handle;
 typedef struct expo_jsi_object_t *expo_jsi_object_handle;
 typedef struct expo_jsi_array_t *expo_jsi_array_handle;
+typedef struct expo_jsi_promise_t *expo_jsi_promise_handle;
 typedef struct expo_jsi_function_t *expo_jsi_function_handle;
 typedef struct expo_jsi_arguments_t *expo_jsi_arguments_handle;
 #endif
@@ -78,6 +82,12 @@ typedef struct expo_jsi_array_result {
   expo_jsi_array_handle array;
   expo_jsi_error error;
 } expo_jsi_array_result;
+
+typedef struct expo_jsi_promise_result {
+  int32_t ok;
+  expo_jsi_promise_handle promise;
+  expo_jsi_error error;
+} expo_jsi_promise_result;
 
 typedef struct expo_jsi_function_result {
   int32_t ok;
@@ -169,6 +179,19 @@ typedef expo_jsi_error (*expo_jsi_array_set_value_at_index_fn)(expo_jsi_runtime_
                                                                uint32_t index,
                                                                expo_jsi_value_handle value);
 
+typedef expo_jsi_promise_result (*expo_jsi_create_promise_fn)(expo_jsi_runtime_handle runtime);
+
+typedef expo_jsi_value_result (*expo_jsi_promise_as_value_fn)(expo_jsi_runtime_handle runtime,
+                                                              expo_jsi_promise_handle promise);
+
+typedef expo_jsi_error (*expo_jsi_promise_resolve_fn)(expo_jsi_runtime_handle runtime,
+                                                      expo_jsi_promise_handle promise,
+                                                      expo_jsi_value_handle value);
+
+typedef expo_jsi_error (*expo_jsi_promise_reject_fn)(expo_jsi_runtime_handle runtime,
+                                                     expo_jsi_promise_handle promise,
+                                                     expo_jsi_value_handle value);
+
 typedef expo_jsi_error (*expo_jsi_object_set_property_fn)(expo_jsi_runtime_handle runtime,
                                                           expo_jsi_object_handle object,
                                                           const char *name,
@@ -208,6 +231,9 @@ typedef void (*expo_jsi_release_object_fn)(expo_jsi_runtime_handle runtime,
 
 typedef void (*expo_jsi_release_array_fn)(expo_jsi_runtime_handle runtime,
                                           expo_jsi_array_handle array);
+
+typedef void (*expo_jsi_release_promise_fn)(expo_jsi_runtime_handle runtime,
+                                            expo_jsi_promise_handle promise);
 
 typedef void (*expo_jsi_release_function_fn)(expo_jsi_runtime_handle runtime,
                                              expo_jsi_function_handle function);
@@ -249,6 +275,10 @@ typedef struct expo_jsi_api {
   expo_jsi_array_get_length_fn array_get_length;
   expo_jsi_array_get_value_at_index_fn array_get_value_at_index;
   expo_jsi_array_set_value_at_index_fn array_set_value_at_index;
+  expo_jsi_create_promise_fn create_promise;
+  expo_jsi_promise_as_value_fn promise_as_value;
+  expo_jsi_promise_resolve_fn promise_resolve;
+  expo_jsi_promise_reject_fn promise_reject;
   expo_jsi_object_set_property_fn object_set_property;
   expo_jsi_object_get_property_fn object_get_property;
   expo_jsi_create_host_function_fn create_host_function;
@@ -257,6 +287,7 @@ typedef struct expo_jsi_api {
   expo_jsi_get_argument_value_fn get_argument_value;
   expo_jsi_release_object_fn release_object;
   expo_jsi_release_array_fn release_array;
+  expo_jsi_release_promise_fn release_promise;
   expo_jsi_release_function_fn release_function;
   expo_jsi_release_value_fn release_value;
   expo_jsi_create_string_fn create_string;

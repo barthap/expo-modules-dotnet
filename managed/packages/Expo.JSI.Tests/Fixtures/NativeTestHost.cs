@@ -37,6 +37,7 @@ internal static unsafe class NativeTestHost
     public readonly uint ReleasedValues;
     public readonly uint ReleasedObjects;
     public readonly uint ReleasedFunctions;
+    public readonly uint ReleasedPromises;
     public readonly uint ReleasedStrings;
     public readonly uint ReleasedTaskContexts;
     public readonly uint SyncExecuteCalls;

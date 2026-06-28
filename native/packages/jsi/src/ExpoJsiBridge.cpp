@@ -3,6 +3,7 @@
 #include <cstring>
 #include <exception>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -131,6 +132,61 @@ private:
   std::unique_ptr<facebook::jsi::Array> array_;
 };
 
+class PromiseHandle final {
+public:
+  static std::unique_ptr<PromiseHandle> owned(facebook::jsi::Object promise,
+                                              facebook::jsi::Function resolve,
+                                              facebook::jsi::Function reject)
+  {
+    return std::unique_ptr<PromiseHandle>(
+      new PromiseHandle(std::move(promise), std::move(resolve), std::move(reject)));
+  }
+
+  facebook::jsi::Object &promise()
+  {
+    return *promise_;
+  }
+
+  void resolve(facebook::jsi::Runtime &runtime, const facebook::jsi::Value &value)
+  {
+    if (settled_ || !resolve_.has_value()) {
+      return;
+    }
+
+    resolve_->call(runtime, value);
+    settled_ = true;
+    resolve_.reset();
+    reject_.reset();
+  }
+
+  void reject(facebook::jsi::Runtime &runtime, const facebook::jsi::Value &value)
+  {
+    if (settled_ || !reject_.has_value()) {
+      return;
+    }
+
+    reject_->call(runtime, value);
+    settled_ = true;
+    resolve_.reset();
+    reject_.reset();
+  }
+
+private:
+  PromiseHandle(facebook::jsi::Object promise,
+                facebook::jsi::Function resolve,
+                facebook::jsi::Function reject)
+    : promise_(std::make_unique<facebook::jsi::Object>(std::move(promise))),
+      resolve_(std::move(resolve)),
+      reject_(std::move(reject))
+  {
+  }
+
+  std::unique_ptr<facebook::jsi::Object> promise_;
+  std::optional<facebook::jsi::Function> resolve_;
+  std::optional<facebook::jsi::Function> reject_;
+  bool settled_ = false;
+};
+
 class FunctionHandle final {
 public:
   static std::unique_ptr<FunctionHandle> owned(facebook::jsi::Function function)
@@ -192,7 +248,7 @@ private:
 
 namespace {
 
-constexpr uint32_t kApiVersion = 6;
+constexpr uint32_t kApiVersion = 7;
 
 struct StringResultBuffer {
   explicit StringResultBuffer(std::string value)
@@ -402,6 +458,15 @@ expo_jsi_array_result makeArrayResult(std::unique_ptr<expo::jsi::ArrayHandle> ar
   };
 }
 
+expo_jsi_promise_result makePromiseResult(std::unique_ptr<expo::jsi::PromiseHandle> promise)
+{
+  return expo_jsi_promise_result{
+    1,
+    promise.release(),
+    expo_jsi_error{0, nullptr, 0},
+  };
+}
+
 expo_jsi_function_result makeFunctionResult(std::unique_ptr<expo::jsi::FunctionHandle> function)
 {
   return expo_jsi_function_result{
@@ -428,6 +493,11 @@ expo_jsi_object_result makeObjectErrorResult(int32_t code, const char *message)
 expo_jsi_array_result makeArrayErrorResult(int32_t code, const char *message)
 {
   return expo_jsi_array_result{0, nullptr, makeError(code, message)};
+}
+
+expo_jsi_promise_result makePromiseErrorResult(int32_t code, const char *message)
+{
+  return expo_jsi_promise_result{0, nullptr, makeError(code, message)};
 }
 
 expo_jsi_function_result makeFunctionErrorResult(int32_t code, const char *message)
@@ -891,6 +961,129 @@ expo_jsi_error arraySetValueAtIndex(expo_jsi_runtime_handle runtime,
   }
 }
 
+expo_jsi_promise_result createPromise(expo_jsi_runtime_handle runtime)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_promise_result{0, nullptr, error};
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    std::optional<facebook::jsi::Function> resolveFunction;
+    std::optional<facebook::jsi::Function> rejectFunction;
+
+    auto setup = facebook::jsi::Function::createFromHostFunction(
+      jsRuntime,
+      facebook::jsi::PropNameID::forAscii(jsRuntime, "promiseExecutor"),
+      2,
+      [&resolveFunction, &rejectFunction](facebook::jsi::Runtime &runtime,
+                                          const facebook::jsi::Value &,
+                                          const facebook::jsi::Value *arguments,
+                                          size_t count) -> facebook::jsi::Value {
+        if (count < 2 || !arguments[0].isObject() || !arguments[1].isObject()) {
+          throw facebook::jsi::JSError(runtime, "Promise executor expected resolve and reject.");
+        }
+
+        auto resolveObject = arguments[0].asObject(runtime);
+        auto rejectObject = arguments[1].asObject(runtime);
+        if (!resolveObject.isFunction(runtime) || !rejectObject.isFunction(runtime)) {
+          throw facebook::jsi::JSError(runtime, "Promise executor arguments must be functions.");
+        }
+
+        resolveFunction = resolveObject.asFunction(runtime);
+        rejectFunction = rejectObject.asFunction(runtime);
+        return facebook::jsi::Value::undefined();
+      });
+
+    auto promiseConstructor = jsRuntime.global().getPropertyAsFunction(jsRuntime, "Promise");
+    auto promiseValue = promiseConstructor.callAsConstructor(jsRuntime, setup);
+    if (!promiseValue.isObject() || !resolveFunction.has_value() || !rejectFunction.has_value()) {
+      return makePromiseErrorResult(85, "Failed to create JavaScript promise.");
+    }
+
+    return makePromiseResult(expo::jsi::PromiseHandle::owned(
+      promiseValue.asObject(jsRuntime), std::move(*resolveFunction), std::move(*rejectFunction)));
+  } catch (const std::exception &ex) {
+    return makePromiseErrorResult(86, ex.what());
+  } catch (...) {
+    return makePromiseErrorResult(87, "Unknown native exception while creating promise.");
+  }
+}
+
+expo_jsi_value_result promiseAsValue(expo_jsi_runtime_handle runtime,
+                                     expo_jsi_promise_handle promise)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_value_result{0, nullptr, error};
+  }
+  if (promise == nullptr) {
+    return makeErrorResult(88, "Promise handle is null.");
+  }
+
+  try {
+    return makeValueResult(expo::jsi::ValueHandle::owned(
+      facebook::jsi::Value(runtimeHandle->runtime(), promise->promise())));
+  } catch (const std::exception &ex) {
+    return makeErrorResult(89, ex.what());
+  } catch (...) {
+    return makeErrorResult(90, "Unknown native exception while converting promise to value.");
+  }
+}
+
+expo_jsi_error promiseResolve(expo_jsi_runtime_handle runtime,
+                              expo_jsi_promise_handle promise,
+                              expo_jsi_value_handle value)
+{
+  auto *runtimeHandle = tryRuntimeHandle(runtime, nullptr);
+  if (runtimeHandle == nullptr) {
+    return makeError(91, "Runtime handle is invalid.");
+  }
+  if (promise == nullptr) {
+    return makeError(92, "Promise handle is null.");
+  }
+  if (value == nullptr) {
+    return makeError(93, "Value handle is null.");
+  }
+
+  try {
+    promise->resolve(runtimeHandle->runtime(), value->value());
+    return makeOk();
+  } catch (const std::exception &ex) {
+    return makeError(94, ex.what());
+  } catch (...) {
+    return makeError(95, "Unknown native exception while resolving promise.");
+  }
+}
+
+expo_jsi_error promiseReject(expo_jsi_runtime_handle runtime,
+                             expo_jsi_promise_handle promise,
+                             expo_jsi_value_handle value)
+{
+  auto *runtimeHandle = tryRuntimeHandle(runtime, nullptr);
+  if (runtimeHandle == nullptr) {
+    return makeError(96, "Runtime handle is invalid.");
+  }
+  if (promise == nullptr) {
+    return makeError(97, "Promise handle is null.");
+  }
+  if (value == nullptr) {
+    return makeError(98, "Value handle is null.");
+  }
+
+  try {
+    promise->reject(runtimeHandle->runtime(), value->value());
+    return makeOk();
+  } catch (const std::exception &ex) {
+    return makeError(99, ex.what());
+  } catch (...) {
+    return makeError(100, "Unknown native exception while rejecting promise.");
+  }
+}
+
 expo_jsi_error objectSetProperty(expo_jsi_runtime_handle runtime,
                                  expo_jsi_object_handle object,
                                  const char *name,
@@ -1191,6 +1384,11 @@ void releaseArray(expo_jsi_runtime_handle, expo_jsi_array_handle array)
   delete array;
 }
 
+void releasePromise(expo_jsi_runtime_handle, expo_jsi_promise_handle promise)
+{
+  delete promise;
+}
+
 void releaseFunction(expo_jsi_runtime_handle, expo_jsi_function_handle function)
 {
   delete function;
@@ -1307,6 +1505,10 @@ const expo_jsi_api kApi{
   arrayGetLength,
   arrayGetValueAtIndex,
   arraySetValueAtIndex,
+  createPromise,
+  promiseAsValue,
+  promiseResolve,
+  promiseReject,
   objectSetProperty,
   objectGetProperty,
   createHostFunction,
@@ -1315,6 +1517,7 @@ const expo_jsi_api kApi{
   getArgumentValue,
   releaseObject,
   releaseArray,
+  releasePromise,
   releaseFunction,
   releaseValue,
   createString,

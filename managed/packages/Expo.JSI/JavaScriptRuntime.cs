@@ -124,6 +124,16 @@ public sealed unsafe class JavaScriptRuntime
     return new JavaScriptArray(context, result.Array);
   }
 
+  public JavaScriptPromise CreatePromise()
+  {
+    var result = context.Api->CreatePromiseValue(context.RuntimeHandle);
+    if (result.Ok == 0 || result.Promise == 0)
+    {
+      JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript promise.");
+    }
+    return new JavaScriptPromise(context, result.Promise);
+  }
+
   public JavaScriptFunction CreateHostFunction(
       string name,
       uint parameterCount,
