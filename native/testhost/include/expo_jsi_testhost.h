@@ -43,8 +43,7 @@ void expo_jsi_testhost_reset_counters(expo_jsi_testhost_runtime_handle testhost_
 
 void expo_jsi_testhost_drain_tasks(expo_jsi_testhost_runtime_handle testhost_runtime);
 
-expo_jsi_error expo_jsi_testhost_wait_until_idle(
-  expo_jsi_testhost_runtime_handle testhost_runtime);
+expo_jsi_error expo_jsi_testhost_wait_until_idle(expo_jsi_testhost_runtime_handle testhost_runtime);
 
 void expo_jsi_testhost_set_sync_execution_supported(
   expo_jsi_testhost_runtime_handle testhost_runtime, uint8_t supported);

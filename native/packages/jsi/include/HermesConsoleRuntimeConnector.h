@@ -1,8 +1,8 @@
 #pragma once
 
 #include <condition_variable>
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <exception>
 #include <functional>

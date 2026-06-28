@@ -117,9 +117,8 @@ void HermesConsoleRuntimeExecutor::drain()
   }
 
   std::unique_lock<std::mutex> lock(mutex_);
-  idleChanged_.wait(lock, [this]() {
-    return state_ == State::Stopped || (queue_.empty() && activeTasks_ == 0);
-  });
+  idleChanged_.wait(
+    lock, [this]() { return state_ == State::Stopped || (queue_.empty() && activeTasks_ == 0); });
 }
 
 void HermesConsoleRuntimeExecutor::shutdown() noexcept
@@ -165,9 +164,8 @@ void HermesConsoleRuntimeExecutor::threadMain()
       QueuedTask task{};
       {
         std::unique_lock<std::mutex> lock(mutex_);
-        workAvailable_.wait(lock, [this]() {
-          return state_ == State::Stopping || !queue_.empty();
-        });
+        workAvailable_.wait(lock,
+                            [this]() { return state_ == State::Stopping || !queue_.empty(); });
 
         if (state_ == State::Stopping && queue_.empty()) {
           state_ = State::Stopped;
