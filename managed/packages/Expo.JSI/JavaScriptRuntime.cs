@@ -134,6 +134,39 @@ public sealed unsafe class JavaScriptRuntime
     return new JavaScriptPromise(context, result.Promise);
   }
 
+  public JavaScriptPromiseValue CreatePromise(
+      Func<CancellationToken, Task<JavaScriptPromiseResult>> operation,
+      CancellationToken cancellationToken = default
+  )
+  {
+    ArgumentNullException.ThrowIfNull(operation);
+
+    var promise = CreatePromise();
+    try
+    {
+      var promiseValue = promise.AsValue();
+      _ = JavaScriptPromiseScheduler.SettleAsync(this, promise, operation, cancellationToken);
+      return new JavaScriptPromiseValue(promiseValue);
+    }
+    catch
+    {
+      promise.Dispose();
+      throw;
+    }
+  }
+
+  public JavaScriptError CreateError(string message)
+  {
+    ArgumentNullException.ThrowIfNull(message);
+
+    var result = context.Api->CreateErrorValue(context.RuntimeHandle, message);
+    if (result.Ok == 0 || result.Value == 0)
+    {
+      JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript error.");
+    }
+    return new JavaScriptError(JavaScriptValue.FromOwnedHandle(context, result.Value));
+  }
+
   public JavaScriptFunction CreateHostFunction(
       string name,
       uint parameterCount,

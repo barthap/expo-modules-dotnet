@@ -128,6 +128,13 @@ typedef expo_jsi_value_result (*expo_jsi_create_string_fn)(expo_jsi_runtime_hand
                                                            const uint8_t *data,
                                                            int32_t length);
 
+typedef expo_jsi_value_result (*expo_jsi_clone_value_fn)(expo_jsi_runtime_handle runtime,
+                                                         expo_jsi_value_handle value);
+
+typedef expo_jsi_value_result (*expo_jsi_create_error_fn)(expo_jsi_runtime_handle runtime,
+                                                          const uint8_t *message,
+                                                          int32_t message_len);
+
 typedef expo_jsi_value_kind (*expo_jsi_get_value_kind_fn)(expo_jsi_runtime_handle runtime,
                                                           expo_jsi_value_handle value,
                                                           expo_jsi_error *error);
@@ -291,6 +298,8 @@ typedef struct expo_jsi_api {
   expo_jsi_release_function_fn release_function;
   expo_jsi_release_value_fn release_value;
   expo_jsi_create_string_fn create_string;
+  expo_jsi_clone_value_fn clone_value;
+  expo_jsi_create_error_fn create_error;
   expo_jsi_get_string_fn get_string;
   expo_jsi_runtime_schedule_task_fn runtime_schedule_task;
   expo_jsi_runtime_can_execute_sync_fn runtime_can_execute_sync;

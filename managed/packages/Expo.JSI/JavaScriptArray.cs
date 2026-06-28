@@ -2,7 +2,7 @@ using Expo.JSI.Interop;
 
 namespace Expo.JSI;
 
-public sealed class JavaScriptArray : IDisposable
+public sealed class JavaScriptArray : IJavaScriptValueRepresentable, IDisposable
 {
   private readonly JsiContext context;
   private ExpoJsiArrayHandle handle;
@@ -49,10 +49,10 @@ public sealed class JavaScriptArray : IDisposable
     unsafe
     {
       var error = context.Api->SetArrayValueAtIndex(
-          context.RuntimeHandle,
-          handle,
-          index,
-          value.Handle
+        context.RuntimeHandle,
+        handle,
+        index,
+        value.Handle
       );
       context.ThrowIfError(error, "Failed to set JavaScript array value.");
     }

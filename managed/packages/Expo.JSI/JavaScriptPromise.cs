@@ -2,7 +2,7 @@ using Expo.JSI.Interop;
 
 namespace Expo.JSI;
 
-public sealed class JavaScriptPromise : IDisposable
+public sealed class JavaScriptPromise : IJavaScriptValueRepresentable, IDisposable
 {
   private readonly JsiContext context;
   private ExpoJsiPromiseHandle handle;

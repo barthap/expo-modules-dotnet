@@ -2,7 +2,7 @@ using Expo.JSI.Interop;
 
 namespace Expo.JSI;
 
-public sealed class JavaScriptValue : IDisposable
+public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
 {
   private readonly JsiContext context;
   private ExpoJsiValueHandle handle;
@@ -106,6 +106,20 @@ public sealed class JavaScriptValue : IDisposable
         );
       }
       return new JavaScriptArray(context, result.Array);
+    }
+  }
+
+  public JavaScriptValue AsValue()
+  {
+    ThrowIfDisposed();
+    unsafe
+    {
+      var result = context.Api->CloneJavaScriptValue(context.RuntimeHandle, handle);
+      if (result.Ok == 0 || result.Value == 0)
+      {
+        JsiContext.ThrowNativeError(result.Error, "Failed to clone JavaScript value.");
+      }
+      return FromOwnedHandle(context, result.Value);
     }
   }
 

@@ -220,6 +220,17 @@ internal readonly unsafe struct ExpoJsiApi
   private readonly delegate* unmanaged[Cdecl]<
       ExpoJsiRuntimeHandle,
       ExpoJsiValueHandle,
+      ExpoJsiValueResult> CloneValue;
+
+  private readonly delegate* unmanaged[Cdecl]<
+      ExpoJsiRuntimeHandle,
+      byte*,
+      int,
+      ExpoJsiValueResult> CreateError;
+
+  private readonly delegate* unmanaged[Cdecl]<
+      ExpoJsiRuntimeHandle,
+      ExpoJsiValueHandle,
       ExpoJsiStringResult> GetString;
 
   private readonly delegate* unmanaged[Cdecl]<
@@ -300,6 +311,8 @@ internal readonly unsafe struct ExpoJsiApi
         || this.ReleaseFunction is null
         || this.ReleaseValue is null
         || this.CreateString is null
+        || this.CloneValue is null
+        || this.CreateError is null
         || this.GetString is null
         || this.RuntimeScheduleTask is null
         || this.RuntimeCanExecuteSync is null
@@ -337,6 +350,26 @@ internal readonly unsafe struct ExpoJsiApi
     fixed (byte* bytesPtr = bytes)
     {
       return CreateString(runtimeHandle, bytesPtr, bytes.Length);
+    }
+  }
+
+  public ExpoJsiValueResult CloneJavaScriptValue(
+      ExpoJsiRuntimeHandle runtimeHandle,
+      ExpoJsiValueHandle valueHandle
+  )
+  {
+    return CloneValue(runtimeHandle, valueHandle);
+  }
+
+  public ExpoJsiValueResult CreateErrorValue(
+      ExpoJsiRuntimeHandle runtimeHandle,
+      string message
+  )
+  {
+    var bytes = StrictUtf8.GetBytes(message);
+    fixed (byte* bytesPtr = bytes)
+    {
+      return CreateError(runtimeHandle, bytesPtr, bytes.Length);
     }
   }
 
@@ -704,5 +737,5 @@ internal readonly unsafe struct ExpoJsiApi
   }
 
   public static uint ExpectedSize => (uint)sizeof(ExpoJsiApi);
-  public const uint ExpectedVersion = 7;
+  public const uint ExpectedVersion = 8;
 }

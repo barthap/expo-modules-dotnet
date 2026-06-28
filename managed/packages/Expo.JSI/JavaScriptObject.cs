@@ -2,7 +2,7 @@ using System.Text;
 
 namespace Expo.JSI;
 
-public sealed class JavaScriptObject : IDisposable
+public sealed class JavaScriptObject : IJavaScriptValueRepresentable, IDisposable
 {
   private readonly JsiContext context;
   private ExpoJsiObjectHandle handle;

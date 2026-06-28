@@ -184,4 +184,146 @@ public sealed class JavaScriptPromiseTests
       return true;
     });
   }
+
+  [Fact]
+  public async Task CreatePromiseFromManagedTaskResolvesWithRuntimeCreatedValue()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var unblock = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      using var promise = runtime.CreatePromise(async cancellationToken =>
+      {
+        var result = await unblock.Task.WaitAsync(cancellationToken);
+        return JavaScriptPromiseResult.Resolve(js => js.CreateString(result));
+      }, TestContext.Current.CancellationToken);
+      using var promiseValue = promise.AsValue();
+      global.SetProperty("managedTaskPromise", promiseValue);
+
+      using var setup = fixture.Evaluate(
+          """
+          globalThis.managedTaskPromiseResult = "";
+          globalThis.managedTaskPromise.then(value => {
+            globalThis.managedTaskPromiseResult = value;
+          });
+          undefined;
+          """,
+          "promise-managed-task-resolve-setup.js"
+      );
+
+      return true;
+    });
+
+    unblock.SetResult("done");
+
+    await EventuallyAsync(
+        fixture,
+        "globalThis.managedTaskPromiseResult",
+        value => value.AsString() == "done"
+    );
+  }
+
+  [Fact]
+  public async Task CreatePromiseFromManagedTaskRejectsThrownExceptionWithJavaScriptError()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      using var promise = runtime.CreatePromise(_ =>
+        Task.FromException<JavaScriptPromiseResult>(
+            new InvalidOperationException("managed failure")
+        )
+      );
+      using var promiseValue = promise.AsValue();
+      global.SetProperty("managedTaskPromise", promiseValue);
+
+      using var setup = fixture.Evaluate(
+          """
+          globalThis.managedTaskPromiseRejectedWithError = false;
+          globalThis.managedTaskPromiseRejectionMessage = "";
+          globalThis.managedTaskPromise.catch(reason => {
+            globalThis.managedTaskPromiseRejectedWithError = reason instanceof Error;
+            globalThis.managedTaskPromiseRejectionMessage = reason.message;
+          });
+          undefined;
+          """,
+          "promise-managed-task-reject-setup.js"
+      );
+
+      return true;
+    });
+
+    await EventuallyAsync(
+        fixture,
+        "globalThis.managedTaskPromiseRejectedWithError",
+        value => value.AsBool()
+    );
+
+    fixture.Runtime.Execute(_ =>
+    {
+      using var message = fixture.Evaluate(
+          "globalThis.managedTaskPromiseRejectionMessage",
+          "promise-managed-task-reject-message.js"
+      );
+      Assert.Equal("managed failure", message.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void CreateErrorCreatesJavaScriptErrorValue()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      using var error = runtime.CreateError("boom");
+      using var errorValue = error.AsValue();
+      global.SetProperty("managedError", errorValue);
+
+      using var isError = fixture.Evaluate(
+          "globalThis.managedError instanceof Error",
+          "javascript-error-instanceof.js"
+      );
+      using var message = fixture.Evaluate(
+          "globalThis.managedError.message",
+          "javascript-error-message.js"
+      );
+
+      Assert.True(isError.AsBool());
+      Assert.Equal("boom", message.AsString());
+      return true;
+    });
+  }
+
+  private static async Task EventuallyAsync(
+      HermesRuntimeFixture fixture,
+      string expression,
+      Func<JavaScriptValue, bool> predicate
+  )
+  {
+    var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+    while (DateTime.UtcNow < deadline)
+    {
+      fixture.WaitUntilIdle();
+      var matched = fixture.Runtime.Execute(_ =>
+      {
+        using var value = fixture.Evaluate(expression, "promise-eventually.js");
+        return predicate(value);
+      });
+      if (matched)
+      {
+        return;
+      }
+
+      await Task.Delay(10, TestContext.Current.CancellationToken);
+    }
+
+    Assert.Fail($"Timed out waiting for JavaScript expression to match: {expression}");
+  }
 }

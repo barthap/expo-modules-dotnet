@@ -248,7 +248,7 @@ private:
 
 namespace {
 
-constexpr uint32_t kApiVersion = 7;
+constexpr uint32_t kApiVersion = 8;
 
 struct StringResultBuffer {
   explicit StringResultBuffer(std::string value)
@@ -579,6 +579,54 @@ expo_jsi_value_result createString(expo_jsi_runtime_handle runtime,
     return makeErrorResult(43, ex.what());
   } catch (...) {
     return makeErrorResult(44, "Unknown native exception while creating string.");
+  }
+}
+
+expo_jsi_value_result cloneValue(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_value_result{0, nullptr, error};
+  }
+  if (value == nullptr) {
+    return makeErrorResult(101, "Value handle is null.");
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    return makeValueResult(
+      expo::jsi::ValueHandle::owned(facebook::jsi::Value(jsRuntime, value->value())));
+  } catch (const std::exception &ex) {
+    return makeErrorResult(102, ex.what());
+  } catch (...) {
+    return makeErrorResult(103, "Unknown native exception while cloning value.");
+  }
+}
+
+expo_jsi_value_result createError(expo_jsi_runtime_handle runtime,
+                                  const uint8_t *message,
+                                  int32_t messageLength)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_value_result{0, nullptr, error};
+  }
+  if (!isValidUtf8(message, messageLength)) {
+    return makeErrorResult(104, "Error message is not valid UTF-8.");
+  }
+
+  try {
+    const char *text = messageLength == 0 ? "" : reinterpret_cast<const char *>(message);
+    auto jsError = facebook::jsi::JSError(runtimeHandle->runtime(),
+                                          std::string(text, static_cast<size_t>(messageLength)));
+    return makeValueResult(expo::jsi::ValueHandle::owned(
+      facebook::jsi::Value(runtimeHandle->runtime(), jsError.value())));
+  } catch (const std::exception &ex) {
+    return makeErrorResult(105, ex.what());
+  } catch (...) {
+    return makeErrorResult(106, "Unknown native exception while creating JavaScript error.");
   }
 }
 
@@ -1521,6 +1569,8 @@ const expo_jsi_api kApi{
   releaseFunction,
   releaseValue,
   createString,
+  cloneValue,
+  createError,
   getString,
   scheduleTask,
   canExecuteSync,

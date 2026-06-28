@@ -1,6 +1,6 @@
 namespace Expo.JSI;
 
-public sealed class JavaScriptFunction : IDisposable
+public sealed class JavaScriptFunction : IJavaScriptValueRepresentable, IDisposable
 {
   private readonly JsiContext context;
   private ExpoJsiFunctionHandle handle;
