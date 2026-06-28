@@ -62,7 +62,7 @@ internal static class JavaScriptPromiseScheduler
       Exception exception
   )
   {
-    using var error = runtime.CreateError(exception.Message);
+    using var error = runtime.CreateErrorObject(exception.Message);
     using var value = error.AsValue();
     promise.Reject(value);
   }

@@ -226,7 +226,7 @@ public sealed class JavaScriptPromiseTests
   }
 
   [Fact]
-  public async Task CreatePromiseFromManagedTaskRejectsThrownExceptionWithJavaScriptError()
+  public async Task CreatePromiseFromManagedTaskRejectsThrownExceptionWithJavaScriptErrorObject()
   {
     using var fixture = HermesRuntimeFixture.Create();
 
@@ -275,14 +275,21 @@ public sealed class JavaScriptPromiseTests
   }
 
   [Fact]
-  public void CreateErrorCreatesJavaScriptErrorValue()
+  public void CreateErrorObjectCreatesJavaScriptErrorObject()
   {
     using var fixture = HermesRuntimeFixture.Create();
 
     fixture.Runtime.Execute(runtime =>
     {
       using var global = runtime.Global();
-      using var error = runtime.CreateError("boom");
+      using var error = runtime.CreateErrorObject("boom");
+
+      Assert.Equal("Error", error.Name);
+      Assert.Equal("boom", error.Message);
+      var stack = error.Stack;
+      Assert.NotNull(stack);
+      Assert.Contains("boom", stack);
+
       using var errorValue = error.AsValue();
       global.SetProperty("managedError", errorValue);
 
@@ -297,6 +304,48 @@ public sealed class JavaScriptPromiseTests
 
       Assert.True(isError.AsBool());
       Assert.Equal("boom", message.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void JavaScriptValueCanBeCheckedAndWrappedAsPromiseValue()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var promise = runtime.CreatePromise();
+      using var promiseValue = promise.AsValue();
+
+      Assert.True(promiseValue.IsPromise);
+
+      using var wrappedPromise = promiseValue.AsPromiseValue();
+      using var wrappedPromiseValue = wrappedPromise.AsValue();
+      using var global = runtime.Global();
+      global.SetProperty("wrappedPromise", wrappedPromiseValue);
+
+      using var isPromise = fixture.Evaluate(
+          "globalThis.wrappedPromise instanceof Promise",
+          "promise-value-checked-wrap.js"
+      );
+
+      Assert.True(isPromise.AsBool());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void NonPromiseValueCannotBeWrappedAsPromiseValue()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var notPromise = runtime.CreateString("not a promise");
+
+      Assert.False(notPromise.IsPromise);
+      Assert.Throws<InvalidOperationException>(() => notPromise.AsPromiseValue());
       return true;
     });
   }

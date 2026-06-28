@@ -256,6 +256,23 @@ internal readonly unsafe struct ExpoJsiApi
       ExpoJsiRuntimeHandle,
       ExpoJsiError> RuntimeDrainTasks;
 
+  private readonly delegate* unmanaged[Cdecl]<
+      ExpoJsiRuntimeHandle,
+      ExpoJsiValueHandle,
+      ExpoJsiError*,
+      byte> IsPromise;
+
+  private readonly delegate* unmanaged[Cdecl]<
+      ExpoJsiRuntimeHandle,
+      ExpoJsiValueHandle,
+      ExpoJsiError*,
+      byte> IsError;
+
+  private readonly delegate* unmanaged[Cdecl]<
+      ExpoJsiRuntimeHandle,
+      ExpoJsiValueHandle,
+      ExpoJsiStringResult> CoerceToString;
+
   private static readonly UTF8Encoding StrictUtf8 = new(
       encoderShouldEmitUTF8Identifier: false,
       throwOnInvalidBytes: true
@@ -318,6 +335,9 @@ internal readonly unsafe struct ExpoJsiApi
         || this.RuntimeCanExecuteSync is null
         || this.RuntimeExecuteSync is null
         || this.RuntimeDrainTasks is null
+        || this.IsPromise is null
+        || this.IsError is null
+        || this.CoerceToString is null
     )
     {
       throw new InvalidOperationException(
@@ -373,6 +393,43 @@ internal readonly unsafe struct ExpoJsiApi
     }
   }
 
+  public bool IsPromiseValue(
+      ExpoJsiRuntimeHandle runtimeHandle,
+      ExpoJsiValueHandle valueHandle
+  )
+  {
+    ExpoJsiError error;
+    var result = IsPromise(runtimeHandle, valueHandle, &error);
+    if (error.Code != 0)
+    {
+      ThrowNativeError(error, "Failed to check JavaScript Promise value.");
+    }
+    return result != 0;
+  }
+
+  public bool IsErrorValue(
+      ExpoJsiRuntimeHandle runtimeHandle,
+      ExpoJsiValueHandle valueHandle
+  )
+  {
+    ExpoJsiError error;
+    var result = IsError(runtimeHandle, valueHandle, &error);
+    if (error.Code != 0)
+    {
+      ThrowNativeError(error, "Failed to check JavaScript Error object value.");
+    }
+    return result != 0;
+  }
+
+  public string CoerceJavaScriptValueToString(
+      ExpoJsiRuntimeHandle runtimeHandle,
+      ExpoJsiValueHandle valueHandle
+  )
+  {
+    var result = CoerceToString(runtimeHandle, valueHandle);
+    return DecodeStringResult(result, "Failed to coerce JavaScript value to string.");
+  }
+
   /// <summary>
   /// Gets the kind of a JavaScript value through the native API table.
   /// </summary>
@@ -425,9 +482,14 @@ internal readonly unsafe struct ExpoJsiApi
   )
   {
     var result = GetString(runtimeHandle, valueHandle);
+    return DecodeStringResult(result, "Failed to read JavaScript string.");
+  }
+
+  private static string DecodeStringResult(ExpoJsiStringResult result, string fallback)
+  {
     if (result.Ok == 0)
     {
-      ThrowNativeError(result.Error, "Failed to read JavaScript string.");
+      ThrowNativeError(result.Error, fallback);
     }
 
     try
@@ -737,5 +799,5 @@ internal readonly unsafe struct ExpoJsiApi
   }
 
   public static uint ExpectedSize => (uint)sizeof(ExpoJsiApi);
-  public const uint ExpectedVersion = 8;
+  public const uint ExpectedVersion = 10;
 }

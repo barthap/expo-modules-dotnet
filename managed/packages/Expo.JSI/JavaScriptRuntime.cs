@@ -155,7 +155,7 @@ public sealed unsafe class JavaScriptRuntime
     }
   }
 
-  public JavaScriptError CreateError(string message)
+  public JavaScriptErrorObject CreateErrorObject(string message)
   {
     ArgumentNullException.ThrowIfNull(message);
 
@@ -164,7 +164,7 @@ public sealed unsafe class JavaScriptRuntime
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript error.");
     }
-    return new JavaScriptError(JavaScriptValue.FromOwnedHandle(context, result.Value));
+    return new JavaScriptErrorObject(JavaScriptValue.FromOwnedHandle(context, result.Value));
   }
 
   public JavaScriptFunction CreateHostFunction(

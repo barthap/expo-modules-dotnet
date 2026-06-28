@@ -262,6 +262,17 @@ typedef expo_jsi_error (*expo_jsi_runtime_execute_sync_fn)(
 
 typedef expo_jsi_error (*expo_jsi_runtime_drain_tasks_fn)(expo_jsi_runtime_handle runtime);
 
+typedef uint8_t (*expo_jsi_is_promise_fn)(expo_jsi_runtime_handle runtime,
+                                          expo_jsi_value_handle value,
+                                          expo_jsi_error *error);
+
+typedef uint8_t (*expo_jsi_is_error_fn)(expo_jsi_runtime_handle runtime,
+                                        expo_jsi_value_handle value,
+                                        expo_jsi_error *error);
+
+typedef expo_jsi_string_result (*expo_jsi_coerce_to_string_fn)(expo_jsi_runtime_handle runtime,
+                                                               expo_jsi_value_handle value);
+
 typedef struct expo_jsi_api {
   uint32_t size;
   uint32_t version;
@@ -305,6 +316,9 @@ typedef struct expo_jsi_api {
   expo_jsi_runtime_can_execute_sync_fn runtime_can_execute_sync;
   expo_jsi_runtime_execute_sync_fn runtime_execute_sync;
   expo_jsi_runtime_drain_tasks_fn runtime_drain_tasks;
+  expo_jsi_is_promise_fn is_promise;
+  expo_jsi_is_error_fn is_error;
+  expo_jsi_coerce_to_string_fn coerce_to_string;
 } expo_jsi_api;
 
 #ifdef __cplusplus

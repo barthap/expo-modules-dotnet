@@ -90,8 +90,11 @@ public sealed class JavaScriptPromiseValue : IJavaScriptValueRepresentable, IDis
   public JavaScriptValue AsValue();
 }
 
-public sealed class JavaScriptError : IJavaScriptValueRepresentable, IDisposable
+public sealed class JavaScriptErrorObject : IJavaScriptValueRepresentable, IDisposable
 {
+  public string Name { get; }
+  public string Message { get; }
+  public string? Stack { get; }
   public JavaScriptValue AsValue();
 }
 
@@ -110,7 +113,7 @@ public sealed unsafe class JavaScriptRuntime
   public JavaScriptPromiseValue CreatePromise(
     Func<CancellationToken, Task<JavaScriptPromiseResult>> operation,
     CancellationToken cancellationToken = default);
-  public JavaScriptError CreateError(string message);
+  public JavaScriptErrorObject CreateErrorObject(string message);
 }
 ```
 
@@ -129,6 +132,15 @@ Rules:
   owns and disposes the settlement-capability promise handle internally.
 - Exceptions thrown by the managed async operation reject the JS promise with a
   real JS `Error` value created from the exception message.
+- `JavaScriptErrorObject` represents a JS `Error` object value, not managed
+  throwable semantics. Reserve `JavaScriptError` / `JavaScriptException` naming
+  for future thrown-value snapshot or managed exception APIs.
+- `JavaScriptErrorObject.Name` and `Message` best-effort coerce present values
+  with JS string conversion and return an empty string for absent or null
+  properties. `Stack` best-effort coerces present values and returns null for
+  absent or null stack properties.
+- `JavaScriptValue.IsPromise` / `AsPromiseValue()` and `IsError` /
+  `AsErrorObject()` use native same-runtime `instanceof` validation.
 
 ## Native ABI
 
@@ -149,6 +161,9 @@ Add function table entries:
 ```c
 clone_value(runtime, value) -> value_result
 create_error(runtime, message, message_len) -> value_result
+is_promise(runtime, value, error*) -> bool
+is_error(runtime, value, error*) -> bool
+coerce_to_string(runtime, value) -> string_result
 create_promise(runtime) -> promise_result
 promise_as_value(runtime, promise) -> value_result
 promise_resolve(runtime, promise, value) -> error
@@ -182,7 +197,9 @@ Add low-level tests under `Expo.JSI.Tests/Runtime`:
 - managed `Task` exceptions reject with a JS `Error`;
 - `JavaScriptValue.AsValue()` returns a disposable clone and does not dispose the
   original value;
-- `JavaScriptError` creates a JS-visible `Error`;
+- `JavaScriptErrorObject` creates a JS-visible `Error` and exposes
+  Error-specific properties;
+- `JavaScriptValue` can validate and wrap Promise/Error values;
 - second settlement is ignored;
 - disposal increments a promise release counter;
 - using a disposed promise throws `ObjectDisposedException`.

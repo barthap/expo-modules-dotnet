@@ -42,6 +42,30 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
     }
   }
 
+  public bool IsPromise
+  {
+    get
+    {
+      ThrowIfDisposed();
+      unsafe
+      {
+        return context.Api->IsPromiseValue(context.RuntimeHandle, handle);
+      }
+    }
+  }
+
+  public bool IsError
+  {
+    get
+    {
+      ThrowIfDisposed();
+      unsafe
+      {
+        return context.Api->IsErrorValue(context.RuntimeHandle, handle);
+      }
+    }
+  }
+
   public bool AsBool()
   {
     ThrowIfDisposed();
@@ -72,6 +96,15 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
     unsafe
     {
       return context.Api->ReadString(context.RuntimeHandle, handle);
+    }
+  }
+
+  internal string CoerceToString()
+  {
+    ThrowIfDisposed();
+    unsafe
+    {
+      return context.Api->CoerceJavaScriptValueToString(context.RuntimeHandle, handle);
     }
   }
 
@@ -107,6 +140,26 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
       }
       return new JavaScriptArray(context, result.Array);
     }
+  }
+
+  public JavaScriptPromiseValue AsPromiseValue()
+  {
+    ThrowIfDisposed();
+    if (!IsPromise)
+    {
+      throw new InvalidOperationException("Value is not a JavaScript Promise.");
+    }
+    return new JavaScriptPromiseValue(AsValue());
+  }
+
+  public JavaScriptErrorObject AsErrorObject()
+  {
+    ThrowIfDisposed();
+    if (!IsError)
+    {
+      throw new InvalidOperationException("Value is not a JavaScript Error object.");
+    }
+    return new JavaScriptErrorObject(AsValue());
   }
 
   public JavaScriptValue AsValue()

@@ -248,7 +248,7 @@ private:
 
 namespace {
 
-constexpr uint32_t kApiVersion = 8;
+constexpr uint32_t kApiVersion = 10;
 
 struct StringResultBuffer {
   explicit StringResultBuffer(std::string value)
@@ -766,6 +766,28 @@ expo_jsi_string_result getString(expo_jsi_runtime_handle runtime, expo_jsi_value
   }
 }
 
+expo_jsi_string_result coerceToString(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_string_result{0, nullptr, 0, nullptr, nullptr, error};
+  }
+  auto *valueHandle = value;
+  if (valueHandle == nullptr) {
+    return makeStringErrorResult(113, "Value handle is null.");
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    return makeStringResult(valueHandle->value().toString(jsRuntime).utf8(jsRuntime));
+  } catch (const std::exception &ex) {
+    return makeStringErrorResult(114, ex.what());
+  } catch (...) {
+    return makeStringErrorResult(115, "Unknown native exception while coercing value to string.");
+  }
+}
+
 expo_jsi_object_result getGlobalObject(expo_jsi_runtime_handle runtime)
 {
   expo_jsi_error error{};
@@ -1080,6 +1102,64 @@ expo_jsi_value_result promiseAsValue(expo_jsi_runtime_handle runtime,
   } catch (...) {
     return makeErrorResult(90, "Unknown native exception while converting promise to value.");
   }
+}
+
+uint8_t isInstanceOfGlobalConstructor(expo_jsi_runtime_handle runtime,
+                                      expo_jsi_value_handle value,
+                                      const char *constructorName,
+                                      int32_t nullValueErrorCode,
+                                      int32_t exceptionErrorCode,
+                                      int32_t unknownErrorCode,
+                                      expo_jsi_error *error)
+{
+  auto *runtimeHandle = tryRuntimeHandle(runtime, error);
+  if (runtimeHandle == nullptr) {
+    return 0;
+  }
+  if (value == nullptr) {
+    writeError(error, nullValueErrorCode, "Value handle is null.");
+    return 0;
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    clearError(error);
+    if (!value->value().isObject()) {
+      return 0;
+    }
+
+    auto constructorValue = jsRuntime.global().getProperty(jsRuntime, constructorName);
+    if (!constructorValue.isObject()) {
+      return 0;
+    }
+
+    auto constructorObject = constructorValue.asObject(jsRuntime);
+    if (!constructorObject.isFunction(jsRuntime)) {
+      return 0;
+    }
+
+    auto object = value->value().asObject(jsRuntime);
+    auto constructor = constructorObject.asFunction(jsRuntime);
+    return object.instanceOf(jsRuntime, constructor) ? 1 : 0;
+  } catch (const std::exception &ex) {
+    writeError(error, exceptionErrorCode, ex.what());
+    return 0;
+  } catch (...) {
+    writeError(error, unknownErrorCode, "Unknown native exception while checking value type.");
+    return 0;
+  }
+}
+
+uint8_t isPromise(expo_jsi_runtime_handle runtime,
+                  expo_jsi_value_handle value,
+                  expo_jsi_error *error)
+{
+  return isInstanceOfGlobalConstructor(runtime, value, "Promise", 107, 108, 109, error);
+}
+
+uint8_t isError(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value, expo_jsi_error *error)
+{
+  return isInstanceOfGlobalConstructor(runtime, value, "Error", 110, 111, 112, error);
 }
 
 expo_jsi_error promiseResolve(expo_jsi_runtime_handle runtime,
@@ -1576,6 +1656,9 @@ const expo_jsi_api kApi{
   canExecuteSync,
   executeSync,
   drainTasks,
+  isPromise,
+  isError,
+  coerceToString,
 };
 
 } // namespace
