@@ -6,7 +6,7 @@ managed entry points, receive an explicitly owned UTF-8 buffer, and release that
 buffer.
 
 This directory is standalone proof code. It is not a dependency of
-`Expo.CSharpJsi`, `Expo.ModulesCore`, native bridge packages, expo-desktop
+`Expo.JSI`, `Expo.ModulesCore`, native bridge packages, expo-desktop
 examples, or future autolinking packages.
 
 ## Prerequisites

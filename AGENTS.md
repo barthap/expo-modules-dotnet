@@ -18,10 +18,33 @@ A C ABI with opaque handles connects them.
 Read:
 
 1. `docs/README.md`
-2. `docs/agent-plan/01-architecture.md`
-3. The specific spike or phase doc relevant to the task
+2. `docs/specs/README.md`
+3. The specific living spec under `docs/specs/<capability>.md` relevant to the
+   task
 
 Use `docs/references/previous-windows-prototype.md` only for historical context.
+Use `docs/archive/` only for provenance or old proof evidence; it is not
+authoritative over current code, tests, or `docs/specs/`.
+
+For non-trivial behavior changes, use the repo-local living spec workflow:
+
+1. Create or update a delta spec before implementation.
+2. Implement through Superpowers or an equivalent repo-local plan.
+3. Verify with repo-owned commands.
+4. Merge accepted deltas into `docs/specs/`.
+5. Archive or remove transient planning artifacts.
+
+The repo-local skill is `.agents/skills/living-spec-workflow/SKILL.md`.
+This workflow is the project override for Superpowers artifact locations:
+delta specs and plans are `docs/changes/<yyyy-mm-dd-slug>/spec.md` and
+`docs/changes/<yyyy-mm-dd-slug>/plan.md`, not `docs/superpowers/` artifacts.
+Do not create a delta spec as a standalone milestone unless the user explicitly
+asks for docs-only design work; a normal delta spec implies plan,
+implementation, verification, and merge into `docs/specs/`.
+For an approved implementation slice, updating `docs/specs/` is part of the
+work before branch handoff. Ask first only if the implementation diverged from
+the approved spec or the docs update would introduce new unapproved
+requirements.
 
 If `AGENTS.local.md` exists, read it after this file. It is gitignored and may
 contain machine-specific paths or local workflow notes. Do not commit it.

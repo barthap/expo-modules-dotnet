@@ -1,0 +1,4 @@
+interface:
+  display_name: "Living Spec Workflow"
+  short_description: "Keep repo specs, code, and archives in sync"
+  default_prompt: "Use $living-spec-workflow to plan a repo-local change and keep the living specs in sync."

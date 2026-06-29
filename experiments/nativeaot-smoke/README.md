@@ -6,7 +6,7 @@ exports with `dlsym`, receive an explicitly owned UTF-8 buffer, and release
 that buffer.
 
 This directory is standalone proof code. It is not a dependency of
-`Expo.CSharpJsi`, `Expo.ModulesCore`, native bridge packages, expo-desktop
+`Expo.JSI`, `Expo.ModulesCore`, native bridge packages, expo-desktop
 examples, future autolinking packages, or the HostFXR smoke experiment.
 
 ## Prerequisites

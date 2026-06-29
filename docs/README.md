@@ -2,14 +2,11 @@
 
 Last refreshed: 2026-06-29.
 
-This directory is the working documentation package for the portable C# / JSI
-bridge in this repository. The early `agent-plan/` and `learning-guide/` files
-started as planning material before implementation existed. The repository now
-contains a real low-level bridge slice, so future agents should treat these docs
-as a current orientation guide and treat newer specs, plans, spike results, and
-tests as implementation evidence.
+This directory contains the current documentation for the portable C# / JSI
+bridge. The authoritative current-state specs live in `docs/specs/`. Historical
+plans, spike notes, and one-slice Superpowers artifacts live in `docs/archive/`.
 
-The architecture rule is still non-negotiable:
+The architecture rule is non-negotiable:
 
 ```text
 C++ owns JSI mechanics.
@@ -24,109 +21,68 @@ exception rules.
 
 ## Current Repository State
 
-The implemented core is no longer a docs-only research plan:
-
-- `native/include/expo_jsi.h` defines the production-oriented C ABI function
-  table and opaque handles.
-- `native/testhost/` builds a Hermes-backed test host used by managed tests.
+- `native/include/expo_jsi.h` defines the C ABI function table and opaque
+  handles.
+- `native/testhost/` builds the Hermes-backed testhost used by managed tests.
 - `managed/packages/Expo.JSI/` contains the low-level C# wrapper package.
 - `managed/packages/Expo.JSI.Tests/` contains the Hermes-backed test suite.
 - `experiments/hostfxr-smoke/`, `experiments/nativeaot-smoke/`, and
   `experiments/hermes-console-hostfxr/` preserve standalone loader and proof
   experiments.
-- `docs/spike-results/` records completed proof evidence.
-- `docs/superpowers/specs/` and `docs/superpowers/plans/` are newer than the
-  original agent plan and often contain the most precise implementation intent.
+- `docs/specs/` contains the living spec baseline.
+- `docs/archive/` contains historical planning, spike, and execution artifacts.
 
-`Expo.JSI` is the current production-oriented low-level wrapper package. It
-contains runtime, value, object, array, function, promise, error, scoped-ref,
-host-function, and runtime-task APIs over the ABI. It is intentionally below
-the module DSL layer.
+`Expo.JSI` is the current low-level wrapper package. It contains runtime,
+value, object, array, function, promise, error, scoped-ref, host-function, and
+runtime-task APIs over the ABI. It is intentionally below the module DSL layer.
 
-`Expo.ModulesCore` does not exist yet in this repository. Module dispatch and
-conversion tests under `managed/packages/Expo.JSI.Tests/Modules/` are temporary
-proofs. Move that behavior to `Expo.ModulesCore.Tests` when the module package
-is introduced.
+`Expo.ModulesCore` does not exist yet. Module dispatch and conversion tests
+under `managed/packages/Expo.JSI.Tests/Modules/` are temporary proofs. Move that
+behavior to `Expo.ModulesCore.Tests` when the module package is introduced.
 
 ## Reading Order
 
-For future agents:
+For current implementation work:
 
-1. `agent-plan/01-architecture.md`
-   Defines the current architecture, implemented boundaries, ownership rules,
-   and next direction.
-2. `agent-plan/02-research-spikes.md`
-   Re-baselines the original spike plan against what has actually landed.
-3. `agent-plan/03-implementation-phases.md`
-   Describes the current roadmap from the implemented `Expo.JSI` base toward
-   `Expo.ModulesCore`, generator work, AOT checks, and adapters.
-4. `agent-plan/04-verification-and-stop-gates.md`
-   Defines verification commands and decision gates for this repo.
-5. `agent-plan/05-repo-strategy.md`
-   Explains why development now happens in this repo and how experiments should
-   be promoted.
-
-For detailed implementation context, read the relevant newer spec or plan under
-`docs/superpowers/` before editing code. For loader or proof evidence, read the
-matching result under `docs/spike-results/`.
+1. `docs/specs/README.md`
+2. The specific capability spec under `docs/specs/<capability>.md`
+3. `docs/ownership-mental-model.md` for wrapper/ref lifetime work
+4. `docs/roadmap.md` for forward direction
+5. `docs/archive/` only when historical rationale or proof evidence is needed
 
 For background learning material:
 
-1. `learning-guide/01-dotnet-interop-basics.md`
-2. `learning-guide/02-jsi-wrapper-model.md`
-3. `learning-guide/03-source-generators-and-v2-api.md`
-4. `learning-guide/04-platform-adapters-and-views.md`
+1. `docs/learning-guide/01-dotnet-interop-basics.md`
+2. `docs/learning-guide/02-jsi-wrapper-model.md`
+3. `docs/learning-guide/03-source-generators-and-v2-api.md`
+4. `docs/learning-guide/04-platform-adapters-and-views.md`
 
-The learning guides may still use earlier names or simplified examples. When
-they conflict with current code, current code plus the newer specs win.
+The learning guides are educational. When they conflict with current code,
+tests, or `docs/specs/`, the current implementation and living specs win.
 
-## Scope
+## Spec Workflow
 
-Current in-scope work:
+This repo uses a living-spec workflow:
 
-- maintaining the `expo_jsi` C ABI and opaque-handle model;
-- improving `Expo.JSI` low-level wrappers and ownership semantics;
-- extending the Hermes-backed test host and managed test suite;
-- keeping temporary generated-looking module proofs clearly temporary;
-- designing and then implementing `Expo.ModulesCore` as the higher-level module
-  DSL and generated-binding package;
-- keeping HostFXR and NativeAOT loader concerns separate from runtime wrapper
-  semantics;
-- adding thin platform adapters only after the headless core boundary is clear.
+1. Brainstorm the feature through Superpowers or the equivalent manual flow.
+2. Write the approved design as `docs/changes/<yyyy-mm-dd-slug>/spec.md`.
+3. Write the implementation plan as `docs/changes/<yyyy-mm-dd-slug>/plan.md`.
+4. Implement and verify behavior with repo-owned commands.
+5. Merge accepted deltas into `docs/specs/`.
+6. Archive or remove transient planning artifacts.
 
-Current out-of-scope work unless explicitly requested:
+A change spec is for a milestone that is ready to continue into planning and
+implementation. For pure exploration, keep decisions in the conversation or
+promote them directly into durable docs only when that is the actual docs task.
+In the normal workflow, a delta spec implies the plan, implementation,
+verification, and living-spec merge will follow.
 
-- introducing RNW, WinUI, AppKit, packaging, or host-app dependencies into the
-  portable core;
-- building the full source generator before the generated-looking shape is
-  stable;
-- making views part of the first portable module package;
-- using runtime reflection, `object?[]`, or JSON as the normal v2 invocation
-  path;
-- publishing to GitHub, opening PRs, or posting comments without approval.
+For an implemented milestone, updating `docs/specs/` is part of the work before
+branch handoff. Merge, PR, keep-as-is, and discard decisions happen after the
+code, tests, and living specs already reflect the accepted behavior.
 
-## Key Current Decisions
-
-`Expo.JSI` stays low-level. It exposes wrapper types over the ABI and should not
-grow module DSL concerns.
-
-The module layer belongs in a future `Expo.ModulesCore` package. Generated
-bindings should decode `JavaScriptArguments`, call authored C# methods directly,
-and encode return values through `Expo.JSI` wrappers.
-
-The ABI has moved toward value handles for ordinary values, objects, arrays, and
-functions. Promise capability remains a separate handle. C# still exposes typed
-wrappers such as `JavaScriptObject`, `JavaScriptArray`, `JavaScriptFunction`,
-and `JavaScriptPromise`.
-
-Scoped refs such as `JavaScriptValueRef`, `JavaScriptObjectRef`, and
-`JavaScriptArrayRef` are for temporary inspection inside a runtime execution
-frame or host-function callback. Owned wrappers are disposable and may escape
-when runtime/thread rules permit.
-
-HostFXR is an experiment and development loader, not the runtime architecture.
-`Expo.JSI` should not contain HostFXR-specific code. NativeAOT compatibility is
-a continuing constraint on ABI and generated-binding design.
+Use the repo-local `living-spec-workflow` skill in `.agents/skills/` for the
+exact workflow and guardrails.
 
 ## Verification
 
@@ -153,7 +109,7 @@ Docs-only changes should at least run:
 
 ```sh
 git diff --check
-rg "self[-]contained planning package|planning[ ]artifacts,[ ]not[ ]implementation|expo[-]modules[-]windows[-]core|Phase[ ]1:[ ]clean[ ]separate[ ]research[ ]repo|create[ ]a[ ]clean[ ]local[ ]research[ ]repository" docs/README.md docs/agent-plan
+rg "self[-]contained planning package|planning[ ]artifacts,[ ]not[ ]implementation|expo[-]modules[-]windows[-]core|Phase[ ]1:[ ]clean[ ]separate[ ]research[ ]repo|create[ ]a[ ]clean[ ]local[ ]research[ ]repository" docs/README.md docs/specs docs/roadmap.md AGENTS.md .agents/skills
 ```
 
 Any match should be intentional and explained by context.
