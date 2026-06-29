@@ -136,7 +136,7 @@ public sealed class HostFunctionTests
     });
 
     var counters = fixture.Counters;
-    Assert.True(counters.ReleasedFunctions >= 1);
+    Assert.True(counters.ReleasedValues >= 1);
   }
 
   [Fact]

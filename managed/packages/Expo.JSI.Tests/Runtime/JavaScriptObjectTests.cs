@@ -64,6 +64,41 @@ public sealed class JavaScriptObjectTests
   }
 
   [Fact]
+  public void JavaScriptValueAsObjectRetainsAfterValidation()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(_ =>
+    {
+      using var value = fixture.Evaluate("({ answer: 42 })", "object-retain-as-object.js");
+      using var target = value.AsObject();
+      value.Dispose();
+
+      using var actual = target.GetProperty("answer");
+      Assert.Equal(42, actual.AsDouble());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void JavaScriptValueAsObjectRejectsNonObjectBeforeReturningWrapper()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var value = runtime.CreateNumber(7);
+      var error = Assert.Throws<InvalidOperationException>(() =>
+      {
+        using var _ = value.AsObject();
+      });
+
+      Assert.Contains("object", error.Message, StringComparison.OrdinalIgnoreCase);
+      return true;
+    });
+  }
+
+  [Fact]
   public void Utf8PropertyNameRoundTrips()
   {
     using var fixture = HermesRuntimeFixture.Create();
@@ -98,6 +133,6 @@ public sealed class JavaScriptObjectTests
     });
 
     var counters = fixture.Counters;
-    Assert.True(counters.ReleasedObjects >= 1);
+    Assert.True(counters.ReleasedValues >= 1);
   }
 }

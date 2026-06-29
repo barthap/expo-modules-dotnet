@@ -72,8 +72,7 @@ public sealed class JavaScriptScopedRefTests
       return true;
     });
 
-    Assert.True(fixture.Counters.ReleasedObjects >= 1);
-    Assert.True(fixture.Counters.ReleasedValues >= 1);
+    Assert.True(fixture.Counters.ReleasedValues >= 3);
   }
 
   [Fact]
