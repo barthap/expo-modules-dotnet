@@ -58,7 +58,7 @@ internal readonly unsafe struct JavaScriptValueInner
         Handle,
         ExpoJsiValueExpectation.Object
     );
-    if (result.Ok == 0 || result.Value == 0)
+    if (!result.IsOk)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to convert JavaScript value to object.");
     }
@@ -72,7 +72,7 @@ internal readonly unsafe struct JavaScriptValueInner
         Handle,
         ExpoJsiValueExpectation.Array
     );
-    if (result.Ok == 0 || result.Value == 0)
+    if (!result.IsOk)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to convert JavaScript value to array.");
     }
@@ -82,7 +82,7 @@ internal readonly unsafe struct JavaScriptValueInner
   public ExpoJsiValueHandle Retain()
   {
     var result = Context.Api->CloneJavaScriptValue(Context.RuntimeHandle, Handle);
-    if (result.Ok == 0 || result.Value == 0)
+    if (!result.IsOk)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to clone JavaScript value.");
     }

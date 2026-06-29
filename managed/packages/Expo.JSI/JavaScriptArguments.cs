@@ -53,7 +53,7 @@ public readonly struct JavaScriptArguments
     unsafe
     {
       var result = context.Api->GetArgument(context.RuntimeHandle, handle, index);
-      if (result.Ok == 0 || result.Value == 0)
+      if (!result.IsOk)
       {
         JsiContext.ThrowNativeError(result.Error, "Failed to read JavaScript argument.");
       }

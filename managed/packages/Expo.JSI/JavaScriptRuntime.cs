@@ -114,7 +114,7 @@ public sealed unsafe class JavaScriptRuntime
   public JavaScriptValue CreateNumber(double value)
   {
     var result = context.Api->CreateNumberValue(context.RuntimeHandle, value);
-    if (result.Ok == 0 || result.Value == 0)
+    if (!result.IsOk)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript number.");
     }
@@ -130,7 +130,7 @@ public sealed unsafe class JavaScriptRuntime
   public JavaScriptValue CreateBool(bool value)
   {
     var result = context.Api->CreateBoolValue(context.RuntimeHandle, value);
-    if (result.Ok == 0 || result.Value == 0)
+    if (!result.IsOk)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript boolean.");
     }
@@ -148,7 +148,7 @@ public sealed unsafe class JavaScriptRuntime
     ArgumentNullException.ThrowIfNull(value);
 
     var result = context.Api->CreateStringValue(context.RuntimeHandle, value);
-    if (result.Ok == 0 || result.Value == 0)
+    if (!result.IsOk)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript string.");
     }
@@ -164,7 +164,7 @@ public sealed unsafe class JavaScriptRuntime
   public JavaScriptObject Global()
   {
     var result = context.Api->GetGlobal(context.RuntimeHandle);
-    if (result.Ok == 0 || result.Value == 0)
+    if (!result.IsOk)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to get JavaScript global object.");
     }
@@ -180,7 +180,7 @@ public sealed unsafe class JavaScriptRuntime
   public JavaScriptObject CreateObject()
   {
     var result = context.Api->CreateObjectValue(context.RuntimeHandle);
-    if (result.Ok == 0 || result.Value == 0)
+    if (!result.IsOk)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript object.");
     }
@@ -196,7 +196,7 @@ public sealed unsafe class JavaScriptRuntime
   public JavaScriptArray CreateArray(uint length = 0)
   {
     var result = context.Api->CreateArrayValue(context.RuntimeHandle, length);
-    if (result.Ok == 0 || result.Value == 0)
+    if (!result.IsOk)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript array.");
     }
@@ -213,7 +213,7 @@ public sealed unsafe class JavaScriptRuntime
   public JavaScriptPromise CreatePromise()
   {
     var result = context.Api->CreatePromiseValue(context.RuntimeHandle);
-    if (result.Ok == 0 || result.Promise == 0)
+    if (!result.IsOk)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript promise.");
     }
@@ -259,7 +259,7 @@ public sealed unsafe class JavaScriptRuntime
     ArgumentNullException.ThrowIfNull(message);
 
     var result = context.Api->CreateErrorValue(context.RuntimeHandle, message);
-    if (result.Ok == 0 || result.Value == 0)
+    if (!result.IsOk)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript error.");
     }
@@ -297,7 +297,7 @@ public sealed unsafe class JavaScriptRuntime
         &ReleaseHostFunctionContext
     );
 
-    if (result.Ok == 0 || result.Value == 0)
+    if (!result.IsOk)
     {
       HostFunctionContext.Release(callbackContext);
       JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript host function.");

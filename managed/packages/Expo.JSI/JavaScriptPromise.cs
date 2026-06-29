@@ -34,7 +34,7 @@ public sealed class JavaScriptPromise : IJavaScriptValueRepresentable, IDisposab
     unsafe
     {
       var result = context.Api->ConvertPromiseToValue(context.RuntimeHandle, handle);
-      if (result.Ok == 0 || result.Value == 0)
+      if (!result.IsOk)
       {
         JsiContext.ThrowNativeError(
             result.Error,

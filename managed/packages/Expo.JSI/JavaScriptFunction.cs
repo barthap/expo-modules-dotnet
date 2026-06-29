@@ -38,7 +38,7 @@ public sealed class JavaScriptFunction : IJavaScriptValueRepresentable, IDisposa
           handle,
           ExpoJsiValueExpectation.Function
       );
-      if (result.Ok == 0 || result.Value == 0)
+      if (!result.IsOk)
       {
         JsiContext.ThrowNativeError(
             result.Error,

@@ -72,7 +72,7 @@ internal static unsafe class NativeTestHost
           sourceUrlPtr,
           sourceUrlBytes.Length
       );
-      if (result.Ok == 0 || result.Value == 0)
+      if (!result.IsOk)
       {
         ThrowNativeError(result.Error, "Failed to evaluate JavaScript.");
       }

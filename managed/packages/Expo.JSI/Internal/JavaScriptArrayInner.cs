@@ -27,7 +27,7 @@ internal readonly unsafe struct JavaScriptArrayInner
   public ExpoJsiValueHandle GetValue(uint index)
   {
     var result = Context.Api->GetArrayValueAtIndex(Context.RuntimeHandle, Handle, index);
-    if (result.Ok == 0 || result.Value == 0)
+    if (!result.IsOk)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to get JavaScript array value.");
     }
@@ -52,7 +52,7 @@ internal readonly unsafe struct JavaScriptArrayInner
         Handle,
         ExpoJsiValueExpectation.Object
     );
-    if (result.Ok == 0 || result.Value == 0)
+    if (!result.IsOk)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to retain JavaScript array as object.");
     }
@@ -66,7 +66,7 @@ internal readonly unsafe struct JavaScriptArrayInner
         Handle,
         ExpoJsiValueExpectation.Array
     );
-    if (result.Ok == 0 || result.Value == 0)
+    if (!result.IsOk)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to retain JavaScript array value.");
     }

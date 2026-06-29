@@ -411,7 +411,7 @@ internal readonly unsafe struct ExpoJsiApi
 
   private static string DecodeStringResult(ExpoJsiStringResult result, string fallback)
   {
-    if (result.Ok == 0)
+    if (!result.IsOk)
     {
       ThrowNativeError(result.Error, fallback);
     }

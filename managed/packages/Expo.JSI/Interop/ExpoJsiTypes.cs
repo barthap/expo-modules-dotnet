@@ -68,6 +68,8 @@ internal readonly struct ExpoJsiValueResult
   public readonly ExpoJsiValueHandle Value;
   public readonly ExpoJsiError Error;
 
+  public bool IsOk => Ok != 0 && Value != 0;
+
   public ExpoJsiValueResult(int ok, ExpoJsiValueHandle value, ExpoJsiError error)
   {
     Ok = ok;
@@ -82,6 +84,8 @@ internal readonly struct ExpoJsiPromiseResult
   public readonly int Ok;
   public readonly ExpoJsiPromiseHandle Promise;
   public readonly ExpoJsiError Error;
+
+  public bool IsOk => Ok != 0 && Promise != 0;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -93,4 +97,6 @@ internal readonly unsafe struct ExpoJsiStringResult
   public readonly nint ReleaseContext;
   public readonly delegate* unmanaged[Cdecl]<nint, void> Release;
   public readonly ExpoJsiError Error;
+
+  public bool IsOk => Ok != 0;
 }

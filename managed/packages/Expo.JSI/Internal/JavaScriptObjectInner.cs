@@ -36,7 +36,7 @@ internal readonly unsafe struct JavaScriptObjectInner
         Handle,
         nameBytes
     );
-    if (result.Ok == 0 || result.Value == 0)
+    if (!result.IsOk)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to get JavaScript object property.");
     }
@@ -50,7 +50,7 @@ internal readonly unsafe struct JavaScriptObjectInner
         Handle,
         ExpoJsiValueExpectation.Object
     );
-    if (result.Ok == 0 || result.Value == 0)
+    if (!result.IsOk)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to retain JavaScript object value.");
     }
