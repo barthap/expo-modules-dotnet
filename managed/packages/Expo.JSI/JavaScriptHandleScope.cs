@@ -2,6 +2,22 @@ using Expo.JSI.Interop;
 
 namespace Expo.JSI;
 
+/// <summary>
+/// Tracks temporary native handles created while scoped JavaScript refs are active.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A handle scope is entered for each managed runtime access frame, such as
+/// <see cref="JavaScriptRuntime.Execute{T}" />, scheduled runtime work, or a host-function
+/// callback. Scoped refs use the current scope as their lifetime marker.
+/// </para>
+/// <para>
+/// The scope does not own the root handle behind an existing owned wrapper or host-function
+/// argument. It only tracks temporary handles produced by traversal operations, such as reading an
+/// object property or converting a scoped value ref to a scoped object/array ref. Those temporary
+/// handles are released when the scope is disposed.
+/// </para>
+/// </remarks>
 internal sealed unsafe class JavaScriptHandleScope : IDisposable
 {
   [ThreadStatic]
@@ -20,6 +36,13 @@ internal sealed unsafe class JavaScriptHandleScope : IDisposable
     this.previous = previous;
   }
 
+  /// <summary>
+  /// Enters a new handle scope for the supplied runtime context.
+  /// </summary>
+  /// <remarks>
+  /// Scopes are thread-local and must be disposed in strict stack order. The returned scope should
+  /// be used with <c>using</c> around the runtime access frame that creates scoped refs.
+  /// </remarks>
   public static JavaScriptHandleScope Enter(JsiContext context)
   {
     var scope = new JavaScriptHandleScope(context, current);
@@ -27,6 +50,16 @@ internal sealed unsafe class JavaScriptHandleScope : IDisposable
     return scope;
   }
 
+  /// <summary>
+  /// Gets the current handle scope for a runtime context.
+  /// </summary>
+  /// <remarks>
+  /// This is used when creating a ref from an owned wrapper or callback argument. It verifies that
+  /// managed code is currently inside a runtime access frame for the same native runtime.
+  /// </remarks>
+  /// <exception cref="InvalidOperationException">
+  /// Thrown when there is no active scope for <paramref name="context" />.
+  /// </exception>
   public static JavaScriptHandleScope CurrentFor(JsiContext context)
   {
     var scope = current;
@@ -40,6 +73,13 @@ internal sealed unsafe class JavaScriptHandleScope : IDisposable
     return scope;
   }
 
+  /// <summary>
+  /// Registers a temporary value handle to release when the scope exits.
+  /// </summary>
+  /// <remarks>
+  /// Passing a zero handle is allowed and is treated as a no-op. The returned handle is the same
+  /// handle that was passed in, so callers can inline tracking at construction sites.
+  /// </remarks>
   public ExpoJsiValueHandle TrackValue(ExpoJsiValueHandle handle)
   {
     ThrowIfDisposed();
@@ -51,6 +91,13 @@ internal sealed unsafe class JavaScriptHandleScope : IDisposable
     return handle;
   }
 
+  /// <summary>
+  /// Registers a temporary object handle to release when the scope exits.
+  /// </summary>
+  /// <remarks>
+  /// Passing a zero handle is allowed and is treated as a no-op. The returned handle is the same
+  /// handle that was passed in, so callers can inline tracking at construction sites.
+  /// </remarks>
   public ExpoJsiObjectHandle TrackObject(ExpoJsiObjectHandle handle)
   {
     ThrowIfDisposed();
@@ -62,6 +109,13 @@ internal sealed unsafe class JavaScriptHandleScope : IDisposable
     return handle;
   }
 
+  /// <summary>
+  /// Registers a temporary array handle to release when the scope exits.
+  /// </summary>
+  /// <remarks>
+  /// Passing a zero handle is allowed and is treated as a no-op. The returned handle is the same
+  /// handle that was passed in, so callers can inline tracking at construction sites.
+  /// </remarks>
   public ExpoJsiArrayHandle TrackArray(ExpoJsiArrayHandle handle)
   {
     ThrowIfDisposed();
@@ -73,6 +127,13 @@ internal sealed unsafe class JavaScriptHandleScope : IDisposable
     return handle;
   }
 
+  /// <summary>
+  /// Leaves the current handle scope and releases all tracked temporary handles.
+  /// </summary>
+  /// <remarks>
+  /// Handles are released in reverse tracking order, grouped by handle kind. Disposing out of stack
+  /// order is an error because it would make scoped ref lifetimes ambiguous.
+  /// </remarks>
   public void Dispose()
   {
     if (!ReferenceEquals(current, this))
