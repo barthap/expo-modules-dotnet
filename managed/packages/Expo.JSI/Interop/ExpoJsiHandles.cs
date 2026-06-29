@@ -3,8 +3,5 @@
 global using ExpoJsiApiHandle = System.IntPtr;
 global using ExpoJsiRuntimeHandle = System.IntPtr;
 global using ExpoJsiValueHandle = System.IntPtr;
-global using ExpoJsiObjectHandle = System.IntPtr;
-global using ExpoJsiArrayHandle = System.IntPtr;
 global using ExpoJsiPromiseHandle = System.IntPtr;
-global using ExpoJsiFunctionHandle = System.IntPtr;
 global using ExpoJsiArgumentsHandle = System.IntPtr;

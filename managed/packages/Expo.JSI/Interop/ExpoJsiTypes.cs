@@ -24,6 +24,19 @@ internal enum ExpoJsiTaskPriority : int
   Idle = 5,
 }
 
+internal enum ExpoJsiValueExpectation : int
+{
+  Object = 1,
+  Array = 2,
+  Function = 3,
+}
+
+internal enum ExpoJsiPromiseSettlement : int
+{
+  Resolve = 0,
+  Reject = 1,
+}
+
 [StructLayout(LayoutKind.Sequential)]
 internal readonly unsafe struct ExpoJsiError
 {
@@ -64,34 +77,10 @@ internal readonly struct ExpoJsiValueResult
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal readonly struct ExpoJsiObjectResult
-{
-  public readonly int Ok;
-  public readonly ExpoJsiObjectHandle Object;
-  public readonly ExpoJsiError Error;
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal readonly struct ExpoJsiArrayResult
-{
-  public readonly int Ok;
-  public readonly ExpoJsiArrayHandle Array;
-  public readonly ExpoJsiError Error;
-}
-
-[StructLayout(LayoutKind.Sequential)]
 internal readonly struct ExpoJsiPromiseResult
 {
   public readonly int Ok;
   public readonly ExpoJsiPromiseHandle Promise;
-  public readonly ExpoJsiError Error;
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal readonly struct ExpoJsiFunctionResult
-{
-  public readonly int Ok;
-  public readonly ExpoJsiFunctionHandle Function;
   public readonly ExpoJsiError Error;
 }
 
