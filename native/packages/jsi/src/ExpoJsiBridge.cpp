@@ -88,50 +88,6 @@ private:
   const facebook::jsi::Value *borrowedValue_ = nullptr;
 };
 
-class ObjectHandle final {
-public:
-  static std::unique_ptr<ObjectHandle> owned(facebook::jsi::Object object)
-  {
-    return std::unique_ptr<ObjectHandle>(
-      new ObjectHandle(std::make_unique<facebook::jsi::Object>(std::move(object))));
-  }
-
-  facebook::jsi::Object &object()
-  {
-    return *object_;
-  }
-
-private:
-  explicit ObjectHandle(std::unique_ptr<facebook::jsi::Object> object)
-    : object_(std::move(object))
-  {
-  }
-
-  std::unique_ptr<facebook::jsi::Object> object_;
-};
-
-class ArrayHandle final {
-public:
-  static std::unique_ptr<ArrayHandle> owned(facebook::jsi::Array array)
-  {
-    return std::unique_ptr<ArrayHandle>(
-      new ArrayHandle(std::make_unique<facebook::jsi::Array>(std::move(array))));
-  }
-
-  facebook::jsi::Array &array()
-  {
-    return *array_;
-  }
-
-private:
-  explicit ArrayHandle(std::unique_ptr<facebook::jsi::Array> array)
-    : array_(std::move(array))
-  {
-  }
-
-  std::unique_ptr<facebook::jsi::Array> array_;
-};
-
 class PromiseHandle final {
 public:
   static std::unique_ptr<PromiseHandle> owned(facebook::jsi::Object promise,
@@ -187,28 +143,6 @@ private:
   bool settled_ = false;
 };
 
-class FunctionHandle final {
-public:
-  static std::unique_ptr<FunctionHandle> owned(facebook::jsi::Function function)
-  {
-    return std::unique_ptr<FunctionHandle>(
-      new FunctionHandle(std::make_unique<facebook::jsi::Function>(std::move(function))));
-  }
-
-  facebook::jsi::Function &function()
-  {
-    return *function_;
-  }
-
-private:
-  explicit FunctionHandle(std::unique_ptr<facebook::jsi::Function> function)
-    : function_(std::move(function))
-  {
-  }
-
-  std::unique_ptr<facebook::jsi::Function> function_;
-};
-
 class ArgumentsHandle final {
 public:
   ArgumentsHandle(const facebook::jsi::Value *arguments, size_t count)
@@ -248,7 +182,7 @@ private:
 
 namespace {
 
-constexpr uint32_t kApiVersion = 10;
+constexpr uint32_t kApiVersion = 11;
 
 struct StringResultBuffer {
   explicit StringResultBuffer(std::string value)
@@ -440,38 +374,11 @@ expo_jsi_value_result makeBorrowedValueResult(expo_jsi_value_handle value)
   };
 }
 
-expo_jsi_object_result makeObjectResult(std::unique_ptr<expo::jsi::ObjectHandle> object)
-{
-  return expo_jsi_object_result{
-    1,
-    object.release(),
-    expo_jsi_error{0, nullptr, 0},
-  };
-}
-
-expo_jsi_array_result makeArrayResult(std::unique_ptr<expo::jsi::ArrayHandle> array)
-{
-  return expo_jsi_array_result{
-    1,
-    array.release(),
-    expo_jsi_error{0, nullptr, 0},
-  };
-}
-
 expo_jsi_promise_result makePromiseResult(std::unique_ptr<expo::jsi::PromiseHandle> promise)
 {
   return expo_jsi_promise_result{
     1,
     promise.release(),
-    expo_jsi_error{0, nullptr, 0},
-  };
-}
-
-expo_jsi_function_result makeFunctionResult(std::unique_ptr<expo::jsi::FunctionHandle> function)
-{
-  return expo_jsi_function_result{
-    1,
-    function.release(),
     expo_jsi_error{0, nullptr, 0},
   };
 }
@@ -485,24 +392,9 @@ expo_jsi_value_result makeErrorResult(int32_t code, const char *message)
   };
 }
 
-expo_jsi_object_result makeObjectErrorResult(int32_t code, const char *message)
-{
-  return expo_jsi_object_result{0, nullptr, makeError(code, message)};
-}
-
-expo_jsi_array_result makeArrayErrorResult(int32_t code, const char *message)
-{
-  return expo_jsi_array_result{0, nullptr, makeError(code, message)};
-}
-
 expo_jsi_promise_result makePromiseErrorResult(int32_t code, const char *message)
 {
   return expo_jsi_promise_result{0, nullptr, makeError(code, message)};
-}
-
-expo_jsi_function_result makeFunctionErrorResult(int32_t code, const char *message)
-{
-  return expo_jsi_function_result{0, nullptr, makeError(code, message)};
 }
 
 expo_jsi_string_result makeStringResult(std::string value)
@@ -521,6 +413,37 @@ expo_jsi_string_result makeStringResult(std::string value)
 expo_jsi_string_result makeStringErrorResult(int32_t code, const char *message)
 {
   return expo_jsi_string_result{0, nullptr, 0, nullptr, nullptr, makeError(code, message)};
+}
+
+facebook::jsi::Object checkedObject(facebook::jsi::Runtime &runtime,
+                                    expo_jsi_value_handle value)
+{
+  if (value == nullptr) {
+    throw facebook::jsi::JSError(runtime, "Value handle is null.");
+  }
+  if (!value->value().isObject()) {
+    throw facebook::jsi::JSError(runtime, "Value is not an object.");
+  }
+  return value->value().asObject(runtime);
+}
+
+facebook::jsi::Array checkedArray(facebook::jsi::Runtime &runtime, expo_jsi_value_handle value)
+{
+  auto object = checkedObject(runtime, value);
+  if (!object.isArray(runtime)) {
+    throw facebook::jsi::JSError(runtime, "Value is not an array.");
+  }
+  return object.asArray(runtime);
+}
+
+facebook::jsi::Function checkedFunction(facebook::jsi::Runtime &runtime,
+                                        expo_jsi_value_handle value)
+{
+  auto object = checkedObject(runtime, value);
+  if (!object.isFunction(runtime)) {
+    throw facebook::jsi::JSError(runtime, "Value is not a function.");
+  }
+  return object.asFunction(runtime);
 }
 
 expo_jsi_value_result createNumber(expo_jsi_runtime_handle runtime, double number)
@@ -788,177 +711,104 @@ expo_jsi_string_result coerceToString(expo_jsi_runtime_handle runtime, expo_jsi_
   }
 }
 
-expo_jsi_object_result getGlobalObject(expo_jsi_runtime_handle runtime)
-{
-  expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
-  if (runtimeHandle == nullptr) {
-    return expo_jsi_object_result{0, nullptr, error};
-  }
-
-  try {
-    return makeObjectResult(expo::jsi::ObjectHandle::owned(runtimeHandle->runtime().global()));
-  } catch (const std::exception &ex) {
-    return makeObjectErrorResult(14, ex.what());
-  } catch (...) {
-    return makeObjectErrorResult(15, "Unknown native exception while getting global object.");
-  }
-}
-
-expo_jsi_object_result createObject(expo_jsi_runtime_handle runtime)
-{
-  expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
-  if (runtimeHandle == nullptr) {
-    return expo_jsi_object_result{0, nullptr, error};
-  }
-
-  try {
-    return makeObjectResult(
-      expo::jsi::ObjectHandle::owned(facebook::jsi::Object(runtimeHandle->runtime())));
-  } catch (const std::exception &ex) {
-    return makeObjectErrorResult(16, ex.what());
-  } catch (...) {
-    return makeObjectErrorResult(17, "Unknown native exception while creating object.");
-  }
-}
-
-expo_jsi_value_result objectAsValue(expo_jsi_runtime_handle runtime, expo_jsi_object_handle object)
+expo_jsi_value_result getGlobalObject(expo_jsi_runtime_handle runtime)
 {
   expo_jsi_error error{};
   auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
   if (runtimeHandle == nullptr) {
     return expo_jsi_value_result{0, nullptr, error};
   }
-  if (object == nullptr) {
-    return makeErrorResult(18, "Object handle is null.");
-  }
-
-  try {
-    return makeValueResult(expo::jsi::ValueHandle::owned(
-      facebook::jsi::Value(runtimeHandle->runtime(), object->object())));
-  } catch (const std::exception &ex) {
-    return makeErrorResult(19, ex.what());
-  } catch (...) {
-    return makeErrorResult(20, "Unknown native exception while converting object to value.");
-  }
-}
-
-expo_jsi_object_result valueAsObject(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
-{
-  expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
-  if (runtimeHandle == nullptr) {
-    return expo_jsi_object_result{0, nullptr, error};
-  }
-  if (value == nullptr) {
-    return makeObjectErrorResult(38, "Value handle is null.");
-  }
 
   try {
     auto &jsRuntime = runtimeHandle->runtime();
-    if (!value->value().isObject()) {
-      return makeObjectErrorResult(39, "Value is not an object.");
-    }
-    return makeObjectResult(expo::jsi::ObjectHandle::owned(value->value().asObject(jsRuntime)));
+    return makeValueResult(
+      expo::jsi::ValueHandle::owned(facebook::jsi::Value(jsRuntime, jsRuntime.global())));
   } catch (const std::exception &ex) {
-    return makeObjectErrorResult(40, ex.what());
+    return makeErrorResult(14, ex.what());
   } catch (...) {
-    return makeObjectErrorResult(41, "Unknown native exception while converting value to object.");
+    return makeErrorResult(15, "Unknown native exception while getting global object.");
   }
 }
 
-expo_jsi_array_result createArray(expo_jsi_runtime_handle runtime, uint32_t length)
-{
-  expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
-  if (runtimeHandle == nullptr) {
-    return expo_jsi_array_result{0, nullptr, error};
-  }
-
-  try {
-    return makeArrayResult(
-      expo::jsi::ArrayHandle::owned(facebook::jsi::Array(runtimeHandle->runtime(), length)));
-  } catch (const std::exception &ex) {
-    return makeArrayErrorResult(63, ex.what());
-  } catch (...) {
-    return makeArrayErrorResult(64, "Unknown native exception while creating array.");
-  }
-}
-
-expo_jsi_value_result arrayAsValue(expo_jsi_runtime_handle runtime, expo_jsi_array_handle array)
+expo_jsi_value_result createObject(expo_jsi_runtime_handle runtime)
 {
   expo_jsi_error error{};
   auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
   if (runtimeHandle == nullptr) {
     return expo_jsi_value_result{0, nullptr, error};
   }
-  if (array == nullptr) {
-    return makeErrorResult(65, "Array handle is null.");
-  }
-
-  try {
-    return makeValueResult(expo::jsi::ValueHandle::owned(
-      facebook::jsi::Value(runtimeHandle->runtime(), array->array())));
-  } catch (const std::exception &ex) {
-    return makeErrorResult(66, ex.what());
-  } catch (...) {
-    return makeErrorResult(67, "Unknown native exception while converting array to value.");
-  }
-}
-
-expo_jsi_object_result arrayAsObject(expo_jsi_runtime_handle runtime, expo_jsi_array_handle array)
-{
-  expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
-  if (runtimeHandle == nullptr) {
-    return expo_jsi_object_result{0, nullptr, error};
-  }
-  if (array == nullptr) {
-    return makeObjectErrorResult(68, "Array handle is null.");
-  }
 
   try {
     auto &jsRuntime = runtimeHandle->runtime();
-    auto arrayValue = facebook::jsi::Value(jsRuntime, array->array());
-    return makeObjectResult(expo::jsi::ObjectHandle::owned(arrayValue.asObject(jsRuntime)));
+    return makeValueResult(expo::jsi::ValueHandle::owned(
+      facebook::jsi::Value(jsRuntime, facebook::jsi::Object(jsRuntime))));
   } catch (const std::exception &ex) {
-    return makeObjectErrorResult(69, ex.what());
+    return makeErrorResult(16, ex.what());
   } catch (...) {
-    return makeObjectErrorResult(70, "Unknown native exception while converting array to object.");
+    return makeErrorResult(17, "Unknown native exception while creating object.");
   }
 }
 
-expo_jsi_array_result valueAsArray(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
+expo_jsi_value_result valueRetainAs(expo_jsi_runtime_handle runtime,
+                                    expo_jsi_value_handle value,
+                                    expo_jsi_value_expectation expectation)
 {
   expo_jsi_error error{};
   auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
   if (runtimeHandle == nullptr) {
-    return expo_jsi_array_result{0, nullptr, error};
+    return expo_jsi_value_result{0, nullptr, error};
   }
   if (value == nullptr) {
-    return makeArrayErrorResult(71, "Value handle is null.");
+    return makeErrorResult(38, "Value handle is null.");
   }
 
   try {
     auto &jsRuntime = runtimeHandle->runtime();
-    if (!value->value().isObject()) {
-      return makeArrayErrorResult(72, "Value is not an array.");
+    switch (expectation) {
+    case EXPO_JSI_EXPECT_OBJECT:
+      (void)checkedObject(jsRuntime, value);
+      break;
+    case EXPO_JSI_EXPECT_ARRAY:
+      (void)checkedArray(jsRuntime, value);
+      break;
+    case EXPO_JSI_EXPECT_FUNCTION:
+      (void)checkedFunction(jsRuntime, value);
+      break;
+    default:
+      return makeErrorResult(39, "Unknown value expectation.");
     }
-    auto object = value->value().asObject(jsRuntime);
-    if (!object.isArray(jsRuntime)) {
-      return makeArrayErrorResult(73, "Value is not an array.");
-    }
-    return makeArrayResult(expo::jsi::ArrayHandle::owned(object.asArray(jsRuntime)));
+
+    return makeValueResult(
+      expo::jsi::ValueHandle::owned(facebook::jsi::Value(jsRuntime, value->value())));
   } catch (const std::exception &ex) {
-    return makeArrayErrorResult(74, ex.what());
+    return makeErrorResult(40, ex.what());
   } catch (...) {
-    return makeArrayErrorResult(75, "Unknown native exception while converting value to array.");
+    return makeErrorResult(41, "Unknown native exception while retaining checked value.");
+  }
+}
+
+expo_jsi_value_result createArray(expo_jsi_runtime_handle runtime, uint32_t length)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_value_result{0, nullptr, error};
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto array = facebook::jsi::Array(jsRuntime, length);
+    return makeValueResult(
+      expo::jsi::ValueHandle::owned(facebook::jsi::Value(jsRuntime, array)));
+  } catch (const std::exception &ex) {
+    return makeErrorResult(63, ex.what());
+  } catch (...) {
+    return makeErrorResult(64, "Unknown native exception while creating array.");
   }
 }
 
 uint32_t arrayGetLength(expo_jsi_runtime_handle runtime,
-                        expo_jsi_array_handle array,
+                        expo_jsi_value_handle array,
                         expo_jsi_error *error)
 {
   auto *runtimeHandle = tryRuntimeHandle(runtime, error);
@@ -971,8 +821,10 @@ uint32_t arrayGetLength(expo_jsi_runtime_handle runtime,
   }
 
   try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto jsArray = checkedArray(jsRuntime, array);
     clearError(error);
-    return static_cast<uint32_t>(array->array().length(runtimeHandle->runtime()));
+    return static_cast<uint32_t>(jsArray.length(jsRuntime));
   } catch (const std::exception &ex) {
     writeError(error, 77, ex.what());
     return 0;
@@ -983,7 +835,7 @@ uint32_t arrayGetLength(expo_jsi_runtime_handle runtime,
 }
 
 expo_jsi_value_result arrayGetValueAtIndex(expo_jsi_runtime_handle runtime,
-                                           expo_jsi_array_handle array,
+                                           expo_jsi_value_handle array,
                                            uint32_t index)
 {
   expo_jsi_error error{};
@@ -996,8 +848,10 @@ expo_jsi_value_result arrayGetValueAtIndex(expo_jsi_runtime_handle runtime,
   }
 
   try {
-    return makeValueResult(expo::jsi::ValueHandle::owned(
-      array->array().getValueAtIndex(runtimeHandle->runtime(), index)));
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto jsArray = checkedArray(jsRuntime, array);
+    return makeValueResult(
+      expo::jsi::ValueHandle::owned(jsArray.getValueAtIndex(jsRuntime, index)));
   } catch (const std::exception &ex) {
     return makeErrorResult(80, ex.what());
   } catch (...) {
@@ -1006,7 +860,7 @@ expo_jsi_value_result arrayGetValueAtIndex(expo_jsi_runtime_handle runtime,
 }
 
 expo_jsi_error arraySetValueAtIndex(expo_jsi_runtime_handle runtime,
-                                    expo_jsi_array_handle array,
+                                    expo_jsi_value_handle array,
                                     uint32_t index,
                                     expo_jsi_value_handle value)
 {
@@ -1022,7 +876,9 @@ expo_jsi_error arraySetValueAtIndex(expo_jsi_runtime_handle runtime,
   }
 
   try {
-    array->array().setValueAtIndex(runtimeHandle->runtime(), index, value->value());
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto jsArray = checkedArray(jsRuntime, array);
+    jsArray.setValueAtIndex(jsRuntime, index, value->value());
     return makeOk();
   } catch (const std::exception &ex) {
     return makeError(85, ex.what());
@@ -1162,9 +1018,10 @@ uint8_t isError(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value, ex
   return isInstanceOfGlobalConstructor(runtime, value, "Error", 110, 111, 112, error);
 }
 
-expo_jsi_error promiseResolve(expo_jsi_runtime_handle runtime,
-                              expo_jsi_promise_handle promise,
-                              expo_jsi_value_handle value)
+expo_jsi_error promiseSettle(expo_jsi_runtime_handle runtime,
+                             expo_jsi_promise_handle promise,
+                             expo_jsi_promise_settlement settlement,
+                             expo_jsi_value_handle value)
 {
   auto *runtimeHandle = tryRuntimeHandle(runtime, nullptr);
   if (runtimeHandle == nullptr) {
@@ -1178,42 +1035,23 @@ expo_jsi_error promiseResolve(expo_jsi_runtime_handle runtime,
   }
 
   try {
-    promise->resolve(runtimeHandle->runtime(), value->value());
+    if (settlement == EXPO_JSI_PROMISE_RESOLVE) {
+      promise->resolve(runtimeHandle->runtime(), value->value());
+    } else if (settlement == EXPO_JSI_PROMISE_REJECT) {
+      promise->reject(runtimeHandle->runtime(), value->value());
+    } else {
+      return makeError(94, "Unknown promise settlement.");
+    }
     return makeOk();
   } catch (const std::exception &ex) {
-    return makeError(94, ex.what());
+    return makeError(95, ex.what());
   } catch (...) {
-    return makeError(95, "Unknown native exception while resolving promise.");
-  }
-}
-
-expo_jsi_error promiseReject(expo_jsi_runtime_handle runtime,
-                             expo_jsi_promise_handle promise,
-                             expo_jsi_value_handle value)
-{
-  auto *runtimeHandle = tryRuntimeHandle(runtime, nullptr);
-  if (runtimeHandle == nullptr) {
-    return makeError(96, "Runtime handle is invalid.");
-  }
-  if (promise == nullptr) {
-    return makeError(97, "Promise handle is null.");
-  }
-  if (value == nullptr) {
-    return makeError(98, "Value handle is null.");
-  }
-
-  try {
-    promise->reject(runtimeHandle->runtime(), value->value());
-    return makeOk();
-  } catch (const std::exception &ex) {
-    return makeError(99, ex.what());
-  } catch (...) {
-    return makeError(100, "Unknown native exception while rejecting promise.");
+    return makeError(96, "Unknown native exception while settling promise.");
   }
 }
 
 expo_jsi_error objectSetProperty(expo_jsi_runtime_handle runtime,
-                                 expo_jsi_object_handle object,
+                                 expo_jsi_value_handle object,
                                  const char *name,
                                  int32_t name_len,
                                  expo_jsi_value_handle value)
@@ -1223,7 +1061,7 @@ expo_jsi_error objectSetProperty(expo_jsi_runtime_handle runtime,
     return makeError(21, "Runtime handle is invalid.");
   }
   if (object == nullptr) {
-    return makeError(22, "Object handle is null.");
+    return makeError(22, "Value handle is null.");
   }
   if (name == nullptr || name_len < 0) {
     return makeError(23, "Property name is invalid.");
@@ -1236,7 +1074,8 @@ expo_jsi_error objectSetProperty(expo_jsi_runtime_handle runtime,
     auto &jsRuntime = runtimeHandle->runtime();
     auto propertyName = facebook::jsi::PropNameID::forUtf8(
       jsRuntime, reinterpret_cast<const uint8_t *>(name), static_cast<size_t>(name_len));
-    object->object().setProperty(jsRuntime, propertyName, value->value());
+    auto jsObject = checkedObject(jsRuntime, object);
+    jsObject.setProperty(jsRuntime, propertyName, value->value());
     return expo_jsi_error{0, nullptr, 0};
   } catch (const std::exception &ex) {
     return makeError(25, ex.what());
@@ -1246,7 +1085,7 @@ expo_jsi_error objectSetProperty(expo_jsi_runtime_handle runtime,
 }
 
 expo_jsi_value_result objectGetProperty(expo_jsi_runtime_handle runtime,
-                                        expo_jsi_object_handle object,
+                                        expo_jsi_value_handle object,
                                         const char *name,
                                         int32_t name_len)
 {
@@ -1255,7 +1094,7 @@ expo_jsi_value_result objectGetProperty(expo_jsi_runtime_handle runtime,
     return makeErrorResult(49, "Runtime handle is invalid.");
   }
   if (object == nullptr) {
-    return makeErrorResult(50, "Object handle is null.");
+    return makeErrorResult(50, "Value handle is null.");
   }
   if (name == nullptr || name_len < 0) {
     return makeErrorResult(51, "Property name is invalid.");
@@ -1265,8 +1104,9 @@ expo_jsi_value_result objectGetProperty(expo_jsi_runtime_handle runtime,
     auto &jsRuntime = runtimeHandle->runtime();
     auto propertyName = facebook::jsi::PropNameID::forUtf8(
       jsRuntime, reinterpret_cast<const uint8_t *>(name), static_cast<size_t>(name_len));
-    return makeValueResult(
-      expo::jsi::ValueHandle::owned(object->object().getProperty(jsRuntime, propertyName)));
+    auto jsObject = checkedObject(jsRuntime, object);
+    return makeValueResult(expo::jsi::ValueHandle::owned(
+      jsObject.getProperty(jsRuntime, propertyName)));
   } catch (const std::exception &ex) {
     return makeErrorResult(52, ex.what());
   } catch (...) {
@@ -1370,7 +1210,7 @@ std::shared_ptr<ScheduledTaskContext> makeScheduledTaskContext(
   }
 }
 
-expo_jsi_function_result createHostFunction(
+expo_jsi_value_result createHostFunction(
   expo_jsi_runtime_handle runtime,
   const char *name,
   int32_t name_len,
@@ -1382,20 +1222,21 @@ expo_jsi_function_result createHostFunction(
   expo_jsi_error error{};
   auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
   if (runtimeHandle == nullptr) {
-    return expo_jsi_function_result{0, nullptr, error};
+    return expo_jsi_value_result{0, nullptr, error};
   }
   if (name == nullptr || name_len < 0) {
-    return makeFunctionErrorResult(28, "Host function name is invalid.");
+    return makeErrorResult(28, "Host function name is invalid.");
   }
 
   try {
+    auto &jsRuntime = runtimeHandle->runtime();
     auto functionName = std::string(name, static_cast<size_t>(name_len));
     auto context = std::make_shared<HostFunctionContext>(
       callback, callback_context, release_callback_context, runtime);
 
     auto function = facebook::jsi::Function::createFromHostFunction(
-      runtimeHandle->runtime(),
-      facebook::jsi::PropNameID::forUtf8(runtimeHandle->runtime(), functionName),
+      jsRuntime,
+      facebook::jsi::PropNameID::forUtf8(jsRuntime, functionName),
       parameter_count,
       [context](facebook::jsi::Runtime &jsRuntime,
                 const facebook::jsi::Value &thisValue,
@@ -1427,33 +1268,12 @@ expo_jsi_function_result createHostFunction(
         }
       });
 
-    return makeFunctionResult(expo::jsi::FunctionHandle::owned(std::move(function)));
+    return makeValueResult(
+      expo::jsi::ValueHandle::owned(facebook::jsi::Value(jsRuntime, function)));
   } catch (const std::exception &ex) {
-    return makeFunctionErrorResult(29, ex.what());
+    return makeErrorResult(29, ex.what());
   } catch (...) {
-    return makeFunctionErrorResult(30, "Unknown native exception while creating host function.");
-  }
-}
-
-expo_jsi_value_result functionAsValue(expo_jsi_runtime_handle runtime,
-                                      expo_jsi_function_handle function)
-{
-  expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
-  if (runtimeHandle == nullptr) {
-    return expo_jsi_value_result{0, nullptr, error};
-  }
-  if (function == nullptr) {
-    return makeErrorResult(31, "Function handle is null.");
-  }
-
-  try {
-    return makeValueResult(expo::jsi::ValueHandle::owned(
-      facebook::jsi::Value(runtimeHandle->runtime(), function->function())));
-  } catch (const std::exception &ex) {
-    return makeErrorResult(32, ex.what());
-  } catch (...) {
-    return makeErrorResult(33, "Unknown native exception while converting function to value.");
+    return makeErrorResult(30, "Unknown native exception while creating host function.");
   }
 }
 
@@ -1502,24 +1322,9 @@ void releaseValue(expo_jsi_runtime_handle, expo_jsi_value_handle value)
   delete valueHandle;
 }
 
-void releaseObject(expo_jsi_runtime_handle, expo_jsi_object_handle object)
-{
-  delete object;
-}
-
-void releaseArray(expo_jsi_runtime_handle, expo_jsi_array_handle array)
-{
-  delete array;
-}
-
 void releasePromise(expo_jsi_runtime_handle, expo_jsi_promise_handle promise)
 {
   delete promise;
-}
-
-void releaseFunction(expo_jsi_runtime_handle, expo_jsi_function_handle function)
-{
-  delete function;
 }
 
 expo_jsi_error scheduleTask(expo_jsi_runtime_handle runtime,
@@ -1624,29 +1429,20 @@ const expo_jsi_api kApi{
   getDouble,
   getGlobalObject,
   createObject,
-  objectAsValue,
-  valueAsObject,
+  valueRetainAs,
   createArray,
-  arrayAsValue,
-  arrayAsObject,
-  valueAsArray,
   arrayGetLength,
   arrayGetValueAtIndex,
   arraySetValueAtIndex,
   createPromise,
   promiseAsValue,
-  promiseResolve,
-  promiseReject,
+  promiseSettle,
   objectSetProperty,
   objectGetProperty,
   createHostFunction,
-  functionAsValue,
   getArgumentsCount,
   getArgumentValue,
-  releaseObject,
-  releaseArray,
   releasePromise,
-  releaseFunction,
   releaseValue,
   createString,
   cloneValue,
