@@ -1,3 +1,5 @@
+using Expo.JSI.Internal;
+
 namespace Expo.JSI;
 
 /// <summary>

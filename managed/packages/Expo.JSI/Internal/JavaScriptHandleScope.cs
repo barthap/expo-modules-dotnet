@@ -1,6 +1,6 @@
 using Expo.JSI.Interop;
 
-namespace Expo.JSI;
+namespace Expo.JSI.Internal;
 
 /// <summary>
 /// Tracks temporary native handles created while scoped JavaScript refs are active.

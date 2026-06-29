@@ -1,6 +1,6 @@
 using Expo.JSI.Interop;
 
-namespace Expo.JSI;
+namespace Expo.JSI.Internal;
 
 internal readonly unsafe struct JavaScriptValueInner
 {

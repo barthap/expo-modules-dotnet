@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Expo.JSI.Interop;
+using Expo.JSI.Internal;
 
 namespace Expo.JSI;
 

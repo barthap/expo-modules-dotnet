@@ -1,4 +1,5 @@
 using Expo.JSI.Interop;
+using Expo.JSI.Internal;
 
 namespace Expo.JSI;
 
