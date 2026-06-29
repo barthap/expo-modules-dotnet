@@ -1,185 +1,174 @@
-# 03 - Implementation Phases After Planning
+# 03 - Implementation Phases
+
+Last refreshed: 2026-06-29.
 
 ## Purpose
 
-This roadmap translates the research spikes into future implementation phases.
-It is not permission to start implementation during the planning goal. Use it
-as the input to a later `/goal`.
+This roadmap starts from the current implemented repo state. Earlier versions
+of this file treated HostFXR smoke tests, ABI skeletons, and headless wrappers
+as future work. Those slices now exist in some form. Future work should build
+from the real `Expo.JSI` package, native `expo_jsi` ABI, Hermes testhost, and
+newer specs.
 
-Each phase must produce working proof, written evidence, and a stop gate. Do
-not combine phases to save time; the boundaries are there to keep loader,
-runtime, generator, and host concerns separate.
+Each phase must produce working proof, written evidence where useful, and a
+stop gate. Do not combine phases to save time.
 
-## Phase 0: User Approval And Workspace Choice
+## Phase 0: Current-State Audit Before Any New Slice
 
 Goal:
 
-Decide where phase 1 work will live.
+Know exactly what changed since the last docs/spec update.
 
-Prerequisites:
+Read:
 
-- User has reviewed these docs.
-- `agent-plan/05-repo-strategy.md` has been read.
-- Current repository state is known with `git status --short --branch`.
+- `docs/README.md`
+- `docs/agent-plan/01-architecture.md`
+- the relevant `docs/superpowers/specs/*` file
+- implementation files named by that spec
 
-Instructions:
-
-1. Ask the user whether to create a clean separate research repo for phase 1.
-2. If approved, create the repo and keep it obviously research-only.
-3. If not approved, create a clearly marked branch or directory in this repo
-   and keep proof files separate from production code.
-4. Record the decision in the first spike result note.
-
-Artifacts:
-
-- repo decision note;
-- path to research repo or branch;
-- statement of what remains in this repo.
-
-Verification:
+Run:
 
 ```sh
 git status --short --branch
-find docs -maxdepth 3 -type f | sort
+find managed/packages native/include native/testhost -maxdepth 3 -type f | sort
 ```
 
 Stop gate:
 
-Stop until the user approves any new repository creation.
+Stop if repo state, current branch, or package boundary is unclear.
 
-## Phase 1: Mac-Local Loader And Headless ABI Foundation
+## Phase 1: Finish Low-Level `Expo.JSI` ABI And Wrapper Shape
 
 Goal:
 
-Prove the bridge can start from macOS without Windows or RNW by completing
-Spike 1 and Spike 2.
+Keep `Expo.JSI` a stable low-level wrapper package over the native `expo_jsi`
+ABI.
+
+Current base:
+
+- `native/include/expo_jsi.h`
+- `native/testhost/`
+- `managed/packages/Expo.JSI/`
+- `managed/packages/Expo.JSI.Tests/`
+- `docs/superpowers/specs/2026-06-29-jsi-abi-value-handle-slimming-design.md`
 
 Build:
 
-- HostFXR smoke executable;
-- minimal managed entry point assembly;
-- C ABI header;
-- fake or stub handle table;
-- C# ABI declarations;
-- ABI layout tests.
+- value-handle slimming where still incomplete;
+- matching native testhost updates;
+- owned wrapper and scoped-ref cleanup;
+- focused runtime, object, array, function, promise, error, host-function, and
+  scheduler tests.
 
 Do not build:
 
-- real RNW adapter;
-- real app integration;
-- views;
-- source generator.
-
-Artifacts:
-
-- `native/include/expo_csharp_jsi.h`;
-- HostFXR smoke files;
-- managed interop declarations;
-- tests;
-- spike result notes.
+- module DSL;
+- source generator;
+- platform adapter;
+- views.
 
 Verification:
 
 ```sh
-dotnet --info
-dotnet build
-dotnet test
-cmake --build build
-./build/hostfxr_smoke/hostfxr_smoke
+scripts/test-jsi.sh
+scripts/format.sh --check --all
+git diff --check
 ```
 
 Stop gate:
 
-Stop if HostFXR loading, ABI layout, or ownership rules are unclear. Do not
-paper over unclear memory ownership with "temporary" code.
+Stop if ownership of any runtime, value, promise, argument, string, callback,
+or task context cannot be explained precisely.
 
-## Phase 2: Headless JSI Wrapper Proof
+## Phase 2: Introduce `Expo.ModulesCore`
 
 Goal:
 
-Complete Spike 3 by proving C# wrappers can manipulate JSI values through the
-C ABI.
+Create the higher-level C# module package above `Expo.JSI`.
 
 Build:
 
-- runtime wrapper;
-- borrowed value wrapper;
-- owned value wrapper;
-- object/function wrappers;
-- arguments wrapper;
-- string and buffer conversion;
-- structured error result handling;
-- wrapper lifetime tests.
+- `managed/packages/Expo.ModulesCore/`;
+- `managed/packages/Expo.ModulesCore.Tests/`;
+- minimal authored module shape;
+- module registry or provider shape;
+- generated-looking provider code;
+- typed conversion path for the first supported parameter/return types.
 
-Expected behavior:
+Migrate:
 
-- borrowed primitive argument read;
-- object property read/write;
-- host function callback;
-- owned return value;
-- explicit release of retained values;
-- no JSON for ordinary values.
+- move temporary module behavior tests from
+  `managed/packages/Expo.JSI.Tests/Modules/` when equivalent
+  `Expo.ModulesCore.Tests` coverage exists.
+
+Do not build:
+
+- Roslyn generator in the first package-boundary slice;
+- broad converter library;
+- platform adapter;
+- views.
 
 Verification:
 
 ```sh
-dotnet test
-cmake --build build
-./build/headless-jsi-wrapper-proof
-rg "JsonSerializer|Newtonsoft|Assembly.GetTypes|MethodInfo.Invoke|Delegate.DynamicInvoke" .
+scripts/test-jsi.sh
+dotnet test managed/packages/Expo.ModulesCore.Tests/Expo.ModulesCore.Tests.csproj
+rg "Assembly.GetTypes|MethodInfo.Invoke|Delegate.DynamicInvoke|object\\?\\[\\]|JsonSerializer" managed/packages
+scripts/format.sh --check --all
+git diff --check
 ```
 
 Stop gate:
 
-Stop if the proof cannot explain which side owns every runtime, value, string,
-buffer, callback, promise, and error object involved in the call.
+Stop if `Expo.JSI` starts owning module DSL concepts or `Expo.ModulesCore`
+requires raw native layouts.
 
-## Phase 3: Generated-Looking v2 Binding Proof
+## Phase 3: Source Generator Prototype
 
 Goal:
 
-Complete Spike 4 by hand-writing code that looks like future source-generator
-output.
+Generate the provider shape that Phase 2 proved by hand.
 
 Build:
 
-- sample authored module;
-- generated-looking provider;
-- module registry;
-- typed argument decoder;
-- return conversion;
-- tests proving direct invocation.
-
-Verification:
-
-```sh
-dotnet test
-rg "Assembly.GetTypes|MethodInfo.Invoke|Delegate.DynamicInvoke|object\\?\\[\\]|JsonSerializer" managed
-```
+- attributes such as `ExpoModule` and `JS`;
+- source generator project;
+- generated provider;
+- diagnostics for unsupported parameter and return types;
+- generated output tests.
 
 Acceptance criteria:
 
 - module registration is static and explicit;
 - invocation uses typed wrappers;
-- generated-looking code calls module methods directly;
-- unsupported type behavior is represented as a future generator diagnostic,
-  not runtime guessing.
+- generated code calls module methods directly;
+- unsupported type behavior is a generator diagnostic, not runtime guessing.
+
+Verification:
+
+```sh
+dotnet test
+rg "Assembly.GetTypes|MethodInfo.Invoke|Delegate.DynamicInvoke|JsonSerializer" managed
+scripts/format.sh --check --all
+git diff --check
+```
 
 Stop gate:
 
-Stop for user review before building the actual Roslyn source generator.
+Stop if the generator starts compensating for unclear runtime semantics. Fix the
+wrapper or module package first.
 
 ## Phase 4: NativeAOT Compatibility Proof
 
 Goal:
 
-Complete Spike 5 and verify that HostFXR development has not invalidated a
-NativeAOT future.
+Verify that HostFXR development has not invalidated the ABI or generated
+binding future.
 
 Build:
 
-- minimal NativeAOT project;
-- `[UnmanagedCallersOnly]` exported entry points;
+- minimal NativeAOT project or proof target;
+- `[UnmanagedCallersOnly]` exported entry points where needed;
 - symbol inspection note;
 - trimming/AOT risk list.
 
@@ -187,7 +176,7 @@ Verification:
 
 ```sh
 dotnet publish -c Release -r osx-arm64 /p:PublishAot=true
-nm -gU path/to/publish/*
+nm -gU <publish-output>
 rg "RequiresUnreferencedCode|RequiresDynamicCode|Assembly.GetTypes|MethodInfo.Invoke|Delegate.DynamicInvoke" managed
 ```
 
@@ -195,58 +184,25 @@ Stop gate:
 
 Stop if AOT requires changing the ABI or generated binding strategy.
 
-## Phase 5: Source Generator Prototype
+## Phase 5: RNW Adapter
 
 Goal:
 
-Only after the generated-looking proof succeeds, build a Roslyn generator that
-emits equivalent code.
+After the portable core and module layer are proven, integrate them into RNW
+through a thin adapter.
 
-Build:
-
-- attributes such as `ExpoModule`, `JS`, `Record`;
-- generator project;
-- generated provider;
-- diagnostics for unsupported parameter/return types;
-- record converter generation;
-- snapshot or generated output tests.
-
-Verification:
-
-```sh
-dotnet test
-dotnet build
-rg "Assembly.GetTypes|MethodInfo.Invoke|Delegate.DynamicInvoke" managed generated
-```
-
-Stop gate:
-
-Stop if the generator starts compensating for unclear runtime semantics. Fix the
-wrapper/ABI proof first.
-
-## Phase 6: RNW Adapter In This Repository
-
-Goal:
-
-After the portable core is proven, integrate it into RNW through a thin adapter.
-This phase likely belongs in this repository.
-
-Build:
+Build only after user approval:
 
 - RNW installation hook;
-- expo-desktop connector integration;
 - scheduler/lifecycle mapping;
+- expo-desktop connector integration if in scope;
 - Windows packaging updates only as needed;
 - no portable module logic in adapter files.
 
 Windows verification:
 
-Run on <windows-test-machine> when Visual Studio, RNW packaging, or app screenshots are
-needed. The remote repo path is:
-
-```text
-<windows-repo>
-```
+Run on a Windows test machine when Visual Studio, RNW packaging, WinUI, or app
+screenshots are needed.
 
 Mac verification:
 
@@ -254,26 +210,27 @@ Use Mac for code review, docs, shared C# tests, and non-Windows build checks.
 
 Stop gate:
 
-Stop before publishing, opening a PR, or posting GitHub comments.
+Stop before publishing, opening a PR, posting GitHub comments, or treating
+Windows packaging blockers as portable-core blockers.
 
-## Phase 7: React Native macOS Adapter Proof
+## Phase 6: React Native macOS Adapter Proof
 
 Goal:
 
 Prove the core is not accidentally RNW-specific by mounting it into a future
 React Native macOS host.
 
-Build:
+Build only after user approval:
 
-- only after a host app exists or the user approves creating one;
-- adapter service table implementation for macOS;
+- host adapter service table implementation for macOS;
+- scheduler/lifecycle mapping;
 - no AppKit/view work unless specifically requested.
 
 Stop gate:
 
 Stop if the proof would require creating a real host app without approval.
 
-## Phase 8: Platform-Gated Views
+## Phase 7: Platform-Gated Views
 
 Goal:
 
@@ -282,9 +239,9 @@ Add view support behind adapters after headless modules are stable.
 Build:
 
 - core view metadata only if it remains platform-neutral;
-- `NoViewAdapter` for headless mode;
-- `WindowsViewAdapter` for WinUI/RNW;
-- future `MacOSViewAdapter` for AppKit/RN macOS.
+- headless no-view adapter;
+- Windows view adapter for WinUI/RNW;
+- future macOS view adapter for AppKit/RN macOS.
 
 Stop gate:
 

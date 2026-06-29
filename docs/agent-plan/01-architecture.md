@@ -1,23 +1,37 @@
 # 01 - Architecture And Boundaries
 
+Last refreshed: 2026-06-29.
+
 ## Purpose
 
-This file defines the target architecture for the portable C# / JSI bridge
-research track. Future agents should read it before writing any proof code. If
-a proposed implementation violates these boundaries, stop and ask for user
-review instead of blending patterns.
+This file defines the current architecture for the portable C# / JSI bridge in
+this repository. It is no longer only a pre-implementation research plan. Future
+agents should read it before changing the ABI, low-level wrappers, generated
+module proof code, or platform-adapter direction.
 
-## Assumptions
+If a proposed implementation violates these boundaries, stop and ask for user
+review instead of blending conflicting patterns.
 
-- The current repository is `expo-modules-windows-core`.
-- The current Windows proof and repo restructure are separate work streams.
-- `docs_old/` is historical reference material and must not be edited by this
-  planning track.
-- The first implementation should be a small research proof, not a production
-  bridge.
-- The user wants the C# API to feel similar in spirit to Expo's Swift
-  `expo-modules-jsi` wrappers, but C# cannot use Swift-style direct C++ wrapper
-  mechanics.
+## Current Implementation Baseline
+
+The repo currently has these concrete pieces:
+
+- `native/include/expo_jsi.h`: C ABI function table, opaque runtime/value/
+  promise/arguments handles, task scheduling, sync execution, string/error
+  result structs, and wrapper operations.
+- `native/testhost/`: Hermes-backed native test host for the managed test suite.
+- `managed/packages/Expo.JSI/`: low-level managed wrapper package targeting
+  `net10.0` with unsafe function-pointer interop.
+- `managed/packages/Expo.JSI.Tests/`: Hermes-backed xUnit suite that exercises
+  runtime, values, object/array/function wrappers, promises, scoped refs,
+  host functions, ABI layout, scheduler/runtime-loop behavior, and temporary
+  module conversion proofs.
+- `experiments/`: standalone HostFXR, NativeAOT, and Hermes/HostFXR proofs.
+- `docs/spike-results/`: proof notes for completed loader and Hermes bridge
+  spikes.
+
+The current code package name is `Expo.JSI`, not `Expo.CSharpJsi`. The ABI name
+prefix is `expo_jsi_*`, not `expo_csharp_jsi_*`.
 
 ## The Architecture Rule
 
@@ -31,28 +45,27 @@ A C ABI with opaque handles connects them.
 
 Meaning:
 
-- C++ receives or creates the real `jsi::Runtime`.
+- C++ receives or creates the real `facebook::jsi::Runtime`.
 - C++ creates, reads, writes, retains, and releases actual JSI values.
 - C++ owns host object and host function mechanics.
 - C++ catches C++ exceptions and converts them to ABI error results.
 - C# implements module classes, typed business logic, generated bindings, and
   managed wrappers around opaque handles.
 - C# never interprets the memory layout of `jsi::Runtime`, `jsi::Value`,
-  `jsi::Object`, `jsi::Function`, Hermes internals, or RNW internals.
+  `jsi::Object`, `jsi::Function`, Hermes internals, or React Native internals.
 
 This is the main difference from Swift. Swift can expose C++-reference-like JSI
 types through Swift/C++ interop and API notes. C# should expose similar concepts
 through a C ABI, not through raw C++ classes.
 
-## Target Layering
+## Current Layering
 
-The desired long-term layering is:
+The desired layering is:
 
 ```text
 React Native host platform
-  RNW first
-  future React Native macOS proof
-  later hosts only if the bridge remains host-neutral
+  RNW first when adapter work starts
+  future React Native macOS proof only after approval
 
 Thin platform adapter
   installs the bridge into the host
@@ -64,49 +77,54 @@ Portable C++ JSI bridge
   owns HostObject, HostFunction, Promise conversion, and exception boundaries
   exposes opaque handles and function tables through C ABI
 
-C ABI
-  opaque runtime/value/object/function/buffer/callback/promise handles
+C ABI: native/include/expo_jsi.h
+  opaque runtime/value/promise/arguments handles
   primitive values, pointers, lengths, and explicit result structs
-  explicit retain/release, callback context disposal, and schedule-on-JS hooks
+  explicit release functions, callback context release, runtime-task scheduling
 
-C# bridge API
+Low-level C# bridge API: managed/packages/Expo.JSI
   JavaScriptRuntime
-  JavaScriptUnownedValue
-  JavaScriptValue
-  JavaScriptObject
+  JavaScriptValue / JavaScriptValueRef
+  JavaScriptObject / JavaScriptObjectRef
+  JavaScriptArray / JavaScriptArrayRef
   JavaScriptFunction
+  JavaScriptPromise and promise result helpers
   JavaScriptArguments
-  JavaScriptArrayBuffer or buffer wrappers
-  ModuleRegistry and generated v2 provider
+  JavaScriptErrorObject
 
-Loader mode
-  HostFXR first for development
-  NativeAOT-compatible entry points and ABI for later proof
+Future C# module layer: Expo.ModulesCore
+  authored module DSL
+  generated v2 providers
+  typed converters
+  module registry and dispatch
+
+Loader modes and experiments
+  HostFXR for early development experiments
+  NativeAOT-compatible entry points and ABI constraints for later proof
 ```
 
-The platform adapter should be thin. It should know how to mount the bridge
-into RNW or React Native macOS. It should not contain the portable C# module
-system, ordinary type conversion rules, or generated v2 invocation mechanics.
+The platform adapter should be thin. It should know how to mount the proven
+core into RNW or React Native macOS. It should not contain the portable C#
+module system, ordinary type conversion rules, or generated v2 invocation
+mechanics.
 
 ## Loader Choice Is Not Runtime Design
 
-HostFXR is the first loader because it makes macOS research fast:
+HostFXR is useful because a native process can load a framework-dependent .NET
+assembly during fast local research iteration. The HostFXR experiments prove
+loader feasibility and bridge shape, but `Expo.JSI` must remain loader-neutral.
 
-- build C# with normal `dotnet build`;
-- load a framework-dependent assembly from a native host;
-- iterate without solving NativeAOT packaging on day one.
+NativeAOT remains a distribution and compatibility target. It changes
+deployment constraints:
 
-NativeAOT is a later proof because it changes deployment constraints:
-
-- publish for a specific runtime identifier such as `osx-arm64` or `win-x64`;
+- publish for a specific runtime identifier;
 - keep entry points blittable;
 - avoid dynamic code paths that break trimming or AOT;
 - produce Windows artifacts on Windows when testing RNW.
 
 These are loader/deployment choices. They must not leak into the v2 runtime
 binding design. In particular, HostFXR does not grant permission to build v2
-around runtime reflection. The v2 bridge must be designed as if NativeAOT will
-consume the same generated code and C ABI later.
+around runtime reflection.
 
 Hard rule for generated v2 runtime code:
 
@@ -121,26 +139,21 @@ code should use direct calls and typed conversions.
 
 ## Universal Headless Core
 
-The universal/headless core is the part that should be provable on macOS
-without RNW, WinUI, AppKit, or app packaging.
+The universal/headless core is the part that should work without RNW, WinUI,
+AppKit, or app packaging.
 
 It includes:
 
 - C++ bridge source that owns JSI interaction;
-- a C ABI header and function table;
-- handle table and ownership model;
-- HostFXR loader proof;
-- NativeAOT-compatible entry point shape;
-- C# wrapper types;
-- generated-looking module provider;
-- primitive conversion;
-- string conversion;
-- object property get/set;
-- host function creation;
-- callback context lifetime;
-- promise resolve/reject model, even if scheduler integration is stubbed;
+- the `expo_jsi` C ABI and function table;
+- handle ownership and release model;
+- C# wrapper types in `Expo.JSI`;
+- generated-looking module proofs until `Expo.ModulesCore` exists;
+- primitive, string, object, array, function, promise, and error conversion;
+- host function creation and callback context lifetime;
+- runtime task scheduling and sync execution hooks;
 - structured errors;
-- headless tests and proof executables.
+- headless Hermes-backed tests and proof executables.
 
 The headless core may include an interface for platform services, but it must
 not depend on RNW types, WinUI types, AppKit types, Windows App SDK packages,
@@ -167,368 +180,184 @@ or platform services, pass an explicit service table or adapter interface.
 
 ## JS Scheduling Capability
 
-React Native hosts expose a concept commonly called a JS call invoker: a way to
-post work back to the JavaScript runtime thread. In React Native code this may
-be a `react::CallInvoker`, `react::RuntimeExecutor`, `RuntimeScheduler`, or a
-host-specific wrapper around one of those concepts.
+React Native hosts expose a way to post work back to the JavaScript runtime
+thread. In React Native code this may be a `react::CallInvoker`,
+`react::RuntimeExecutor`, `RuntimeScheduler`, or a host-specific wrapper around
+one of those concepts.
 
-The portable C# bridge needs this capability, but it should not depend on the
-React Native C++ type directly. Model it as an adapter-provided scheduler:
+The portable bridge models this as an adapter-provided scheduler. The ABI
+already has runtime task operations such as `runtime_schedule_task`,
+`runtime_can_execute_sync`, `runtime_execute_sync`, and `runtime_drain_tasks`.
 
-```text
-portable core
-  depends on schedule_on_js callback / JavaScriptScheduler abstraction
-
-RNW adapter
-  implements schedule_on_js with CallInvoker, RuntimeExecutor, or RuntimeScheduler
-
-React Native macOS adapter
-  implements schedule_on_js with the scheduler exposed by RN macOS
-
-headless proof
-  implements schedule_on_js as immediate/same-thread or a tiny event loop
-```
-
-Use the scheduler only when work must touch JSI after the current host-function
+Use scheduling only when work must touch JSI after the current host-function
 callback has returned or from a non-JS thread. A synchronous host function is
 already running in a valid JS callback frame, so it should decode arguments and
 return directly without scheduling. Async continuations, promise settlement,
 event emission, retained-handle cleanup that must touch JSI, and platform
-callbacks must go through the scheduler.
+callbacks must go through the runtime scheduler.
 
-The scheduler is a runtime capability, not a C# business-logic facility. C#
-generated bindings may call a managed wrapper such as `JavaScriptAsyncRuntime`
-or `JavaScriptScheduler`, but the actual posting to the JS queue is implemented
-by the platform adapter.
+Important naming rule: a sync capability check must not hide an active sync
+probe. If native code would need to enqueue work onto the runtime thread and
+wait for it, calling that probe from the runtime thread can deadlock. Keep the
+passive capability check distinct from any active execution/probe operation.
 
 ## C ABI Shape
 
-The ABI should be small and explicit at first. Use opaque handles, primitive
-types, pointer + length pairs, result structs, and explicit release functions.
+The current ABI lives in `native/include/expo_jsi.h`. Its direction is:
 
-Example shape:
+- one runtime handle type;
+- one ordinary value handle type for values, objects, arrays, and functions;
+- a separate promise capability handle;
+- a separate arguments handle for host-function arguments;
+- explicit value and promise release functions;
+- UTF-8 string result buffers with explicit release callbacks;
+- structured error results;
+- function pointers grouped in `expo_jsi_api`.
 
-```c
-typedef struct expo_js_runtime_t *expo_js_runtime_handle;
-typedef struct expo_js_value_t *expo_js_value_handle;
-typedef struct expo_js_object_t *expo_js_object_handle;
-typedef struct expo_js_function_t *expo_js_function_handle;
-typedef struct expo_js_buffer_t *expo_js_buffer_handle;
-
-typedef void (*expo_js_task_callback)(
-  void *task_context);
-
-typedef enum expo_js_task_priority {
-  EXPO_JS_TASK_IMMEDIATE = 0,
-  EXPO_JS_TASK_NORMAL = 1
-} expo_js_task_priority;
-
-typedef enum expo_js_value_kind {
-  EXPO_JS_UNDEFINED = 0,
-  EXPO_JS_NULL = 1,
-  EXPO_JS_BOOL = 2,
-  EXPO_JS_NUMBER = 3,
-  EXPO_JS_STRING = 4,
-  EXPO_JS_OBJECT = 5,
-  EXPO_JS_FUNCTION = 6,
-  EXPO_JS_ARRAY_BUFFER = 7
-} expo_js_value_kind;
-
-typedef struct expo_js_error {
-  int32_t code;
-  const char *message;
-  int32_t message_len;
-} expo_js_error;
-
-typedef struct expo_js_value_result {
-  int32_t ok;
-  expo_js_value_handle value;
-  expo_js_error error;
-} expo_js_value_result;
-
-typedef struct expo_js_object_result {
-  int32_t ok;
-  expo_js_object_handle object;
-  expo_js_error error;
-} expo_js_object_result;
-
-typedef struct expo_js_function_result {
-  int32_t ok;
-  expo_js_function_handle function;
-  expo_js_error error;
-} expo_js_function_result;
-
-typedef struct expo_js_string_result {
-  int32_t ok;
-  const uint8_t *utf8;
-  int32_t len;
-  void *release_context;
-  void (*release)(void *release_context);
-  expo_js_error error;
-} expo_js_string_result;
-
-typedef struct expo_js_scheduler {
-  void *context;
-  void (*schedule_on_js)(
-    void *context,
-    expo_js_task_priority priority,
-    expo_js_task_callback callback,
-    void *task_context);
-  int32_t (*is_runtime_valid)(void *context);
-} expo_js_scheduler;
-```
-
-Representative functions:
+Representative current concepts:
 
 ```c
-expo_js_value_result expo_js_runtime_create_number(
-  expo_js_runtime_handle runtime,
-  double value);
+typedef struct expo_jsi_runtime_t *expo_jsi_runtime_handle;
+typedef struct expo_jsi_value_t *expo_jsi_value_handle;
+typedef struct expo_jsi_promise_t *expo_jsi_promise_handle;
+typedef struct expo_jsi_arguments_t *expo_jsi_arguments_handle;
 
-expo_js_value_result expo_js_runtime_create_bool(
-  expo_js_runtime_handle runtime,
-  int32_t value);
+typedef struct expo_jsi_value_result {
+  int32_t ok;
+  expo_jsi_value_handle value;
+  expo_jsi_error error;
+} expo_jsi_value_result;
 
-expo_js_value_result expo_js_runtime_create_string_utf8(
-  expo_js_runtime_handle runtime,
-  const uint8_t *value,
-  int32_t value_len);
-
-expo_js_object_result expo_js_runtime_create_object(
-  expo_js_runtime_handle runtime);
-
-expo_js_value_kind expo_js_value_get_kind(
-  expo_js_runtime_handle runtime,
-  expo_js_value_handle value);
-
-double expo_js_value_get_double(
-  expo_js_runtime_handle runtime,
-  expo_js_value_handle value,
-  expo_js_error *error);
-
-expo_js_string_result expo_js_value_get_string_utf8(
-  expo_js_runtime_handle runtime,
-  expo_js_value_handle value);
-
-expo_js_value_result expo_js_object_get_property_utf8(
-  expo_js_runtime_handle runtime,
-  expo_js_object_handle object,
-  const uint8_t *name,
-  int32_t name_len);
-
-int32_t expo_js_object_set_property_utf8(
-  expo_js_runtime_handle runtime,
-  expo_js_object_handle object,
-  const uint8_t *name,
-  int32_t name_len,
-  expo_js_value_handle value,
-  expo_js_error *error);
-
-typedef expo_js_value_result (*expo_js_host_function_callback)(
-  expo_js_runtime_handle runtime,
-  expo_js_value_handle this_value,
-  const expo_js_value_handle *args,
-  int32_t arg_count,
-  void *callback_context);
-
-expo_js_function_result expo_js_runtime_create_host_function_utf8(
-  expo_js_runtime_handle runtime,
-  const uint8_t *name,
-  int32_t name_len,
-  int32_t param_count,
-  expo_js_host_function_callback callback,
-  void *callback_context,
-  void (*release_callback_context)(void *callback_context));
-
-void expo_js_value_retain(expo_js_value_handle value);
-void expo_js_value_release(expo_js_value_handle value);
-
-expo_js_value_result expo_js_object_as_value(
-  expo_js_runtime_handle runtime,
-  expo_js_object_handle object);
-
-expo_js_value_result expo_js_function_as_value(
-  expo_js_runtime_handle runtime,
-  expo_js_function_handle function);
+typedef struct expo_jsi_api {
+  uint32_t size;
+  uint32_t version;
+  expo_jsi_create_number_fn create_number;
+  expo_jsi_create_object_fn create_object;
+  expo_jsi_create_array_fn create_array;
+  expo_jsi_create_host_function_fn create_host_function;
+  expo_jsi_create_promise_fn create_promise;
+  expo_jsi_runtime_schedule_task_fn runtime_schedule_task;
+  expo_jsi_runtime_execute_sync_fn runtime_execute_sync;
+} expo_jsi_api;
 ```
 
-These functions are representative, not final. They are included because the
-tutorial examples use runtime-backed factories such as `CreateNumber`,
-`CreateBool`, `CreateObject`, and `CreateHostFunction`. Do not widen the ABI
-speculatively beyond the proof. Add functions only when a spike needs them, and
-document the proof that forced the addition.
-
-This draft deliberately keeps object/function handles distinct from generic
-value handles. `expo_js_runtime_create_object` returns an
-`expo_js_object_handle`, because property APIs require an object handle. When an
-object or function must cross an API that expects a JS value, use an explicit
-conversion such as `expo_js_object_as_value` or `expo_js_function_as_value`.
-Future proofs may choose a single tagged value-handle representation instead,
-but they must update this section and the wrapper tutorial together; do not
-leave object/value mapping implicit.
+Do not widen the ABI speculatively. Add functions only when a proof or test
+needs them, and update the relevant spec or plan.
 
 ## C# Wrapper Shape
 
-The C# public surface should look familiar to an Expo/JSI reader:
+The C# public surface should feel familiar to an Expo/JSI reader while staying
+honest about C# and ABI constraints:
 
 ```csharp
-public readonly ref struct JavaScriptUnownedValue
-{
-  public JavaScriptValueKind Kind { get; }
-  public double AsDouble();
-  public string AsString();
-  public JavaScriptObject AsObject();
-}
-
-public sealed class JavaScriptValue : IDisposable
-{
-  public JavaScriptValueKind Kind { get; }
-  public void Dispose();
-}
-
-public sealed class JavaScriptObject : IDisposable
-{
-  public JavaScriptValue GetProperty(string name);
-  public void SetProperty(string name, JavaScriptValue value);
-  public JavaScriptValue AsValue();
-}
-
-public sealed class JavaScriptFunction : IDisposable
-{
-  public JavaScriptValue AsValue();
-}
-
 public sealed class JavaScriptRuntime
 {
   public JavaScriptValue CreateNumber(double value);
   public JavaScriptValue CreateBool(bool value);
-  public JavaScriptObject CreateObject();
   public JavaScriptValue CreateString(string value);
+  public JavaScriptObject Global();
+  public JavaScriptObject CreateObject();
+  public JavaScriptArray CreateArray(uint length = 0);
   public JavaScriptFunction CreateHostFunction(...);
+  public JavaScriptPromise CreatePromise();
+  public Task<T> ExecuteAsync<T>(Func<JavaScriptRuntime, T> body, ...);
+  public T Execute<T>(Func<JavaScriptRuntime, T> body);
+}
+
+public sealed class JavaScriptValue : IDisposable
+{
+  public JavaScriptObject AsObject();
+  public JavaScriptArray AsArray();
+  public JavaScriptValue AsValue();
+  public JavaScriptValueRef Ref { get; }
+}
+
+public readonly ref struct JavaScriptValueRef
+{
+  public JavaScriptObjectRef AsObject();
+  public JavaScriptArrayRef AsArray();
+  public JavaScriptValue Retain();
 }
 ```
 
-This is illustrative, not final API law. The important semantics are:
+The important semantics are:
 
-- `JavaScriptUnownedValue` is borrowed and cannot escape the current call.
-- factory methods such as `CreateNumber` and `CreateBool` call the C ABI to ask
-  the native bridge to create a real JSI value and return an owned retained
-  handle.
-- `JavaScriptValue` owns a retained native handle and must release it unless
-  ownership is explicitly transferred to the native bridge.
-- object/function wrappers are typed views over handles with clear ownership.
-- `JavaScriptObject.AsValue()` and `JavaScriptFunction.AsValue()` are explicit
-  wrapper conversions that call `expo_js_object_as_value` and
-  `expo_js_function_as_value`; examples should not pass object/function handles
-  where a `JavaScriptValue` is required without such a conversion.
-- all wrapper methods call the C ABI; none interpret native class layouts.
+- owned wrappers dispose native handles;
+- scoped refs are temporary inspection views and cannot escape their execution
+  frame in ordinary C# code;
+- `AsObject()`, `AsArray()`, `AsValue()`, and `Retain()` are explicit ownership
+  transitions;
+- all wrapper methods call the C ABI; none interpret native class layouts;
+- module-facing generated code should consume these wrappers rather than
+  adding module DSL behavior to `Expo.JSI`.
 
 ## Memory And Lifetime Rules
 
-Future agents must not guess at ownership. Use these rules until a later proof
-updates them explicitly.
+Future agents must not guess at ownership.
 
 Runtime handles:
 
-- Borrowed from the host or bridge initialization.
-- Valid only on the JS runtime/thread rules supplied by the host.
+- Borrowed from the host or test host.
+- Valid only according to the runtime/thread rules supplied by the host.
 - Not retained or released by ordinary C# wrappers.
-- C# may hold a runtime wrapper only as long as the bridge lifetime permits.
 
-Borrowed value handles:
+Scoped refs:
 
-- Used for arguments and temporary values during a native call.
-- Valid only until the host function callback returns.
+- Used for arguments and temporary traversal during a host-function callback or
+  runtime execution frame.
 - Must not be stored in fields, captured by async continuations, or returned as
-  owned values without an explicit retain/copy operation.
+  owned values without `Retain()` or another explicit ownership transition.
 
-Owned value handles:
+Owned value wrappers:
 
-- Created by native bridge factory functions or by retaining borrowed values.
-- Must be released exactly once by the owning wrapper.
-- May escape the current call if thread/runtime rules are respected.
+- Created by native bridge factory functions or by retaining scoped refs.
+- Must be disposed exactly once by the owning wrapper unless ownership is
+  detached/transferred to native return handling.
 
 Strings:
 
-- ABI returns string data as UTF-8 pointer + byte length.
-- Native bridge must specify whether the bytes are borrowed or owned.
-- Owned string buffers must include a release callback or release function.
-- C# should copy to managed `string` unless a short-lived span API is explicitly
-  proven safe.
-
-Buffers:
-
-- Borrowed buffers expose pointer + length only during the valid borrow window.
-- Owned buffers need explicit retain/release or copy semantics.
-- C# must not keep a raw pointer beyond its documented lifetime.
-- Mutability must be explicit: read-only borrowed bytes are not mutable JS
-  ArrayBuffers.
+- ABI strings are UTF-8 pointer + byte length.
+- Owned string buffers include a release callback.
+- C# copies them to managed `string`.
 
 Callbacks:
 
 - Host functions receive a function pointer plus opaque context.
 - Any context allocated by C# must have an explicit release callback.
-- The native bridge must call the release callback exactly once when the host
-  function is destroyed.
-- Do not use `Marshal.GetFunctionPointerForDelegate` as the core v2 model
-  unless a proof documents why it is safe for lifetime and NativeAOT.
+- Native must call the release callback exactly once when the host function is
+  destroyed.
 
 Promises:
 
-- JS promises are native-owned JS objects.
-- C# may receive resolve/reject handles or wrapper functions.
-- Resolution must happen on the correct JS runtime/thread according to host
-  scheduler rules.
-- A headless proof may use a simple scheduler, but the adapter boundary must
-  make the real host scheduler explicit.
-- A real React Native adapter should map the scheduler to the host's
-  `CallInvoker`, `RuntimeExecutor`, or `RuntimeScheduler` equivalent; do not
-  make the portable core include React Native headers just to schedule async
-  continuations.
-
-JS scheduler:
-
-- The scheduler is adapter-owned and runtime-bound.
-- It is required for async `Task` continuations, promise resolve/reject, events
-  emitted after the original JS call, and any retained JSI cleanup that must run
-  on the JS runtime thread.
-- It is not required for the body of a synchronous host function that is already
-  executing on the JS runtime thread.
-- C# must not assume `.NET Task` continuations resume on the JS thread.
-- Headless tests may run scheduled work immediately, but the proof must still
-  pass through the scheduler abstraction so the real adapter seam is exercised.
+- `JavaScriptPromise` wraps a native promise capability, not merely a JS value.
+- `JavaScriptPromiseValue` owns the JS promise value.
+- Resolve/reject must run on the correct runtime path.
 
 Errors:
 
 - C++ exceptions do not cross the C ABI.
 - Managed exceptions do not cross unmanaged frames.
-- Convert native failures into structured `ok/error` results.
-- Convert managed failures into structured rejection/throw results at the ABI
-  boundary.
-- Include at least code, message, and optional native detail in proof artifacts.
+- Convert failures into structured `ok/error` results or JS errors.
 
-## Updated Decisions And Open Questions
+## Current Decisions And Open Questions
 
-Updated decisions from the old research note:
+Current decisions:
 
-- A clean separate research repo is now the recommended phase 1 location, not
-  just one option. This repo remains the planning source and later RNW adapter
-  home.
-- Views are explicitly outside the first universal headless proof.
-- The generated-looking C# module proof is mandatory before building a source
-  generator.
-- The proof plan must stop for user review before creating a new repo, changing
-  production code, or adding a real host app.
+- This repository is now the implementation home for the portable core.
+- `Expo.JSI` stays low-level.
+- `Expo.ModulesCore` is the next higher-level package boundary.
+- Temporary module conversion proofs may live in `Expo.JSI.Tests/Modules` only
+  until `Expo.ModulesCore.Tests` exists.
+- The ABI should keep moving toward the slim value-handle model documented by
+  the latest specs.
 
 Open questions to preserve as decision points:
 
-- Should owned wrappers derive from `SafeHandle`, implement `IDisposable`
-  directly, or use specialized structs for hot paths?
-- What minimal C ABI is enough for useful modules before arrays, typed arrays,
-  and records are added?
-- How should JS-thread confinement be represented in C# type names or runtime
-  guards?
-- What v1 reflection compatibility must remain, and how is it isolated from v2?
-- Should v1 and v2 share one registry or merge generated providers at startup?
-- How much existing Expo C++ JSI utility code can be reused directly across RNW
-  and React Native macOS?
+- What exact public DSL shape should `Expo.ModulesCore` expose?
+- Which converters belong in `Expo.ModulesCore` first?
+- How should source-generator diagnostics describe unsupported parameter and
+  return types?
+- What NativeAOT proof is required before treating the generated module path as
+  production-ready?
+- Which platform adapter should be implemented first after the portable module
+  layer is stable?

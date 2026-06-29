@@ -1,18 +1,15 @@
-# Portable C# / JSI Bridge Research Plan
+# Portable C# / JSI Bridge Docs
 
-This directory is the self-contained planning package for a portable C# / JSI
-bridge research track. It is separate from the current Windows repository
-restructure and Windows fresh-app proof.
+Last refreshed: 2026-06-29.
 
-The plan exists because the current repository has useful pieces but mixed
-boundaries: portable C# module concepts, Windows-only WinUI/view code,
-HostFXR loading, React Native Windows package registration, and expo-desktop
-runtime composition are currently close together. The research question is
-whether the core C# / JSI bridge can be developed locally on macOS, ideally in
-a clean research repository, while this repository remains the planning source
-and later Windows adapter home.
+This directory is the working documentation package for the portable C# / JSI
+bridge in this repository. The early `agent-plan/` and `learning-guide/` files
+started as planning material before implementation existed. The repository now
+contains a real low-level bridge slice, so future agents should treat these docs
+as a current orientation guide and treat newer specs, plans, spike results, and
+tests as implementation evidence.
 
-The architecture rule is non-negotiable:
+The architecture rule is still non-negotiable:
 
 ```text
 C++ owns JSI mechanics.
@@ -21,176 +18,142 @@ A C ABI with opaque handles connects them.
 ```
 
 C# must not wrap raw C++ `jsi::Runtime`, `jsi::Value`, `jsi::Object`, or
-`jsi::Function` layouts. It receives handles and calls a C function table. The
-native bridge owns the real JSI objects and enforces lifetime, thread, and
+`jsi::Function` layouts. It receives opaque handles through `expo_jsi_api`.
+The native bridge owns the real JSI objects and enforces lifetime, thread, and
 exception rules.
 
-## Status Of This Directory
+## Current Repository State
 
-These docs are planning artifacts, not implementation. A future implementation
-goal may execute the phases, but this planning goal must not:
+The implemented core is no longer a docs-only research plan:
 
-- implement the bridge;
-- modify production code;
-- create a new repository without explicit user approval;
-- edit `docs_old/`;
-- publish to GitHub or open a PR without approval.
+- `native/include/expo_jsi.h` defines the production-oriented C ABI function
+  table and opaque handles.
+- `native/testhost/` builds a Hermes-backed test host used by managed tests.
+- `managed/packages/Expo.JSI/` contains the low-level C# wrapper package.
+- `managed/packages/Expo.JSI.Tests/` contains the Hermes-backed test suite.
+- `experiments/hostfxr-smoke/`, `experiments/nativeaot-smoke/`, and
+  `experiments/hermes-console-hostfxr/` preserve standalone loader and proof
+  experiments.
+- `docs/spike-results/` records completed proof evidence.
+- `docs/superpowers/specs/` and `docs/superpowers/plans/` are newer than the
+  original agent plan and often contain the most precise implementation intent.
 
-`docs_old/RESEARCH_PORTABLE_CSHARP_JSI_BRIDGE.md` was the historical seed note.
-The relevant facts from it are summarized and refined here so future readers do
-not need to open `docs_old/` to understand the plan.
+`Expo.JSI` is the current production-oriented low-level wrapper package. It
+contains runtime, value, object, array, function, promise, error, scoped-ref,
+host-function, and runtime-task APIs over the ABI. It is intentionally below
+the module DSL layer.
+
+`Expo.ModulesCore` does not exist yet in this repository. Module dispatch and
+conversion tests under `managed/packages/Expo.JSI.Tests/Modules/` are temporary
+proofs. Move that behavior to `Expo.ModulesCore.Tests` when the module package
+is introduced.
 
 ## Reading Order
 
-For future Codex agents implementing the research:
+For future agents:
 
 1. `agent-plan/01-architecture.md`
-   Defines the target architecture, boundaries, ownership rules, and updated
-   decisions relative to the old research note.
+   Defines the current architecture, implemented boundaries, ownership rules,
+   and next direction.
 2. `agent-plan/02-research-spikes.md`
-   Defines ordered proof spikes. Each spike has hypothesis, purpose,
-   implementation boundary, artifacts, commands, expected proof, failure
-   signals, and stop/go decision.
+   Re-baselines the original spike plan against what has actually landed.
 3. `agent-plan/03-implementation-phases.md`
-   Turns the spikes into a phased implementation roadmap after planning.
+   Describes the current roadmap from the implemented `Expo.JSI` base toward
+   `Expo.ModulesCore`, generator work, AOT checks, and adapters.
 4. `agent-plan/04-verification-and-stop-gates.md`
-   Defines verification discipline, Mac-local vs Windows-remote commands,
-   proof artifacts, and review gates.
+   Defines verification commands and decision gates for this repo.
 5. `agent-plan/05-repo-strategy.md`
-   Evaluates clean separate repo vs current repo vs branch and recommends a
-   clean research repo for phase 1.
+   Explains why development now happens in this repo and how experiments should
+   be promoted.
 
-For the user learning modern .NET interop:
+For detailed implementation context, read the relevant newer spec or plan under
+`docs/superpowers/` before editing code. For loader or proof evidence, read the
+matching result under `docs/spike-results/`.
+
+For background learning material:
 
 1. `learning-guide/01-dotnet-interop-basics.md`
-   Teaches HostFXR, NativeAOT, C ABI design, function pointers, and unmanaged
-   exports.
 2. `learning-guide/02-jsi-wrapper-model.md`
-   Teaches wrapper semantics, borrowed vs owned values, and lifetime rules.
 3. `learning-guide/03-source-generators-and-v2-api.md`
-   Teaches how attributes become generated, low-runtime-cost bindings.
 4. `learning-guide/04-platform-adapters-and-views.md`
-   Teaches headless core vs RNW/RN macOS adapters and platform-gated views.
+
+The learning guides may still use earlier names or simplified examples. When
+they conflict with current code, current code plus the newer specs win.
 
 ## Scope
 
-The research track covers:
+Current in-scope work:
 
-- a portable C++ JSI bridge compiled per platform;
-- a C ABI made from opaque handles, primitive values, pointers, lengths,
-  callbacks, explicit retain/release functions, and structured error results;
-- C# wrappers around runtime, values, objects, functions, arrays, buffers,
-  callbacks, promises, and errors;
-- a portable JS scheduler capability, backed by React Native call-invoker-like
-  facilities in real host adapters and by a simple scheduler in headless tests;
-- an attribute-authored v2 API whose runtime binding code is generated by a
-  source generator;
-- HostFXR as the first development loader;
-- NativeAOT-compatible ABI and generated bindings for later production proof;
-- thin platform adapters for RNW first and a future React Native macOS host
-  later;
-- optional view adapters behind platform gates.
+- maintaining the `expo_jsi` C ABI and opaque-handle model;
+- improving `Expo.JSI` low-level wrappers and ownership semantics;
+- extending the Hermes-backed test host and managed test suite;
+- keeping temporary generated-looking module proofs clearly temporary;
+- designing and then implementing `Expo.ModulesCore` as the higher-level module
+  DSL and generated-binding package;
+- keeping HostFXR and NativeAOT loader concerns separate from runtime wrapper
+  semantics;
+- adding thin platform adapters only after the headless core boundary is clear.
 
-The research track does not cover:
+Current out-of-scope work unless explicitly requested:
 
-- replacing the Windows fresh-app proof;
-- redesigning expo-desktop runtime ownership;
-- moving all existing v1 DSL code;
-- building the full source generator before the generated-looking proof;
-- making views universal in the first headless proof;
-- cross-compiling Windows NativeAOT artifacts from macOS;
-- using JSON as the ordinary bridge for JSI arguments or return values.
+- introducing RNW, WinUI, AppKit, packaging, or host-app dependencies into the
+  portable core;
+- building the full source generator before the generated-looking shape is
+  stable;
+- making views part of the first portable module package;
+- using runtime reflection, `object?[]`, or JSON as the normal v2 invocation
+  path;
+- publishing to GitHub, opening PRs, or posting comments without approval.
 
-## Key Decisions
+## Key Current Decisions
 
-HostFXR is the first loader, not the runtime architecture. It is useful because
-macOS can host a framework-dependent .NET assembly from a native process during
-fast research iteration. NativeAOT remains a later proof and distribution path.
-Both modes should consume the same conceptual C ABI.
+`Expo.JSI` stays low-level. It exposes wrapper types over the ABI and should not
+grow module DSL concerns.
 
-The v2 API is attribute-authored and source-generator-driven. Attributes are
-compile-time metadata. They are not a reason to use runtime reflection in the
-hot path. Generated v2 runtime bindings must avoid:
+The module layer belongs in a future `Expo.ModulesCore` package. Generated
+bindings should decode `JavaScriptArguments`, call authored C# methods directly,
+and encode return values through `Expo.JSI` wrappers.
 
-- `Assembly.GetTypes` for ordinary v2 discovery;
-- `MethodInfo.Invoke` for ordinary v2 invocation;
-- `Delegate.DynamicInvoke` for ordinary v2 invocation;
-- `object?[]` as the normal fast-path argument container;
-- JSON serialization for ordinary JSI values.
+The ABI has moved toward value handles for ordinary values, objects, arrays, and
+functions. Promise capability remains a separate handle. C# still exposes typed
+wrappers such as `JavaScriptObject`, `JavaScriptArray`, `JavaScriptFunction`,
+and `JavaScriptPromise`.
 
-Some reflection may remain isolated for historical v1 compatibility, but it
-must not define the new v2 bridge.
+Scoped refs such as `JavaScriptValueRef`, `JavaScriptObjectRef`, and
+`JavaScriptArrayRef` are for temporary inspection inside a runtime execution
+frame or host-function callback. Owned wrappers are disposable and may escape
+when runtime/thread rules permit.
 
-## Universal vs Platform-Gated
+HostFXR is an experiment and development loader, not the runtime architecture.
+`Expo.JSI` should not contain HostFXR-specific code. NativeAOT compatibility is
+a continuing constraint on ABI and generated-binding design.
 
-Universal/headless means it should work without RNW, WinUI, AppKit, app
-packaging, or a real React Native host:
+## Verification
 
-- C++ JSI bridge source;
-- C ABI declarations and handle table;
-- C# wrapper library;
-- generated v2 binding shape;
-- headless tests;
-- HostFXR and NativeAOT loader-neutral entry points.
+Run the canonical Hermes-backed suite after code changes:
 
-Platform-gated means it belongs behind adapters:
-
-- RNW package registration;
-- expo-desktop connector installation;
-- React Native macOS host installation;
-- JS thread scheduling provided by a real host, hidden behind the portable
-  scheduler service;
-- WinUI/AppKit/native view creation;
-- Windows AppX/MSIX packaging.
-
-## Recommended First Implementation Goal
-
-After this planning work is accepted, the recommended first implementation goal
-is:
-
-```text
-With explicit user approval, create a clean disposable research repository for
-phase 1. Implement Spike 1 and Spike 2 only: a macOS HostFXR smoke test plus a
-minimal C ABI and opaque-handle skeleton with matching C# ABI declarations.
+```sh
+scripts/test-jsi.sh
 ```
 
-This repository should remain the source of these plans and the later RNW
-adapter home. The Windows-side proof should continue separately on <windows-test-machine>
-when it needs Visual Studio, RNW packaging, WinUI, or app screenshots.
+Before finishing code changes, run:
 
-The headless C++/JSI wrapper proof, generated-looking module proof, NativeAOT
-audit, source generator, RNW adapter, React Native macOS adapter, and view work
-are later spikes/phases. Do not pull them into the first implementation goal.
+```sh
+scripts/format.sh --check --all
+```
 
-## Objective Coverage Map
+If formatting fails because files need updates, run:
 
-This map is here so future agents can audit completion by section rather than
-by keyword search.
+```sh
+scripts/format.sh
+scripts/format.sh --check --all
+```
 
-- Self-contained docs: this README plus every file under `agent-plan/` and
-  `learning-guide/` restates its needed context.
-- Architecture rule: this README and `agent-plan/01-architecture.md`.
-- Loader/runtime distinction: this README,
-  `agent-plan/01-architecture.md`, and
-  `learning-guide/01-dotnet-interop-basics.md`.
-- Major layers: `agent-plan/01-architecture.md`.
-- Universal vs platform-gated: this README,
-  `agent-plan/01-architecture.md`, and
-  `learning-guide/04-platform-adapters-and-views.md`.
-- React Native macOS host plan: `agent-plan/02-research-spikes.md`,
-  `agent-plan/03-implementation-phases.md`, and
-  `learning-guide/04-platform-adapters-and-views.md`.
-- Repo strategy: `agent-plan/05-repo-strategy.md`.
-- Research spikes: `agent-plan/02-research-spikes.md`.
-- Reflection prohibition: this README,
-  `agent-plan/01-architecture.md`,
-  `agent-plan/02-research-spikes.md`, and
-  `learning-guide/03-source-generators-and-v2-api.md`.
-- Memory ownership rules: `agent-plan/01-architecture.md` and
-  `learning-guide/02-jsi-wrapper-model.md`.
-- Source-generator-shaped proof: `agent-plan/02-research-spikes.md` and
-  `learning-guide/03-source-generators-and-v2-api.md`.
-- Mac-local vs Windows-remote: `agent-plan/04-verification-and-stop-gates.md`.
-- Phase 1 executable detail: `agent-plan/02-research-spikes.md`,
-  `agent-plan/03-implementation-phases.md`, and
-  `agent-plan/05-repo-strategy.md`.
+Docs-only changes should at least run:
+
+```sh
+git diff --check
+rg "self[-]contained planning package|planning[ ]artifacts,[ ]not[ ]implementation|expo[-]modules[-]windows[-]core|Phase[ ]1:[ ]clean[ ]separate[ ]research[ ]repo|create[ ]a[ ]clean[ ]local[ ]research[ ]repository" docs/README.md docs/agent-plan
+```
+
+Any match should be intentional and explained by context.
