@@ -26,8 +26,6 @@ internal sealed unsafe class JavaScriptHandleScope : IDisposable
   private readonly JsiContext context;
   private readonly JavaScriptHandleScope? previous;
   private List<ExpoJsiValueHandle>? values;
-  private List<ExpoJsiObjectHandle>? objects;
-  private List<ExpoJsiArrayHandle>? arrays;
   private bool disposed;
 
   private JavaScriptHandleScope(JsiContext context, JavaScriptHandleScope? previous)
@@ -92,47 +90,11 @@ internal sealed unsafe class JavaScriptHandleScope : IDisposable
   }
 
   /// <summary>
-  /// Registers a temporary object handle to release when the scope exits.
-  /// </summary>
-  /// <remarks>
-  /// Passing a zero handle is allowed and is treated as a no-op. The returned handle is the same
-  /// handle that was passed in, so callers can inline tracking at construction sites.
-  /// </remarks>
-  public ExpoJsiObjectHandle TrackObject(ExpoJsiObjectHandle handle)
-  {
-    ThrowIfDisposed();
-    if (handle != 0)
-    {
-      objects ??= [];
-      objects.Add(handle);
-    }
-    return handle;
-  }
-
-  /// <summary>
-  /// Registers a temporary array handle to release when the scope exits.
-  /// </summary>
-  /// <remarks>
-  /// Passing a zero handle is allowed and is treated as a no-op. The returned handle is the same
-  /// handle that was passed in, so callers can inline tracking at construction sites.
-  /// </remarks>
-  public ExpoJsiArrayHandle TrackArray(ExpoJsiArrayHandle handle)
-  {
-    ThrowIfDisposed();
-    if (handle != 0)
-    {
-      arrays ??= [];
-      arrays.Add(handle);
-    }
-    return handle;
-  }
-
-  /// <summary>
   /// Leaves the current handle scope and releases all tracked temporary handles.
   /// </summary>
   /// <remarks>
-  /// Handles are released in reverse tracking order, grouped by handle kind. Disposing out of stack
-  /// order is an error because it would make scoped ref lifetimes ambiguous.
+  /// Handles are released in reverse tracking order. Disposing out of stack order is an error
+  /// because it would make scoped ref lifetimes ambiguous.
   /// </remarks>
   public void Dispose()
   {
@@ -148,20 +110,6 @@ internal sealed unsafe class JavaScriptHandleScope : IDisposable
     }
 
     disposed = true;
-    if (arrays is not null)
-    {
-      for (var index = arrays.Count - 1; index >= 0; index--)
-      {
-        context.Api->ReleaseArrayHandle(context.RuntimeHandle, arrays[index]);
-      }
-    }
-    if (objects is not null)
-    {
-      for (var index = objects.Count - 1; index >= 0; index--)
-      {
-        context.Api->ReleaseObjectHandle(context.RuntimeHandle, objects[index]);
-      }
-    }
     if (values is not null)
     {
       for (var index = values.Count - 1; index >= 0; index--)

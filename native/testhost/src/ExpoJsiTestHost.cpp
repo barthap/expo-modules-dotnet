@@ -74,26 +74,6 @@ void countedReleaseValue(expo_jsi_runtime_handle runtime, expo_jsi_value_handle 
   api->release_value(runtime, value);
 }
 
-void countedReleaseObject(expo_jsi_runtime_handle runtime, expo_jsi_object_handle object)
-{
-  auto *testhost = runtimeFor(runtime);
-  if (testhost != nullptr && object != nullptr) {
-    testhost->counters.released_objects++;
-  }
-  const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
-  api->release_object(runtime, object);
-}
-
-void countedReleaseArray(expo_jsi_runtime_handle runtime, expo_jsi_array_handle array)
-{
-  auto *testhost = runtimeFor(runtime);
-  if (testhost != nullptr && array != nullptr) {
-    testhost->counters.released_objects++;
-  }
-  const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
-  api->release_array(runtime, array);
-}
-
 void countedReleasePromise(expo_jsi_runtime_handle runtime, expo_jsi_promise_handle promise)
 {
   auto *testhost = runtimeFor(runtime);
@@ -102,16 +82,6 @@ void countedReleasePromise(expo_jsi_runtime_handle runtime, expo_jsi_promise_han
   }
   const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
   api->release_promise(runtime, promise);
-}
-
-void countedReleaseFunction(expo_jsi_runtime_handle runtime, expo_jsi_function_handle function)
-{
-  auto *testhost = runtimeFor(runtime);
-  if (testhost != nullptr && function != nullptr) {
-    testhost->counters.released_functions++;
-  }
-  const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
-  api->release_function(runtime, function);
 }
 
 struct CountedStringReleaseContext {
@@ -226,10 +196,7 @@ const expo_jsi_api *makeCountedApi(expo_jsi_testhost_runtime_t &runtime)
   runtime.innerApi = expo::jsi::api();
   runtime.countedApi = *runtime.innerApi;
   runtime.countedApi.release_value = countedReleaseValue;
-  runtime.countedApi.release_object = countedReleaseObject;
-  runtime.countedApi.release_array = countedReleaseArray;
   runtime.countedApi.release_promise = countedReleasePromise;
-  runtime.countedApi.release_function = countedReleaseFunction;
   runtime.countedApi.get_string = countedGetString;
   runtime.countedApi.runtime_schedule_task = countedScheduleTask;
   runtime.countedApi.runtime_can_execute_sync = countedCanExecuteSync;

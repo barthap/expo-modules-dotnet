@@ -1,7 +1,7 @@
 namespace Expo.JSI;
 
 /// <summary>
-/// Owns a JavaScript array handle.
+/// Owns a JavaScript array value handle.
 /// </summary>
 /// <remarks>
 /// Indexed reads return owned <see cref="JavaScriptValue" /> wrappers that must be disposed by the
@@ -10,9 +10,9 @@ namespace Expo.JSI;
 public sealed class JavaScriptArray : IJavaScriptValueRepresentable, IDisposable
 {
   private readonly JsiContext context;
-  private ExpoJsiArrayHandle handle;
+  private ExpoJsiValueHandle handle;
 
-  internal JavaScriptArray(JsiContext context, ExpoJsiArrayHandle handle)
+  internal JavaScriptArray(JsiContext context, ExpoJsiValueHandle handle)
   {
     this.context = context;
     this.handle = handle;
@@ -55,7 +55,7 @@ public sealed class JavaScriptArray : IJavaScriptValueRepresentable, IDisposable
   }
 
   /// <summary>
-  /// Converts this array handle to an owned JavaScript object handle.
+  /// Clones this array as an owned JavaScript object wrapper.
   /// </summary>
   /// <remarks>
   /// The returned <see cref="JavaScriptObject" /> must be disposed independently.
@@ -63,7 +63,7 @@ public sealed class JavaScriptArray : IJavaScriptValueRepresentable, IDisposable
   public JavaScriptObject AsObject() => new(context, Inner.AsObject());
 
   /// <summary>
-  /// Converts this array handle to an owned JavaScript value handle.
+  /// Clones this array as an owned JavaScript value handle.
   /// </summary>
   /// <remarks>
   /// The returned <see cref="JavaScriptValue" /> must be disposed independently.
@@ -72,7 +72,7 @@ public sealed class JavaScriptArray : IJavaScriptValueRepresentable, IDisposable
     JavaScriptValue.FromOwnedHandle(context, Inner.AsValue());
 
   /// <summary>
-  /// Releases the owned native array handle.
+  /// Releases the owned native array value handle.
   /// </summary>
   public void Dispose()
   {
@@ -80,7 +80,7 @@ public sealed class JavaScriptArray : IJavaScriptValueRepresentable, IDisposable
     {
       unsafe
       {
-        context.Api->ReleaseArrayHandle(context.RuntimeHandle, handle);
+        context.Api->ReleaseValueHandle(context.RuntimeHandle, handle);
       }
       handle = 0;
     }

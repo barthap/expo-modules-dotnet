@@ -4,14 +4,14 @@ namespace Expo.JSI;
 
 internal readonly unsafe struct JavaScriptArrayInner
 {
-  public JavaScriptArrayInner(JsiContext context, ExpoJsiArrayHandle handle)
+  public JavaScriptArrayInner(JsiContext context, ExpoJsiValueHandle handle)
   {
     Context = context;
     Handle = handle;
   }
 
   public JsiContext Context { get; }
-  public ExpoJsiArrayHandle Handle { get; }
+  public ExpoJsiValueHandle Handle { get; }
 
   public uint Length
   {
@@ -45,22 +45,30 @@ internal readonly unsafe struct JavaScriptArrayInner
     Context.ThrowIfError(error, "Failed to set JavaScript array value.");
   }
 
-  public ExpoJsiObjectHandle AsObject()
+  public ExpoJsiValueHandle AsObject()
   {
-    var result = Context.Api->ConvertArrayToObject(Context.RuntimeHandle, Handle);
-    if (result.Ok == 0 || result.Object == 0)
+    var result = Context.Api->RetainValueAs(
+        Context.RuntimeHandle,
+        Handle,
+        ExpoJsiValueExpectation.Object
+    );
+    if (result.Ok == 0 || result.Value == 0)
     {
-      JsiContext.ThrowNativeError(result.Error, "Failed to convert JavaScript array to object.");
+      JsiContext.ThrowNativeError(result.Error, "Failed to retain JavaScript array as object.");
     }
-    return result.Object;
+    return result.Value;
   }
 
   public ExpoJsiValueHandle AsValue()
   {
-    var result = Context.Api->ConvertArrayToValue(Context.RuntimeHandle, Handle);
+    var result = Context.Api->RetainValueAs(
+        Context.RuntimeHandle,
+        Handle,
+        ExpoJsiValueExpectation.Array
+    );
     if (result.Ok == 0 || result.Value == 0)
     {
-      JsiContext.ThrowNativeError(result.Error, "Failed to convert JavaScript array to value.");
+      JsiContext.ThrowNativeError(result.Error, "Failed to retain JavaScript array value.");
     }
     return result.Value;
   }

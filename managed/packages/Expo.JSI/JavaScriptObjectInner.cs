@@ -5,14 +5,14 @@ namespace Expo.JSI;
 
 internal readonly unsafe struct JavaScriptObjectInner
 {
-  public JavaScriptObjectInner(JsiContext context, ExpoJsiObjectHandle handle)
+  public JavaScriptObjectInner(JsiContext context, ExpoJsiValueHandle handle)
   {
     Context = context;
     Handle = handle;
   }
 
   public JsiContext Context { get; }
-  public ExpoJsiObjectHandle Handle { get; }
+  public ExpoJsiValueHandle Handle { get; }
 
   public void SetProperty(string name, ExpoJsiValueHandle value)
   {
@@ -45,10 +45,14 @@ internal readonly unsafe struct JavaScriptObjectInner
 
   public ExpoJsiValueHandle AsValue()
   {
-    var result = Context.Api->ConvertObjectToValue(Context.RuntimeHandle, Handle);
+    var result = Context.Api->RetainValueAs(
+        Context.RuntimeHandle,
+        Handle,
+        ExpoJsiValueExpectation.Object
+    );
     if (result.Ok == 0 || result.Value == 0)
     {
-      JsiContext.ThrowNativeError(result.Error, "Failed to convert JavaScript object to value.");
+      JsiContext.ThrowNativeError(result.Error, "Failed to retain JavaScript object value.");
     }
     return result.Value;
   }

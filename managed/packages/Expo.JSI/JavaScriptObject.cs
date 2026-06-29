@@ -1,7 +1,7 @@
 namespace Expo.JSI;
 
 /// <summary>
-/// Owns a JavaScript object handle.
+/// Owns a JavaScript object value handle.
 /// </summary>
 /// <remarks>
 /// Methods on this type return owned wrappers. Dispose every returned value/object wrapper when it
@@ -11,9 +11,9 @@ namespace Expo.JSI;
 public sealed class JavaScriptObject : IJavaScriptValueRepresentable, IDisposable
 {
   private readonly JsiContext context;
-  private ExpoJsiObjectHandle handle;
+  private ExpoJsiValueHandle handle;
 
-  internal JavaScriptObject(JsiContext context, ExpoJsiObjectHandle handle)
+  internal JavaScriptObject(JsiContext context, ExpoJsiValueHandle handle)
   {
     this.context = context;
     this.handle = handle;
@@ -51,7 +51,7 @@ public sealed class JavaScriptObject : IJavaScriptValueRepresentable, IDisposabl
     JavaScriptValue.FromOwnedHandle(context, Inner.GetProperty(name));
 
   /// <summary>
-  /// Converts this object handle to an owned JavaScript value handle.
+  /// Clones this object as an owned JavaScript value handle.
   /// </summary>
   /// <remarks>
   /// The returned <see cref="JavaScriptValue" /> must be disposed independently. Disposing it does
@@ -61,7 +61,7 @@ public sealed class JavaScriptObject : IJavaScriptValueRepresentable, IDisposabl
     JavaScriptValue.FromOwnedHandle(context, Inner.AsValue());
 
   /// <summary>
-  /// Releases the owned native object handle.
+  /// Releases the owned native object value handle.
   /// </summary>
   public void Dispose()
   {
@@ -69,7 +69,7 @@ public sealed class JavaScriptObject : IJavaScriptValueRepresentable, IDisposabl
     {
       unsafe
       {
-        context.Api->ReleaseObjectHandle(context.RuntimeHandle, handle);
+        context.Api->ReleaseValueHandle(context.RuntimeHandle, handle);
       }
       handle = 0;
     }

@@ -89,9 +89,12 @@ public sealed class JavaScriptPromise : IJavaScriptValueRepresentable, IDisposab
     ArgumentNullException.ThrowIfNull(value);
     unsafe
     {
-      var error = reject
-          ? context.Api->RejectPromise(context.RuntimeHandle, handle, value.Handle)
-          : context.Api->ResolvePromise(context.RuntimeHandle, handle, value.Handle);
+      var error = context.Api->SettlePromise(
+          context.RuntimeHandle,
+          handle,
+          reject ? ExpoJsiPromiseSettlement.Reject : ExpoJsiPromiseSettlement.Resolve,
+          value.Handle
+      );
       context.ThrowIfError(error, reject
           ? "Failed to reject JavaScript promise."
           : "Failed to resolve JavaScript promise.");

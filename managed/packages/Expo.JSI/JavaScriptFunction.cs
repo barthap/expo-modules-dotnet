@@ -1,7 +1,9 @@
+using Expo.JSI.Interop;
+
 namespace Expo.JSI;
 
 /// <summary>
-/// Owns a JavaScript function handle.
+/// Owns a JavaScript function value handle.
 /// </summary>
 /// <remarks>
 /// Dispose this wrapper when the function handle is no longer needed. Use <see cref="AsValue" />
@@ -10,16 +12,16 @@ namespace Expo.JSI;
 public sealed class JavaScriptFunction : IJavaScriptValueRepresentable, IDisposable
 {
   private readonly JsiContext context;
-  private ExpoJsiFunctionHandle handle;
+  private ExpoJsiValueHandle handle;
 
-  internal JavaScriptFunction(JsiContext context, ExpoJsiFunctionHandle handle)
+  internal JavaScriptFunction(JsiContext context, ExpoJsiValueHandle handle)
   {
     this.context = context;
     this.handle = handle;
   }
 
   /// <summary>
-  /// Converts this function handle to an owned JavaScript value handle.
+  /// Clones this function as an owned JavaScript value handle.
   /// </summary>
   /// <remarks>
   /// The returned <see cref="JavaScriptValue" /> must be disposed independently. Disposing it does
@@ -30,12 +32,16 @@ public sealed class JavaScriptFunction : IJavaScriptValueRepresentable, IDisposa
     ThrowIfDisposed();
     unsafe
     {
-      var result = context.Api->ConvertFunctionToValue(context.RuntimeHandle, handle);
+      var result = context.Api->RetainValueAs(
+          context.RuntimeHandle,
+          handle,
+          ExpoJsiValueExpectation.Function
+      );
       if (result.Ok == 0 || result.Value == 0)
       {
         JsiContext.ThrowNativeError(
             result.Error,
-            "Failed to convert JavaScript function to value."
+            "Failed to retain JavaScript function value."
         );
       }
       return JavaScriptValue.FromOwnedHandle(context, result.Value);
@@ -43,7 +49,7 @@ public sealed class JavaScriptFunction : IJavaScriptValueRepresentable, IDisposa
   }
 
   /// <summary>
-  /// Releases the owned native function handle.
+  /// Releases the owned native function value handle.
   /// </summary>
   public void Dispose()
   {
@@ -51,7 +57,7 @@ public sealed class JavaScriptFunction : IJavaScriptValueRepresentable, IDisposa
     {
       unsafe
       {
-        context.Api->ReleaseFunctionHandle(context.RuntimeHandle, handle);
+        context.Api->ReleaseValueHandle(context.RuntimeHandle, handle);
       }
       handle = 0;
     }

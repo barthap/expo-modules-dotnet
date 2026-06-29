@@ -183,6 +183,7 @@ private:
 namespace {
 
 constexpr uint32_t kApiVersion = 11;
+thread_local std::string lastErrorMessage;
 
 struct StringResultBuffer {
   explicit StringResultBuffer(std::string value)
@@ -195,10 +196,11 @@ struct StringResultBuffer {
 
 expo_jsi_error makeError(int32_t code, const char *message)
 {
+  lastErrorMessage = message == nullptr ? "Unknown native exception." : message;
   return expo_jsi_error{
     code,
-    message,
-    static_cast<int32_t>(std::strlen(message)),
+    lastErrorMessage.c_str(),
+    static_cast<int32_t>(lastErrorMessage.size()),
   };
 }
 
@@ -415,23 +417,28 @@ expo_jsi_string_result makeStringErrorResult(int32_t code, const char *message)
   return expo_jsi_string_result{0, nullptr, 0, nullptr, nullptr, makeError(code, message)};
 }
 
-facebook::jsi::Object checkedObject(facebook::jsi::Runtime &runtime,
-                                    expo_jsi_value_handle value)
+facebook::jsi::Object checkedObject(facebook::jsi::Runtime &runtime, expo_jsi_value_handle value)
 {
   if (value == nullptr) {
-    throw facebook::jsi::JSError(runtime, "Value handle is null.");
+    throw std::invalid_argument("Value handle is null.");
   }
   if (!value->value().isObject()) {
-    throw facebook::jsi::JSError(runtime, "Value is not an object.");
+    throw std::invalid_argument("Value is not an object.");
   }
   return value->value().asObject(runtime);
 }
 
 facebook::jsi::Array checkedArray(facebook::jsi::Runtime &runtime, expo_jsi_value_handle value)
 {
-  auto object = checkedObject(runtime, value);
+  if (value == nullptr) {
+    throw std::invalid_argument("Value handle is null.");
+  }
+  if (!value->value().isObject()) {
+    throw std::invalid_argument("Value is not an array.");
+  }
+  auto object = value->value().asObject(runtime);
   if (!object.isArray(runtime)) {
-    throw facebook::jsi::JSError(runtime, "Value is not an array.");
+    throw std::invalid_argument("Value is not an array.");
   }
   return object.asArray(runtime);
 }
@@ -439,9 +446,15 @@ facebook::jsi::Array checkedArray(facebook::jsi::Runtime &runtime, expo_jsi_valu
 facebook::jsi::Function checkedFunction(facebook::jsi::Runtime &runtime,
                                         expo_jsi_value_handle value)
 {
-  auto object = checkedObject(runtime, value);
+  if (value == nullptr) {
+    throw std::invalid_argument("Value handle is null.");
+  }
+  if (!value->value().isObject()) {
+    throw std::invalid_argument("Value is not a function.");
+  }
+  auto object = value->value().asObject(runtime);
   if (!object.isFunction(runtime)) {
-    throw facebook::jsi::JSError(runtime, "Value is not a function.");
+    throw std::invalid_argument("Value is not a function.");
   }
   return object.asFunction(runtime);
 }
@@ -798,8 +811,7 @@ expo_jsi_value_result createArray(expo_jsi_runtime_handle runtime, uint32_t leng
   try {
     auto &jsRuntime = runtimeHandle->runtime();
     auto array = facebook::jsi::Array(jsRuntime, length);
-    return makeValueResult(
-      expo::jsi::ValueHandle::owned(facebook::jsi::Value(jsRuntime, array)));
+    return makeValueResult(expo::jsi::ValueHandle::owned(facebook::jsi::Value(jsRuntime, array)));
   } catch (const std::exception &ex) {
     return makeErrorResult(63, ex.what());
   } catch (...) {
@@ -1105,8 +1117,8 @@ expo_jsi_value_result objectGetProperty(expo_jsi_runtime_handle runtime,
     auto propertyName = facebook::jsi::PropNameID::forUtf8(
       jsRuntime, reinterpret_cast<const uint8_t *>(name), static_cast<size_t>(name_len));
     auto jsObject = checkedObject(jsRuntime, object);
-    return makeValueResult(expo::jsi::ValueHandle::owned(
-      jsObject.getProperty(jsRuntime, propertyName)));
+    return makeValueResult(
+      expo::jsi::ValueHandle::owned(jsObject.getProperty(jsRuntime, propertyName)));
   } catch (const std::exception &ex) {
     return makeErrorResult(52, ex.what());
   } catch (...) {

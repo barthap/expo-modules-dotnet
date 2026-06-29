@@ -22,8 +22,8 @@ public readonly ref struct JavaScriptArrayRef
   internal static JavaScriptArrayRef FromScopedHandle(
       JavaScriptHandleScope scope,
       JsiContext context,
-      ExpoJsiArrayHandle handle
-  ) => new(scope, new JavaScriptArrayInner(context, scope.TrackArray(handle)));
+      ExpoJsiValueHandle handle
+  ) => new(scope, new JavaScriptArrayInner(context, scope.TrackValue(handle)));
 
   /// <summary>
   /// Gets the current JavaScript array length.

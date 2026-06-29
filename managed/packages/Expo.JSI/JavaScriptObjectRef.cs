@@ -22,8 +22,8 @@ public readonly ref struct JavaScriptObjectRef
   internal static JavaScriptObjectRef FromScopedHandle(
       JavaScriptHandleScope scope,
       JsiContext context,
-      ExpoJsiObjectHandle handle
-  ) => new(scope, new JavaScriptObjectInner(context, scope.TrackObject(handle)));
+      ExpoJsiValueHandle handle
+  ) => new(scope, new JavaScriptObjectInner(context, scope.TrackValue(handle)));
 
   /// <summary>
   /// Gets a property as a scoped JavaScript value ref.

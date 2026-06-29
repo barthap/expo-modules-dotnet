@@ -163,11 +163,11 @@ public sealed unsafe class JavaScriptRuntime
   public JavaScriptObject Global()
   {
     var result = context.Api->GetGlobal(context.RuntimeHandle);
-    if (result.Ok == 0 || result.Object == 0)
+    if (result.Ok == 0 || result.Value == 0)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to get JavaScript global object.");
     }
-    return new JavaScriptObject(context, result.Object);
+    return new JavaScriptObject(context, result.Value);
   }
 
   /// <summary>
@@ -179,11 +179,11 @@ public sealed unsafe class JavaScriptRuntime
   public JavaScriptObject CreateObject()
   {
     var result = context.Api->CreateObjectValue(context.RuntimeHandle);
-    if (result.Ok == 0 || result.Object == 0)
+    if (result.Ok == 0 || result.Value == 0)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript object.");
     }
-    return new JavaScriptObject(context, result.Object);
+    return new JavaScriptObject(context, result.Value);
   }
 
   /// <summary>
@@ -195,11 +195,11 @@ public sealed unsafe class JavaScriptRuntime
   public JavaScriptArray CreateArray(uint length = 0)
   {
     var result = context.Api->CreateArrayValue(context.RuntimeHandle, length);
-    if (result.Ok == 0 || result.Array == 0)
+    if (result.Ok == 0 || result.Value == 0)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript array.");
     }
-    return new JavaScriptArray(context, result.Array);
+    return new JavaScriptArray(context, result.Value);
   }
 
   /// <summary>
@@ -296,13 +296,13 @@ public sealed unsafe class JavaScriptRuntime
         &ReleaseHostFunctionContext
     );
 
-    if (result.Ok == 0 || result.Function == 0)
+    if (result.Ok == 0 || result.Value == 0)
     {
       HostFunctionContext.Release(callbackContext);
       JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript host function.");
     }
 
-    return new JavaScriptFunction(context, result.Function);
+    return new JavaScriptFunction(context, result.Value);
   }
 
   /// <summary>

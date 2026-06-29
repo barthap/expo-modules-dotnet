@@ -51,24 +51,32 @@ internal readonly unsafe struct JavaScriptValueInner
 
   public bool IsError => Context.Api->IsErrorValue(Context.RuntimeHandle, Handle);
 
-  public ExpoJsiObjectHandle AsObject()
+  public ExpoJsiValueHandle AsObject()
   {
-    var result = Context.Api->ConvertValueToObject(Context.RuntimeHandle, Handle);
-    if (result.Ok == 0 || result.Object == 0)
+    var result = Context.Api->RetainValueAs(
+        Context.RuntimeHandle,
+        Handle,
+        ExpoJsiValueExpectation.Object
+    );
+    if (result.Ok == 0 || result.Value == 0)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to convert JavaScript value to object.");
     }
-    return result.Object;
+    return result.Value;
   }
 
-  public ExpoJsiArrayHandle AsArray()
+  public ExpoJsiValueHandle AsArray()
   {
-    var result = Context.Api->ConvertValueToArray(Context.RuntimeHandle, Handle);
-    if (result.Ok == 0 || result.Array == 0)
+    var result = Context.Api->RetainValueAs(
+        Context.RuntimeHandle,
+        Handle,
+        ExpoJsiValueExpectation.Array
+    );
+    if (result.Ok == 0 || result.Value == 0)
     {
       JsiContext.ThrowNativeError(result.Error, "Failed to convert JavaScript value to array.");
     }
-    return result.Array;
+    return result.Value;
   }
 
   public ExpoJsiValueHandle Retain()
