@@ -25,7 +25,12 @@ exception rules.
   handles.
 - `native/testhost/` builds the Hermes-backed testhost used by managed tests.
 - `managed/packages/Expo.JSI/` contains the low-level C# wrapper package.
-- `managed/packages/Expo.JSI.Tests/` contains the Hermes-backed test suite.
+- `managed/packages/Expo.JSI.Tests/` contains low-level Hermes-backed wrapper
+  tests.
+- `managed/packages/Expo.ModulesCore/` contains generated-binding runtime
+  helpers above `Expo.JSI`.
+- `managed/packages/Expo.ModulesCore.Tests/` contains Hermes-backed module
+  dispatch and conversion tests.
 - `experiments/hostfxr-smoke/`, `experiments/nativeaot-smoke/`, and
   `experiments/hermes-console-hostfxr/` preserve standalone loader and proof
   experiments.
@@ -36,9 +41,10 @@ exception rules.
 value, object, array, function, promise, error, scoped-ref, host-function, and
 runtime-task APIs over the ABI. It is intentionally below the module DSL layer.
 
-`Expo.ModulesCore` does not exist yet. Module dispatch and conversion tests
-under `managed/packages/Expo.JSI.Tests/Modules/` are temporary proofs. Move that
-behavior to `Expo.ModulesCore.Tests` when the module package is introduced.
+`Expo.ModulesCore` is the first higher-level package above `Expo.JSI`. It owns
+generated-binding runtime helpers and typed conversion helpers that future
+Roslyn-generated code can call. It does not yet expose the public v2 authored
+API syntax or a source generator.
 
 ## Reading Order
 
@@ -86,10 +92,10 @@ exact workflow and guardrails.
 
 ## Verification
 
-Run the canonical Hermes-backed suite after code changes:
+Run the canonical Hermes-backed managed suite after code changes:
 
 ```sh
-scripts/test-jsi.sh
+scripts/test-managed.sh
 ```
 
 Before finishing code changes, run:

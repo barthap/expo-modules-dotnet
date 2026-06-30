@@ -8,10 +8,10 @@ current behavior; archived docs provide provenance.
 
 - The low-level C ABI is `native/include/expo_jsi.h`.
 - The low-level managed package is `managed/packages/Expo.JSI`.
-- The Hermes-backed verification path is `scripts/test-jsi.sh`.
-- Temporary generated-looking module proof code lives under
-  `managed/packages/Expo.JSI.Tests/Modules`.
-- `Expo.ModulesCore` does not exist yet.
+- The Hermes-backed managed verification path is `scripts/test-managed.sh`.
+- The generated-binding helper package is `managed/packages/Expo.ModulesCore`.
+- Module dispatch and conversion coverage lives under
+  `managed/packages/Expo.ModulesCore.Tests`.
 
 ## Next Development Direction
 
@@ -20,9 +20,9 @@ current behavior; archived docs provide provenance.
    - Keep promise capability ownership separate.
    - Preserve scoped-ref and owned-wrapper lifetime rules.
 
-2. Introduce `Expo.ModulesCore`.
-   - Move module DSL and generated-binding helper concepts out of `Expo.JSI`.
-   - Move temporary module proof coverage into `Expo.ModulesCore.Tests`.
+2. Extend `Expo.ModulesCore`.
+   - Keep module DSL and generated-binding helper concepts out of `Expo.JSI`.
+   - Keep module proof coverage in `Expo.ModulesCore.Tests`.
    - Keep generated-looking code direct-call and reflection-free.
 
 3. Build the source generator after the hand-written shape is stable.

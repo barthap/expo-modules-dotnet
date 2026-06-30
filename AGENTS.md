@@ -64,7 +64,7 @@ contain machine-specific paths or local workflow notes. Do not commit it.
 
 ## Verification
 
-Run the Hermes-backed JSI test suite with `scripts/test-jsi.sh`.
+Run the Hermes-backed managed test suite with `scripts/test-managed.sh`.
 
 Before finishing code changes, run `scripts/format.sh --check --all`. If it
 fails because files need formatting, run `scripts/format.sh` and then repeat

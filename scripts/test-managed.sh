@@ -17,9 +17,9 @@ run_in_repo_env() {
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<'EOF'
-Usage: scripts/test-jsi.sh [dotnet test args...]
+Usage: scripts/test-managed.sh [dotnet test args...]
 
-Builds the Hermes-backed native JSI testhost and runs Expo.JSI.Tests.
+Builds the Hermes-backed native JSI testhost and runs managed test projects.
 
 Environment:
   CONFIGURATION           .NET configuration. Default: Debug
@@ -43,6 +43,10 @@ echo "==> Building Expo.JSI"
 dotnet build "$repo_root/managed/packages/Expo.JSI/Expo.JSI.csproj" -c "$configuration"
 
 echo
+echo "==> Building Expo.ModulesCore"
+dotnet build "$repo_root/managed/packages/Expo.ModulesCore/Expo.ModulesCore.csproj" -c "$configuration"
+
+echo
 echo "==> Configuring native testhost"
 run_in_repo_env cmake \
   -S "$repo_root/native/testhost" \
@@ -57,5 +61,12 @@ echo
 echo "==> Running Expo.JSI.Tests"
 EXPO_JSI_TESTHOST_LIBRARY="$testhost_library" \
   dotnet test "$repo_root/managed/packages/Expo.JSI.Tests/Expo.JSI.Tests.csproj" \
+  -c "$configuration" \
+  "$@"
+
+echo
+echo "==> Running Expo.ModulesCore.Tests"
+EXPO_JSI_TESTHOST_LIBRARY="$testhost_library" \
+  dotnet test "$repo_root/managed/packages/Expo.ModulesCore.Tests/Expo.ModulesCore.Tests.csproj" \
   -c "$configuration" \
   "$@"

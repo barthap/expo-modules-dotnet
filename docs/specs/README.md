@@ -24,8 +24,8 @@ Source priority when specs and other materials disagree:
   executor behavior.
 - `promises.md`: Promise capability and promise-value wrappers.
 - `hermes-testhost.md`: Hermes-backed native testhost and managed test suite.
-- `modules-core-boundary.md`: Current module-layer boundary and temporary proof
-  placement.
+- `modules-core-boundary.md`: `Expo.ModulesCore` package boundary,
+  generated-binding helpers, and module test ownership.
 
 ## Change Workflow
 

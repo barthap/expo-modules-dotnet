@@ -3,10 +3,9 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
   <ItemGroup>
-    <InternalsVisibleTo Include="Expo.JSI.Tests" />
-    <InternalsVisibleTo Include="Expo.ModulesCore.Tests" />
+    <ProjectReference Include="../Expo.JSI/Expo.JSI.csproj" />
   </ItemGroup>
 </Project>

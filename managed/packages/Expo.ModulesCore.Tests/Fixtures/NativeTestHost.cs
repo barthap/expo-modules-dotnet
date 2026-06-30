@@ -1,8 +1,9 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using Expo.JSI;
 using Expo.JSI.Interop;
 
-namespace Expo.JSI.Tests.Fixtures;
+namespace Expo.ModulesCore.Tests.Fixtures;
 
 internal static unsafe class NativeTestHost
 {

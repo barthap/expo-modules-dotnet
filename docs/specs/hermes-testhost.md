@@ -9,19 +9,20 @@ verify the portable core.
 
 ### Requirement: Canonical Test Runner
 
-The repository SHALL use `scripts/test-jsi.sh` as the canonical Hermes-backed
-test runner.
+The repository SHALL use `scripts/test-managed.sh` as the canonical
+Hermes-backed managed test runner.
 
 #### Scenario: Test runner executes
-- **GIVEN** a developer runs `scripts/test-jsi.sh`
+- **GIVEN** a developer runs `scripts/test-managed.sh`
 - **WHEN** the script runs
-- **THEN** it SHALL build the native Hermes testhost and pass
-  `EXPO_JSI_TESTHOST_LIBRARY` to `dotnet test`
+- **THEN** it SHALL build the native Hermes testhost, pass
+  `EXPO_JSI_TESTHOST_LIBRARY` to managed tests, and run both `Expo.JSI.Tests`
+  and `Expo.ModulesCore.Tests`
 
 ### Requirement: Native Testhost
 
 The native testhost SHALL create a Hermes runtime and expose test-only exports
-used by `Expo.JSI.Tests`.
+used by managed tests.
 
 #### Scenario: Managed fixture creates runtime
 - **GIVEN** a managed test calls `HermesRuntimeFixture.Create`
@@ -40,13 +41,11 @@ host-function, scheduling, promise, and testhost behavior.
 - **THEN** coverage SHALL live under `managed/packages/Expo.JSI.Tests` unless
   the behavior belongs to the future module layer
 
-### Requirement: Module Tests Are Temporary
+### Requirement: Module Test Ownership
 
-Module behavior tests under `Expo.JSI.Tests/Modules` SHALL remain temporary
-until `Expo.ModulesCore.Tests` exists.
+Module behavior tests SHALL live under `Expo.ModulesCore.Tests`.
 
-#### Scenario: Expo.ModulesCore is introduced
-- **GIVEN** the repository adds `managed/packages/Expo.ModulesCore`
-- **WHEN** equivalent module behavior coverage exists
-- **THEN** temporary module dispatch and conversion tests SHALL move out of
-  `Expo.JSI.Tests/Modules`
+#### Scenario: Module behavior is tested
+- **GIVEN** generated-looking module dispatch or conversion behavior is tested
+- **WHEN** the behavior is above low-level `Expo.JSI`
+- **THEN** coverage SHALL live under `managed/packages/Expo.ModulesCore.Tests`

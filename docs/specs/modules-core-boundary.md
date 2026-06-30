@@ -2,34 +2,32 @@
 
 ## Purpose
 
-Define the current boundary between low-level `Expo.JSI` wrappers and the
-future `Expo.ModulesCore` module DSL and generated-binding package.
+Define the boundary between low-level `Expo.JSI` wrappers and the
+`Expo.ModulesCore` generated-binding helper package.
 
 ## Requirements
 
-### Requirement: ModulesCore Does Not Exist Yet
+### Requirement: ModulesCore Owns Generated-Binding Helpers
 
-The repository SHALL treat `Expo.ModulesCore` as future work until the package
-is explicitly introduced.
+`Expo.ModulesCore` SHALL own module registration helpers, generated dispatch
+helpers, and typed conversion helpers above `Expo.JSI`.
 
-#### Scenario: Current code references module behavior
-- **GIVEN** current tests include generated-looking module conversion proof code
-- **WHEN** agents inspect package ownership
-- **THEN** they SHALL treat that code as temporary proof material, not as
-  permanent `Expo.JSI` module architecture
+#### Scenario: Generated-looking provider registers a module
+- **GIVEN** generated-looking provider code has a `JavaScriptRuntime`
+- **WHEN** it installs a module under `globalThis.expo.modules`
+- **THEN** it SHALL use `Expo.ModulesCore` helpers instead of placing
+  module-layer abstractions in `Expo.JSI`
 
-### Requirement: ModulesCore Owns Module DSL
+### Requirement: ModulesCore Avoids Inert Authored Syntax
 
-When introduced, `Expo.ModulesCore` SHALL own authored module DSL concepts,
-module registry/provider abstractions, generated-binding helpers, and typed
-converters above `Expo.JSI`.
+`Expo.ModulesCore` SHALL NOT expose public v2 authored API syntax before the
+Roslyn generator milestone.
 
-#### Scenario: Authored module method is exposed
-- **GIVEN** a future module class declares a JavaScript-facing method
-- **WHEN** generated binding code registers it
-- **THEN** the generated code SHALL decode `JavaScriptArguments`, call the
-  authored C# method directly, and encode the return value through `Expo.JSI`
-  wrappers
+#### Scenario: Authored syntax is proposed
+- **GIVEN** references describe future `[ExpoModule]`, `[JS]`, `[Record]`, or
+  `[Event]` syntax
+- **WHEN** no Roslyn generator consumes that syntax
+- **THEN** the package SHALL keep that syntax out of production API
 
 ### Requirement: Generated Bindings Avoid Hot-Path Reflection
 
@@ -43,14 +41,11 @@ dynamic invocation.
   `Delegate.DynamicInvoke`, `object?[]` as the normal argument container, or
   JSON serialization for ordinary JSI values
 
-### Requirement: Source Generator Comes After Hand-Written Shape
+### Requirement: ModulesCore Owns Module Tests
 
-The source generator SHALL be implemented only after the generated-looking
-hand-written binding shape is stable.
+`Expo.ModulesCore.Tests` SHALL own module dispatch and conversion behavior.
 
-#### Scenario: New module feature is proposed
-- **GIVEN** a feature needs new conversion or dispatch semantics
-- **WHEN** the behavior is not already proven by hand-written generated-looking
-  code
-- **THEN** the proposal SHALL first prove the shape before encoding it in the
-  generator
+#### Scenario: Module conversion behavior is tested
+- **GIVEN** a test proves generated-looking module conversion behavior
+- **WHEN** the behavior is above low-level `Expo.JSI`
+- **THEN** the test SHALL live in `Expo.ModulesCore.Tests`

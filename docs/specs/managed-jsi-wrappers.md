@@ -64,8 +64,9 @@ owned wrappers when they cross from one owned type to another.
 `Expo.JSI` SHALL remain below the module DSL layer.
 
 #### Scenario: Generated-looking module proof exists
-- **GIVEN** temporary module behavior tests exist under
-  `managed/packages/Expo.JSI.Tests/Modules`
-- **WHEN** a permanent module package is introduced
-- **THEN** that behavior SHALL move to `Expo.ModulesCore.Tests` instead of
-  becoming permanent `Expo.JSI` architecture
+- **GIVEN** generated-looking module behavior is covered by
+  `Expo.ModulesCore.Tests`
+- **WHEN** `Expo.JSI.Tests` changes
+- **THEN** `Expo.JSI.Tests` SHALL remain focused on low-level wrapper, ABI,
+  runtime, value, ownership, host-function, scheduler, and promise behavior
+  instead of owning module-layer architecture
