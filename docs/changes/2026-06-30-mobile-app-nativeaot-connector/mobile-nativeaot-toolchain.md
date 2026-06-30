@@ -64,25 +64,28 @@ passes an `expo_jsi_api` pointer and opaque runtime handle, while C# constructs
 `JavaScriptRuntime.FromNative(...)` and registers generated `Expo.ModulesCore`
 bindings. No raw JSI layout crosses into C#.
 
-The React Native host functions must keep the borrowed runtime connector and
-opaque runtime handle alive for as long as the installed JS host function can
-call into C#. The iOS runtime factory releases the handle when the wrapped
-runtime is destroyed. The Android proof stores install records for process
-lifetime.
+The TurboModule JSI bindings installers must keep the borrowed runtime
+connector and opaque runtime handle alive for as long as the installed Expo
+module bindings can call into C#. The iOS installer releases the handle when
+its install record is destroyed. The Android proof stores install records for
+process lifetime.
 
 ## Scheduler Findings
 
-The React Native connector adapts a borrowed runtime and injected async/sync
-scheduling callbacks. The shared connector also includes an optional
-`CallInvoker` adapter when React Native exposes that header.
+The React Native connector adapts a borrowed runtime and React Native
+`CallInvoker`. Asynchronous work routes through `invokeAsync`; synchronous work
+routes through `invokeSync` when the borrowed runtime and invoker are valid.
 
-Android uses React Native 0.86 `BindingsInstaller` to install a deferred host
-function. iOS wraps the default `JSRuntimeFactory` and installs the same
-deferred host function from `unstable_initializeOnJsThread`.
+Android exposes a nested local npm package with React Native codegen metadata
+and a `TurboModuleWithJSIBindings` implementation. iOS exposes the same package
+through a root podspec and an Objective-C++ `RCTTurboModuleWithJSIBindings`
+module.
 
-The deferred host function is required because installing into `expo.modules`
-too early is overwritten by Expo startup, while installing a brand-new key after
-startup is rejected by Expo's read-only module namespace.
+React Native codegen must run for the nested package on Android; otherwise app
+CMake autolinking references `react_codegen_ExpoCSharpV2Spec` before its
+generated JNI directory exists. Applying the React Native Gradle plugin to the
+local package materializes those generated sources before app CMake
+configuration.
 
 ## Stop/Go Decision
 

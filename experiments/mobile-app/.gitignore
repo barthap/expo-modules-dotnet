@@ -45,6 +45,7 @@ yarn-error.*
 /dotnet/**/obj/
 /modules/**/android/.cxx/
 /modules/**/android/build/
+/modules/**/android/kls_database.db
 /modules/**/android/src/main/jniLibs/
 /modules/**/ios/NativeLibs/
 /artifacts/

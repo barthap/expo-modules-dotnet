@@ -1,10 +1,9 @@
+#include <ReactCommon/BindingsInstallerHolder.h>
 #include <android/log.h>
 #include <dlfcn.h>
 #include <fbjni/fbjni.h>
 #include <memory>
 #include <mutex>
-#include <react/runtime/ReactInstance.h>
-#include <react/runtime/jni/JBindingsInstaller.h>
 #include <vector>
 
 #include "ReactNativeRuntimeConnector.h"
@@ -25,6 +24,16 @@ struct InstalledRuntime {
     : connector(std::move(connector)),
       runtimeHandle(runtimeHandle)
   {
+  }
+
+  ~InstalledRuntime()
+  {
+    if (runtimeHandle != nullptr) {
+      expo::jsi::releaseReactNativeRuntimeHandle(runtimeHandle);
+    }
+    if (connector != nullptr) {
+      connector->invalidate();
+    }
   }
 };
 
@@ -75,29 +84,18 @@ bool registerV2Module(InstalledRuntime &installedRuntime)
   return true;
 }
 
-void installV2ModuleLoader(facebook::jsi::Runtime &runtime)
+void installV2Module(facebook::jsi::Runtime &runtime,
+                     const std::shared_ptr<facebook::react::CallInvoker> &callInvoker)
 {
-  expo::jsi::ReactNativeRuntimeExecutor::Options options;
-  options.isRuntimeThread = [] { return true; };
-  options.supportsSyncDispatch = true;
-
-  auto connector =
-    std::make_unique<expo::jsi::ReactNativeRuntimeConnector>(runtime, std::move(options));
+  auto connector = std::make_unique<expo::jsi::ReactNativeRuntimeConnector>(runtime, callInvoker);
   auto runtimeHandle = expo::jsi::createReactNativeRuntimeHandle(*connector);
   auto installedRuntime = std::make_shared<InstalledRuntime>(std::move(connector), runtimeHandle);
 
-  auto installer = facebook::jsi::Function::createFromHostFunction(
-    runtime,
-    facebook::jsi::PropNameID::forAscii(runtime, "__expoCSharpV2InstallModules"),
-    0,
-    [installedRuntime](
-      facebook::jsi::Runtime &, const facebook::jsi::Value &, const facebook::jsi::Value *, size_t)
-      -> facebook::jsi::Value { return registerV2Module(*installedRuntime); });
-  runtime.global().setProperty(runtime, "__expoCSharpV2InstallModules", std::move(installer));
+  registerV2Module(*installedRuntime);
 
   std::lock_guard<std::mutex> lock(installedRuntimesMutex);
   installedRuntimes.push_back(std::move(installedRuntime));
-  __android_log_print(ANDROID_LOG_INFO, kLogTag, "NativeAOT ExpoCSharpV2.add loader installed.");
+  __android_log_print(ANDROID_LOG_INFO, kLogTag, "NativeAOT ExpoCSharpV2.add installer ran.");
 }
 
 } // namespace
@@ -105,30 +103,27 @@ void installV2ModuleLoader(facebook::jsi::Runtime &runtime)
 namespace expo::modules::csharpv2 {
 
 class ExpoCSharpV2BindingsInstaller
-  : public facebook::jni::HybridClass<ExpoCSharpV2BindingsInstaller,
-                                      facebook::react::JBindingsInstaller> {
+  : public facebook::jni::JavaClass<ExpoCSharpV2BindingsInstaller> {
 public:
-  static constexpr auto kJavaDescriptor = "Lexpo/modules/csharpv2/ExpoCSharpV2BindingsInstaller;";
-
-  static facebook::jni::local_ref<jhybriddata> initHybrid(facebook::jni::alias_ref<jclass>)
-  {
-    return makeCxxInstance();
-  }
+  static constexpr auto kJavaDescriptor = "Lexpo/modules/csharpv2/ExpoCSharpV2TurboModule;";
 
   static void registerNatives()
   {
-    registerHybrid({
-      makeNativeMethod("initHybrid", ExpoCSharpV2BindingsInstaller::initHybrid),
+    javaClassLocal()->registerNatives({
+      makeNativeMethod("getBindingsInstaller", ExpoCSharpV2BindingsInstaller::getBindingsInstaller),
     });
   }
 
-  facebook::react::ReactInstance::BindingsInstallFunc getBindingsInstallFunc() override
-  {
-    return [](facebook::jsi::Runtime &runtime) { installV2ModuleLoader(runtime); };
-  }
-
 private:
-  friend HybridBase;
+  static facebook::jni::local_ref<facebook::react::BindingsInstallerHolder::javaobject>
+  getBindingsInstaller(facebook::jni::alias_ref<ExpoCSharpV2BindingsInstaller>)
+  {
+    return facebook::react::BindingsInstallerHolder::newObjectCxxArgs(
+      [](facebook::jsi::Runtime &runtime,
+         const std::shared_ptr<facebook::react::CallInvoker> &callInvoker) {
+        installV2Module(runtime, callInvoker);
+      });
+  }
 };
 
 } // namespace expo::modules::csharpv2

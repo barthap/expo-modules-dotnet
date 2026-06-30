@@ -4,7 +4,7 @@
 
 **Goal:** Build a local Expo app proof that calls a NativeAOT C# `[ExpoModule]` from JavaScript through the real React Native Hermes runtime and the existing `expo_jsi.h` ABI.
 
-**Architecture:** The managed proof is a NativeAOT library with one exported registration entry point. Native iOS and Android app glue borrow the active React Native Hermes runtime, wrap it in a `native/packages/jsi` React Native connector, then pass the existing ABI table and opaque runtime handle to managed code. JavaScript invokes a tiny deferred installer after Expo owns its module namespace, then reads the generated `globalThis.expo.modules.ExpoCSharpV2.add` result and renders it on screen.
+**Architecture:** The managed proof is a NativeAOT library with one exported registration entry point. A nested local npm package exposes a tiny TurboModule whose JSI binding installer receives the active React Native Hermes runtime and `CallInvoker`, wraps them in a `native/packages/jsi` React Native connector, then passes the existing ABI table and opaque runtime handle to managed code. JavaScript reads the generated `globalThis.expo.modules.ExpoCSharpV2.add` result and renders it on screen.
 
 **Tech Stack:** Expo app, React Native Hermes, C++20 JSI, `native/include/expo_jsi.h`, `native/packages/jsi`, .NET 10 NativeAOT, `Expo.JSI`, `Expo.ModulesCore`, `Expo.ModulesCore.Generator`.
 
@@ -13,9 +13,9 @@
 ## File Structure
 
 - `native/packages/jsi/include/ReactNativeRuntimeConnector.h`: React Native runtime connector public API.
-- `native/packages/jsi/src/ReactNativeRuntimeConnector.cpp`: connector implementation over an existing `facebook::jsi::Runtime` and scheduler callbacks.
+- `native/packages/jsi/src/ReactNativeRuntimeConnector.cpp`: connector implementation over an existing `facebook::jsi::Runtime` and React Native `CallInvoker`.
 - `experiments/mobile-app/`: generated Expo app plus local native module glue.
-- `experiments/mobile-app/modules/expo-csharp-v2`: local Expo module that installs the C# provider on app startup.
+- `experiments/mobile-app/modules/expo-csharp-v2`: nested local npm package that combines minimal Expo module packaging with a TurboModule JSI bindings installer.
 - `experiments/mobile-app/dotnet/ExpoMobileV2Module`: managed NativeAOT module library.
 - `experiments/mobile-app/scripts/build-dotnet-module.sh`: builds NativeAOT artifacts for the selected platform.
 - `docs/specs/runtime-and-abi.md` and `docs/specs/modules-core-boundary.md`: merge the accepted mobile proof requirements after implementation.
@@ -199,24 +199,25 @@ reported.
 - Create: `native/packages/jsi/src/ReactNativeRuntimeConnector.cpp`
 - Modify: any local CMake or app build files that list `native/packages/jsi` sources
 
-- [ ] **Step 1: Add a focused connector test or compile check**
+- [x] **Step 1: Add a focused connector test or compile check**
 
 Add the connector files and include them in a native compile target used by the
 mobile app or a lightweight syntax check.
 
-- [ ] **Step 2: Implement scheduler callback types**
+- [x] **Step 2: Implement CallInvoker-backed execution**
 
-Represent async and optional sync scheduling as injected C++ callables so iOS
-and Android can adapt their platform-specific New Architecture primitives
-without pulling React Native headers into `ExpoJsiBridge.cpp`.
+Store a `std::shared_ptr<facebook::react::CallInvoker>` in
+`ReactNativeRuntimeExecutor`. Route async work through `invokeAsync` and sync
+work through `invokeSync`. Do not add a JS-thread predicate or override React
+Native runtime classes.
 
-- [ ] **Step 3: Implement `JsiRuntimeConnector`**
+- [x] **Step 3: Implement `JsiRuntimeConnector`**
 
 The connector stores a borrowed `facebook::jsi::Runtime *`, reports validity
 without touching invalid runtime state, and delegates execution through the
-injected scheduler.
+executor-owned call invoker.
 
-- [ ] **Step 4: Verify ABI use**
+- [x] **Step 4: Verify ABI use**
 
 Run:
 
@@ -228,68 +229,73 @@ Expected: the connector exists in `native/packages/jsi`, includes
 `expo_jsi.h` through the bridge path, and names the React Native scheduling
 primitive boundary.
 
-## Task 4: Wire iOS Local Module
+## Task 4: Wire Local TurboModule Package
 
 **Files:**
-- Create/modify files under `experiments/mobile-app/modules/expo-csharp-v2/ios/`
-- Modify: `experiments/mobile-app/ios/Podfile` only if the local module scaffold does not autolink the required C++ sources
+- Create/modify: `experiments/mobile-app/modules/expo-csharp-v2/package.json`
+- Create/modify: `experiments/mobile-app/modules/expo-csharp-v2/src/NativeExpoCSharpV2.ts`
+- Create/modify: `experiments/mobile-app/modules/expo-csharp-v2/android/`
+- Create/modify: `experiments/mobile-app/modules/expo-csharp-v2/ios/`
+- Modify: `experiments/mobile-app/package.json`
 
-- [ ] **Step 1: Scaffold a local Expo module**
+- [x] **Step 1: Add nested package metadata**
 
-Run:
+Add `package.json` with React Native `codegenConfig` and reference it from the
+app using a local `file:` dependency. Keep `expo-module.config.json` for Expo
+module autolinking only if it remains useful for packaging.
 
-```bash
-cd experiments/mobile-app && CI=1 bunx create-expo-module --local --name ExpoCSharpV2 --package expo.modules.csharpv2
-```
+- [x] **Step 2: Add TurboModule TypeScript spec**
 
-Expected: local module scaffold exists under `modules/`.
+Create a minimal `NativeExpoCSharpV2.ts` spec so React Native codegen can
+discover the module. The proof does not need JS-callable TurboModule methods;
+the TurboModule exists to own the JSI binding installation hook.
 
-- [ ] **Step 2: Remove unused view boilerplate**
+- [x] **Step 3: Add Android TurboModule package**
 
-Keep only the native module needed to install the C# provider.
+Implement an Android `BaseReactPackage` and a module that implements
+`TurboModuleWithJSIBindings`. Its bindings installer SHALL receive
+`jsi::Runtime&` and `CallInvoker`, create the React Native connector, call the
+NativeAOT registration export, and keep native state alive as long as installed
+host functions can run.
 
-- [ ] **Step 3: Add C++ installer**
+- [x] **Step 4: Add iOS TurboModule**
 
-The installer links `native/packages/jsi`, resolves
-`expo_mobile_v2_register_modules`, creates a runtime handle with
-`createRuntimeHandle(...)`, calls the export, and releases the handle after
-installation.
+Implement an Objective-C++ TurboModule that conforms to
+`RCTTurboModuleWithJSIBindings`. Its
+`installJSIBindingsWithRuntime:callInvoker:` implementation SHALL create the
+React Native connector, call the NativeAOT registration export, and retain the
+native state for the module lifetime.
 
-- [ ] **Step 4: Hook the installer into React Native startup**
+- [x] **Step 5: Remove app-hook hacks**
 
-Use the Expo module/app delegate lifecycle point that has access to the bridge
-runtime installation path. If the generated scaffold cannot expose that point,
-patch the app delegate narrowly and document the stop/go finding in this
-change directory.
+Remove the config plugin, iOS `JSRuntimeFactory` wrapper, Android
+`MainApplication`/`ReactInstance` bindings installer, and JavaScript deferred
+installer. The app should call the generated C# function directly once
+TurboModule installation has run.
 
-## Task 5: Wire Android Local Module
+## Task 5: Refresh Native Projects
 
-**Files:**
-- Create/modify files under `experiments/mobile-app/modules/expo-csharp-v2/android/`
-- Modify: `experiments/mobile-app/android/settings.gradle` and app Gradle files only if local module autolinking does not include C++ sources
+- [x] **Step 1: Reinstall JS dependencies**
 
-- [ ] **Step 1: Add CMake/JNI glue**
+Run `bun install` from the app so the nested local package is linked into
+`node_modules`.
 
-Build the same installer shape as iOS, using the Android React Native runtime
-access point and call-invoker/runtime-executor primitive available in the
-prebuilt app.
+- [x] **Step 2: Regenerate native projects**
 
-- [ ] **Step 2: Link NativeAOT output**
+Run Expo prebuild or the smallest equivalent native project refresh needed for
+React Native autolinking/codegen to discover the local TurboModule package.
+
+- [x] **Step 3: Link NativeAOT output**
 
 Copy or reference the NativeAOT shared library from the managed publish output
-for the Android ABI being tested.
-
-- [ ] **Step 3: Install module on runtime creation**
-
-Call the managed registration export once the Hermes runtime is available and
-before app JavaScript calls `V2Math.add`.
+for the platform being tested.
 
 ## Task 6: Run Platform Verification
 
 **Files:**
 - Create: screenshot artifacts under `experiments/mobile-app/artifacts/`
 
-- [ ] **Step 1: Run managed verification**
+- [x] **Step 1: Run managed verification**
 
 Run:
 
@@ -299,7 +305,7 @@ scripts/test-managed.sh
 
 Expected: all managed Hermes-backed tests pass.
 
-- [ ] **Step 2: Run formatting verification**
+- [x] **Step 2: Run formatting verification**
 
 Run:
 
@@ -309,22 +315,22 @@ scripts/format.sh --check --all
 
 Expected: formatting check passes.
 
-- [ ] **Step 3: Run iOS app**
+- [x] **Step 3: Run iOS app**
 
 Run the app on the preferred iPhone 17 Pro simulator and save a screenshot
-showing `C# V2Math.add result: 42`.
+showing `C# add result: 42`.
 
-- [ ] **Step 4: Run Android app**
+- [x] **Step 4: Run Android app**
 
 Run the app on an Android emulator and save a screenshot showing
-`C# V2Math.add result: 42`.
+`C# add result: 42`.
 
-- [ ] **Step 5: Capture Metro logs**
+- [x] **Step 5: Capture Metro logs**
 
 Save or quote the Metro log line:
 
 ```text
-[ExpoCSharpV2] V2Math.add(20, 22) returned 42
+[ExpoCSharpV2] C# add(20, 22) returned 42
 ```
 
 ## Task 7: Merge Living Spec Delta

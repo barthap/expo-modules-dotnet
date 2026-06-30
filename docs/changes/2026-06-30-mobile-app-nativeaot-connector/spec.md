@@ -23,9 +23,9 @@ Swift/Kotlin modules API.
 - The managed module library is built as NativeAOT and exposes a stable C ABI
   entry point that receives `const expo_jsi_api *` and
   `expo_jsi_runtime_handle`.
-- React Native runtime installation happens through a native Expo module or app
-  delegate hook that can borrow the active Hermes `facebook::jsi::Runtime` and
-  schedule work through React Native's New Architecture runtime primitives.
+- React Native runtime installation happens through a TurboModule JSI bindings
+  hook. The hook receives the active Hermes `facebook::jsi::Runtime` and React
+  Native `CallInvoker` from React Native itself.
 
 ## Accepted Design
 
@@ -52,8 +52,9 @@ constructs `JavaScriptRuntime.FromNative(...)` and calls the generated provider.
 ### Native React Native Connector
 
 `native/packages/jsi` SHALL gain a React Native connector that adapts an
-already-created Hermes `facebook::jsi::Runtime` plus New Architecture runtime
-scheduling primitives to `JsiRuntimeConnector`.
+already-created Hermes `facebook::jsi::Runtime` plus the React Native
+`CallInvoker` supplied by the TurboModule JSI bindings hook to
+`JsiRuntimeConnector`.
 
 The connector SHALL use `native/include/expo_jsi.h` through
 `ExpoJsiBridge.{h,cpp}`. It SHALL NOT expose raw JSI layouts to managed code.
@@ -62,10 +63,9 @@ The connector SHALL provide:
 
 - a borrowed runtime handle for the active React Native runtime;
 - passive runtime-validity checks;
-- async scheduling through React Native call invoker/runtime executor style
-  primitives;
-- sync execution only when the host can safely provide it, otherwise a loud
-  unsupported result through the existing runtime executor path.
+- async scheduling through the React Native call invoker;
+- sync execution through the React Native call invoker when it is present,
+  otherwise a loud unsupported result through the existing runtime executor path.
 
 ### App Integration
 
@@ -82,6 +82,11 @@ Metro/bundler-visible JavaScript path.
 Native iOS and Android scaffolding SHALL link the NativeAOT output and call the
 managed registration entry point with the `expo_jsi_api` table and borrowed
 runtime handle.
+
+The proof SHALL NOT patch `MainApplication`, override `JSRuntimeFactory`, or use
+config-plugin text replacement to install JSI bindings. A nested local npm
+package MAY be used so React Native codegen can discover the TurboModule
+specification.
 
 ## Delta Requirements
 
@@ -108,6 +113,28 @@ the real React Native Hermes runtime to the existing `expo_jsi.h` ABI.
   handle
 - **AND** generated `Expo.ModulesCore` registration SHALL install the generated
   function on the existing `globalThis.expo.modules.ExpoCSharpV2` object
+
+### ADDED Requirement: TurboModule JSI Binding Installation
+
+The mobile proof SHALL install JSI bindings through React Native TurboModule
+JSI binding hooks instead of app-level runtime factory or application
+replacement hooks.
+
+#### Scenario: Android TurboModule installs bindings
+- **GIVEN** React Native creates the Android TurboModule instance
+- **WHEN** React Native invokes its `TurboModuleWithJSIBindings` installer
+- **THEN** the installer SHALL receive the active `facebook::jsi::Runtime` and
+  React Native `CallInvoker`
+- **AND** the NativeAOT C# provider SHALL register through the existing
+  `expo_jsi_api` ABI
+
+#### Scenario: iOS TurboModule installs bindings
+- **GIVEN** React Native creates the iOS TurboModule instance
+- **WHEN** React Native invokes `installJSIBindingsWithRuntime:callInvoker:`
+- **THEN** the installer SHALL receive the active `facebook::jsi::Runtime` and
+  React Native `CallInvoker`
+- **AND** the NativeAOT C# provider SHALL register through the existing
+  `expo_jsi_api` ABI
 
 ### MODIFIED Requirement: Loader Choice Preserves ABI Shape
 

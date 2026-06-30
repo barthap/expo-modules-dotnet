@@ -1,4 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
+import { ensureInstalled } from 'expo-csharp-v2';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -15,7 +16,6 @@ declare global {
       }
     | undefined;
 
-  var __expoCSharpV2InstallModules: (() => boolean) | undefined;
 }
 
 export default function App() {
@@ -28,8 +28,8 @@ export default function App() {
       console.log('[ExpoCSharpV2] expo keys', Object.keys(globalExpo ?? {}));
       console.log('[ExpoCSharpV2] module keys', Object.keys(globalExpo?.modules ?? {}));
 
-      const installed = globalThis.__expoCSharpV2InstallModules?.();
-      console.log('[ExpoCSharpV2] NativeAOT install returned', installed);
+      const installed = ensureInstalled();
+      console.log('[ExpoCSharpV2] TurboModule install trigger returned', installed);
       console.log('[ExpoCSharpV2] module keys after install', Object.keys(globalExpo?.modules ?? {}));
 
       const result = globalExpo?.modules?.ExpoCSharpV2?.add?.(20, 22);

@@ -20,9 +20,6 @@
       },
       "predictiveBackGestureEnabled": false
     },
-    "plugins": [
-      "./modules/expo-csharp-v2/plugin"
-    ],
     "web": {
       "favicon": "./assets/favicon.png"
     }

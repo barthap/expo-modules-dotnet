@@ -1,0 +1,29 @@
+{
+  "name": "expo-csharp-v2",
+  "version": "0.7.10",
+  "private": true,
+  "description": "NativeAOT C# Expo ModulesCore mobile proof",
+  "main": "index.ts",
+  "types": "index.ts",
+  "license": "MIT",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  },
+  "codegenConfig": {
+    "name": "ExpoCSharpV2Spec",
+    "type": "modules",
+    "jsSrcsDir": "./src",
+    "android": {
+      "javaPackageName": "expo.modules.csharpv2"
+    },
+    "ios": {
+      "modules": {
+        "ExpoCSharpV2Installer": {
+          "className": "ExpoCSharpV2Installer"
+        }
+      }
+    }
+  }
+}

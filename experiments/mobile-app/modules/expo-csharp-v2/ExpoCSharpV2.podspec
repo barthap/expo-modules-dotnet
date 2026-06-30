@@ -1,8 +1,8 @@
 Pod::Spec.new do |s|
   s.name           = 'ExpoCSharpV2'
   s.version        = '1.0.0'
-  s.summary        = 'A sample project summary'
-  s.description    = 'A sample project description'
+  s.summary        = 'NativeAOT C# Expo ModulesCore mobile proof'
+  s.description    = 'NativeAOT C# Expo ModulesCore mobile proof'
   s.author         = ''
   s.homepage       = 'https://docs.expo.dev/modules/'
   s.platforms      = {
@@ -13,16 +13,16 @@ Pod::Spec.new do |s|
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
-  s.vendored_libraries = "NativeLibs/libExpoMobileV2Module.dylib"
+  s.vendored_libraries = 'ios/NativeLibs/libExpoMobileV2Module.dylib'
+  install_modules_dependencies(s)
 
-  # Swift/Objective-C compatibility
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
     'HEADER_SEARCH_PATHS' => [
-      '$(PODS_TARGET_SRCROOT)/../../../../../native/include',
-      '$(PODS_TARGET_SRCROOT)/../../../../../native/packages/jsi/include'
+      '$(PODS_TARGET_SRCROOT)/../../../../native/include',
+      '$(PODS_TARGET_SRCROOT)/../../../../native/packages/jsi/include'
     ].join(' '),
   }
 
-  s.source_files = "**/*.{h,m,mm,swift,hpp,cpp}"
+  s.source_files = 'ios/**/*.{h,m,mm,swift,hpp,cpp}'
 end

@@ -113,17 +113,18 @@ an already-created Hermes `facebook::jsi::Runtime` to the existing
 `expo_jsi.h` ABI without exposing raw JSI layouts to managed code.
 
 #### Scenario: React Native connector creates managed runtime handle
-- **GIVEN** React Native provides an active Hermes runtime
+- **GIVEN** React Native provides an active Hermes runtime and `CallInvoker`
 - **WHEN** platform glue creates a React Native runtime handle
 - **THEN** the handle SHALL be created through `ExpoJsiBridge` and
   `native/include/expo_jsi.h`
 - **AND** managed code SHALL observe only the ABI table and opaque handle
 
 #### Scenario: Borrowed runtime lifetime is bounded by native host
-- **GIVEN** a JavaScript host function can call into the NativeAOT module
-- **WHEN** the native host installs that function
+- **GIVEN** React Native invokes a TurboModule JSI bindings installer
+- **WHEN** the installer registers NativeAOT module bindings into the borrowed
+  runtime
 - **THEN** it SHALL keep the borrowed runtime connector and opaque runtime handle
-  alive at least as long as the host function can run
+  alive at least as long as those bindings can run
 
 ### Requirement: ArrayBuffer Is Not Yet Wrapped
 

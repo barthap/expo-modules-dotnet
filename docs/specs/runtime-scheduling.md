@@ -44,16 +44,17 @@ SHALL fail loudly when unsupported.
 
 React Native hosts SHALL adapt runtime scheduling through injected New
 Architecture scheduling primitives instead of embedding React Native-specific
-types in managed code.
+types in managed code. The native React Native connector SHALL hold the
+borrowed `facebook::jsi::Runtime` together with a React Native `CallInvoker`.
 
 #### Scenario: React Native connector schedules work
 - **GIVEN** native platform glue has a borrowed React Native Hermes runtime and
-  scheduling callbacks
+  `CallInvoker`
 - **WHEN** managed code schedules runtime work through `JavaScriptRuntime`
-- **THEN** the React Native connector SHALL route the work through the injected
-  callbacks
-- **AND** sync execution SHALL be reported as supported only when the platform
-  host can execute safely on the runtime thread
+- **THEN** the React Native connector SHALL route asynchronous work through
+  `CallInvoker::invokeAsync`
+- **AND** sync execution SHALL route through `CallInvoker::invokeSync` when the
+  borrowed runtime and invoker are still valid
 
 ### Requirement: Runtime Task Context Ownership
 

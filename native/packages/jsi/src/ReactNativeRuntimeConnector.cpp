@@ -5,50 +5,23 @@
 
 namespace expo::jsi {
 
-ReactNativeRuntimeExecutor::ReactNativeRuntimeExecutor(facebook::jsi::Runtime &runtime,
-                                                       Options options)
+ReactNativeRuntimeExecutor::ReactNativeRuntimeExecutor(
+  facebook::jsi::Runtime &runtime, std::shared_ptr<facebook::react::CallInvoker> callInvoker)
   : runtime_(&runtime),
-    options_(std::move(options))
+    callInvoker_(std::move(callInvoker))
 {
 }
-
-#if EXPO_JSI_HAS_REACT_NATIVE_CALL_INVOKER
-ReactNativeRuntimeExecutor::Options ReactNativeRuntimeExecutor::fromCallInvoker(
-  std::shared_ptr<facebook::react::CallInvoker> callInvoker, RuntimeThreadPredicate isRuntimeThread)
-{
-  Options options;
-  options.dispatchAsync = [callInvoker = std::move(callInvoker)](Work work) {
-    if (callInvoker != nullptr) {
-      callInvoker->invokeAsync(std::move(work));
-    }
-  };
-  options.isRuntimeThread = std::move(isRuntimeThread);
-  return options;
-}
-#endif
 
 void ReactNativeRuntimeExecutor::executeAsync(
   JsiRuntimeTaskPriority, std::function<void(facebook::jsi::Runtime &)> work) noexcept
 {
   try {
-    if (runtime_ == nullptr) {
+    if (runtime_ == nullptr || callInvoker_ == nullptr) {
       return;
     }
 
-    auto run = [runtime = runtime_, work = std::move(work)]() mutable {
-      if (runtime != nullptr) {
-        work(*runtime);
-      }
-    };
-
-    if (options_.dispatchAsync) {
-      options_.dispatchAsync(std::move(run));
-      return;
-    }
-
-    if (isOnRuntimeThread()) {
-      run();
-    }
+    callInvoker_->invokeAsync(
+      [work = std::move(work)](facebook::jsi::Runtime &runtime) mutable { work(runtime); });
   } catch (...) {
     // JsiRuntimeExecutor::executeAsync is noexcept. Dropping the work releases
     // any captured managed task context through the existing ABI wrapper.
@@ -57,7 +30,7 @@ void ReactNativeRuntimeExecutor::executeAsync(
 
 bool ReactNativeRuntimeExecutor::canExecuteSync() const noexcept
 {
-  return runtime_ != nullptr && (isOnRuntimeThread() || options_.supportsSyncDispatch);
+  return runtime_ != nullptr && callInvoker_ != nullptr;
 }
 
 void ReactNativeRuntimeExecutor::executeSync(std::function<void(facebook::jsi::Runtime &)> work)
@@ -66,21 +39,12 @@ void ReactNativeRuntimeExecutor::executeSync(std::function<void(facebook::jsi::R
     throw std::runtime_error("React Native runtime is invalid.");
   }
 
-  if (isOnRuntimeThread()) {
-    work(*runtime_);
-    return;
-  }
-
-  if (!options_.supportsSyncDispatch || !options_.dispatchSync) {
+  if (callInvoker_ == nullptr) {
     throw std::runtime_error("React Native runtime does not support synchronous dispatch.");
   }
 
-  options_.dispatchSync([runtime = runtime_, work = std::move(work)]() mutable {
-    if (runtime == nullptr) {
-      throw std::runtime_error("React Native runtime is invalid.");
-    }
-    work(*runtime);
-  });
+  callInvoker_->invokeSync(
+    [work = std::move(work)](facebook::jsi::Runtime &runtime) mutable { work(runtime); });
 }
 
 void ReactNativeRuntimeExecutor::drain()
@@ -89,23 +53,16 @@ void ReactNativeRuntimeExecutor::drain()
   // implemented by the headless Hermes connector.
 }
 
-bool ReactNativeRuntimeExecutor::isOnRuntimeThread() const noexcept
+void ReactNativeRuntimeExecutor::invalidate() noexcept
 {
-  if (!options_.isRuntimeThread) {
-    return false;
-  }
-
-  try {
-    return options_.isRuntimeThread();
-  } catch (...) {
-    return false;
-  }
+  runtime_ = nullptr;
+  callInvoker_.reset();
 }
 
 ReactNativeRuntimeConnector::ReactNativeRuntimeConnector(
-  facebook::jsi::Runtime &runtime, ReactNativeRuntimeExecutor::Options options)
+  facebook::jsi::Runtime &runtime, std::shared_ptr<facebook::react::CallInvoker> callInvoker)
   : runtime_(&runtime),
-    runtimeExecutor_(runtime, std::move(options))
+    runtimeExecutor_(runtime, std::move(callInvoker))
 {
 }
 
@@ -130,6 +87,7 @@ bool ReactNativeRuntimeConnector::isRuntimeValid() const
 void ReactNativeRuntimeConnector::invalidate()
 {
   runtime_ = nullptr;
+  runtimeExecutor_.invalidate();
 }
 
 const expo_jsi_api *reactNativeExpoJsiApi() noexcept
