@@ -15,5 +15,9 @@
 
   <ItemGroup>
     <ProjectReference Include="../Expo.ModulesCore/Expo.ModulesCore.csproj" />
+    <ProjectReference
+      Include="../Expo.ModulesCore.Generator/Expo.ModulesCore.Generator.csproj"
+      OutputItemType="Analyzer"
+      ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

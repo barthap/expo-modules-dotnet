@@ -47,6 +47,16 @@ echo "==> Building Expo.ModulesCore"
 dotnet build "$repo_root/managed/packages/Expo.ModulesCore/Expo.ModulesCore.csproj" -c "$configuration"
 
 echo
+echo "==> Building Expo.ModulesCore.Generator"
+dotnet build "$repo_root/managed/packages/Expo.ModulesCore.Generator/Expo.ModulesCore.Generator.csproj" -c "$configuration"
+
+echo
+echo "==> Running Expo.ModulesCore.Generator.Tests"
+dotnet test "$repo_root/managed/packages/Expo.ModulesCore.Generator.Tests/Expo.ModulesCore.Generator.Tests.csproj" \
+  -c "$configuration" \
+  "$@"
+
+echo
 echo "==> Configuring native testhost"
 run_in_repo_env cmake \
   -S "$repo_root/native/testhost" \
