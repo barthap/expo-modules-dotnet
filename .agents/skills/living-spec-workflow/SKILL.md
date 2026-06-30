@@ -61,17 +61,32 @@ For non-trivial behavior changes, run this sequence:
    the relevant `docs/specs/<capability>.md`.
 2. Use Superpowers brainstorming to refine the feature unless the user
    explicitly says the design is already approved.
-3. Write the approved design as `docs/changes/<yyyy-mm-dd-slug>/spec.md`, not
+3. Before writing repo artifacts, ensure work is on a normal feature branch. If
+   the current branch is `main` or `master`, create a `codex/<slug>` branch
+   unless the user instructed otherwise. Do not use worktrees unless explicitly
+   asked.
+4. Write the approved design as `docs/changes/<yyyy-mm-dd-slug>/spec.md`, not
    under `docs/superpowers/`. This is the normal Superpowers design spec, but
-   framed as a delta against the current living specs.
-4. Use Superpowers writing-plans after the delta spec is approved. Save the
+   framed as a delta against the current living specs. After user approval,
+   commit `spec.md` before planning unless the user explicitly asked not to
+   commit.
+5. Use Superpowers writing-plans after the delta spec is approved. Save the
    plan as `docs/changes/<yyyy-mm-dd-slug>/plan.md` unless the user asks for a
-   different location.
-5. Implement through TDD or the closest practical equivalent for the change.
-6. Verify with repo-owned commands.
-7. Merge accepted deltas into `docs/specs/`.
-8. Archive or remove transient planning artifacts. Plans are not durable
+   different location. Commit `plan.md` before implementation unless the user
+   explicitly asked not to commit.
+6. Implement through TDD or the closest practical equivalent for the change.
+   Commit in plan/task slices as work becomes verified instead of waiting to
+   split the entire tree retroactively.
+7. Verify with repo-owned commands.
+8. Merge accepted deltas into `docs/specs/`.
+9. Archive or remove transient planning artifacts. Plans are not durable
    current-state docs after implementation.
+
+Commit cadence is part of the Superpowers workflow in this repo: approved
+`spec.md` gets its own commit, approved `plan.md` gets its own commit, and
+implementation proceeds through focused verified commits. Before any commit,
+check staged content for local absolute paths, usernames, machine names,
+private hostnames, and machine-specific install paths.
 
 For an approved implementation slice, merging the accepted delta into
 `docs/specs/` is part of the work, not a separate branch-finishing choice. Do it

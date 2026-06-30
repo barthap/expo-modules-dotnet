@@ -72,10 +72,12 @@ This repo uses a living-spec workflow:
 
 1. Brainstorm the feature through Superpowers or the equivalent manual flow.
 2. Write the approved design as `docs/changes/<yyyy-mm-dd-slug>/spec.md`.
-3. Write the implementation plan as `docs/changes/<yyyy-mm-dd-slug>/plan.md`.
-4. Implement and verify behavior with repo-owned commands.
-5. Merge accepted deltas into `docs/specs/`.
-6. Archive or remove transient planning artifacts.
+3. Commit the approved `spec.md`.
+4. Write the implementation plan as `docs/changes/<yyyy-mm-dd-slug>/plan.md`.
+5. Commit the approved `plan.md`.
+6. Implement and verify behavior with focused commits for plan/task slices.
+7. Merge accepted deltas into `docs/specs/`.
+8. Archive or remove transient planning artifacts.
 
 A change spec is for a milestone that is ready to continue into planning and
 implementation. For pure exploration, keep decisions in the conversation or
@@ -86,6 +88,10 @@ verification, and living-spec merge will follow.
 For an implemented milestone, updating `docs/specs/` is part of the work before
 branch handoff. Merge, PR, keep-as-is, and discard decisions happen after the
 code, tests, and living specs already reflect the accepted behavior.
+
+Before committing docs, check that staged content does not include local
+absolute paths, usernames, machine names, private hostnames, concrete local repo
+paths, or machine-specific install paths.
 
 Use the repo-local `living-spec-workflow` skill in `.agents/skills/` for the
 exact workflow and guardrails.

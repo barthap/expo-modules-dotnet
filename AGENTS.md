@@ -29,15 +29,21 @@ authoritative over current code, tests, or `docs/specs/`.
 For non-trivial behavior changes, use the repo-local living spec workflow:
 
 1. Create or update a delta spec before implementation.
-2. Implement through Superpowers or an equivalent repo-local plan.
-3. Verify with repo-owned commands.
-4. Merge accepted deltas into `docs/specs/`.
-5. Archive or remove transient planning artifacts.
+2. Commit the approved delta spec.
+3. Create and commit the implementation plan.
+4. Implement through Superpowers or an equivalent repo-local plan with focused
+   verified commits.
+5. Verify with repo-owned commands.
+6. Merge accepted deltas into `docs/specs/`.
+7. Archive or remove transient planning artifacts.
 
 The repo-local skill is `.agents/skills/living-spec-workflow/SKILL.md`.
 This workflow is the project override for Superpowers artifact locations:
 delta specs and plans are `docs/changes/<yyyy-mm-dd-slug>/spec.md` and
 `docs/changes/<yyyy-mm-dd-slug>/plan.md`, not `docs/superpowers/` artifacts.
+Before committing any repo artifact, check that staged content does not contain
+local absolute paths, usernames, machine names, private hostnames, concrete
+local repo paths, or machine-specific install paths.
 Do not create a delta spec as a standalone milestone unless the user explicitly
 asks for docs-only design work; a normal delta spec implies plan,
 implementation, verification, and merge into `docs/specs/`.
