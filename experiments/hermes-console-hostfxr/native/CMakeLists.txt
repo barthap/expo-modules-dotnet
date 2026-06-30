@@ -88,7 +88,8 @@ endif()
 
 add_executable(
   hermes_console_hostfxr
-  main.cpp "${REPO_ROOT}/native/packages/jsi/src/ExpoJsiBridge.cpp"
+  main.cpp ManagedProofLoader.cpp
+  "${REPO_ROOT}/native/packages/jsi/src/ExpoJsiBridge.cpp"
   "${REPO_ROOT}/native/packages/jsi/src/HermesConsoleRuntimeConnector.cpp")
 
 target_include_directories(
