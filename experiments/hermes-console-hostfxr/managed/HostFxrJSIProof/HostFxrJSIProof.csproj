@@ -4,8 +4,12 @@
     <ProjectReference Include="../../../../managed/packages/Expo.ModulesCore/Expo.ModulesCore.csproj" />
     <ProjectReference
       Include="../../../../managed/packages/Expo.ModulesCore.Generator/Expo.ModulesCore.Generator.csproj"
+      Condition="'$(PublishAot)' != 'true'"
       OutputItemType="Analyzer"
       ReferenceOutputAssembly="false" />
+    <Analyzer
+      Include="../../../../managed/packages/Expo.ModulesCore.Generator/bin/Debug/netstandard2.0/Expo.ModulesCore.Generator.dll"
+      Condition="'$(PublishAot)' == 'true'" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -16,5 +20,9 @@
     <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
     <AssemblyName>HostFxrJSIProof</AssemblyName>
     <RootNamespace>HostFxrJSIProof</RootNamespace>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PublishAot)' == 'true'">
+    <NativeLib>Shared</NativeLib>
   </PropertyGroup>
 </Project>

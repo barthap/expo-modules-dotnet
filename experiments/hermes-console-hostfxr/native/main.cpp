@@ -1,8 +1,11 @@
+#if EXPO_JSI_USE_HOSTFXR
 #include <coreclr_delegates.h>
-#include <expo_jsi.h>
 #include <hostfxr.h>
-#include <jsi/jsilib.h>
 #include <nethost.h>
+#endif
+
+#include <expo_jsi.h>
+#include <jsi/jsilib.h>
 
 #include <dlfcn.h>
 
@@ -16,11 +19,17 @@
 #include "HermesConsoleRuntimeConnector.h"
 #include "jsi/jsi.h"
 
+#ifndef EXPO_JSI_MANAGED_CONFIGURATION
+#define EXPO_JSI_MANAGED_CONFIGURATION "Debug"
+#endif
+
 namespace {
 
+#if EXPO_JSI_USE_HOSTFXR
 hostfxr_initialize_for_runtime_config_fn init_for_config = nullptr;
 hostfxr_get_runtime_delegate_fn get_runtime_delegate = nullptr;
 hostfxr_close_fn close_hostfxr = nullptr;
+#endif
 
 std::filesystem::path repo_root_from_current_directory()
 {
@@ -34,18 +43,48 @@ std::filesystem::path repo_root_from_current_directory()
   throw std::runtime_error("Could not locate repository root from current working directory.");
 }
 
+#if EXPO_JSI_USE_HOSTFXR
 std::filesystem::path find_proof_assembly()
 {
   auto assembly = repo_root_from_current_directory() /
                   "experiments/hermes-console-hostfxr/managed/HostFxrJSIProof/"
-                  "bin/Debug/net10.0/HostFxrJSIProof.dll";
+                  "bin" /
+                  EXPO_JSI_MANAGED_CONFIGURATION / "net10.0/HostFxrJSIProof.dll";
   if (!std::filesystem::exists(assembly)) {
     throw std::runtime_error("Managed proof assembly does not exist. Run dotnet build first: " +
                              assembly.string());
   }
   return assembly;
 }
+#endif
 
+#if EXPO_JSI_USE_NATIVEAOT
+std::filesystem::path nativeaot_rid()
+{
+#if defined(__APPLE__) && defined(__aarch64__)
+  return "osx-arm64";
+#elif defined(__APPLE__) && defined(__x86_64__)
+  return "osx-x64";
+#else
+  throw std::runtime_error("NativeAOT Hermes console proof currently supports macOS only.");
+#endif
+}
+
+std::filesystem::path find_nativeaot_library()
+{
+  auto library = repo_root_from_current_directory() /
+                 "experiments/hermes-console-hostfxr/managed/HostFxrJSIProof/bin" /
+                 EXPO_JSI_MANAGED_CONFIGURATION / "net10.0" / nativeaot_rid() /
+                 "publish/HostFxrJSIProof.dylib";
+  if (!std::filesystem::exists(library)) {
+    throw std::runtime_error("NativeAOT proof library does not exist. Run dotnet publish first: " +
+                             library.string());
+  }
+  return library;
+}
+#endif
+
+#if EXPO_JSI_USE_HOSTFXR
 void load_hostfxr()
 {
   char_t hostfxr_path[4096];
@@ -93,10 +132,28 @@ load_assembly_and_get_function_pointer_fn get_dotnet_load_assembly(
 
   return reinterpret_cast<load_assembly_and_get_function_pointer_fn>(load_assembly);
 }
+#endif
+
+template <typename Function> Function resolve_export(void *library, const char *name)
+{
+  auto symbol = dlsym(library, name);
+  if (symbol == nullptr) {
+    throw std::runtime_error("Failed to resolve managed export: " + std::string(name));
+  }
+  return reinterpret_cast<Function>(symbol);
+}
 
 } // namespace
 
-using register_modules_fn = int(CORECLR_DELEGATE_CALLTYPE *)(const expo_jsi_api *,
+#if EXPO_JSI_USE_HOSTFXR
+#define EXPO_JSI_MANAGED_CALLTYPE CORECLR_DELEGATE_CALLTYPE
+#else
+#define EXPO_JSI_MANAGED_CALLTYPE
+#endif
+
+using run_proof_fn = int(EXPO_JSI_MANAGED_CALLTYPE *)(const expo_jsi_api *,
+                                                      expo_jsi_runtime_handle);
+using register_modules_fn = int(EXPO_JSI_MANAGED_CALLTYPE *)(const expo_jsi_api *,
                                                              expo_jsi_runtime_handle);
 
 namespace jsi = facebook::jsi;
@@ -223,6 +280,8 @@ int main()
   expo_jsi_runtime_handle runtime_handle = nullptr;
 
   try {
+    int rc = 0;
+#if EXPO_JSI_USE_HOSTFXR
     auto assembly = find_proof_assembly();
     auto runtime_config = assembly;
     runtime_config.replace_extension(".runtimeconfig.json");
@@ -230,18 +289,15 @@ int main()
     load_hostfxr();
     auto load_assembly = get_dotnet_load_assembly(runtime_config);
 
-    using run_proof_fn =
-      int(CORECLR_DELEGATE_CALLTYPE *)(const expo_jsi_api *, expo_jsi_runtime_handle);
-
     run_proof_fn run_proof = nullptr;
     register_modules_fn register_modules = nullptr;
 
-    int rc = load_assembly(assembly.c_str(),
-                           "HostFxrJSIProof.EntryPoints, HostFxrJSIProof",
-                           "Run",
-                           UNMANAGEDCALLERSONLY_METHOD,
-                           nullptr,
-                           reinterpret_cast<void **>(&run_proof));
+    rc = load_assembly(assembly.c_str(),
+                       "HostFxrJSIProof.EntryPoints, HostFxrJSIProof",
+                       "Run",
+                       UNMANAGEDCALLERSONLY_METHOD,
+                       nullptr,
+                       reinterpret_cast<void **>(&run_proof));
     if (rc != 0 || run_proof == nullptr) {
       throw std::runtime_error("Failed to resolve managed proof entry point: " +
                                std::to_string(rc));
@@ -257,6 +313,21 @@ int main()
       throw std::runtime_error("Failed to resolve managed RegisterModules entry point: " +
                                std::to_string(rc));
     }
+#elif EXPO_JSI_USE_NATIVEAOT
+    auto nativeaot_library_path = find_nativeaot_library();
+    void *nativeaot_library = dlopen(nativeaot_library_path.c_str(), RTLD_NOW | RTLD_LOCAL);
+    if (nativeaot_library == nullptr) {
+      throw std::runtime_error(dlerror());
+    }
+
+    std::cout << "Loaded NativeAOT library: " << nativeaot_library_path.string() << std::endl;
+
+    auto run_proof = resolve_export<run_proof_fn>(nativeaot_library, "hostfxr_jsi_proof_run");
+    auto register_modules =
+      resolve_export<register_modules_fn>(nativeaot_library, "hostfxr_jsi_register_modules");
+#else
+#error "Expected EXPO_JSI_USE_HOSTFXR or EXPO_JSI_USE_NATIVEAOT"
+#endif
 
     expo::jsi::HermesConsoleRuntimeConnector connector;
     runtime_handle = expo::jsi::createRuntimeHandle(connector);
