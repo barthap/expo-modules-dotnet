@@ -85,6 +85,19 @@ The managed interop layer SHALL validate the native API table before using it.
 - **WHEN** managed code validates the API table
 - **THEN** managed code SHALL reject the table before calling ABI functions
 
+### Requirement: Loader Choice Preserves ABI Shape
+
+The Hermes console proof MAY load managed module logic through HostFXR or a
+NativeAOT shared library, but the loader choice SHALL NOT change the C ABI
+shape passed into managed code.
+
+#### Scenario: NativeAOT proof runs against the same ABI
+- **GIVEN** the Hermes console proof is built with `EXPO_JSI_DOTNET_LOADER=nativeaot`
+- **WHEN** native code resolves the NativeAOT managed exports and invokes the
+  proof
+- **THEN** managed code SHALL receive the same `expo_jsi_api` table and opaque
+  runtime handle shape used by the HostFXR path
+
 ### Requirement: ArrayBuffer Is Not Yet Wrapped
 
 The ABI value-kind enum MAY identify `ArrayBuffer`, but the managed package

@@ -39,7 +39,7 @@ exception rules.
   dispatch and conversion tests.
 - `experiments/hostfxr-smoke/`, `experiments/nativeaot-smoke/`, and
   `experiments/hermes-console-hostfxr/` preserve standalone loader and proof
-  experiments.
+  experiments. The Hermes console proof can run through HostFXR or NativeAOT.
 - `docs/specs/` contains the living spec baseline.
 - `docs/archive/` contains historical planning, spike, and execution artifacts.
 
