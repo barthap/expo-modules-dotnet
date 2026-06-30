@@ -25,4 +25,9 @@
   <PropertyGroup Condition="'$(PublishAot)' == 'true'">
     <NativeLib>Shared</NativeLib>
   </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>obj/$(Configuration)/$(TargetFramework)/generated</CompilerGeneratedFilesOutputPath>
+  </PropertyGroup>
 </Project>
