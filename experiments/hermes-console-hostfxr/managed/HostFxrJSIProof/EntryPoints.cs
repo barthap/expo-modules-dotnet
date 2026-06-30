@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Expo.JSI;
+using Expo.ModulesCore.Generated;
 
 namespace HostFxrJSIProof;
 
@@ -76,6 +77,7 @@ public static class EntryPoints
     {
       var runtime = JavaScriptRuntime.FromNative(api, runtimeHandle);
       GeneratedModuleProvider.Register(runtime);
+      ExpoModulesProvider_HostFxrJSIProof.Register(runtime);
       return 0;
     }
     catch (Exception ex)

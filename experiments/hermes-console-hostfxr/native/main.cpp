@@ -200,6 +200,14 @@ void jsi_main(jsi::Runtime &rt, CSharpAPI &cs)
   std::cout << "JS called generated-looking C# string module: " << text_result.asString(rt).utf8(rt)
             << std::endl;
 
+  auto v2_result = rt.evaluateJavaScript(
+    std::make_unique<jsi::StringBuffer>("global.expo.modules.V2Math.add(20.25, 22.25);"),
+    "generated-v2-module-dispatch.js");
+  if (!v2_result.isNumber() || v2_result.asNumber() != 42.5) {
+    throw std::runtime_error("Generated v2 module dispatch proof failed.");
+  }
+  std::cout << "JS called generated v2 C# module: " << v2_result.asNumber() << std::endl;
+
   try {
     rt.evaluateJavaScript(
       std::make_unique<jsi::StringBuffer>("global.expo.modules.Text.greet(42);"),
@@ -258,22 +266,23 @@ int main()
 
     std::cout << "Created Hermes-backed JSI runtime" << std::endl;
 
-    auto &rt = connector.runtime();
     auto release_counter = make_release_counter(expo::jsi::api());
     active_release_counter = &release_counter;
     auto cs = CSharpAPI{register_modules, &release_counter.api, runtime_handle};
 
-    jsi_main(rt, cs);
+    connector.runtimeExecutor().executeSync([&](jsi::Runtime &rt) { jsi_main(rt, cs); });
 
-    rc = run_proof(&release_counter.api, runtime_handle);
+    connector.runtimeExecutor().executeSync(
+      [&](jsi::Runtime &) { rc = run_proof(&release_counter.api, runtime_handle); });
     if (rc != 0) {
       throw std::runtime_error("Managed JSI proof failed with code " + std::to_string(rc));
     }
 
     auto value_release_count = release_counter.value_release_count;
     std::cout << "Released owned value handles: " << value_release_count << std::endl;
-    if (value_release_count != 11) {
-      throw std::runtime_error("Expected exactly eleven counted owned value handle releases.");
+    if (value_release_count != 27) {
+      throw std::runtime_error(
+        "Expected exactly twenty-seven counted owned value handle releases.");
     }
 
     auto string_release_count = release_counter.string_release_count;

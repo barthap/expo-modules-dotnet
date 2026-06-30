@@ -43,7 +43,7 @@ internal static class GeneratedModuleProvider
 
   private static JavaScriptValue MathAddHostFunction(
       JavaScriptRuntime runtime,
-      JavaScriptBorrowedValue thisValue,
+      JavaScriptValueRef thisValue,
       JavaScriptArguments arguments,
       object context
   )
@@ -54,14 +54,14 @@ internal static class GeneratedModuleProvider
     }
 
     var module = (MathModule)context;
-    var value = arguments.GetBorrowedValue(0).AsDouble();
-    var shouldAddOne = arguments.GetBorrowedValue(1).AsBool();
+    var value = arguments.GetValue(0).AsDouble();
+    var shouldAddOne = arguments.GetValue(1).AsBool();
     return runtime.CreateNumber(module.Add(value, shouldAddOne));
   }
 
   private static JavaScriptValue TextGreetHostFunction(
       JavaScriptRuntime runtime,
-      JavaScriptBorrowedValue thisValue,
+      JavaScriptValueRef thisValue,
       JavaScriptArguments arguments,
       object context
   )
@@ -72,7 +72,7 @@ internal static class GeneratedModuleProvider
     }
 
     var module = (TextModule)context;
-    var name = arguments.GetBorrowedValue(0).AsString();
+    var name = arguments.GetValue(0).AsString();
     return runtime.CreateString(module.Greet(name));
   }
 }
