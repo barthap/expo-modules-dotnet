@@ -50,6 +50,41 @@ This configuration is a development path, not the desired final library
 contract. It lets test projects consume generated source without requiring a
 NuGet package.
 
+## Inspecting Generated Output
+
+Roslyn source generators usually pass generated source to the compiler in
+memory. The generated provider is not normally written as a stable source file
+in the repository.
+
+To inspect generated output on disk, opt in from the project that consumes the
+generator. This means the module library project, test project, or experiment
+project that declares `[ExpoModule]` classes. It does not mean
+`Expo.ModulesCore.csproj` or `Expo.ModulesCore.Generator.csproj`.
+
+```xml
+<PropertyGroup>
+  <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+  <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
+</PropertyGroup>
+```
+
+The usual SDK-style output location is under the consuming project's
+intermediate directory:
+
+```text
+obj/Debug/<target-framework>/generated/
+```
+
+For example, a HostFXR proof build may emit a generated provider under:
+
+```text
+obj/Debug/net10.0/generated/Expo.ModulesCore.Generator/Expo.ModulesCore.Generator.ExpoModulesGenerator/ExpoModulesProvider_HostFxrJSIProof.g.cs
+```
+
+This opt-in is useful for debugging generator output. It should not be required
+for normal library builds, and generated files should remain untracked build
+artifacts.
+
 ## Authored Module Syntax
 
 The first generator milestone supports synchronous functions only:
