@@ -20,14 +20,72 @@ helpers, and typed conversion helpers above `Expo.JSI`.
 
 ### Requirement: ModulesCore Avoids Inert Authored Syntax
 
-`Expo.ModulesCore` SHALL NOT expose public v2 authored API syntax before the
-Roslyn generator milestone.
+`Expo.ModulesCore` SHALL expose authored module attributes only when those
+attributes are consumed by the Roslyn generator.
 
 #### Scenario: Authored syntax is proposed
 - **GIVEN** references describe future `[ExpoModule]`, `[JS]`, `[Record]`, or
   `[Event]` syntax
-- **WHEN** no Roslyn generator consumes that syntax
-- **THEN** the package SHALL keep that syntax out of production API
+- **WHEN** no Roslyn generator consumes a syntax surface
+- **THEN** the package SHALL keep that unconsumed syntax out of production API
+
+#### Scenario: Attribute-backed module is compiled
+- **GIVEN** a C# project references `Expo.ModulesCore` and has the generator
+  configured
+- **WHEN** it declares a class with `[ExpoModule]` and a sync method with
+  `[JS]`
+- **THEN** the generator SHALL emit direct-call registration glue for that
+  module
+
+### Requirement: Generated Providers Are Library-Local
+
+The Roslyn generator SHALL emit one deterministic provider for modules in the
+current compilation.
+
+#### Scenario: Package-local provider is generated
+- **GIVEN** a library project declares module classes
+- **WHEN** the project is compiled
+- **THEN** generated code SHALL register only modules declared in that library
+  project
+- **AND** generated code SHALL expose a stable provider that future app-level
+  autolinking can call
+
+### Requirement: Sync Function Generation Uses Direct Calls
+
+Generated sync function glue SHALL decode arguments, call authored methods
+directly, and encode return values through typed helpers.
+
+#### Scenario: Generated sync module function is called from JavaScript
+- **GIVEN** a generated provider registered a module under
+  `globalThis.expo.modules`
+- **WHEN** JavaScript calls a generated sync function with supported arguments
+- **THEN** the generated host function SHALL decode arguments through typed
+  codecs
+- **AND** call the authored method directly
+- **AND** return the encoded result through `Expo.JSI`
+
+### Requirement: Unsupported Signatures Are Build Diagnostics
+
+Unsupported generated function signatures SHALL fail at build time with
+actionable diagnostics.
+
+#### Scenario: Unsupported parameter type is used
+- **GIVEN** a `[JS]` method has an unsupported parameter type
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report a diagnostic naming the unsupported type
+- **AND** generated runtime glue SHALL NOT attempt dynamic invocation
+
+### Requirement: App Aggregation Remains Future Autolinking Work
+
+The generator SHALL keep module discovery library-local. App-level aggregation
+is future autolinking work.
+
+#### Scenario: Multiple libraries are linked into an app
+- **GIVEN** future autolinking resolves several dotnet Expo libraries
+- **WHEN** an app-level provider is generated
+- **THEN** it SHALL call each library-local generated provider
+- **AND** module class discovery SHALL remain owned by each library's Roslyn
+  generation step
 
 ### Requirement: Generated Bindings Avoid Hot-Path Reflection
 
@@ -40,6 +98,25 @@ dynamic invocation.
 - **THEN** it SHALL NOT use `Assembly.GetTypes`, `MethodInfo.Invoke`,
   `Delegate.DynamicInvoke`, `object?[]` as the normal argument container, or
   JSON serialization for ordinary JSI values
+
+### Requirement: Generator Authoring Documentation Is Durable
+
+The repo SHALL document how library authors configure generation today and how
+future autolinking is expected to aggregate generated providers.
+
+#### Scenario: Developer wants manual repo-local generator wiring
+- **GIVEN** a test or development project cannot consume packaged analyzer
+  assets yet
+- **WHEN** it needs generator output
+- **THEN** documentation SHALL show the manual analyzer `ProjectReference`
+  configuration
+
+#### Scenario: Future dotnet package config is designed
+- **GIVEN** autolinking is not implemented yet
+- **WHEN** future package discovery is documented
+- **THEN** documentation SHALL include a proposed dotnet
+  `expo-module.config.json` shape
+- **AND** state that this milestone does not parse that config
 
 ### Requirement: ModulesCore Owns Module Tests
 

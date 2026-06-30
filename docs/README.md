@@ -28,7 +28,13 @@ exception rules.
 - `managed/packages/Expo.JSI.Tests/` contains low-level Hermes-backed wrapper
   tests.
 - `managed/packages/Expo.ModulesCore/` contains generated-binding runtime
-  helpers above `Expo.JSI`.
+  helpers, authored module attributes, and Roslyn-generated binding entry
+  points above `Expo.JSI`.
+- `managed/packages/Expo.ModulesCore.Generator/` contains the Roslyn generator
+  that emits direct-call module providers for library-local `[ExpoModule]` /
+  `[JS]` syntax.
+- `managed/packages/Expo.ModulesCore.Generator.Tests/` contains generator
+  source-output and diagnostic tests.
 - `managed/packages/Expo.ModulesCore.Tests/` contains Hermes-backed module
   dispatch and conversion tests.
 - `experiments/hostfxr-smoke/`, `experiments/nativeaot-smoke/`, and
@@ -42,9 +48,9 @@ value, object, array, function, promise, error, scoped-ref, host-function, and
 runtime-task APIs over the ABI. It is intentionally below the module DSL layer.
 
 `Expo.ModulesCore` is the first higher-level package above `Expo.JSI`. It owns
-generated-binding runtime helpers and typed conversion helpers that future
-Roslyn-generated code can call. It does not yet expose the public v2 authored
-API syntax or a source generator.
+generated-binding runtime helpers, typed conversion helpers, authored module
+attributes, and the source-generator-backed direct-call provider path for the
+first synchronous `[JS]` function slice.
 
 ## Reading Order
 
@@ -53,8 +59,10 @@ For current implementation work:
 1. `docs/specs/README.md`
 2. The specific capability spec under `docs/specs/<capability>.md`
 3. `docs/ownership-mental-model.md` for wrapper/ref lifetime work
-4. `docs/roadmap.md` for forward direction
-5. `docs/archive/` only when historical rationale or proof evidence is needed
+4. `docs/modules-core-generator-authoring.md` for module-library generator
+   wiring and future dotnet autolinking shape
+5. `docs/roadmap.md` for forward direction
+6. `docs/archive/` only when historical rationale or proof evidence is needed
 
 For background learning material:
 
