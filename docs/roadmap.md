@@ -34,8 +34,99 @@ current behavior; archived docs provide provenance.
    - Keep HostFXR as a development loader, not runtime architecture.
 
 5. Add platform adapters only after the portable module layer is stable.
-   - RNW is the first likely host target.
+   - RNW and React Native macOS (via expo-desktop) are the primary host targets.
    - React Native macOS and view adapters stay explicitly platform-gated.
+
+## Backlog: ABI Extensions
+
+These are planned ABI additions required for real module support. Each requires
+coordinated native C++ implementation, C ABI function-pointer additions, and
+managed wrapper surface.
+
+- **Function calling from C#**: `call_function`, `call_as_constructor` — needed
+  for event emission, SharedObject lifecycle, calling JS callbacks from managed
+  code.
+- **Script evaluation**: `evaluate_javascript` — needed for dev tooling and
+  dynamic code paths.
+- **ArrayBuffer**: Wrapper and ABI for binary data transfer — needed by camera,
+  file system, crypto, WebSocket binary, and data-heavy modules.
+- **HostObject**: Property interceptor pattern — needed for SharedObject, lazy
+  module initialization, and dynamic property access.
+- **NativeState**: Attach native data to JS objects — needed for SharedObject
+  and SharedRef patterns.
+- **Property enumeration**: `getPropertyNames` / `getOwnPropertyNames` — needed
+  for record conversion and object iteration.
+- **Events / EventEmitter**: Module-to-JS event emission — needed by nearly
+  every interactive module.
+- **`instanceof` checks**: Generalized beyond current Promise/Error — needed for
+  type-safe record deserialization and custom class detection.
+
+## Backlog: Type Codec Extensions
+
+These are planned type conversions for the source generator and codec layer.
+Each requires a codec implementation, a generator case, and possibly underlying
+ABI support.
+
+- **`int` / integer types**: Most common parameter type in practice (currently
+  only `double` is supported).
+- **`Dictionary<string, T>`**: Object-to-dictionary conversion for record-like
+  parameters.
+- **Record types**: Structured C# types mapped to/from JS objects via generated
+  property-level codecs.
+- **Nullable types**: `T?` support for optional parameters and return values.
+- **`byte[]` / `ReadOnlyMemory<byte>`**: Binary data transfer (depends on
+  ArrayBuffer ABI).
+- **Enums**: Mapped to/from JS string or number values.
+- **SharedObject references**: Typed handles to shared native state (depends on
+  NativeState ABI).
+- **Nested record types**: Records containing other records or collections.
+
+## Backlog: Module System
+
+- **Module instance lifecycle**: `onCreate`, `onDestroy`, reload-safe teardown
+  — needed for resource cleanup and dev-reload safety. See
+  `docs/assorted/architecture-review.md` Finding 2.
+- **Lazy module initialization**: Modules instantiated on first JS access
+  instead of eagerly at registration (depends on HostObject ABI).
+- **`expo-module.config.json`**: Package metadata for dotnet Expo module
+  libraries.
+- **Autolinking**: Build-time discovery and aggregation of dotnet Expo module
+  packages into an app-level provider.
+- **TurboModule integration**: Participation in React Native's TurboModule
+  infrastructure for codegen'd bridging (experimental, separate branch).
+
+## Backlog: Architecture Improvements
+
+Items identified during architecture review. See
+`docs/assorted/architecture-review.md` for detailed analysis and solution
+options.
+
+- **Handle allocation cost**: Arena or pool allocator for `ValueHandle` to
+  reduce per-call heap allocation pressure on hot paths (Finding 1).
+- **`thread_local` error message lifetime**: Make error results self-contained
+  instead of pointing into thread-local storage (Finding 4).
+- **C# stack traces across ABI**: Include full exception stack trace in error
+  messages forwarded to JS for dev tooling visibility (Finding 3).
+
+## Backlog: Dev Tooling
+
+- **C# stack traces in LogBox / DevTools**: Forward managed exception stack
+  traces through the ABI error path so they appear in React Native dev tools.
+- **Structured error display**: Separate message and stack fields in error
+  propagation for cleaner DevTools integration.
+- **Development-only verbose errors**: Compile-time or runtime flag to control
+  error verbosity across the ABI boundary.
+
+## Backlog: Platform Adapters
+
+- **RNW adapter**: Runtime installation, scheduler mapping, Windows lifecycle,
+  expo-desktop integration.
+- **React Native macOS adapter**: Reuse headless core, macOS scheduler and
+  lifecycle services.
+- **View adapters**: Platform-specific native view creation, prop mapping, event
+  routing. Platform-gated — no view concepts in the portable core.
+- **NativeAOT for iOS and Android**: Experimental work on a separate branch.
+  Audit trimming, exported entry points, and platform-specific constraints.
 
 ## Archive Map
 
