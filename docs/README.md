@@ -38,7 +38,7 @@ exception rules.
 - `managed/packages/Expo.ModulesCore.Tests/` contains Hermes-backed module
   dispatch and conversion tests.
 - `experiments/hostfxr-smoke/`, `experiments/nativeaot-smoke/`, and
-  `experiments/hermes-console-hostfxr/` preserve standalone loader and proof
+  `experiments/hermes-console-app/` preserve standalone loader and proof
   experiments. The Hermes console proof can run through HostFXR or NativeAOT.
 - `docs/specs/` contains the living spec baseline.
 - `docs/archive/` contains historical planning, spike, and execution artifacts.

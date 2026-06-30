@@ -3,12 +3,12 @@ using System.Runtime.InteropServices;
 using Expo.JSI;
 using Expo.ModulesCore.Generated;
 
-namespace HostFxrJSIProof;
+namespace HermesConsoleApp;
 
 public static class EntryPoints
 {
   [UnmanagedCallersOnly(
-      EntryPoint = "hostfxr_jsi_proof_run",
+      EntryPoint = "hermes_console_app_run",
       CallConvs = new[] { typeof(CallConvCdecl) }
   )]
   public static int Run(nint api, nint runtimeHandle)
@@ -68,7 +68,7 @@ public static class EntryPoints
   }
 
   [UnmanagedCallersOnly(
-      EntryPoint = "hostfxr_jsi_register_modules",
+      EntryPoint = "hermes_console_app_register_modules",
       CallConvs = new[] { typeof(CallConvCdecl) }
   )]
   public static int RegisterModules(nint api, nint runtimeHandle)
@@ -77,7 +77,7 @@ public static class EntryPoints
     {
       var runtime = JavaScriptRuntime.FromNative(api, runtimeHandle);
       GeneratedModuleProvider.Register(runtime);
-      ExpoModulesProvider_HostFxrJSIProof.Register(runtime);
+      ExpoModulesProvider_HermesConsoleApp.Register(runtime);
       return 0;
     }
     catch (Exception ex)

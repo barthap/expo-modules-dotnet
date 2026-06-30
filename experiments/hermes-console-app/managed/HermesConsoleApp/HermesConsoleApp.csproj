@@ -18,8 +18,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
-    <AssemblyName>HostFxrJSIProof</AssemblyName>
-    <RootNamespace>HostFxrJSIProof</RootNamespace>
+    <AssemblyName>HermesConsoleApp</AssemblyName>
+    <RootNamespace>HermesConsoleApp</RootNamespace>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(PublishAot)' == 'true'">

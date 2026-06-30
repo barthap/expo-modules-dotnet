@@ -2,8 +2,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-experiment_dir="$repo_root/experiments/hermes-console-hostfxr"
-managed_project="$experiment_dir/managed/HostFxrJSIProof/HostFxrJSIProof.csproj"
+experiment_dir="$repo_root/experiments/hermes-console-app"
+managed_project="$experiment_dir/managed/HermesConsoleApp/HermesConsoleApp.csproj"
 hermes_root="${HERMES_PREBUILT_ROOT:-$repo_root/build/hermes/source/destroot}"
 loader="${EXPO_JSI_DOTNET_LOADER:-hostfxr}"
 run=1
@@ -12,7 +12,7 @@ usage() {
   cat <<'EOF'
 Usage: scripts/run-hermes-experiment.sh [--no-run] [-- <args>]
 
-Runs the Hermes console HostFXR proof using the current shell environment.
+Runs the Hermes console app using the current shell environment.
 direnv should provide a CMake 3.24+ on PATH when the system default is older.
 
 Environment:
@@ -135,7 +135,7 @@ build_native_app() {
 
   echo
   echo "==> Building the app"
-  cmake --build "$build_dir" --target hermes_console_hostfxr
+  cmake --build "$build_dir" --target hermes_console_app
 }
 
 run_native_app() {
@@ -144,8 +144,8 @@ run_native_app() {
 
   if [[ "$run" == 1 ]]; then
     echo
-    echo "==> Running Hermes console $loader proof"
-    "$build_dir/hermes_console_hostfxr" "$@"
+    echo "==> Running Hermes console app ($loader)"
+    "$build_dir/hermes_console_app" "$@"
   fi
 }
 
@@ -156,7 +156,7 @@ main() {
   local configuration
   local build_dir
   configuration="$(managed_configuration)"
-  build_dir="$repo_root/build/hermes-console-hostfxr/$loader"
+  build_dir="$repo_root/build/hermes-console-app/$loader"
 
   check_cmake_version
   build_managed "$configuration"

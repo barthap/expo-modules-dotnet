@@ -30,7 +30,7 @@ std::filesystem::path repoRootFromCurrentDirectory()
 {
   auto current = std::filesystem::current_path();
   while (!current.empty()) {
-    if (std::filesystem::exists(current / "experiments/hermes-console-hostfxr")) {
+    if (std::filesystem::exists(current / "experiments/hermes-console-app")) {
       return current;
     }
     current = current.parent_path();
@@ -51,9 +51,9 @@ template <typename Function> Function resolveExport(void *library, const char *n
 std::filesystem::path findProofAssembly()
 {
   auto assembly = repoRootFromCurrentDirectory() /
-                  "experiments/hermes-console-hostfxr/managed/HostFxrJSIProof/"
+                  "experiments/hermes-console-app/managed/HermesConsoleApp/"
                   "bin" /
-                  EXPO_JSI_MANAGED_CONFIGURATION / "net10.0/HostFxrJSIProof.dll";
+                  EXPO_JSI_MANAGED_CONFIGURATION / "net10.0/HermesConsoleApp.dll";
   if (!std::filesystem::exists(assembly)) {
     throw std::runtime_error("Managed proof assembly does not exist. Run dotnet build first: " +
                              assembly.string());
@@ -122,7 +122,7 @@ ManagedEntryPoints loadHostFxrEntryPoints()
   register_modules_fn register_modules = nullptr;
 
   int rc = load_assembly(assembly.c_str(),
-                         "HostFxrJSIProof.EntryPoints, HostFxrJSIProof",
+                         "HermesConsoleApp.EntryPoints, HermesConsoleApp",
                          "Run",
                          UNMANAGEDCALLERSONLY_METHOD,
                          nullptr,
@@ -132,7 +132,7 @@ ManagedEntryPoints loadHostFxrEntryPoints()
   }
 
   rc = load_assembly(assembly.c_str(),
-                     "HostFxrJSIProof.EntryPoints, HostFxrJSIProof",
+                     "HermesConsoleApp.EntryPoints, HermesConsoleApp",
                      "RegisterModules",
                      UNMANAGEDCALLERSONLY_METHOD,
                      nullptr,
@@ -160,10 +160,9 @@ std::filesystem::path nativeAotRid()
 
 std::filesystem::path findNativeAotLibrary()
 {
-  auto library = repoRootFromCurrentDirectory() /
-                 "experiments/hermes-console-hostfxr/managed/HostFxrJSIProof/bin" /
-                 EXPO_JSI_MANAGED_CONFIGURATION / "net10.0" / nativeAotRid() /
-                 "publish/HostFxrJSIProof.dylib";
+  auto library =
+    repoRootFromCurrentDirectory() / "experiments/hermes-console-app/managed/HermesConsoleApp/bin" /
+    EXPO_JSI_MANAGED_CONFIGURATION / "net10.0" / nativeAotRid() / "publish/HermesConsoleApp.dylib";
   if (!std::filesystem::exists(library)) {
     throw std::runtime_error("NativeAOT proof library does not exist. Run dotnet publish first: " +
                              library.string());
@@ -182,8 +181,8 @@ ManagedEntryPoints loadNativeAotEntryPoints()
   std::cout << "Loaded NativeAOT library: " << library_path.string() << std::endl;
 
   return ManagedEntryPoints{
-    resolveExport<run_proof_fn>(library, "hostfxr_jsi_proof_run"),
-    resolveExport<register_modules_fn>(library, "hostfxr_jsi_register_modules"),
+    resolveExport<run_proof_fn>(library, "hermes_console_app_run"),
+    resolveExport<register_modules_fn>(library, "hermes_console_app_register_modules"),
   };
 }
 #endif

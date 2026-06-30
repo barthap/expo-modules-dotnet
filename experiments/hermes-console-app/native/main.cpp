@@ -181,14 +181,14 @@ int main()
     active_release_counter = nullptr;
     connector.invalidate();
 
-    std::cout << "hermes console hostfxr proof: ok" << std::endl;
+    std::cout << "hermes console app: ok" << std::endl;
     return 0;
   } catch (const std::exception &error) {
     if (runtime_handle != nullptr) {
       expo::jsi::releaseRuntimeHandle(runtime_handle);
     }
     active_release_counter = nullptr;
-    std::cerr << "hermes_console_hostfxr failed: " << error.what() << std::endl;
+    std::cerr << "hermes_console_app failed: " << error.what() << std::endl;
     return 1;
   }
 }

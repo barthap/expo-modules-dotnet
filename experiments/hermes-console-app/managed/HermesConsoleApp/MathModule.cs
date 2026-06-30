@@ -1,4 +1,4 @@
-namespace HostFxrJSIProof;
+namespace HermesConsoleApp;
 
 internal sealed class MathModule
 {

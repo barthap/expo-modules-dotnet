@@ -1,4 +1,4 @@
-# Hermes Console HostFXR Proof
+# Hermes Console App
 
 This experiment creates a real Hermes-backed JSI runtime in native C++, passes
 an `expo_jsi_api` function table plus opaque runtime handle into managed code
@@ -12,7 +12,7 @@ through HostFXR or NativeAOT, and verifies bridge paths without P/Invoke:
   `MathModule.Add`, and returns an owned JavaScript value handle.
 - JavaScript installs and calls a v2-syntax module function at
   `global.expo.modules.V2Math.add`. The module lives in the same
-  `HostFxrJSIProof.csproj`, uses `[ExpoModule]` / `[JS]` authored syntax, and
+  `HermesConsoleApp.csproj`, uses `[ExpoModule]` / `[JS]` authored syntax, and
   is registered through the Roslyn-generated provider.
 - managed code can create and read JavaScript strings as strict UTF-8 text,
   including non-ASCII data and embedded NUL bytes;
@@ -62,13 +62,14 @@ points from the published shared library. The native CMake flag
   - `EXPO_JSI_DOTNET_LOADER=nativeaot scripts/run-hermes-experiment.sh --no-run`
   - `EXPO_JSI_DOTNET_LOADER=nativeaot scripts/run-hermes-experiment.sh`
   - `scripts/run-hermes-experiment.sh`
-- Expected result: NativeAOT publishes `HostFxrJSIProof` as a shared library,
-  the native app resolves `hostfxr_jsi_proof_run` and
-  `hostfxr_jsi_register_modules`, and the existing Hermes proof prints `ok`.
+- Expected result: NativeAOT publishes `HermesConsoleApp` as a shared library,
+  the native app resolves `hermes_console_app_run` and
+  `hermes_console_app_register_modules`, and the existing Hermes proof prints
+  `ok`.
 - Actual result: NativeAOT publish, native build, NativeAOT run, and default
   HostFXR run all completed successfully.
 - Artifacts: NativeAOT publishes under
-  `experiments/hermes-console-hostfxr/managed/HostFxrJSIProof/bin/<configuration>/net10.0/<rid>/publish/`.
+  `experiments/hermes-console-app/managed/HermesConsoleApp/bin/<configuration>/net10.0/<rid>/publish/`.
 - Ownership/lifetime findings: NativeAOT did not require changing the
   `expo_jsi_api` table, opaque runtime handle, owned value release counting, or
   string result release counting.

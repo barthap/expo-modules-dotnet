@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(HermesConsoleHostFxrProof LANGUAGES C CXX)
+project(HermesConsoleApp LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -87,45 +87,45 @@ if(NOT EXISTS "${HERMES_FRAMEWORK_DIR}/hermesvm.framework/hermesvm")
 endif()
 
 add_executable(
-  hermes_console_hostfxr
+  hermes_console_app
   main.cpp ManagedProofLoader.cpp
   "${REPO_ROOT}/native/packages/jsi/src/ExpoJsiBridge.cpp"
   "${REPO_ROOT}/native/packages/jsi/src/HermesConsoleRuntimeConnector.cpp")
 
 target_include_directories(
-  hermes_console_hostfxr
+  hermes_console_app
   PRIVATE "${HERMES_ROOT}/include" "${REPO_ROOT}/native/include"
           "${REPO_ROOT}/native/packages/jsi/include")
 
 if(EXPO_JSI_DOTNET_LOADER STREQUAL "hostfxr")
   target_compile_definitions(
-    hermes_console_hostfxr
+    hermes_console_app
     PRIVATE EXPO_JSI_USE_HOSTFXR=1
             EXPO_JSI_MANAGED_CONFIGURATION="${EXPO_JSI_MANAGED_CONFIGURATION}")
-  target_include_directories(hermes_console_hostfxr
+  target_include_directories(hermes_console_app
                              PRIVATE "${DOTNET_HOST_NATIVE_DIR}")
 else()
   target_compile_definitions(
-    hermes_console_hostfxr
+    hermes_console_app
     PRIVATE EXPO_JSI_USE_NATIVEAOT=1
             EXPO_JSI_MANAGED_CONFIGURATION="${EXPO_JSI_MANAGED_CONFIGURATION}")
 endif()
 
-target_link_options(hermes_console_hostfxr PRIVATE "-F${HERMES_FRAMEWORK_DIR}"
+target_link_options(hermes_console_app PRIVATE "-F${HERMES_FRAMEWORK_DIR}"
                     "-Wl,-rpath,${HERMES_FRAMEWORK_DIR}")
 
-target_link_libraries(hermes_console_hostfxr PRIVATE "-framework hermesvm")
+target_link_libraries(hermes_console_app PRIVATE "-framework hermesvm")
 
 if(EXPO_JSI_DOTNET_LOADER STREQUAL "hostfxr")
-  target_link_libraries(hermes_console_hostfxr
+  target_link_libraries(hermes_console_app
                         PRIVATE "${DOTNET_HOST_NATIVE_DIR}/libnethost.dylib")
 
   add_custom_command(
-    TARGET hermes_console_hostfxr
+    TARGET hermes_console_app
     POST_BUILD
     COMMAND
       ${CMAKE_COMMAND} -E copy_if_different
       "${DOTNET_HOST_NATIVE_DIR}/libnethost.dylib"
-      "$<TARGET_FILE_DIR:hermes_console_hostfxr>/libnethost.dylib"
-    COMMENT "Copying libnethost.dylib next to hermes_console_hostfxr")
+      "$<TARGET_FILE_DIR:hermes_console_app>/libnethost.dylib"
+    COMMENT "Copying libnethost.dylib next to hermes_console_app")
 endif()

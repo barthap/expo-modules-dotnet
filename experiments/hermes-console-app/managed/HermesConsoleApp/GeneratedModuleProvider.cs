@@ -1,6 +1,6 @@
 using Expo.JSI;
 
-namespace HostFxrJSIProof;
+namespace HermesConsoleApp;
 
 internal static class GeneratedModuleProvider
 {

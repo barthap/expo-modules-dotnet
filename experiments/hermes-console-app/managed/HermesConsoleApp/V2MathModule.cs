@@ -1,6 +1,6 @@
 using Expo.ModulesCore;
 
-namespace HostFxrJSIProof;
+namespace HermesConsoleApp;
 
 [ExpoModule("V2Math")]
 internal sealed partial class V2MathModule
