@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "mobile-app",
+    "slug": "mobile-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "dev.expo.csharpv2proof",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "dev.expo.csharpv2proof",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "./modules/expo-csharp-v2/plugin"
+    ],
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

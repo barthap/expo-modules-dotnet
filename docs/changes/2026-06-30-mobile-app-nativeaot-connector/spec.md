@@ -32,10 +32,12 @@ Swift/Kotlin modules API.
 ### Managed Module
 
 The proof app SHALL contain a C# module library with a class modeled after the
-existing `V2MathModule`:
+existing `V2MathModule`. In a real Expo runtime, `expo.modules` is owned by
+Expo after the runtime installer runs, so the proof targets the existing native
+`ExpoCSharpV2` module object and lets C# add the generated sync function there:
 
 ```csharp
-[ExpoModule("V2Math")]
+[ExpoModule("ExpoCSharpV2")]
 public sealed partial class MobileV2MathModule
 {
   [JS("add")]
@@ -71,7 +73,7 @@ The connector SHALL provide:
 SHALL display the return value from JavaScript calling:
 
 ```ts
-globalThis.expo.modules.V2Math.add(20, 22)
+globalThis.expo.modules.ExpoCSharpV2.add(20, 22)
 ```
 
 The app SHALL log a clear module installation and invocation message from the
@@ -90,7 +92,7 @@ module through generated `Expo.ModulesCore` bindings on iOS and Android.
 
 #### Scenario: JavaScript calls generated C# module
 - **GIVEN** the mobile proof app has installed the NativeAOT C# modules provider
-- **WHEN** JavaScript calls `globalThis.expo.modules.V2Math.add(20, 22)`
+- **WHEN** JavaScript calls `globalThis.expo.modules.ExpoCSharpV2.add(20, 22)`
 - **THEN** the screen SHALL display `42`
 - **AND** the JavaScript console SHALL log that the C# module returned `42`
 
@@ -104,8 +106,8 @@ the real React Native Hermes runtime to the existing `expo_jsi.h` ABI.
 - **WHEN** the native proof installer invokes the managed NativeAOT entry point
 - **THEN** managed code SHALL receive an `expo_jsi_api` table and opaque runtime
   handle
-- **AND** generated `Expo.ModulesCore` registration SHALL install the module
-  under `globalThis.expo.modules`
+- **AND** generated `Expo.ModulesCore` registration SHALL install the generated
+  function on the existing `globalThis.expo.modules.ExpoCSharpV2` object
 
 ### MODIFIED Requirement: Loader Choice Preserves ABI Shape
 

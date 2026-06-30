@@ -13,10 +13,25 @@ public static class ModuleRegistry
     ArgumentNullException.ThrowIfNull(modules);
     ArgumentException.ThrowIfNullOrWhiteSpace(moduleName);
 
+    using var existingModuleValue = modules.GetProperty(moduleName);
+    if (existingModuleValue.IsObject)
+    {
+      return existingModuleValue.AsObject();
+    }
+
     var module = runtime.CreateObject();
     using var moduleValue = module.AsValue();
     modules.SetProperty(moduleName, moduleValue);
     return module;
+  }
+
+  public static JavaScriptObject GetOrCreateExpoModulesObject(JavaScriptRuntime runtime)
+  {
+    ArgumentNullException.ThrowIfNull(runtime);
+
+    using var global = runtime.Global();
+    using var expo = GetOrCreateObject(runtime, global, "expo");
+    return GetOrCreateObject(runtime, expo, "modules");
   }
 
   public static JavaScriptObject GetOrCreateDotnetModulesObject(JavaScriptRuntime runtime)

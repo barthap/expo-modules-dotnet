@@ -40,6 +40,21 @@ SHALL fail loudly when unsupported.
 - **THEN** native SHALL execute the runtime task synchronously and managed code
   SHALL return the body result
 
+### Requirement: React Native Runtime Scheduling Adapter
+
+React Native hosts SHALL adapt runtime scheduling through injected New
+Architecture scheduling primitives instead of embedding React Native-specific
+types in managed code.
+
+#### Scenario: React Native connector schedules work
+- **GIVEN** native platform glue has a borrowed React Native Hermes runtime and
+  scheduling callbacks
+- **WHEN** managed code schedules runtime work through `JavaScriptRuntime`
+- **THEN** the React Native connector SHALL route the work through the injected
+  callbacks
+- **AND** sync execution SHALL be reported as supported only when the platform
+  host can execute safely on the runtime thread
+
 ### Requirement: Runtime Task Context Ownership
 
 Native runtime-task scheduling SHALL own the managed task context after the ABI

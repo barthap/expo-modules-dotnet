@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["ExpoCSharpV2Module"]
+  },
+  "android": {
+    "modules": ["expo.modules.csharpv2.ExpoCSharpV2Module"]
+  }
+}

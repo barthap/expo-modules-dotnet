@@ -4,7 +4,7 @@
 
 **Goal:** Build a local Expo app proof that calls a NativeAOT C# `[ExpoModule]` from JavaScript through the real React Native Hermes runtime and the existing `expo_jsi.h` ABI.
 
-**Architecture:** The managed proof is a NativeAOT library with one exported registration entry point. Native iOS and Android app glue borrow the active React Native Hermes runtime, wrap it in a `native/packages/jsi` React Native connector, then pass the existing ABI table and opaque runtime handle to managed code. JavaScript reads the installed `globalThis.expo.modules.V2Math.add` result and renders it on screen.
+**Architecture:** The managed proof is a NativeAOT library with one exported registration entry point. Native iOS and Android app glue borrow the active React Native Hermes runtime, wrap it in a `native/packages/jsi` React Native connector, then pass the existing ABI table and opaque runtime handle to managed code. JavaScript invokes a tiny deferred installer after Expo owns its module namespace, then reads the generated `globalThis.expo.modules.ExpoCSharpV2.add` result and renders it on screen.
 
 **Tech Stack:** Expo app, React Native Hermes, C++20 JSI, `native/include/expo_jsi.h`, `native/packages/jsi`, .NET 10 NativeAOT, `Expo.JSI`, `Expo.ModulesCore`, `Expo.ModulesCore.Generator`.
 
@@ -58,7 +58,7 @@ Expected: `ios/` and `android/` exist and Hermes remains enabled.
 - [ ] **Step 4: Replace the app screen**
 
 Edit `experiments/mobile-app/App.tsx` so it renders a result from
-`globalThis.expo.modules.V2Math.add(20, 22)` with fallback error text and logs
+`globalThis.expo.modules.ExpoCSharpV2.add(20, 22)` with fallback error text and logs
 the result:
 
 ```tsx
@@ -70,7 +70,7 @@ declare global {
   var expo:
     | {
         modules?: {
-          V2Math?: {
+          ExpoCSharpV2?: {
             add(a: number, b: number): number;
           };
         };
@@ -83,12 +83,12 @@ export default function App() {
 
   useEffect(() => {
     try {
-      const result = globalThis.expo?.modules?.V2Math?.add?.(20, 22);
+      const result = globalThis.expo?.modules?.ExpoCSharpV2?.add?.(20, 22);
       if (result !== 42) {
         throw new Error(`Unexpected C# module result: ${String(result)}`);
       }
-      console.log("[ExpoCSharpV2] V2Math.add(20, 22) returned", result);
-      setMessage(`C# V2Math.add result: ${result}`);
+      console.log("[ExpoCSharpV2] C# add(20, 22) returned", result);
+      setMessage(`C# add result: ${result}`);
     } catch (error) {
       console.error("[ExpoCSharpV2] module call failed", error);
       setMessage(error instanceof Error ? error.message : String(error));
@@ -140,8 +140,10 @@ generator analyzer reference.
 
 - [ ] **Step 2: Add the module**
 
-Create `MobileV2MathModule.cs` with `[ExpoModule("V2Math")]`, `[JS("add")]`,
-and a direct `double Add(double a, double b)` implementation.
+Create `MobileV2MathModule.cs` with `[ExpoModule("ExpoCSharpV2")]`, `[JS("add")]`,
+and a direct `double Add(double a, double b)` implementation. The module name
+targets the existing native Expo module object because real Expo runtimes mark
+`expo.modules` as read-only for brand-new keys after startup.
 
 - [ ] **Step 3: Add the registration export**
 
@@ -167,7 +169,7 @@ public static class EntryPoints
     {
       var runtime = JavaScriptRuntime.FromNative(api, runtimeHandle);
       ExpoModulesProvider_ExpoMobileV2Module.Register(runtime);
-      Console.WriteLine("ExpoMobileV2Module registered V2Math.");
+      Console.WriteLine("ExpoMobileV2Module registered ExpoCSharpV2.add.");
       return 0;
     }
     catch (Exception ex)

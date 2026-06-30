@@ -30,6 +30,32 @@ public sealed class GeneratedMathAndTextModuleTests
   }
 
   [Fact]
+  public void GeneratedLookingCodeAugmentsExistingNativeModuleObject()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var _ = fixture.Evaluate(
+          "globalThis.expo = { modules: { Math: { nativeValue: 7 } } }; true",
+          "modules-core-existing-module-setup.js"
+      );
+
+      using var modules = ModuleRegistry.GetOrCreateExpoModulesObject(runtime);
+      GeneratedMathAndTextModuleProvider.Register(runtime, modules);
+
+      using var result = fixture.Evaluate(
+          "globalThis.expo.modules.Math.nativeValue + globalThis.expo.modules.Math.add(41.5, true)",
+          "modules-core-existing-module-add.js"
+      );
+
+      Assert.Equal(JavaScriptValueKind.Number, result.Kind);
+      Assert.Equal(49.5, result.AsDouble());
+      return true;
+    });
+  }
+
+  [Fact]
   public void GeneratedLookingCodePreservesStringValuesThroughModuleDispatch()
   {
     using var fixture = HermesRuntimeFixture.Create();

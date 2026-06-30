@@ -98,6 +98,33 @@ shape passed into managed code.
 - **THEN** managed code SHALL receive the same `expo_jsi_api` table and opaque
   runtime handle shape used by the HostFXR path
 
+#### Scenario: Mobile NativeAOT entry point runs against React Native Hermes
+- **GIVEN** a React Native Hermes runtime is exposed to the native connector
+- **WHEN** native code invokes a NativeAOT module registration export
+- **THEN** managed code SHALL receive only the `expo_jsi_api` table pointer and
+  opaque runtime handle needed for registration
+- **AND** the registration path SHALL NOT depend on HostFXR, runtime assembly
+  scanning, JSON, or hot-path reflection
+
+### Requirement: React Native Runtime Connector Preserves ABI Ownership
+
+`native/packages/jsi` SHALL provide a React Native runtime connector that adapts
+an already-created Hermes `facebook::jsi::Runtime` to the existing
+`expo_jsi.h` ABI without exposing raw JSI layouts to managed code.
+
+#### Scenario: React Native connector creates managed runtime handle
+- **GIVEN** React Native provides an active Hermes runtime
+- **WHEN** platform glue creates a React Native runtime handle
+- **THEN** the handle SHALL be created through `ExpoJsiBridge` and
+  `native/include/expo_jsi.h`
+- **AND** managed code SHALL observe only the ABI table and opaque handle
+
+#### Scenario: Borrowed runtime lifetime is bounded by native host
+- **GIVEN** a JavaScript host function can call into the NativeAOT module
+- **WHEN** the native host installs that function
+- **THEN** it SHALL keep the borrowed runtime connector and opaque runtime handle
+  alive at least as long as the host function can run
+
 ### Requirement: ArrayBuffer Is Not Yet Wrapped
 
 The ABI value-kind enum MAY identify `ArrayBuffer`, but the managed package
