@@ -2,12 +2,12 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-app_dir="$(cd "${script_dir}/.." && pwd)"
-repo_root="$(cd "${app_dir}/../.." && pwd)"
-project="${app_dir}/dotnet/ExpoMobileV2Module/ExpoMobileV2Module.csproj"
-module_dir="${app_dir}/modules/expo-csharp-v2"
-android_jni_libs="${module_dir}/android/src/main/jniLibs/arm64-v8a"
-ios_native_libs="${module_dir}/ios/NativeLibs"
+package_dir="$(cd "${script_dir}/.." && pwd)"
+repo_root="$(cd "${package_dir}/../.." && pwd)"
+project="${package_dir}/dotnet/ExampleModule/ExampleModule.csproj"
+adapter_dir="${repo_root}/packages/expo-modules-dotnet"
+android_jni_libs="${adapter_dir}/android/src/main/jniLibs/arm64-v8a"
+ios_native_libs="${adapter_dir}/ios/NativeLibs"
 
 android_home="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
 if [[ -z "${android_home}" ]]; then
@@ -48,13 +48,13 @@ dotnet publish "${project}" \
   --self-contained true
 
 mkdir -p "${android_jni_libs}" "${ios_native_libs}"
-cp "${app_dir}/dotnet/ExpoMobileV2Module/bin/Release/net10.0/android-arm64/publish/ExpoMobileV2Module.so" \
-  "${android_jni_libs}/libExpoMobileV2Module.so"
-cp "${app_dir}/dotnet/ExpoMobileV2Module/bin/Release/net10.0/iossimulator-arm64/publish/ExpoMobileV2Module.dylib" \
-  "${ios_native_libs}/libExpoMobileV2Module.dylib"
-install_name_tool -id "@rpath/libExpoMobileV2Module.dylib" \
-  "${ios_native_libs}/libExpoMobileV2Module.dylib"
+cp "${package_dir}/dotnet/ExampleModule/bin/Release/net10.0/android-arm64/publish/ExampleModule.so" \
+  "${android_jni_libs}/libExampleModule.so"
+cp "${package_dir}/dotnet/ExampleModule/bin/Release/net10.0/iossimulator-arm64/publish/ExampleModule.dylib" \
+  "${ios_native_libs}/libExampleModule.dylib"
+install_name_tool -id "@rpath/libExampleModule.dylib" \
+  "${ios_native_libs}/libExampleModule.dylib"
 
-echo "Copied NativeAOT artifacts into local Expo module:"
-echo "  android/src/main/jniLibs/arm64-v8a/libExpoMobileV2Module.so"
-echo "  ios/NativeLibs/libExpoMobileV2Module.dylib"
+echo "Copied ExampleModule NativeAOT artifacts into expo-modules-dotnet:"
+echo "  android/src/main/jniLibs/arm64-v8a/libExampleModule.so"
+echo "  ios/NativeLibs/libExampleModule.dylib"

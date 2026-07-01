@@ -4,12 +4,12 @@ using Expo.JSI;
 using Expo.ModulesCore;
 using Expo.ModulesCore.Generated;
 
-namespace ExpoMobileV2Module;
+namespace ExampleModule;
 
 public static class EntryPoints
 {
   [UnmanagedCallersOnly(
-      EntryPoint = "expo_mobile_v2_register_modules",
+      EntryPoint = "example_module_register_modules",
       CallConvs = new[] { typeof(CallConvCdecl) }
   )]
   public static int RegisterModules(nint api, nint runtimeHandle)
@@ -18,8 +18,8 @@ public static class EntryPoints
     {
       var runtime = JavaScriptRuntime.FromNative(api, runtimeHandle);
       using var modules = ModuleRegistry.GetOrCreateExpoModulesObject(runtime);
-      ExpoModulesProvider_ExpoMobileV2Module.Register(runtime, modules);
-      Console.WriteLine("ExpoMobileV2Module registered ExpoCSharpV2.add.");
+      ExpoModulesProvider_ExampleModule.Register(runtime, modules);
+      Console.WriteLine("ExampleModule registered ExampleModule.add.");
       return 0;
     }
     catch (Exception ex)

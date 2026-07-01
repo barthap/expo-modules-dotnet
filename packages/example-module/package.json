@@ -1,0 +1,12 @@
+{
+  "name": "example-module",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Example authored .NET Expo module",
+  "scripts": {
+    "build:nativeaot": "./scripts/build-nativeaot.sh"
+  },
+  "peerDependencies": {
+    "expo-modules-dotnet": "*"
+  }
+}
