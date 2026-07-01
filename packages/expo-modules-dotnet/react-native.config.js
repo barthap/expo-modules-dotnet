@@ -3,8 +3,8 @@ module.exports = {
     platforms: {
       android: {
         sourceDir: './android',
-        packageImportPath: 'import expo.modules.csharpv2.ExpoCSharpV2TurboPackage;',
-        packageInstance: 'new ExpoCSharpV2TurboPackage()',
+        packageImportPath: 'import expo.modules.dotnet.ExpoModulesDotnetTurboPackage;',
+        packageInstance: 'new ExpoModulesDotnetTurboPackage()',
       },
       ios: {},
     },

@@ -3,4 +3,4 @@ import { TurboModuleRegistry } from 'react-native';
 
 export interface Spec extends TurboModule {}
 
-export default TurboModuleRegistry.get<Spec>('ExpoCSharpV2Installer');
+export default TurboModuleRegistry.get<Spec>('ExpoModulesDotnetInstaller');

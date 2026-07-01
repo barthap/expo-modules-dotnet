@@ -10,7 +10,7 @@
 
 namespace {
 
-constexpr const char *kLogTag = "ExpoCSharpV2";
+constexpr const char *kLogTag = "ExpoModulesDotnet";
 
 using RegisterModulesFn = int (*)(const expo_jsi_api *, expo_jsi_runtime_handle);
 
@@ -47,19 +47,19 @@ std::vector<std::shared_ptr<InstalledRuntime>> installedRuntimes;
 
 RegisterModulesFn resolveRegisterModules()
 {
-  auto *symbol = dlsym(RTLD_DEFAULT, "expo_mobile_v2_register_modules");
+  auto *symbol = dlsym(RTLD_DEFAULT, "example_module_register_modules");
   if (symbol == nullptr) {
     dlerror();
-    auto *library = dlopen("libExpoMobileV2Module.so", RTLD_NOW | RTLD_GLOBAL);
+    auto *library = dlopen("libExampleModule.so", RTLD_NOW | RTLD_GLOBAL);
     if (library != nullptr) {
-      symbol = dlsym(library, "expo_mobile_v2_register_modules");
+      symbol = dlsym(library, "example_module_register_modules");
     }
   }
 
   if (symbol == nullptr) {
     __android_log_print(ANDROID_LOG_ERROR,
                         kLogTag,
-                        "Failed to resolve expo_mobile_v2_register_modules: %s",
+                        "Failed to resolve example_module_register_modules: %s",
                         dlerror());
     return nullptr;
   }
@@ -81,12 +81,12 @@ bool registerV2Module(InstalledRuntime &installedRuntime)
     registerModules(expo::dotnet::reactNativeExpoJsiApi(), installedRuntime.runtimeHandle);
   if (status != 0) {
     __android_log_print(
-      ANDROID_LOG_ERROR, kLogTag, "NativeAOT ExpoCSharpV2.add registration failed.");
+      ANDROID_LOG_ERROR, kLogTag, "NativeAOT ExampleModule.add registration failed.");
     return false;
   }
 
   installedRuntime.registered = true;
-  __android_log_print(ANDROID_LOG_INFO, kLogTag, "NativeAOT ExpoCSharpV2.add module registered.");
+  __android_log_print(ANDROID_LOG_INFO, kLogTag, "NativeAOT ExampleModule.add module registered.");
   return true;
 }
 
@@ -102,28 +102,29 @@ void installV2Module(facebook::jsi::Runtime &runtime,
 
   std::lock_guard<std::mutex> lock(installedRuntimesMutex);
   installedRuntimes.push_back(std::move(installedRuntime));
-  __android_log_print(ANDROID_LOG_INFO, kLogTag, "NativeAOT ExpoCSharpV2.add installer ran.");
+  __android_log_print(ANDROID_LOG_INFO, kLogTag, "NativeAOT ExampleModule.add installer ran.");
 }
 
 } // namespace
 
-namespace expo::modules::csharpv2 {
+namespace expo::modules::dotnet {
 
-class ExpoCSharpV2BindingsInstaller
-  : public facebook::jni::JavaClass<ExpoCSharpV2BindingsInstaller> {
+class ExpoModulesDotnetBindingsInstaller
+  : public facebook::jni::JavaClass<ExpoModulesDotnetBindingsInstaller> {
 public:
-  static constexpr auto kJavaDescriptor = "Lexpo/modules/csharpv2/ExpoCSharpV2TurboModule;";
+  static constexpr auto kJavaDescriptor = "Lexpo/modules/dotnet/ExpoModulesDotnetTurboModule;";
 
   static void registerNatives()
   {
     javaClassLocal()->registerNatives({
-      makeNativeMethod("getBindingsInstaller", ExpoCSharpV2BindingsInstaller::getBindingsInstaller),
+      makeNativeMethod("getBindingsInstaller",
+                       ExpoModulesDotnetBindingsInstaller::getBindingsInstaller),
     });
   }
 
 private:
   static facebook::jni::local_ref<facebook::react::BindingsInstallerHolder::javaobject>
-  getBindingsInstaller(facebook::jni::alias_ref<ExpoCSharpV2BindingsInstaller>)
+  getBindingsInstaller(facebook::jni::alias_ref<ExpoModulesDotnetBindingsInstaller>)
   {
     return facebook::react::BindingsInstallerHolder::newObjectCxxArgs(
       [](facebook::jsi::Runtime &runtime,
@@ -133,10 +134,10 @@ private:
   }
 };
 
-} // namespace expo::modules::csharpv2
+} // namespace expo::modules::dotnet
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *)
 {
   return facebook::jni::initialize(
-    vm, [] { expo::modules::csharpv2::ExpoCSharpV2BindingsInstaller::registerNatives(); });
+    vm, [] { expo::modules::dotnet::ExpoModulesDotnetBindingsInstaller::registerNatives(); });
 }

@@ -1,7 +1,7 @@
 import ExpoModulesCore
 
-public class ExpoCSharpV2Module: Module {
+public class ExpoModulesDotnetModule: Module {
   public func definition() -> ModuleDefinition {
-    Name("ExpoCSharpV2")
+    Name("ExpoModulesDotnet")
   }
 }

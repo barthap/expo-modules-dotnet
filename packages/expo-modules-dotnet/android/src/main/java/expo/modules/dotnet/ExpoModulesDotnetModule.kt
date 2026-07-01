@@ -1,10 +1,10 @@
-package expo.modules.csharpv2
+package expo.modules.dotnet
 
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
-class ExpoCSharpV2Module : Module() {
+class ExpoModulesDotnetModule : Module() {
   override fun definition() = ModuleDefinition {
-    Name("ExpoCSharpV2")
+    Name("ExpoModulesDotnet")
   }
 }

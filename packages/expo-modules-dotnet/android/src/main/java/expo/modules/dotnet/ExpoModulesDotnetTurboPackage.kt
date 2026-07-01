@@ -1,4 +1,4 @@
-package expo.modules.csharpv2
+package expo.modules.dotnet
 
 import com.facebook.react.BaseReactPackage
 import com.facebook.react.bridge.NativeModule
@@ -6,19 +6,19 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.module.model.ReactModuleInfo
 import com.facebook.react.module.model.ReactModuleInfoProvider
 
-class ExpoCSharpV2TurboPackage : BaseReactPackage() {
+class ExpoModulesDotnetTurboPackage : BaseReactPackage() {
   override fun getModule(name: String, reactContext: ReactApplicationContext): NativeModule? {
     return when (name) {
-      ExpoCSharpV2TurboModule.NAME -> ExpoCSharpV2TurboModule(reactContext)
+      ExpoModulesDotnetTurboModule.NAME -> ExpoModulesDotnetTurboModule(reactContext)
       else -> null
     }
   }
 
   override fun getReactModuleInfoProvider() = ReactModuleInfoProvider {
     mapOf(
-      ExpoCSharpV2TurboModule.NAME to ReactModuleInfo(
-        ExpoCSharpV2TurboModule.NAME,
-        ExpoCSharpV2TurboModule.NAME,
+      ExpoModulesDotnetTurboModule.NAME to ReactModuleInfo(
+        ExpoModulesDotnetTurboModule.NAME,
+        ExpoModulesDotnetTurboModule.NAME,
         false,
         false,
         false,

@@ -15,9 +15,9 @@ using RegisterModulesFn = int (*)(const expo_jsi_api *, expo_jsi_runtime_handle)
 
 RegisterModulesFn resolveRegisterModules()
 {
-  auto *symbol = dlsym(RTLD_DEFAULT, "expo_mobile_v2_register_modules");
+  auto *symbol = dlsym(RTLD_DEFAULT, "example_module_register_modules");
   if (symbol == nullptr) {
-    NSLog(@"[ExpoCSharpV2] Failed to resolve expo_mobile_v2_register_modules: %s", dlerror());
+    NSLog(@"[ExpoModulesDotnet] Failed to resolve example_module_register_modules: %s", dlerror());
     return nullptr;
   }
   return reinterpret_cast<RegisterModulesFn>(symbol);
@@ -55,11 +55,11 @@ public:
 
     auto status = registerModules(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
     if (status != 0) {
-      NSLog(@"[ExpoCSharpV2] NativeAOT ExpoCSharpV2.add registration failed.");
+      NSLog(@"[ExpoModulesDotnet] NativeAOT ExampleModule.add registration failed.");
       return false;
     }
 
-    NSLog(@"[ExpoCSharpV2] NativeAOT ExpoCSharpV2.add module registered.");
+    NSLog(@"[ExpoModulesDotnet] NativeAOT ExampleModule.add module registered.");
     registered_ = true;
     return true;
   }
@@ -70,9 +70,9 @@ private:
   bool registered_ = false;
 };
 
-class ExpoCSharpV2InstallerTurboModule final : public facebook::react::TurboModule {
+class ExpoModulesDotnetInstallerTurboModule final : public facebook::react::TurboModule {
 public:
-  explicit ExpoCSharpV2InstallerTurboModule(
+  explicit ExpoModulesDotnetInstallerTurboModule(
     const facebook::react::ObjCTurboModule::InitParams &params)
     : facebook::react::TurboModule(params.moduleName, params.jsInvoker)
   {
@@ -81,10 +81,10 @@ public:
 
 } // namespace
 
-@interface ExpoCSharpV2Installer : NSObject <RCTBridgeModule, RCTTurboModuleWithJSIBindings>
+@interface ExpoModulesDotnetInstaller : NSObject <RCTBridgeModule, RCTTurboModuleWithJSIBindings>
 @end
 
-@implementation ExpoCSharpV2Installer {
+@implementation ExpoModulesDotnetInstaller {
   // The install records own the connector state, not the RN runtime. Releasing
   // this vector invalidates the borrowed runtime holder before the managed ABI
   // handle is released.
@@ -96,7 +96,7 @@ RCT_EXPORT_MODULE()
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
   (const facebook::react::ObjCTurboModule::InitParams &)params
 {
-  return std::make_shared<ExpoCSharpV2InstallerTurboModule>(params);
+  return std::make_shared<ExpoModulesDotnetInstallerTurboModule>(params);
 }
 
 - (void)installJSIBindingsWithRuntime:(facebook::jsi::Runtime &)runtime
