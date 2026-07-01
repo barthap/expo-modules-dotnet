@@ -7,13 +7,15 @@ Pod::Spec.new do |s|
   s.homepage       = 'https://docs.expo.dev/modules/'
   s.platforms      = {
     :ios => '15.1',
-    :tvos => '15.1'
+    :tvos => '15.1',
+    :osx => '14.0'
   }
   s.source         = { git: '' }
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
-  s.vendored_libraries = 'ios/NativeLibs/libExampleModule.dylib'
+  s.ios.vendored_libraries = 'ios/NativeLibs/libExampleModule.dylib'
+  s.tvos.vendored_libraries = 'ios/NativeLibs/libExampleModule.dylib'
   install_modules_dependencies(s)
 
   s.pod_target_xcconfig = {
@@ -24,5 +26,14 @@ Pod::Spec.new do |s|
     ].join(' '),
   }
 
-  s.source_files = 'ios/**/*.{h,m,mm,swift,hpp,cpp}'
+  s.private_header_files = [
+    'native/include/**/*.h',
+    'native/packages/jsi/include/**/*.{h,hpp}',
+  ]
+  s.ios.source_files = 'ios/**/*.{m,mm,swift,cpp}'
+  s.ios.private_header_files = 'ios/**/*.{h,hpp}'
+  s.tvos.source_files = 'ios/**/*.{m,mm,swift,cpp}'
+  s.tvos.private_header_files = 'ios/**/*.{h,hpp}'
+  s.osx.source_files = 'macos/**/*.{m,mm,swift,cpp}'
+  s.osx.private_header_files = 'macos/**/*.{h,hpp}'
 end
