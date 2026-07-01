@@ -9,7 +9,7 @@
 #define EXPO_JSI_MANAGED_CALLTYPE
 #endif
 
-namespace expo::jsi::experiments {
+namespace expo::dotnet::experiments {
 
 using run_proof_fn = int(EXPO_JSI_MANAGED_CALLTYPE *)(const expo_jsi_api *,
                                                       expo_jsi_runtime_handle);
@@ -23,4 +23,4 @@ struct ManagedEntryPoints {
 
 ManagedEntryPoints loadManagedEntryPoints();
 
-} // namespace expo::jsi::experiments
+} // namespace expo::dotnet::experiments

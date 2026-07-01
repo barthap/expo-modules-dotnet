@@ -14,7 +14,7 @@
 namespace {
 
 namespace jsi = facebook::jsi;
-namespace proof = expo::jsi::experiments;
+namespace proof = expo::dotnet::experiments;
 
 struct ReleaseCounter {
   expo_jsi_api api;
@@ -33,7 +33,7 @@ struct CountedStringReleaseContext {
 void counted_release_value(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
 {
   if (active_release_counter == nullptr) {
-    expo::jsi::api()->release_value(runtime, value);
+    expo::dotnet::api()->release_value(runtime, value);
     return;
   }
   if (value != nullptr) {
@@ -143,15 +143,15 @@ int main()
     int rc = 0;
     auto managed = proof::loadManagedEntryPoints();
 
-    expo::jsi::HermesConsoleRuntimeConnector connector;
-    runtime_handle = expo::jsi::createRuntimeHandle(connector);
+    expo::dotnet::HermesConsoleRuntimeConnector connector;
+    runtime_handle = expo::dotnet::createRuntimeHandle(connector);
     if (runtime_handle == nullptr) {
       throw std::runtime_error("Failed to create Expo JSI runtime handle.");
     }
 
     std::cout << "Created Hermes-backed JSI runtime" << std::endl;
 
-    auto release_counter = make_release_counter(expo::jsi::api());
+    auto release_counter = make_release_counter(expo::dotnet::api());
     active_release_counter = &release_counter;
     auto cs = CSharpAPI{managed.register_modules, &release_counter.api, runtime_handle};
 
@@ -176,7 +176,7 @@ int main()
       throw std::runtime_error("Expected exactly four counted string result buffer releases.");
     }
 
-    expo::jsi::releaseRuntimeHandle(runtime_handle);
+    expo::dotnet::releaseRuntimeHandle(runtime_handle);
     runtime_handle = nullptr;
     active_release_counter = nullptr;
     connector.invalidate();
@@ -185,7 +185,7 @@ int main()
     return 0;
   } catch (const std::exception &error) {
     if (runtime_handle != nullptr) {
-      expo::jsi::releaseRuntimeHandle(runtime_handle);
+      expo::dotnet::releaseRuntimeHandle(runtime_handle);
     }
     active_release_counter = nullptr;
     std::cerr << "hermes_console_app failed: " << error.what() << std::endl;

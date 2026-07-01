@@ -12,7 +12,7 @@
 #include "HermesConsoleRuntimeConnector.h"
 
 struct expo_jsi_testhost_runtime_t {
-  expo::jsi::HermesConsoleRuntimeConnector connector;
+  expo::dotnet::HermesConsoleRuntimeConnector connector;
   expo_jsi_runtime_handle runtime = nullptr;
   expo_jsi_api countedApi{};
   const expo_jsi_api *innerApi = nullptr;
@@ -21,6 +21,8 @@ struct expo_jsi_testhost_runtime_t {
 };
 
 namespace {
+
+namespace jsi = facebook::jsi;
 
 thread_local std::string lastErrorMessage;
 
@@ -70,7 +72,7 @@ void countedReleaseValue(expo_jsi_runtime_handle runtime, expo_jsi_value_handle 
   if (testhost != nullptr && value != nullptr) {
     testhost->counters.released_values++;
   }
-  const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
   api->release_value(runtime, value);
 }
 
@@ -80,7 +82,7 @@ void countedReleasePromise(expo_jsi_runtime_handle runtime, expo_jsi_promise_han
   if (testhost != nullptr && promise != nullptr) {
     testhost->counters.released_promises++;
   }
-  const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
   api->release_promise(runtime, promise);
 }
 
@@ -106,7 +108,7 @@ expo_jsi_string_result countedGetString(expo_jsi_runtime_handle runtime,
                                         expo_jsi_value_handle value)
 {
   auto *testhost = runtimeFor(runtime);
-  const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
   auto result = api->get_string(runtime, value);
   if (result.ok == 0 || result.release == nullptr) {
     return result;
@@ -152,7 +154,7 @@ expo_jsi_error countedScheduleTask(expo_jsi_runtime_handle runtime,
                                    expo_jsi_release_task_context_fn releaseTaskContext)
 {
   auto *testhost = runtimeFor(runtime);
-  const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
   auto *countedContext =
     new CountedTaskContext{testhost, callback, taskContext, releaseTaskContext};
   // runtime_schedule_task owns countedContext after this call, including error
@@ -168,7 +170,7 @@ uint8_t countedCanExecuteSync(expo_jsi_runtime_handle runtime)
   if (testhost != nullptr && !testhost->syncExecutionSupported) {
     return 0;
   }
-  const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
   return api->runtime_can_execute_sync(runtime);
 }
 
@@ -181,7 +183,7 @@ expo_jsi_error countedExecuteSync(expo_jsi_runtime_handle runtime,
   if (testhost != nullptr) {
     testhost->counters.sync_execute_calls++;
   }
-  const auto *api = testhost != nullptr ? testhost->innerApi : expo::jsi::api();
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
   auto *countedContext =
     new CountedTaskContext{testhost, callback, taskContext, releaseTaskContext};
   // runtime_execute_sync owns countedContext after this call. In particular,
@@ -193,7 +195,7 @@ expo_jsi_error countedExecuteSync(expo_jsi_runtime_handle runtime,
 
 const expo_jsi_api *makeCountedApi(expo_jsi_testhost_runtime_t &runtime)
 {
-  runtime.innerApi = expo::jsi::api();
+  runtime.innerApi = expo::dotnet::api();
   runtime.countedApi = *runtime.innerApi;
   runtime.countedApi.release_value = countedReleaseValue;
   runtime.countedApi.release_promise = countedReleasePromise;
@@ -206,26 +208,24 @@ const expo_jsi_api *makeCountedApi(expo_jsi_testhost_runtime_t &runtime)
 
 void installQueueMicrotask(expo_jsi_testhost_runtime_t &testhost)
 {
-  testhost.connector.runtimeExecutor().executeSync([](facebook::jsi::Runtime &runtime) {
-    auto queueMicrotask = facebook::jsi::Function::createFromHostFunction(
+  testhost.connector.runtimeExecutor().executeSync([](jsi::Runtime &runtime) {
+    auto queueMicrotask = jsi::Function::createFromHostFunction(
       runtime,
-      facebook::jsi::PropNameID::forAscii(runtime, "queueMicrotask"),
+      jsi::PropNameID::forAscii(runtime, "queueMicrotask"),
       1,
-      [](facebook::jsi::Runtime &runtime,
-         const facebook::jsi::Value &,
-         const facebook::jsi::Value *arguments,
-         size_t count) -> facebook::jsi::Value {
+      [](jsi::Runtime &runtime, const jsi::Value &, const jsi::Value *arguments, size_t count)
+        -> jsi::Value {
         if (count < 1 || !arguments[0].isObject()) {
-          throw facebook::jsi::JSError(runtime, "queueMicrotask expects a function.");
+          throw jsi::JSError(runtime, "queueMicrotask expects a function.");
         }
 
         auto callbackObject = arguments[0].asObject(runtime);
         if (!callbackObject.isFunction(runtime)) {
-          throw facebook::jsi::JSError(runtime, "queueMicrotask expects a function.");
+          throw jsi::JSError(runtime, "queueMicrotask expects a function.");
         }
 
         runtime.queueMicrotask(callbackObject.asFunction(runtime));
-        return facebook::jsi::Value::undefined();
+        return jsi::Value::undefined();
       });
 
     runtime.global().setProperty(runtime, "queueMicrotask", queueMicrotask);
@@ -238,7 +238,7 @@ extern "C" expo_jsi_testhost_create_result expo_jsi_testhost_create_runtime(void
 {
   try {
     auto *testhost = new expo_jsi_testhost_runtime_t();
-    testhost->runtime = expo::jsi::createRuntimeHandle(testhost->connector);
+    testhost->runtime = expo::dotnet::createRuntimeHandle(testhost->connector);
     if (testhost->runtime == nullptr) {
       delete testhost;
       return expo_jsi_testhost_create_result{
@@ -302,17 +302,16 @@ extern "C" expo_jsi_value_result expo_jsi_testhost_evaluate_script(
                                static_cast<size_t>(sourceUrlLength));
 
     expo_jsi_value_result result{};
-    testhost->connector.runtimeExecutor().executeSync([&](facebook::jsi::Runtime &runtime) {
-      auto value =
-        runtime.evaluateJavaScript(std::make_unique<facebook::jsi::StringBuffer>(script), url);
+    testhost->connector.runtimeExecutor().executeSync([&](jsi::Runtime &runtime) {
+      auto value = runtime.evaluateJavaScript(std::make_unique<jsi::StringBuffer>(script), url);
       result = expo_jsi_value_result{
         1,
-        expo::jsi::createOwnedValueHandle(std::move(value)),
+        expo::dotnet::createOwnedValueHandle(std::move(value)),
         expo_jsi_error{0, nullptr, 0},
       };
     });
     return result;
-  } catch (const facebook::jsi::JSError &error) {
+  } catch (const jsi::JSError &error) {
     return makeErrorResult(6, error.what());
   } catch (const std::exception &error) {
     return makeErrorResult(7, error.what());
@@ -353,7 +352,14 @@ extern "C" expo_jsi_error expo_jsi_testhost_wait_until_idle(
   if (testhost == nullptr) {
     return makeError(9, "Testhost runtime is null.");
   }
-  return testhost->innerApi->runtime_drain_tasks(testhost->runtime);
+  try {
+    testhost->connector.waitUntilIdle();
+    return expo_jsi_error{0, nullptr, 0};
+  } catch (const std::exception &ex) {
+    return makeError(10, ex.what());
+  } catch (...) {
+    return makeError(11, "Unknown native exception while waiting for Hermes runtime idle.");
+  }
 }
 
 extern "C" void expo_jsi_testhost_set_sync_execution_supported(
@@ -372,7 +378,7 @@ extern "C" void expo_jsi_testhost_release_runtime(expo_jsi_testhost_runtime_hand
     return;
   }
   unregisterRuntimeForCounters(testhost->runtime);
-  expo::jsi::releaseRuntimeHandle(testhost->runtime);
+  expo::dotnet::releaseRuntimeHandle(testhost->runtime);
   testhost->runtime = nullptr;
   testhost->connector.invalidate();
   delete testhost;

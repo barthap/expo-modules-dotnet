@@ -10,7 +10,7 @@
 
 #include "JsiRuntimeConnector.h"
 
-namespace expo::jsi {
+namespace expo::dotnet {
 
 class RuntimeHandle final {
 public:
@@ -19,7 +19,7 @@ public:
   {
   }
 
-  facebook::jsi::Runtime &runtime()
+  jsi::Runtime &runtime()
   {
     if (connector_ == nullptr || !connector_->isRuntimeValid()) {
       throw std::runtime_error("Runtime connector is invalid.");
@@ -46,24 +46,23 @@ private:
 
 class ValueHandle final {
 public:
-  static std::unique_ptr<ValueHandle> owned(facebook::jsi::Value value)
+  static std::unique_ptr<ValueHandle> owned(jsi::Value value)
   {
     return std::unique_ptr<ValueHandle>(
-      new ValueHandle(std::make_unique<facebook::jsi::Value>(std::move(value))));
+      new ValueHandle(std::make_unique<jsi::Value>(std::move(value))));
   }
 
-  static std::unique_ptr<ValueHandle> borrowed(const facebook::jsi::Value &value)
+  static std::unique_ptr<ValueHandle> borrowed(const jsi::Value &value)
   {
     return std::unique_ptr<ValueHandle>(new ValueHandle(&value));
   }
 
-  facebook::jsi::Value &value()
+  jsi::Value &value()
   {
-    return ownedValue_ != nullptr ? *ownedValue_
-                                  : *const_cast<facebook::jsi::Value *>(borrowedValue_);
+    return ownedValue_ != nullptr ? *ownedValue_ : *const_cast<jsi::Value *>(borrowedValue_);
   }
 
-  const facebook::jsi::Value &value() const
+  const jsi::Value &value() const
   {
     return ownedValue_ != nullptr ? *ownedValue_ : *borrowedValue_;
   }
@@ -74,36 +73,36 @@ public:
   }
 
 private:
-  explicit ValueHandle(std::unique_ptr<facebook::jsi::Value> value)
+  explicit ValueHandle(std::unique_ptr<jsi::Value> value)
     : ownedValue_(std::move(value))
   {
   }
 
-  explicit ValueHandle(const facebook::jsi::Value *value)
+  explicit ValueHandle(const jsi::Value *value)
     : borrowedValue_(value)
   {
   }
 
-  std::unique_ptr<facebook::jsi::Value> ownedValue_;
-  const facebook::jsi::Value *borrowedValue_ = nullptr;
+  std::unique_ptr<jsi::Value> ownedValue_;
+  const jsi::Value *borrowedValue_ = nullptr;
 };
 
 class PromiseHandle final {
 public:
-  static std::unique_ptr<PromiseHandle> owned(facebook::jsi::Object promise,
-                                              facebook::jsi::Function resolve,
-                                              facebook::jsi::Function reject)
+  static std::unique_ptr<PromiseHandle> owned(jsi::Object promise,
+                                              jsi::Function resolve,
+                                              jsi::Function reject)
   {
     return std::unique_ptr<PromiseHandle>(
       new PromiseHandle(std::move(promise), std::move(resolve), std::move(reject)));
   }
 
-  facebook::jsi::Object &promise()
+  jsi::Object &promise()
   {
     return *promise_;
   }
 
-  void resolve(facebook::jsi::Runtime &runtime, const facebook::jsi::Value &value)
+  void resolve(jsi::Runtime &runtime, const jsi::Value &value)
   {
     if (settled_ || !resolve_.has_value()) {
       return;
@@ -115,7 +114,7 @@ public:
     reject_.reset();
   }
 
-  void reject(facebook::jsi::Runtime &runtime, const facebook::jsi::Value &value)
+  void reject(jsi::Runtime &runtime, const jsi::Value &value)
   {
     if (settled_ || !reject_.has_value()) {
       return;
@@ -128,24 +127,22 @@ public:
   }
 
 private:
-  PromiseHandle(facebook::jsi::Object promise,
-                facebook::jsi::Function resolve,
-                facebook::jsi::Function reject)
-    : promise_(std::make_unique<facebook::jsi::Object>(std::move(promise))),
+  PromiseHandle(jsi::Object promise, jsi::Function resolve, jsi::Function reject)
+    : promise_(std::make_unique<jsi::Object>(std::move(promise))),
       resolve_(std::move(resolve)),
       reject_(std::move(reject))
   {
   }
 
-  std::unique_ptr<facebook::jsi::Object> promise_;
-  std::optional<facebook::jsi::Function> resolve_;
-  std::optional<facebook::jsi::Function> reject_;
+  std::unique_ptr<jsi::Object> promise_;
+  std::optional<jsi::Function> resolve_;
+  std::optional<jsi::Function> reject_;
   bool settled_ = false;
 };
 
 class ArgumentsHandle final {
 public:
-  ArgumentsHandle(const facebook::jsi::Value *arguments, size_t count)
+  ArgumentsHandle(const jsi::Value *arguments, size_t count)
     : arguments_(arguments),
       count_(count)
   {
@@ -156,7 +153,7 @@ public:
     return count_;
   }
 
-  const facebook::jsi::Value &at(size_t index) const
+  const jsi::Value &at(size_t index) const
   {
     if (index >= count_) {
       throw std::out_of_range("Argument index is out of range.");
@@ -173,16 +170,18 @@ public:
   }
 
 private:
-  const facebook::jsi::Value *arguments_;
+  const jsi::Value *arguments_;
   size_t count_;
   std::vector<std::unique_ptr<ValueHandle>> borrowedValues_;
 };
 
-} // namespace expo::jsi
+} // namespace expo::dotnet
 
 namespace {
 
-constexpr uint32_t kApiVersion = 11;
+namespace jsi = facebook::jsi;
+
+constexpr uint32_t kApiVersion = 12;
 thread_local std::string lastErrorMessage;
 
 struct StringResultBuffer {
@@ -209,20 +208,20 @@ expo_jsi_error makeOk()
   return expo_jsi_error{0, nullptr, 0};
 }
 
-expo::jsi::JsiRuntimeTaskPriority toRuntimeTaskPriority(expo_jsi_task_priority priority)
+expo::dotnet::JsiRuntimeTaskPriority toRuntimeTaskPriority(expo_jsi_task_priority priority)
 {
   switch (priority) {
   case EXPO_JSI_TASK_IMMEDIATE:
-    return expo::jsi::JsiRuntimeTaskPriority::Immediate;
+    return expo::dotnet::JsiRuntimeTaskPriority::Immediate;
   case EXPO_JSI_TASK_USER_BLOCKING:
-    return expo::jsi::JsiRuntimeTaskPriority::UserBlocking;
+    return expo::dotnet::JsiRuntimeTaskPriority::UserBlocking;
   case EXPO_JSI_TASK_LOW:
-    return expo::jsi::JsiRuntimeTaskPriority::Low;
+    return expo::dotnet::JsiRuntimeTaskPriority::Low;
   case EXPO_JSI_TASK_IDLE:
-    return expo::jsi::JsiRuntimeTaskPriority::Idle;
+    return expo::dotnet::JsiRuntimeTaskPriority::Idle;
   case EXPO_JSI_TASK_NORMAL:
   default:
-    return expo::jsi::JsiRuntimeTaskPriority::Normal;
+    return expo::dotnet::JsiRuntimeTaskPriority::Normal;
   }
 }
 
@@ -327,7 +326,8 @@ bool isValidUtf8(const uint8_t *data, int32_t length)
   return true;
 }
 
-expo::jsi::RuntimeHandle *tryRuntimeHandle(expo_jsi_runtime_handle runtime, expo_jsi_error *error)
+expo::dotnet::RuntimeHandle *tryRuntimeHandle(expo_jsi_runtime_handle runtime,
+                                              expo_jsi_error *error)
 {
   auto *handle = runtime;
   if (handle == nullptr) {
@@ -343,8 +343,8 @@ expo::jsi::RuntimeHandle *tryRuntimeHandle(expo_jsi_runtime_handle runtime, expo
   return handle;
 }
 
-expo::jsi::RuntimeHandle *tryRuntimeHandleWithoutAccess(expo_jsi_runtime_handle runtime,
-                                                        expo_jsi_error *error)
+expo::dotnet::RuntimeHandle *tryRuntimeHandleWithoutAccess(expo_jsi_runtime_handle runtime,
+                                                           expo_jsi_error *error)
 {
   auto *handle = runtime;
   if (handle == nullptr) {
@@ -358,7 +358,7 @@ expo::jsi::RuntimeHandle *tryRuntimeHandleWithoutAccess(expo_jsi_runtime_handle 
   return handle;
 }
 
-expo_jsi_value_result makeValueResult(std::unique_ptr<expo::jsi::ValueHandle> value)
+expo_jsi_value_result makeValueResult(std::unique_ptr<expo::dotnet::ValueHandle> value)
 {
   return expo_jsi_value_result{
     1,
@@ -376,7 +376,7 @@ expo_jsi_value_result makeBorrowedValueResult(expo_jsi_value_handle value)
   };
 }
 
-expo_jsi_promise_result makePromiseResult(std::unique_ptr<expo::jsi::PromiseHandle> promise)
+expo_jsi_promise_result makePromiseResult(std::unique_ptr<expo::dotnet::PromiseHandle> promise)
 {
   return expo_jsi_promise_result{
     1,
@@ -417,7 +417,7 @@ expo_jsi_string_result makeStringErrorResult(int32_t code, const char *message)
   return expo_jsi_string_result{0, nullptr, 0, nullptr, nullptr, makeError(code, message)};
 }
 
-facebook::jsi::Object checkedObject(facebook::jsi::Runtime &runtime, expo_jsi_value_handle value)
+jsi::Object checkedObject(jsi::Runtime &runtime, expo_jsi_value_handle value)
 {
   if (value == nullptr) {
     throw std::invalid_argument("Value handle is null.");
@@ -428,7 +428,7 @@ facebook::jsi::Object checkedObject(facebook::jsi::Runtime &runtime, expo_jsi_va
   return value->value().asObject(runtime);
 }
 
-facebook::jsi::Array checkedArray(facebook::jsi::Runtime &runtime, expo_jsi_value_handle value)
+jsi::Array checkedArray(jsi::Runtime &runtime, expo_jsi_value_handle value)
 {
   if (value == nullptr) {
     throw std::invalid_argument("Value handle is null.");
@@ -443,8 +443,7 @@ facebook::jsi::Array checkedArray(facebook::jsi::Runtime &runtime, expo_jsi_valu
   return object.asArray(runtime);
 }
 
-facebook::jsi::Function checkedFunction(facebook::jsi::Runtime &runtime,
-                                        expo_jsi_value_handle value)
+jsi::Function checkedFunction(jsi::Runtime &runtime, expo_jsi_value_handle value)
 {
   if (value == nullptr) {
     throw std::invalid_argument("Value handle is null.");
@@ -467,7 +466,7 @@ expo_jsi_value_result createNumber(expo_jsi_runtime_handle runtime, double numbe
   }
 
   try {
-    return makeValueResult(expo::jsi::ValueHandle::owned(facebook::jsi::Value(number)));
+    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(number)));
   } catch (const std::exception &ex) {
     return makeErrorResult(3, ex.what());
   } catch (...) {
@@ -483,7 +482,7 @@ expo_jsi_value_result createBool(expo_jsi_runtime_handle runtime, uint8_t value)
   }
 
   try {
-    return makeValueResult(expo::jsi::ValueHandle::owned(facebook::jsi::Value(value != 0)));
+    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(value != 0)));
   } catch (const std::exception &ex) {
     return makeErrorResult(12, ex.what());
   } catch (...) {
@@ -506,11 +505,11 @@ expo_jsi_value_result createString(expo_jsi_runtime_handle runtime,
 
   try {
     const char *text = length == 0 ? "" : reinterpret_cast<const char *>(data);
-    auto value = facebook::jsi::Value(
-      runtimeHandle->runtime(),
-      facebook::jsi::String::createFromUtf8(runtimeHandle->runtime(),
-                                            std::string(text, static_cast<size_t>(length))));
-    return makeValueResult(expo::jsi::ValueHandle::owned(std::move(value)));
+    auto value =
+      jsi::Value(runtimeHandle->runtime(),
+                 jsi::String::createFromUtf8(runtimeHandle->runtime(),
+                                             std::string(text, static_cast<size_t>(length))));
+    return makeValueResult(expo::dotnet::ValueHandle::owned(std::move(value)));
   } catch (const std::exception &ex) {
     return makeErrorResult(43, ex.what());
   } catch (...) {
@@ -531,8 +530,7 @@ expo_jsi_value_result cloneValue(expo_jsi_runtime_handle runtime, expo_jsi_value
 
   try {
     auto &jsRuntime = runtimeHandle->runtime();
-    return makeValueResult(
-      expo::jsi::ValueHandle::owned(facebook::jsi::Value(jsRuntime, value->value())));
+    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, value->value())));
   } catch (const std::exception &ex) {
     return makeErrorResult(102, ex.what());
   } catch (...) {
@@ -555,10 +553,10 @@ expo_jsi_value_result createError(expo_jsi_runtime_handle runtime,
 
   try {
     const char *text = messageLength == 0 ? "" : reinterpret_cast<const char *>(message);
-    auto jsError = facebook::jsi::JSError(runtimeHandle->runtime(),
-                                          std::string(text, static_cast<size_t>(messageLength)));
-    return makeValueResult(expo::jsi::ValueHandle::owned(
-      facebook::jsi::Value(runtimeHandle->runtime(), jsError.value())));
+    auto jsError =
+      jsi::JSError(runtimeHandle->runtime(), std::string(text, static_cast<size_t>(messageLength)));
+    return makeValueResult(
+      expo::dotnet::ValueHandle::owned(jsi::Value(runtimeHandle->runtime(), jsError.value())));
   } catch (const std::exception &ex) {
     return makeErrorResult(105, ex.what());
   } catch (...) {
@@ -735,7 +733,7 @@ expo_jsi_value_result getGlobalObject(expo_jsi_runtime_handle runtime)
   try {
     auto &jsRuntime = runtimeHandle->runtime();
     return makeValueResult(
-      expo::jsi::ValueHandle::owned(facebook::jsi::Value(jsRuntime, jsRuntime.global())));
+      expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, jsRuntime.global())));
   } catch (const std::exception &ex) {
     return makeErrorResult(14, ex.what());
   } catch (...) {
@@ -753,8 +751,8 @@ expo_jsi_value_result createObject(expo_jsi_runtime_handle runtime)
 
   try {
     auto &jsRuntime = runtimeHandle->runtime();
-    return makeValueResult(expo::jsi::ValueHandle::owned(
-      facebook::jsi::Value(jsRuntime, facebook::jsi::Object(jsRuntime))));
+    return makeValueResult(
+      expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, jsi::Object(jsRuntime))));
   } catch (const std::exception &ex) {
     return makeErrorResult(16, ex.what());
   } catch (...) {
@@ -791,8 +789,7 @@ expo_jsi_value_result valueRetainAs(expo_jsi_runtime_handle runtime,
       return makeErrorResult(39, "Unknown value expectation.");
     }
 
-    return makeValueResult(
-      expo::jsi::ValueHandle::owned(facebook::jsi::Value(jsRuntime, value->value())));
+    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, value->value())));
   } catch (const std::exception &ex) {
     return makeErrorResult(40, ex.what());
   } catch (...) {
@@ -810,8 +807,8 @@ expo_jsi_value_result createArray(expo_jsi_runtime_handle runtime, uint32_t leng
 
   try {
     auto &jsRuntime = runtimeHandle->runtime();
-    auto array = facebook::jsi::Array(jsRuntime, length);
-    return makeValueResult(expo::jsi::ValueHandle::owned(facebook::jsi::Value(jsRuntime, array)));
+    auto array = jsi::Array(jsRuntime, length);
+    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, array)));
   } catch (const std::exception &ex) {
     return makeErrorResult(63, ex.what());
   } catch (...) {
@@ -863,7 +860,7 @@ expo_jsi_value_result arrayGetValueAtIndex(expo_jsi_runtime_handle runtime,
     auto &jsRuntime = runtimeHandle->runtime();
     auto jsArray = checkedArray(jsRuntime, array);
     return makeValueResult(
-      expo::jsi::ValueHandle::owned(jsArray.getValueAtIndex(jsRuntime, index)));
+      expo::dotnet::ValueHandle::owned(jsArray.getValueAtIndex(jsRuntime, index)));
   } catch (const std::exception &ex) {
     return makeErrorResult(80, ex.what());
   } catch (...) {
@@ -909,30 +906,30 @@ expo_jsi_promise_result createPromise(expo_jsi_runtime_handle runtime)
 
   try {
     auto &jsRuntime = runtimeHandle->runtime();
-    std::optional<facebook::jsi::Function> resolveFunction;
-    std::optional<facebook::jsi::Function> rejectFunction;
+    std::optional<jsi::Function> resolveFunction;
+    std::optional<jsi::Function> rejectFunction;
 
-    auto setup = facebook::jsi::Function::createFromHostFunction(
+    auto setup = jsi::Function::createFromHostFunction(
       jsRuntime,
-      facebook::jsi::PropNameID::forAscii(jsRuntime, "promiseExecutor"),
+      jsi::PropNameID::forAscii(jsRuntime, "promiseExecutor"),
       2,
-      [&resolveFunction, &rejectFunction](facebook::jsi::Runtime &runtime,
-                                          const facebook::jsi::Value &,
-                                          const facebook::jsi::Value *arguments,
-                                          size_t count) -> facebook::jsi::Value {
+      [&resolveFunction, &rejectFunction](jsi::Runtime &runtime,
+                                          const jsi::Value &,
+                                          const jsi::Value *arguments,
+                                          size_t count) -> jsi::Value {
         if (count < 2 || !arguments[0].isObject() || !arguments[1].isObject()) {
-          throw facebook::jsi::JSError(runtime, "Promise executor expected resolve and reject.");
+          throw jsi::JSError(runtime, "Promise executor expected resolve and reject.");
         }
 
         auto resolveObject = arguments[0].asObject(runtime);
         auto rejectObject = arguments[1].asObject(runtime);
         if (!resolveObject.isFunction(runtime) || !rejectObject.isFunction(runtime)) {
-          throw facebook::jsi::JSError(runtime, "Promise executor arguments must be functions.");
+          throw jsi::JSError(runtime, "Promise executor arguments must be functions.");
         }
 
         resolveFunction = resolveObject.asFunction(runtime);
         rejectFunction = rejectObject.asFunction(runtime);
-        return facebook::jsi::Value::undefined();
+        return jsi::Value::undefined();
       });
 
     auto promiseConstructor = jsRuntime.global().getPropertyAsFunction(jsRuntime, "Promise");
@@ -941,7 +938,7 @@ expo_jsi_promise_result createPromise(expo_jsi_runtime_handle runtime)
       return makePromiseErrorResult(85, "Failed to create JavaScript promise.");
     }
 
-    return makePromiseResult(expo::jsi::PromiseHandle::owned(
+    return makePromiseResult(expo::dotnet::PromiseHandle::owned(
       promiseValue.asObject(jsRuntime), std::move(*resolveFunction), std::move(*rejectFunction)));
   } catch (const std::exception &ex) {
     return makePromiseErrorResult(86, ex.what());
@@ -963,8 +960,8 @@ expo_jsi_value_result promiseAsValue(expo_jsi_runtime_handle runtime,
   }
 
   try {
-    return makeValueResult(expo::jsi::ValueHandle::owned(
-      facebook::jsi::Value(runtimeHandle->runtime(), promise->promise())));
+    return makeValueResult(
+      expo::dotnet::ValueHandle::owned(jsi::Value(runtimeHandle->runtime(), promise->promise())));
   } catch (const std::exception &ex) {
     return makeErrorResult(89, ex.what());
   } catch (...) {
@@ -1084,7 +1081,7 @@ expo_jsi_error objectSetProperty(expo_jsi_runtime_handle runtime,
 
   try {
     auto &jsRuntime = runtimeHandle->runtime();
-    auto propertyName = facebook::jsi::PropNameID::forUtf8(
+    auto propertyName = jsi::PropNameID::forUtf8(
       jsRuntime, reinterpret_cast<const uint8_t *>(name), static_cast<size_t>(name_len));
     auto jsObject = checkedObject(jsRuntime, object);
     jsObject.setProperty(jsRuntime, propertyName, value->value());
@@ -1114,11 +1111,11 @@ expo_jsi_value_result objectGetProperty(expo_jsi_runtime_handle runtime,
 
   try {
     auto &jsRuntime = runtimeHandle->runtime();
-    auto propertyName = facebook::jsi::PropNameID::forUtf8(
+    auto propertyName = jsi::PropNameID::forUtf8(
       jsRuntime, reinterpret_cast<const uint8_t *>(name), static_cast<size_t>(name_len));
     auto jsObject = checkedObject(jsRuntime, object);
     return makeValueResult(
-      expo::jsi::ValueHandle::owned(jsObject.getProperty(jsRuntime, propertyName)));
+      expo::dotnet::ValueHandle::owned(jsObject.getProperty(jsRuntime, propertyName)));
   } catch (const std::exception &ex) {
     return makeErrorResult(52, ex.what());
   } catch (...) {
@@ -1246,28 +1243,28 @@ expo_jsi_value_result createHostFunction(
     auto context = std::make_shared<HostFunctionContext>(
       callback, callback_context, release_callback_context, runtime);
 
-    auto function = facebook::jsi::Function::createFromHostFunction(
+    auto function = jsi::Function::createFromHostFunction(
       jsRuntime,
-      facebook::jsi::PropNameID::forUtf8(jsRuntime, functionName),
+      jsi::PropNameID::forUtf8(jsRuntime, functionName),
       parameter_count,
-      [context](facebook::jsi::Runtime &jsRuntime,
-                const facebook::jsi::Value &thisValue,
-                const facebook::jsi::Value *arguments,
-                size_t count) -> facebook::jsi::Value {
-        auto thisHandle = expo::jsi::ValueHandle::borrowed(thisValue);
-        auto argumentsHandle = expo::jsi::ArgumentsHandle(arguments, count);
+      [context](jsi::Runtime &jsRuntime,
+                const jsi::Value &thisValue,
+                const jsi::Value *arguments,
+                size_t count) -> jsi::Value {
+        auto thisHandle = expo::dotnet::ValueHandle::borrowed(thisValue);
+        auto argumentsHandle = expo::dotnet::ArgumentsHandle(arguments, count);
         expo_jsi_value_result result{};
         try {
           result = context->call(thisHandle.get(), &argumentsHandle);
           if (result.ok == 0 || result.value == nullptr) {
             const char *message = result.error.message != nullptr ? result.error.message
                                                                   : "Managed host function failed.";
-            throw facebook::jsi::JSError(jsRuntime, message);
+            throw jsi::JSError(jsRuntime, message);
           }
-          auto jsResult = facebook::jsi::Value(jsRuntime, result.value->value());
+          auto jsResult = jsi::Value(jsRuntime, result.value->value());
           delete result.value;
           return jsResult;
-        } catch (const facebook::jsi::JSError &) {
+        } catch (const jsi::JSError &) {
           if (result.value != nullptr) {
             delete result.value;
           }
@@ -1276,12 +1273,11 @@ expo_jsi_value_result createHostFunction(
           if (result.value != nullptr) {
             delete result.value;
           }
-          throw facebook::jsi::JSError(jsRuntime, ex.what());
+          throw jsi::JSError(jsRuntime, ex.what());
         }
       });
 
-    return makeValueResult(
-      expo::jsi::ValueHandle::owned(facebook::jsi::Value(jsRuntime, function)));
+    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, function)));
   } catch (const std::exception &ex) {
     return makeErrorResult(29, ex.what());
   } catch (...) {
@@ -1360,8 +1356,8 @@ expo_jsi_error scheduleTask(expo_jsi_runtime_handle runtime,
       return error;
     }
 
-    runtimeHandle->runtimeExecutor().executeAsync(
-      toRuntimeTaskPriority(priority), [task](facebook::jsi::Runtime &) { task->invoke(); });
+    runtimeHandle->runtimeExecutor().executeAsync(toRuntimeTaskPriority(priority),
+                                                  [task](jsi::Runtime &) { task->invoke(); });
     return makeOk();
   } catch (const std::exception &ex) {
     return makeError(55, ex.what());
@@ -1403,31 +1399,12 @@ expo_jsi_error executeSync(expo_jsi_runtime_handle runtime,
       return makeError(58, "Synchronous runtime execution is not supported.");
     }
 
-    runtimeHandle->runtimeExecutor().executeSync(
-      [task](facebook::jsi::Runtime &) { task->invoke(); });
+    runtimeHandle->runtimeExecutor().executeSync([task](jsi::Runtime &) { task->invoke(); });
     return makeOk();
   } catch (const std::exception &ex) {
     return makeError(59, ex.what());
   } catch (...) {
     return makeError(60, "Unknown native exception while executing runtime task.");
-  }
-}
-
-expo_jsi_error drainTasks(expo_jsi_runtime_handle runtime)
-{
-  expo_jsi_error error{};
-  auto *runtimeHandle = tryRuntimeHandleWithoutAccess(runtime, &error);
-  if (runtimeHandle == nullptr) {
-    return error;
-  }
-
-  try {
-    runtimeHandle->runtimeExecutor().drain();
-    return makeOk();
-  } catch (const std::exception &ex) {
-    return makeError(61, ex.what());
-  } catch (...) {
-    return makeError(62, "Unknown native exception while draining runtime tasks.");
   }
 }
 
@@ -1463,7 +1440,6 @@ const expo_jsi_api kApi{
   scheduleTask,
   canExecuteSync,
   executeSync,
-  drainTasks,
   isPromise,
   isError,
   coerceToString,
@@ -1471,7 +1447,7 @@ const expo_jsi_api kApi{
 
 } // namespace
 
-namespace expo::jsi {
+namespace expo::dotnet {
 
 expo_jsi_runtime_handle createRuntimeHandle(JsiRuntimeConnector &connector)
 {
@@ -1483,7 +1459,7 @@ void releaseRuntimeHandle(expo_jsi_runtime_handle runtime)
   delete runtime;
 }
 
-expo_jsi_value_handle createOwnedValueHandle(facebook::jsi::Value value)
+expo_jsi_value_handle createOwnedValueHandle(jsi::Value value)
 {
   return ValueHandle::owned(std::move(value)).release();
 }
@@ -1493,4 +1469,4 @@ const expo_jsi_api *api()
   return &kApi;
 }
 
-} // namespace expo::jsi
+} // namespace expo::dotnet

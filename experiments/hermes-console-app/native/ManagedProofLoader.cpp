@@ -17,7 +17,7 @@
 #define EXPO_JSI_MANAGED_CONFIGURATION "Debug"
 #endif
 
-namespace expo::jsi::experiments {
+namespace expo::dotnet::experiments {
 namespace {
 
 #if EXPO_JSI_USE_HOSTFXR
@@ -200,4 +200,4 @@ ManagedEntryPoints loadManagedEntryPoints()
 #endif
 }
 
-} // namespace expo::jsi::experiments
+} // namespace expo::dotnet::experiments

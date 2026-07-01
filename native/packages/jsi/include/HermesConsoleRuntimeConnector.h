@@ -14,7 +14,12 @@
 
 #include "JsiRuntimeConnector.h"
 
-namespace expo::jsi {
+namespace expo::dotnet {
+
+#ifndef EXPO_DOTNET_JSI_NAMESPACE_ALIAS
+#define EXPO_DOTNET_JSI_NAMESPACE_ALIAS
+namespace jsi = facebook::jsi;
+#endif
 
 class HermesConsoleRuntimeConnector;
 
@@ -26,7 +31,7 @@ public:
   // Returns the Hermes runtime for code that is already running on the executor
   // thread. This is an assertion boundary: non-executor callers must enter
   // through executeAsync/executeSync instead of borrowing runtime access.
-  facebook::jsi::Runtime &runtime();
+  jsi::Runtime &runtime();
 
   // Passive lifecycle check used by ABI validation paths that must not touch
   // Hermes from the caller thread.
@@ -38,9 +43,10 @@ public:
 
   // Enqueues work for the executor thread and returns after the queue accepts
   // it. The callback always runs on the executor thread; callers that need
-  // completion should wait on the managed Task or drain the loop.
+  // completion should wait on the managed Task or, in the Hermes console test
+  // host, wait until the loop is idle.
   void executeAsync(JsiRuntimeTaskPriority priority,
-                    std::function<void(facebook::jsi::Runtime &)> work) noexcept override;
+                    std::function<void(jsi::Runtime &)> work) noexcept override;
 
   // A passive capability answer. This must not probe by calling executeSync,
   // because probes can deadlock if the caller already holds a required lock.
@@ -49,11 +55,11 @@ public:
   // Provides synchronous runtime access. Executor-thread callers run inline;
   // other callers enqueue an Immediate task and block until that queued task
   // either finishes, throws, or is cancelled by shutdown.
-  void executeSync(std::function<void(facebook::jsi::Runtime &)> work) override;
+  void executeSync(std::function<void(jsi::Runtime &)> work) override;
 
   // Waits for the loop to become idle. It does not manually execute queued
   // work on the caller thread; the executor thread remains the only runner.
-  void drain() override;
+  void waitUntilIdle();
 
   // Transitions the loop to Stopping, releases queued-but-not-running work, and
   // joins the executor thread after any active task finishes.
@@ -81,7 +87,7 @@ private:
   struct QueuedTask {
     JsiRuntimeTaskPriority priority;
     uint64_t sequence;
-    std::function<void(facebook::jsi::Runtime &)> work;
+    std::function<void(jsi::Runtime &)> work;
     std::shared_ptr<SyncResult> syncResult;
   };
 
@@ -95,7 +101,7 @@ private:
 
   // Runs a callback with executor-owned runtime access. This is local-only to
   // the executor thread; external callers must use executeAsync/executeSync.
-  void runTask(std::function<void(facebook::jsi::Runtime &)> work);
+  void runTask(std::function<void(jsi::Runtime &)> work);
 
   // Performs the host microtask checkpoint for the current runtime task.
   void drainMicrotasks();
@@ -115,7 +121,7 @@ private:
   std::condition_variable idleChanged_;
   std::deque<QueuedTask> queue_;
   std::thread runtimeThread_;
-  std::unique_ptr<facebook::jsi::Runtime> runtime_;
+  std::unique_ptr<jsi::Runtime> runtime_;
   std::thread::id runtimeThreadId_;
   uint64_t nextSequence_ = 0;
   // Counts executor-thread callbacks that have been popped from the queue but
@@ -133,9 +139,10 @@ public:
   HermesConsoleRuntimeConnector();
   ~HermesConsoleRuntimeConnector() override;
 
-  facebook::jsi::Runtime &runtime() override;
+  jsi::Runtime &runtime() override;
   JsiRuntimeExecutor &runtimeExecutor() override;
   bool isRuntimeValid() const override;
+  void waitUntilIdle();
   void invalidate() override;
 
 private:
@@ -144,4 +151,4 @@ private:
   HermesConsoleRuntimeExecutor runtimeExecutor_;
 };
 
-} // namespace expo::jsi
+} // namespace expo::dotnet

@@ -3,17 +3,17 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-namespace expo::jsi {
+namespace expo::dotnet {
 class RuntimeHandle;
 class ValueHandle;
 class PromiseHandle;
 class ArgumentsHandle;
-} // namespace expo::jsi
+} // namespace expo::dotnet
 
-using expo_jsi_runtime_t = expo::jsi::RuntimeHandle;
-using expo_jsi_value_t = expo::jsi::ValueHandle;
-using expo_jsi_promise_t = expo::jsi::PromiseHandle;
-using expo_jsi_arguments_t = expo::jsi::ArgumentsHandle;
+using expo_jsi_runtime_t = expo::dotnet::RuntimeHandle;
+using expo_jsi_value_t = expo::dotnet::ValueHandle;
+using expo_jsi_promise_t = expo::dotnet::PromiseHandle;
+using expo_jsi_arguments_t = expo::dotnet::ArgumentsHandle;
 
 extern "C" {
 
@@ -216,8 +216,6 @@ typedef expo_jsi_error (*expo_jsi_runtime_execute_sync_fn)(
   void *task_context,
   expo_jsi_release_task_context_fn release_task_context);
 
-typedef expo_jsi_error (*expo_jsi_runtime_drain_tasks_fn)(expo_jsi_runtime_handle runtime);
-
 typedef uint8_t (*expo_jsi_is_promise_fn)(expo_jsi_runtime_handle runtime,
                                           expo_jsi_value_handle value,
                                           expo_jsi_error *error);
@@ -262,7 +260,6 @@ typedef struct expo_jsi_api {
   expo_jsi_runtime_schedule_task_fn runtime_schedule_task;
   expo_jsi_runtime_can_execute_sync_fn runtime_can_execute_sync;
   expo_jsi_runtime_execute_sync_fn runtime_execute_sync;
-  expo_jsi_runtime_drain_tasks_fn runtime_drain_tasks;
   expo_jsi_is_promise_fn is_promise;
   expo_jsi_is_error_fn is_error;
   expo_jsi_coerce_to_string_fn coerce_to_string;

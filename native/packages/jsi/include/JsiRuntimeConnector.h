@@ -4,7 +4,12 @@
 
 #include <jsi/jsi.h>
 
-namespace expo::jsi {
+namespace expo::dotnet {
+
+#ifndef EXPO_DOTNET_JSI_NAMESPACE_ALIAS
+#define EXPO_DOTNET_JSI_NAMESPACE_ALIAS
+namespace jsi = facebook::jsi;
+#endif
 
 enum class JsiRuntimeTaskPriority : int {
   Immediate = 1,
@@ -19,23 +24,21 @@ public:
   virtual ~JsiRuntimeExecutor() = default;
 
   virtual void executeAsync(JsiRuntimeTaskPriority priority,
-                            std::function<void(facebook::jsi::Runtime &)> work) noexcept = 0;
+                            std::function<void(jsi::Runtime &)> work) noexcept = 0;
 
   virtual bool canExecuteSync() const noexcept = 0;
 
-  virtual void executeSync(std::function<void(facebook::jsi::Runtime &)> work) = 0;
-
-  virtual void drain() = 0;
+  virtual void executeSync(std::function<void(jsi::Runtime &)> work) = 0;
 };
 
 class JsiRuntimeConnector {
 public:
   virtual ~JsiRuntimeConnector() = default;
 
-  virtual facebook::jsi::Runtime &runtime() = 0;
+  virtual jsi::Runtime &runtime() = 0;
   virtual JsiRuntimeExecutor &runtimeExecutor() = 0;
   virtual bool isRuntimeValid() const = 0;
   virtual void invalidate() = 0;
 };
 
-} // namespace expo::jsi
+} // namespace expo::dotnet

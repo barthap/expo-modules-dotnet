@@ -5,7 +5,7 @@
 #include <thread>
 #include <utility>
 
-namespace expo::jsi {
+namespace expo::dotnet {
 
 HermesConsoleRuntimeExecutor::HermesConsoleRuntimeExecutor(HermesConsoleRuntimeConnector &connector)
   : connector_(&connector)
@@ -32,7 +32,7 @@ HermesConsoleRuntimeExecutor::~HermesConsoleRuntimeExecutor()
   shutdown();
 }
 
-facebook::jsi::Runtime &HermesConsoleRuntimeExecutor::runtime()
+jsi::Runtime &HermesConsoleRuntimeExecutor::runtime()
 {
   if (!isOnRuntimeThread()) {
     throw std::runtime_error("Hermes runtime access is not on the executor thread.");
@@ -55,8 +55,8 @@ bool HermesConsoleRuntimeExecutor::isOnRuntimeThread() const noexcept
   return runtimeThreadId_ != std::thread::id{} && std::this_thread::get_id() == runtimeThreadId_;
 }
 
-void HermesConsoleRuntimeExecutor::executeAsync(
-  JsiRuntimeTaskPriority priority, std::function<void(facebook::jsi::Runtime &)> work) noexcept
+void HermesConsoleRuntimeExecutor::executeAsync(JsiRuntimeTaskPriority priority,
+                                                std::function<void(jsi::Runtime &)> work) noexcept
 {
   try {
     {
@@ -79,7 +79,7 @@ bool HermesConsoleRuntimeExecutor::canExecuteSync() const noexcept
   return true;
 }
 
-void HermesConsoleRuntimeExecutor::executeSync(std::function<void(facebook::jsi::Runtime &)> work)
+void HermesConsoleRuntimeExecutor::executeSync(std::function<void(jsi::Runtime &)> work)
 {
   if (isOnRuntimeThread()) {
     runTask(std::move(work));
@@ -95,7 +95,7 @@ void HermesConsoleRuntimeExecutor::executeSync(std::function<void(facebook::jsi:
     queue_.push_back(QueuedTask{
       JsiRuntimeTaskPriority::Immediate,
       nextSequence_++,
-      [work = std::move(work)](facebook::jsi::Runtime &runtime) mutable { work(runtime); },
+      [work = std::move(work)](jsi::Runtime &runtime) mutable { work(runtime); },
       result,
     });
   }
@@ -113,7 +113,7 @@ void HermesConsoleRuntimeExecutor::executeSync(std::function<void(facebook::jsi:
   }
 }
 
-void HermesConsoleRuntimeExecutor::drain()
+void HermesConsoleRuntimeExecutor::waitUntilIdle()
 {
   if (isOnRuntimeThread()) {
     drainMicrotasks();
@@ -242,7 +242,7 @@ size_t HermesConsoleRuntimeExecutor::nextTaskIndexLocked() const
   return bestIndex;
 }
 
-void HermesConsoleRuntimeExecutor::runTask(std::function<void(facebook::jsi::Runtime &)> work)
+void HermesConsoleRuntimeExecutor::runTask(std::function<void(jsi::Runtime &)> work)
 {
   // runTask is intentionally local to the executor thread. It assumes runtime
   // ownership has already been established by the executor loop; reentrant
@@ -317,7 +317,7 @@ HermesConsoleRuntimeConnector::~HermesConsoleRuntimeConnector()
   invalidate();
 }
 
-facebook::jsi::Runtime &HermesConsoleRuntimeConnector::runtime()
+jsi::Runtime &HermesConsoleRuntimeConnector::runtime()
 {
   return runtimeExecutor_.runtime();
 }
@@ -332,9 +332,14 @@ bool HermesConsoleRuntimeConnector::isRuntimeValid() const
   return runtimeExecutor_.isRuntimeValid();
 }
 
+void HermesConsoleRuntimeConnector::waitUntilIdle()
+{
+  runtimeExecutor_.waitUntilIdle();
+}
+
 void HermesConsoleRuntimeConnector::invalidate()
 {
   runtimeExecutor_.shutdown();
 }
 
-} // namespace expo::jsi
+} // namespace expo::dotnet

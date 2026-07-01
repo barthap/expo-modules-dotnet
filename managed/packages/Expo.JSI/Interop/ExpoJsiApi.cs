@@ -206,8 +206,6 @@ internal readonly unsafe struct ExpoJsiApi
     delegate* unmanaged[Cdecl]<nint, void>,
     ExpoJsiError> RuntimeExecuteSync;
 
-  private readonly delegate* unmanaged[Cdecl]<ExpoJsiRuntimeHandle, ExpoJsiError> RuntimeDrainTasks;
-
   private readonly delegate* unmanaged[Cdecl]<
     ExpoJsiRuntimeHandle,
     ExpoJsiValueHandle,
@@ -275,7 +273,6 @@ internal readonly unsafe struct ExpoJsiApi
       || this.RuntimeScheduleTask is null
       || this.RuntimeCanExecuteSync is null
       || this.RuntimeExecuteSync is null
-      || this.RuntimeDrainTasks is null
       || this.IsPromise is null
       || this.IsError is null
       || this.CoerceToString is null
@@ -629,11 +626,6 @@ internal readonly unsafe struct ExpoJsiApi
     return RuntimeExecuteSync(runtimeHandle, callback, taskContext, releaseTaskContext);
   }
 
-  public ExpoJsiError DrainRuntimeTasks(ExpoJsiRuntimeHandle runtimeHandle)
-  {
-    return RuntimeDrainTasks(runtimeHandle);
-  }
-
   public static uint ExpectedSize => (uint)sizeof(ExpoJsiApi);
-  public const uint ExpectedVersion = 11;
+  public const uint ExpectedVersion = 12;
 }
