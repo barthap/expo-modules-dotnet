@@ -5,6 +5,7 @@ AGENTS.local.md
 .DS_Store
 .idea/
 .vscode/
+node_modules/
 
 bin/
 obj/

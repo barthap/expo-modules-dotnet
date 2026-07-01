@@ -6,7 +6,7 @@
   "scripts": {
     "build:nativeaot": "./scripts/build-nativeaot.sh"
   },
-  "peerDependencies": {
-    "expo-modules-dotnet": "*"
+  "dependencies": {
+    "expo-modules-dotnet": "workspace:*"
   }
 }

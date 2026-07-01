@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "example-module": "workspace:*",
     "expo": "~57.0.0",
-    "expo-csharp-v2": "file:./modules/expo-csharp-v2",
+    "expo-modules-dotnet": "workspace:*",
     "expo-status-bar": "~57.0.0",
     "react": "19.2.3",
     "react-native": "0.86.0"
