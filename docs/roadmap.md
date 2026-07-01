@@ -12,6 +12,9 @@ current behavior; archived docs provide provenance.
 - The generated-binding helper package is `managed/packages/Expo.ModulesCore`.
 - Module dispatch and conversion coverage lives under
   `managed/packages/Expo.ModulesCore.Tests`.
+- `experiments/mobile-app` is an accepted NativeAOT React Native integration
+  proof. It validates the adapter seam, but it is not a production mobile
+  adapter and still leaves reload-safe teardown unresolved.
 
 ## Next Development Direction
 
@@ -36,6 +39,8 @@ current behavior; archived docs provide provenance.
 5. Add platform adapters only after the portable module layer is stable.
    - RNW and React Native macOS (via expo-desktop) are the primary host targets.
    - React Native macOS and view adapters stay explicitly platform-gated.
+   - Treat `experiments/mobile-app` as proof evidence for the adapter seam, not
+     as the production mobile adapter baseline.
 
 ## Backlog: ABI Extensions
 
@@ -85,7 +90,9 @@ ABI support.
 
 - **Module instance lifecycle**: `onCreate`, `onDestroy`, reload-safe teardown
   — needed for resource cleanup and dev-reload safety. See
-  `docs/assorted/architecture-review.md` Finding 2.
+  `docs/assorted/architecture-review.md` Finding 2. The
+  `experiments/mobile-app` proof confirms this as the first production
+  integration blocker.
 - **Lazy module initialization**: Modules instantiated on first JS access
   instead of eagerly at registration (depends on HostObject ABI).
 - **`expo-module.config.json`**: Package metadata for dotnet Expo module
@@ -93,7 +100,9 @@ ABI support.
 - **Autolinking**: Build-time discovery and aggregation of dotnet Expo module
   packages into an app-level provider.
 - **TurboModule integration**: Participation in React Native's TurboModule
-  infrastructure for codegen'd bridging (experimental, separate branch).
+  infrastructure for codegen'd bridging. The current `experiments/mobile-app`
+  proof validates the install hook but does not define production lifecycle
+  semantics.
 
 ## Backlog: Architecture Improvements
 
@@ -107,6 +116,9 @@ options.
   instead of pointing into thread-local storage (Finding 4).
 - **C# stack traces across ABI**: Include full exception stack trace in error
   messages forwarded to JS for dev tooling visibility (Finding 3).
+- **Mobile scheduler priority no-op**: `experiments/mobile-app` routes through
+  React Native `CallInvoker`, which has no priority lane, so
+  `JsiRuntimeTaskPriority` is advisory/no-op for that proof.
 
 ## Backlog: Dev Tooling
 
@@ -125,8 +137,9 @@ options.
   lifecycle services.
 - **View adapters**: Platform-specific native view creation, prop mapping, event
   routing. Platform-gated — no view concepts in the portable core.
-- **NativeAOT for iOS and Android**: Experimental work on a separate branch.
-  Audit trimming, exported entry points, and platform-specific constraints.
+- **NativeAOT for iOS and Android**: The current proof lives under
+  `experiments/mobile-app`. Production mobile work still needs reload-safe
+  teardown, trimming/export audits, and platform-specific constraints.
 
 ## Archive Map
 

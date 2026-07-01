@@ -40,6 +40,29 @@ SHALL fail loudly when unsupported.
 - **THEN** native SHALL execute the runtime task synchronously and managed code
   SHALL return the body result
 
+### Requirement: React Native Runtime Scheduling Adapter
+
+React Native hosts SHALL adapt runtime scheduling through injected New
+Architecture scheduling primitives instead of embedding React Native-specific
+types in managed code. The native React Native connector SHALL hold the
+borrowed `facebook::jsi::Runtime` together with a React Native `CallInvoker`
+inside an explicit runtime-state holder. The raw runtime pointer SHALL be
+non-owning; the holder and its invalidation state SHALL be the lifetime
+primitive used by connector executors or longer-lived native values.
+The current implementation evidence is the `experiments/mobile-app` proof; it
+routes through `CallInvoker`, which does not expose task priorities.
+
+#### Scenario: React Native connector schedules work
+- **GIVEN** native platform glue has a borrowed React Native Hermes runtime and
+  `CallInvoker`
+- **WHEN** managed code schedules runtime work through `JavaScriptRuntime`
+- **THEN** the React Native connector SHALL route asynchronous work through
+  `CallInvoker::invokeAsync`
+- **AND** sync execution SHALL route through `CallInvoker::invokeSync` when the
+  borrowed runtime and invoker are still valid
+- **AND** task priority SHALL be treated as advisory when the host scheduling
+  primitive cannot honor it
+
 ### Requirement: Runtime Task Context Ownership
 
 Native runtime-task scheduling SHALL own the managed task context after the ABI

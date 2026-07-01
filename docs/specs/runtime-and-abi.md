@@ -98,6 +98,41 @@ shape passed into managed code.
 - **THEN** managed code SHALL receive the same `expo_jsi_api` table and opaque
   runtime handle shape used by the HostFXR path
 
+#### Scenario: Mobile NativeAOT entry point runs against React Native Hermes
+- **GIVEN** a React Native Hermes runtime is exposed to the native connector
+- **WHEN** native code invokes a NativeAOT module registration export
+- **THEN** managed code SHALL receive only the `expo_jsi_api` table pointer and
+  opaque runtime handle needed for registration
+- **AND** the registration path SHALL NOT depend on HostFXR, runtime assembly
+  scanning, JSON, or hot-path reflection
+
+### Requirement: React Native Runtime Connector Preserves ABI Ownership
+
+`native/packages/jsi` SHALL provide a React Native runtime connector that adapts
+an already-created Hermes `facebook::jsi::Runtime` to the existing
+`expo_jsi.h` ABI without exposing raw JSI layouts to managed code. The
+connector MAY store the borrowed runtime as a raw pointer, but it SHALL keep
+that pointer inside an owned holder that models invalidation separately from
+React Native runtime ownership. The current implementation evidence is the
+`experiments/mobile-app` proof; this requirement does not by itself define a
+production mobile adapter lifecycle.
+
+#### Scenario: React Native connector creates managed runtime handle
+- **GIVEN** React Native provides an active Hermes runtime and `CallInvoker`
+- **WHEN** platform glue creates a React Native runtime handle
+- **THEN** the handle SHALL be created through `ExpoJsiBridge` and
+  `native/include/expo_jsi.h`
+- **AND** managed code SHALL observe only the ABI table and opaque handle
+
+#### Scenario: Borrowed runtime lifetime is bounded by native host
+- **GIVEN** React Native invokes a TurboModule JSI bindings installer
+- **WHEN** the installer registers NativeAOT module bindings into the borrowed
+  runtime
+- **THEN** it SHALL keep the borrowed runtime connector and opaque runtime handle
+  alive at least as long as those bindings can run
+- **AND** invalidation SHALL clear the holder before downstream code can use the
+  borrowed runtime pointer again
+
 ### Requirement: ArrayBuffer Is Not Yet Wrapped
 
 The ABI value-kind enum MAY identify `ArrayBuffer`, but the managed package

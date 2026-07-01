@@ -72,6 +72,14 @@ directly, and encode return values through typed helpers.
 - **AND** call the authored method directly
 - **AND** return the encoded result through `Expo.JSI`
 
+#### Scenario: Generated provider augments an existing native module object
+- **GIVEN** a real Expo runtime has already installed a native module object
+  under `globalThis.expo.modules`
+- **WHEN** a generated provider registers a C# module with the same module name
+- **THEN** `Expo.ModulesCore` SHALL reuse the existing JavaScript object instead
+  of replacing the `expo.modules` property
+- **AND** generated `[JS]` functions SHALL be defined on that existing object
+
 ### Requirement: Unsupported Signatures Are Build Diagnostics
 
 Unsupported generated function signatures SHALL fail at build time with

@@ -37,9 +37,11 @@ exception rules.
   source-output and diagnostic tests.
 - `managed/packages/Expo.ModulesCore.Tests/` contains Hermes-backed module
   dispatch and conversion tests.
-- `experiments/hostfxr-smoke/`, `experiments/nativeaot-smoke/`, and
-  `experiments/hermes-console-app/` preserve standalone loader and proof
-  experiments. The Hermes console proof can run through HostFXR or NativeAOT.
+- `experiments/hostfxr-smoke/`, `experiments/nativeaot-smoke/`,
+  `experiments/hermes-console-app/`, and `experiments/mobile-app/` preserve
+  loader, bridge, and mobile integration proofs. The Hermes console proof can
+  run through HostFXR or NativeAOT. The mobile app is an experimental
+  NativeAOT React Native integration proof, not a production mobile adapter.
 - `docs/specs/` contains the living spec baseline.
 - `docs/archive/` contains historical planning, spike, and execution artifacts.
 

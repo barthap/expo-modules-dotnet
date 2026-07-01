@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../../../managed/packages/Expo.JSI/Expo.JSI.csproj" />
+    <ProjectReference Include="../../../../managed/packages/Expo.ModulesCore/Expo.ModulesCore.csproj" />
+    <ProjectReference
+      Include="../../../../managed/packages/Expo.ModulesCore.Generator/Expo.ModulesCore.Generator.csproj"
+      Condition="'$(PublishAot)' != 'true'"
+      OutputItemType="Analyzer"
+      ReferenceOutputAssembly="false" />
+    <Analyzer
+      Include="../../../../managed/packages/Expo.ModulesCore.Generator/bin/Debug/netstandard2.0/Expo.ModulesCore.Generator.dll"
+      Condition="'$(PublishAot)' == 'true'" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
+    <AssemblyName>ExpoMobileV2Module</AssemblyName>
+    <RootNamespace>ExpoMobileV2Module</RootNamespace>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PublishAot)' == 'true'">
+    <NativeLib>Shared</NativeLib>
+  </PropertyGroup>
+</Project>
