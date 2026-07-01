@@ -1,0 +1,9 @@
+{
+  "name": "expo-modules-csharp",
+  "private": true,
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "mobile:start": "pnpm --filter mobile-app start",
+    "example-module:build-nativeaot": "pnpm --filter example-module build:nativeaot"
+  }
+}
