@@ -4,15 +4,15 @@
   "main": "index.ts",
   "dependencies": {
     "example-module": "workspace:*",
-    "expo": "~57.0.0",
+    "expo": "catalog:react-native-86",
     "expo-modules-dotnet": "workspace:*",
-    "expo-status-bar": "~57.0.0",
-    "react": "19.2.3",
-    "react-native": "0.86.0"
+    "expo-status-bar": "catalog:react-native-86",
+    "react": "catalog:react-native-86",
+    "react-native": "catalog:react-native-86"
   },
   "devDependencies": {
-    "@types/react": "~19.2.2",
-    "typescript": "~6.0.3"
+    "@types/react": "catalog:react-native-86",
+    "typescript": "catalog:react-native-86"
   },
   "scripts": {
     "start": "expo start",
