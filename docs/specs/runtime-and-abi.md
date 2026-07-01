@@ -110,7 +110,10 @@ shape passed into managed code.
 
 `native/packages/jsi` SHALL provide a React Native runtime connector that adapts
 an already-created Hermes `facebook::jsi::Runtime` to the existing
-`expo_jsi.h` ABI without exposing raw JSI layouts to managed code.
+`expo_jsi.h` ABI without exposing raw JSI layouts to managed code. The
+connector MAY store the borrowed runtime as a raw pointer, but it SHALL keep
+that pointer inside an owned holder that models invalidation separately from
+React Native runtime ownership.
 
 #### Scenario: React Native connector creates managed runtime handle
 - **GIVEN** React Native provides an active Hermes runtime and `CallInvoker`
@@ -125,6 +128,8 @@ an already-created Hermes `facebook::jsi::Runtime` to the existing
   runtime
 - **THEN** it SHALL keep the borrowed runtime connector and opaque runtime handle
   alive at least as long as those bindings can run
+- **AND** invalidation SHALL clear the holder before downstream code can use the
+  borrowed runtime pointer again
 
 ### Requirement: ArrayBuffer Is Not Yet Wrapped
 

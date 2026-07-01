@@ -66,15 +66,21 @@ bindings. No raw JSI layout crosses into C#.
 
 The TurboModule JSI bindings installers must keep the borrowed runtime
 connector and opaque runtime handle alive for as long as the installed Expo
-module bindings can call into C#. The iOS installer releases the handle when
-its install record is destroyed. The Android proof stores install records for
-process lifetime.
+module bindings can call into C#. The connector stores the raw
+`facebook::jsi::Runtime *` only inside an owned runtime-state holder; downstream
+execution uses that holder's invalidation state rather than treating the raw
+pointer as a lifetime primitive. The iOS installer releases the handle when its
+install record is destroyed. The Android proof stores install records for
+process lifetime, so production-grade teardown still needs a React Native
+module/runtime lifecycle hook that invalidates and resets the holder before RN
+deallocates the runtime.
 
 ## Scheduler Findings
 
 The React Native connector adapts a borrowed runtime and React Native
-`CallInvoker`. Asynchronous work routes through `invokeAsync`; synchronous work
-routes through `invokeSync` when the borrowed runtime and invoker are valid.
+`CallInvoker`. Asynchronous work captures a weak runtime-state holder and routes
+through `invokeAsync`; synchronous work routes through `invokeSync` when the
+borrowed runtime and invoker are valid.
 
 Android exposes a nested local npm package with React Native codegen metadata
 and a `TurboModuleWithJSIBindings` implementation. iOS exposes the same package

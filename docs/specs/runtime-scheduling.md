@@ -45,7 +45,10 @@ SHALL fail loudly when unsupported.
 React Native hosts SHALL adapt runtime scheduling through injected New
 Architecture scheduling primitives instead of embedding React Native-specific
 types in managed code. The native React Native connector SHALL hold the
-borrowed `facebook::jsi::Runtime` together with a React Native `CallInvoker`.
+borrowed `facebook::jsi::Runtime` together with a React Native `CallInvoker`
+inside an explicit runtime-state holder. The raw runtime pointer SHALL be
+non-owning; the holder and its invalidation state SHALL be the lifetime
+primitive used by connector executors or longer-lived native values.
 
 #### Scenario: React Native connector schedules work
 - **GIVEN** native platform glue has a borrowed React Native Hermes runtime and

@@ -25,7 +25,7 @@ RegisterModulesFn resolveRegisterModules()
 
 class InstalledRuntime final {
 public:
-  InstalledRuntime(std::unique_ptr<expo::jsi::ReactNativeRuntimeConnector> connector,
+  InstalledRuntime(std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector,
                    expo_jsi_runtime_handle runtimeHandle)
     : connector_(std::move(connector)),
       runtimeHandle_(runtimeHandle)
@@ -35,7 +35,7 @@ public:
   ~InstalledRuntime()
   {
     if (runtimeHandle_ != nullptr) {
-      expo::jsi::releaseReactNativeRuntimeHandle(runtimeHandle_);
+      expo::dotnet::releaseReactNativeRuntimeHandle(runtimeHandle_);
     }
     if (connector_ != nullptr) {
       connector_->invalidate();
@@ -53,7 +53,7 @@ public:
       return false;
     }
 
-    auto status = registerModules(expo::jsi::reactNativeExpoJsiApi(), runtimeHandle_);
+    auto status = registerModules(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
     if (status != 0) {
       NSLog(@"[ExpoCSharpV2] NativeAOT ExpoCSharpV2.add registration failed.");
       return false;
@@ -65,7 +65,7 @@ public:
   }
 
 private:
-  std::unique_ptr<expo::jsi::ReactNativeRuntimeConnector> connector_;
+  std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector_;
   expo_jsi_runtime_handle runtimeHandle_ = nullptr;
   bool registered_ = false;
 };
@@ -85,6 +85,9 @@ public:
 @end
 
 @implementation ExpoCSharpV2Installer {
+  // The install records own the connector state, not the RN runtime. Releasing
+  // this vector invalidates the borrowed runtime holder before the managed ABI
+  // handle is released.
   std::vector<std::shared_ptr<InstalledRuntime>> _installedRuntimes;
 }
 
@@ -99,8 +102,9 @@ RCT_EXPORT_MODULE()
 - (void)installJSIBindingsWithRuntime:(facebook::jsi::Runtime &)runtime
                           callInvoker:(const std::shared_ptr<facebook::react::CallInvoker> &)callInvoker
 {
-  auto connector = std::make_unique<expo::jsi::ReactNativeRuntimeConnector>(runtime, callInvoker);
-  auto runtimeHandle = expo::jsi::createReactNativeRuntimeHandle(*connector);
+  auto connector =
+    std::make_unique<expo::dotnet::ReactNativeRuntimeConnector>(runtime, callInvoker);
+  auto runtimeHandle = expo::dotnet::createReactNativeRuntimeHandle(*connector);
   auto installedRuntime =
     std::make_shared<InstalledRuntime>(std::move(connector), runtimeHandle);
 

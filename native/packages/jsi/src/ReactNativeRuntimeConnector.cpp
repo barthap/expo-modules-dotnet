@@ -3,12 +3,42 @@
 #include <stdexcept>
 #include <utility>
 
-namespace expo::jsi {
+namespace expo::dotnet {
 
-ReactNativeRuntimeExecutor::ReactNativeRuntimeExecutor(
+ReactNativeRuntimeState::ReactNativeRuntimeState(
   facebook::jsi::Runtime &runtime, std::shared_ptr<facebook::react::CallInvoker> callInvoker)
   : runtime_(&runtime),
     callInvoker_(std::move(callInvoker))
+{
+}
+
+facebook::jsi::Runtime &ReactNativeRuntimeState::runtime() const
+{
+  if (runtime_ == nullptr) {
+    throw std::runtime_error("React Native runtime is invalid.");
+  }
+  return *runtime_;
+}
+
+std::shared_ptr<facebook::react::CallInvoker> ReactNativeRuntimeState::callInvoker() const noexcept
+{
+  return callInvoker_;
+}
+
+bool ReactNativeRuntimeState::isRuntimeValid() const noexcept
+{
+  return runtime_ != nullptr;
+}
+
+void ReactNativeRuntimeState::invalidate() noexcept
+{
+  runtime_ = nullptr;
+  callInvoker_.reset();
+}
+
+ReactNativeRuntimeExecutor::ReactNativeRuntimeExecutor(
+  std::shared_ptr<ReactNativeRuntimeState> state)
+  : state_(std::move(state))
 {
 }
 
@@ -16,12 +46,24 @@ void ReactNativeRuntimeExecutor::executeAsync(
   JsiRuntimeTaskPriority, std::function<void(facebook::jsi::Runtime &)> work) noexcept
 {
   try {
-    if (runtime_ == nullptr || callInvoker_ == nullptr) {
+    if (state_ == nullptr || !state_->isRuntimeValid()) {
       return;
     }
 
-    callInvoker_->invokeAsync(
-      [work = std::move(work)](facebook::jsi::Runtime &runtime) mutable { work(runtime); });
+    auto callInvoker = state_->callInvoker();
+    if (callInvoker == nullptr) {
+      return;
+    }
+
+    std::weak_ptr<ReactNativeRuntimeState> weakState = state_;
+    callInvoker->invokeAsync(
+      [weakState, work = std::move(work)](facebook::jsi::Runtime &runtime) mutable {
+        auto state = weakState.lock();
+        if (state == nullptr || !state->isRuntimeValid()) {
+          return;
+        }
+        work(runtime);
+      });
   } catch (...) {
     // JsiRuntimeExecutor::executeAsync is noexcept. Dropping the work releases
     // any captured managed task context through the existing ABI wrapper.
@@ -30,48 +72,51 @@ void ReactNativeRuntimeExecutor::executeAsync(
 
 bool ReactNativeRuntimeExecutor::canExecuteSync() const noexcept
 {
-  return runtime_ != nullptr && callInvoker_ != nullptr;
+  return state_ != nullptr && state_->isRuntimeValid() && state_->callInvoker() != nullptr;
 }
 
 void ReactNativeRuntimeExecutor::executeSync(std::function<void(facebook::jsi::Runtime &)> work)
 {
-  if (runtime_ == nullptr) {
+  if (state_ == nullptr || !state_->isRuntimeValid()) {
     throw std::runtime_error("React Native runtime is invalid.");
   }
 
-  if (callInvoker_ == nullptr) {
+  auto callInvoker = state_->callInvoker();
+  if (callInvoker == nullptr) {
     throw std::runtime_error("React Native runtime does not support synchronous dispatch.");
   }
 
-  callInvoker_->invokeSync(
-    [work = std::move(work)](facebook::jsi::Runtime &runtime) mutable { work(runtime); });
-}
-
-void ReactNativeRuntimeExecutor::drain()
-{
-  // React Native owns the production runtime queue. Test-only draining remains
-  // implemented by the headless Hermes connector.
+  std::weak_ptr<ReactNativeRuntimeState> weakState = state_;
+  callInvoker->invokeSync(
+    [weakState, work = std::move(work)](facebook::jsi::Runtime &runtime) mutable {
+      auto state = weakState.lock();
+      if (state == nullptr || !state->isRuntimeValid()) {
+        throw std::runtime_error("React Native runtime is invalid.");
+      }
+      work(runtime);
+    });
 }
 
 void ReactNativeRuntimeExecutor::invalidate() noexcept
 {
-  runtime_ = nullptr;
-  callInvoker_.reset();
+  if (state_ != nullptr) {
+    state_->invalidate();
+  }
 }
 
 ReactNativeRuntimeConnector::ReactNativeRuntimeConnector(
   facebook::jsi::Runtime &runtime, std::shared_ptr<facebook::react::CallInvoker> callInvoker)
-  : runtime_(&runtime),
-    runtimeExecutor_(runtime, std::move(callInvoker))
+  : state_(std::make_shared<ReactNativeRuntimeState>(runtime, std::move(callInvoker))),
+    runtimeExecutor_(state_)
 {
 }
 
 facebook::jsi::Runtime &ReactNativeRuntimeConnector::runtime()
 {
-  if (runtime_ == nullptr) {
+  if (state_ == nullptr) {
     throw std::runtime_error("React Native runtime is invalid.");
   }
-  return *runtime_;
+  return state_->runtime();
 }
 
 JsiRuntimeExecutor &ReactNativeRuntimeConnector::runtimeExecutor()
@@ -81,13 +126,14 @@ JsiRuntimeExecutor &ReactNativeRuntimeConnector::runtimeExecutor()
 
 bool ReactNativeRuntimeConnector::isRuntimeValid() const
 {
-  return runtime_ != nullptr;
+  return state_ != nullptr && state_->isRuntimeValid();
 }
 
 void ReactNativeRuntimeConnector::invalidate()
 {
-  runtime_ = nullptr;
-  runtimeExecutor_.invalidate();
+  if (state_ != nullptr) {
+    state_->invalidate();
+  }
 }
 
 const expo_jsi_api *reactNativeExpoJsiApi() noexcept
@@ -105,4 +151,4 @@ void releaseReactNativeRuntimeHandle(expo_jsi_runtime_handle runtime)
   releaseRuntimeHandle(runtime);
 }
 
-} // namespace expo::jsi
+} // namespace expo::dotnet
