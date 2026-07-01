@@ -1,6 +1,6 @@
 # Portable C# / JSI Bridge Docs
 
-Last refreshed: 2026-06-29.
+Last refreshed: 2026-07-01.
 
 This directory contains the current documentation for the portable C# / JSI
 bridge. The authoritative current-state specs live in `docs/specs/`. Historical
@@ -21,27 +21,39 @@ exception rules.
 
 ## Current Repository State
 
-- `native/include/expo_jsi.h` defines the C ABI function table and opaque
-  handles.
-- `native/testhost/` builds the Hermes-backed testhost used by managed tests.
-- `managed/packages/Expo.JSI/` contains the low-level C# wrapper package.
-- `managed/packages/Expo.JSI.Tests/` contains low-level Hermes-backed wrapper
-  tests.
-- `managed/packages/Expo.ModulesCore/` contains generated-binding runtime
-  helpers, authored module attributes, and Roslyn-generated binding entry
-  points above `Expo.JSI`.
-- `managed/packages/Expo.ModulesCore.Generator/` contains the Roslyn generator
-  that emits direct-call module providers for library-local `[ExpoModule]` /
-  `[JS]` syntax.
-- `managed/packages/Expo.ModulesCore.Generator.Tests/` contains generator
-  source-output and diagnostic tests.
-- `managed/packages/Expo.ModulesCore.Tests/` contains Hermes-backed module
-  dispatch and conversion tests.
-- `experiments/hostfxr-smoke/`, `experiments/nativeaot-smoke/`,
-  `experiments/hermes-console-app/`, and `experiments/mobile-app/` preserve
-  loader, bridge, and mobile integration proofs. The Hermes console proof can
-  run through HostFXR or NativeAOT. The mobile app is an experimental
-  NativeAOT React Native integration proof, not a production mobile adapter.
+- `package.json` and `pnpm-workspace.yaml` define a pnpm workspace with
+  `apps/*` and `packages/*` members.
+- `packages/expo-modules-dotnet/` is the public Expo adapter package. It owns
+  the JavaScript API, TurboModule installer glue, reusable native JSI bridge,
+  managed core packages, and Hermes-backed native testhost.
+- `packages/expo-modules-dotnet/native/include/expo_jsi.h` defines the C ABI
+  function table and opaque handles.
+- `packages/expo-modules-dotnet/native/testhost/` builds the Hermes-backed
+  testhost used by managed tests.
+- `packages/expo-modules-dotnet/managed/packages/Expo.JSI/` contains the
+  low-level C# wrapper package.
+- `packages/expo-modules-dotnet/managed/packages/Expo.JSI.Tests/` contains
+  low-level Hermes-backed wrapper tests.
+- `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/` contains
+  generated-binding runtime helpers, authored module attributes, and
+  Roslyn-generated binding entry points above `Expo.JSI`.
+- `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/`
+  contains the Roslyn generator that emits direct-call module providers for
+  library-local `[ExpoModule]` / `[JS]` syntax.
+- `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests/`
+  contains generator source-output and diagnostic tests.
+- `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests/`
+  contains Hermes-backed module dispatch and conversion tests.
+- `packages/example-module/` is an authored .NET Expo module package used by
+  example apps. It owns the example C# module source and temporary NativeAOT
+  artifact staging script.
+- `apps/mobile-app/` is the NativeAOT React Native integration proof app. It
+  consumes `expo-modules-dotnet` and `example-module` as workspace
+  dependencies.
+- `apps/hermes-console-app/` is the reusable headless Hermes integration app
+  proof and can run through HostFXR or NativeAOT.
+- `experiments/hostfxr-smoke/` and `experiments/nativeaot-smoke/` preserve
+  narrow loader smoke proofs.
 - `docs/specs/` contains the living spec baseline.
 - `docs/archive/` contains historical planning, spike, and execution artifacts.
 

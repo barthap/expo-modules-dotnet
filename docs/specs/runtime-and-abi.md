@@ -3,7 +3,8 @@
 ## Purpose
 
 Define the native C ABI boundary that lets C# work with JavaScript values
-without observing C++ JSI layouts. The ABI lives in `native/include/expo_jsi.h`.
+without observing C++ JSI layouts. The ABI lives in
+`packages/expo-modules-dotnet/native/include/expo_jsi.h`.
 
 ## Requirements
 
@@ -108,20 +109,20 @@ shape passed into managed code.
 
 ### Requirement: React Native Runtime Connector Preserves ABI Ownership
 
-`native/packages/jsi` SHALL provide a React Native runtime connector that adapts
-an already-created Hermes `facebook::jsi::Runtime` to the existing
-`expo_jsi.h` ABI without exposing raw JSI layouts to managed code. The
-connector MAY store the borrowed runtime as a raw pointer, but it SHALL keep
-that pointer inside an owned holder that models invalidation separately from
-React Native runtime ownership. The current implementation evidence is the
-`experiments/mobile-app` proof; this requirement does not by itself define a
-production mobile adapter lifecycle.
+`packages/expo-modules-dotnet/native/packages/jsi` SHALL provide a React Native
+runtime connector that adapts an already-created Hermes
+`facebook::jsi::Runtime` to the existing `expo_jsi.h` ABI without exposing raw
+JSI layouts to managed code. The connector MAY store the borrowed runtime as a
+raw pointer, but it SHALL keep that pointer inside an owned holder that models
+invalidation separately from React Native runtime ownership. The current
+implementation evidence is the `apps/mobile-app` proof; this requirement does
+not by itself define a production mobile adapter lifecycle.
 
 #### Scenario: React Native connector creates managed runtime handle
 - **GIVEN** React Native provides an active Hermes runtime and `CallInvoker`
 - **WHEN** platform glue creates a React Native runtime handle
 - **THEN** the handle SHALL be created through `ExpoJsiBridge` and
-  `native/include/expo_jsi.h`
+  `packages/expo-modules-dotnet/native/include/expo_jsi.h`
 - **AND** managed code SHALL observe only the ABI table and opaque handle
 
 #### Scenario: Borrowed runtime lifetime is bounded by native host
@@ -137,7 +138,7 @@ production mobile adapter lifecycle.
 
 The ABI value-kind enum MAY identify `ArrayBuffer`, but the managed package
 SHALL NOT be specified as supporting an ArrayBuffer wrapper until such a wrapper
-exists in `managed/packages/Expo.JSI`.
+exists in `packages/expo-modules-dotnet/managed/packages/Expo.JSI`.
 
 #### Scenario: Specs mention implemented wrappers
 - **GIVEN** a living spec lists current managed wrapper types

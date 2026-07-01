@@ -22,7 +22,9 @@ Hermes-backed managed test runner.
 ### Requirement: Native Testhost
 
 The native testhost SHALL create a Hermes runtime and expose test-only exports
-used by managed tests.
+used by managed tests. It lives under
+`packages/expo-modules-dotnet/native/testhost` so native and managed test
+linking can reference adapter-owned bridge code directly.
 
 #### Scenario: Managed fixture creates runtime
 - **GIVEN** a managed test calls `HermesRuntimeFixture.Create`
@@ -38,8 +40,9 @@ host-function, scheduling, promise, and testhost behavior.
 #### Scenario: Runtime behavior changes
 - **GIVEN** a change modifies low-level wrapper or native ABI behavior
 - **WHEN** tests are added or updated
-- **THEN** coverage SHALL live under `managed/packages/Expo.JSI.Tests` unless
-  the behavior belongs to the future module layer
+- **THEN** coverage SHALL live under
+  `packages/expo-modules-dotnet/managed/packages/Expo.JSI.Tests` unless the
+  behavior belongs to the future module layer
 
 ### Requirement: Module Test Ownership
 
@@ -48,4 +51,5 @@ Module behavior tests SHALL live under `Expo.ModulesCore.Tests`.
 #### Scenario: Module behavior is tested
 - **GIVEN** generated-looking module dispatch or conversion behavior is tested
 - **WHEN** the behavior is above low-level `Expo.JSI`
-- **THEN** coverage SHALL live under `managed/packages/Expo.ModulesCore.Tests`
+- **THEN** coverage SHALL live under
+  `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests`

@@ -10,7 +10,9 @@ Define the boundary between low-level `Expo.JSI` wrappers and the
 ### Requirement: ModulesCore Owns Generated-Binding Helpers
 
 `Expo.ModulesCore` SHALL own module registration helpers, generated dispatch
-helpers, and typed conversion helpers above `Expo.JSI`.
+helpers, and typed conversion helpers above `Expo.JSI`. It lives under
+`packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore` as part of the
+public Expo adapter package's managed core.
 
 #### Scenario: Generated-looking provider registers a module
 - **GIVEN** generated-looking provider code has a `JavaScriptRuntime` and a
@@ -94,7 +96,8 @@ actionable diagnostics.
 ### Requirement: App Aggregation Remains Future Autolinking Work
 
 The generator SHALL keep module discovery library-local. App-level aggregation
-is future autolinking work.
+is future autolinking work. Until that exists, authored module packages may
+stage NativeAOT artifacts into documented adapter-owned locations manually.
 
 #### Scenario: Multiple libraries are linked into an app
 - **GIVEN** future autolinking resolves several dotnet Expo libraries
@@ -102,6 +105,13 @@ is future autolinking work.
 - **THEN** it SHALL call each library-local generated provider
 - **AND** module class discovery SHALL remain owned by each library's Roslyn
   generation step
+
+#### Scenario: Public adapter looks up a staged module
+- **GIVEN** an app depends on `expo-modules-dotnet`
+- **WHEN** JavaScript calls `requireDotnetModule<T>(name)`
+- **THEN** the adapter SHALL first touch its TurboModule installer
+- **AND** it SHALL return `globalThis._expoDotnet.modules[name]` when present
+- **AND** it SHALL throw a plain JavaScript `Error` when the module is missing
 
 ### Requirement: Generated Bindings Avoid Hot-Path Reflection
 
