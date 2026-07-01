@@ -18,7 +18,7 @@ class ExpoModulesDotnetTurboPackage : BaseReactPackage() {
     mapOf(
       ExpoModulesDotnetTurboModule.NAME to ReactModuleInfo(
         ExpoModulesDotnetTurboModule.NAME,
-        ExpoModulesDotnetTurboModule.NAME,
+        ExpoModulesDotnetTurboModule::class.java.name,
         false,
         false,
         false,
