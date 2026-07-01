@@ -165,8 +165,8 @@ int main()
 
     auto value_release_count = release_counter.value_release_count;
     std::cout << "Released owned value handles: " << value_release_count << std::endl;
-    if (value_release_count != 25) {
-      throw std::runtime_error("Expected exactly twenty-five counted owned value handle releases.");
+    if (value_release_count != 26) {
+      throw std::runtime_error("Expected exactly twenty-six counted owned value handle releases.");
     }
 
     auto string_release_count = release_counter.string_release_count;
