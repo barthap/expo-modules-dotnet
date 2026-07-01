@@ -37,7 +37,7 @@ importers:
         version: 6.0.3
 
   packages/example-module:
-    dependencies:
+    devDependencies:
       expo-modules-dotnet:
         specifier: workspace:*
         version: link:../expo-modules-dotnet

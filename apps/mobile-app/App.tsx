@@ -1,19 +1,14 @@
 import { StatusBar } from 'expo-status-bar';
-import { requireDotnetModule } from 'expo-modules-dotnet';
+import { add } from 'example-module';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-
-type ExampleModule = {
-  add(a: number, b: number): number;
-};
 
 export default function App() {
   const [message, setMessage] = useState('Loading C# module...');
 
   useEffect(() => {
     try {
-      const exampleModule = requireDotnetModule<ExampleModule>('ExampleModule');
-      const result = exampleModule.add(20, 22);
+      const result = add(20, 22);
       if (result !== 42) {
         throw new Error(`Unexpected C# module result: ${String(result)}`);
       }
