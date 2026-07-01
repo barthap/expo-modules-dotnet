@@ -124,6 +124,6 @@ Hermes macOS prebuilt ready:
   HERMES_PREBUILT_ROOT=$source_dir/destroot
 
 Configure the proof with:
-  $cmake_bin -S experiments/hermes-console-app/native -B build/hermes-console-app \\
+  $cmake_bin -S apps/hermes-console-app/native -B build/hermes-console-app \\
     -DHERMES_PREBUILT_ROOT="$source_dir/destroot"
 EOF

@@ -6,7 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-get_filename_component(REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+get_filename_component(ADAPTER_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+get_filename_component(REPO_ROOT "${ADAPTER_ROOT}/../.." ABSOLUTE)
 
 set(HERMES_PREBUILT_ROOT
     "$ENV{HERMES_PREBUILT_ROOT}"
@@ -37,13 +38,13 @@ endif()
 add_library(
   expo_jsi_testhost SHARED
   src/ExpoJsiTestHost.cpp
-  "${REPO_ROOT}/native/packages/jsi/src/ExpoJsiBridge.cpp"
-  "${REPO_ROOT}/native/packages/jsi/src/HermesConsoleRuntimeConnector.cpp")
+  "${ADAPTER_ROOT}/native/packages/jsi/src/ExpoJsiBridge.cpp"
+  "${ADAPTER_ROOT}/native/packages/jsi/src/HermesConsoleRuntimeConnector.cpp")
 
 target_include_directories(
   expo_jsi_testhost
-  PRIVATE "${HERMES_ROOT}/include" "${REPO_ROOT}/native/include"
-          "${REPO_ROOT}/native/packages/jsi/include"
+  PRIVATE "${HERMES_ROOT}/include" "${ADAPTER_ROOT}/native/include"
+          "${ADAPTER_ROOT}/native/packages/jsi/include"
           "${CMAKE_CURRENT_LIST_DIR}/include")
 
 target_link_options(expo_jsi_testhost PRIVATE "-F${HERMES_FRAMEWORK_DIR}"

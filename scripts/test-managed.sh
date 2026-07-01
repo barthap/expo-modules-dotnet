@@ -40,26 +40,27 @@ EOF
 fi
 
 echo "==> Building Expo.JSI"
-dotnet build "$repo_root/managed/packages/Expo.JSI/Expo.JSI.csproj" -c "$configuration"
+dotnet build "$repo_root/packages/expo-modules-dotnet/managed/packages/Expo.JSI/Expo.JSI.csproj" -c "$configuration"
 
 echo
 echo "==> Building Expo.ModulesCore"
-dotnet build "$repo_root/managed/packages/Expo.ModulesCore/Expo.ModulesCore.csproj" -c "$configuration"
+dotnet build "$repo_root/packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/Expo.ModulesCore.csproj" -c "$configuration"
 
 echo
 echo "==> Building Expo.ModulesCore.Generator"
-dotnet build "$repo_root/managed/packages/Expo.ModulesCore.Generator/Expo.ModulesCore.Generator.csproj" -c "$configuration"
+dotnet build "$repo_root/packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/Expo.ModulesCore.Generator.csproj" -c "$configuration"
 
 echo
 echo "==> Running Expo.ModulesCore.Generator.Tests"
-dotnet test "$repo_root/managed/packages/Expo.ModulesCore.Generator.Tests/Expo.ModulesCore.Generator.Tests.csproj" \
+dotnet test "$repo_root/packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests/Expo.ModulesCore.Generator.Tests.csproj" \
   -c "$configuration" \
   "$@"
 
 echo
 echo "==> Configuring native testhost"
+rm -rf "$build_dir"
 run_in_repo_env cmake \
-  -S "$repo_root/native/testhost" \
+  -S "$repo_root/packages/expo-modules-dotnet/native/testhost" \
   -B "$build_dir" \
   -DHERMES_PREBUILT_ROOT="$hermes_root"
 
@@ -70,13 +71,13 @@ run_in_repo_env cmake --build "$build_dir" --target expo_jsi_testhost
 echo
 echo "==> Running Expo.JSI.Tests"
 EXPO_JSI_TESTHOST_LIBRARY="$testhost_library" \
-  dotnet test "$repo_root/managed/packages/Expo.JSI.Tests/Expo.JSI.Tests.csproj" \
+  dotnet test "$repo_root/packages/expo-modules-dotnet/managed/packages/Expo.JSI.Tests/Expo.JSI.Tests.csproj" \
   -c "$configuration" \
   "$@"
 
 echo
 echo "==> Running Expo.ModulesCore.Tests"
 EXPO_JSI_TESTHOST_LIBRARY="$testhost_library" \
-  dotnet test "$repo_root/managed/packages/Expo.ModulesCore.Tests/Expo.ModulesCore.Tests.csproj" \
+  dotnet test "$repo_root/packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests/Expo.ModulesCore.Tests.csproj" \
   -c "$configuration" \
   "$@"

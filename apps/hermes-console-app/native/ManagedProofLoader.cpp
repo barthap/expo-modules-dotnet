@@ -30,7 +30,7 @@ std::filesystem::path repoRootFromCurrentDirectory()
 {
   auto current = std::filesystem::current_path();
   while (!current.empty()) {
-    if (std::filesystem::exists(current / "experiments/hermes-console-app")) {
+    if (std::filesystem::exists(current / "apps/hermes-console-app")) {
       return current;
     }
     current = current.parent_path();
@@ -51,7 +51,7 @@ template <typename Function> Function resolveExport(void *library, const char *n
 std::filesystem::path findProofAssembly()
 {
   auto assembly = repoRootFromCurrentDirectory() /
-                  "experiments/hermes-console-app/managed/HermesConsoleApp/"
+                  "apps/hermes-console-app/managed/HermesConsoleApp/"
                   "bin" /
                   EXPO_JSI_MANAGED_CONFIGURATION / "net10.0/HermesConsoleApp.dll";
   if (!std::filesystem::exists(assembly)) {
@@ -161,7 +161,7 @@ std::filesystem::path nativeAotRid()
 std::filesystem::path findNativeAotLibrary()
 {
   auto library =
-    repoRootFromCurrentDirectory() / "experiments/hermes-console-app/managed/HermesConsoleApp/bin" /
+    repoRootFromCurrentDirectory() / "apps/hermes-console-app/managed/HermesConsoleApp/bin" /
     EXPO_JSI_MANAGED_CONFIGURATION / "net10.0" / nativeAotRid() / "publish/HermesConsoleApp.dylib";
   if (!std::filesystem::exists(library)) {
     throw std::runtime_error("NativeAOT proof library does not exist. Run dotnet publish first: " +

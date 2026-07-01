@@ -1,14 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
-    <ProjectReference Include="../../../../managed/packages/Expo.JSI/Expo.JSI.csproj" />
-    <ProjectReference Include="../../../../managed/packages/Expo.ModulesCore/Expo.ModulesCore.csproj" />
+    <ProjectReference Include="../../../../packages/expo-modules-dotnet/managed/packages/Expo.JSI/Expo.JSI.csproj" />
+    <ProjectReference Include="../../../../packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/Expo.ModulesCore.csproj" />
     <ProjectReference
-      Include="../../../../managed/packages/Expo.ModulesCore.Generator/Expo.ModulesCore.Generator.csproj"
+      Include="../../../../packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/Expo.ModulesCore.Generator.csproj"
       Condition="'$(PublishAot)' != 'true'"
       OutputItemType="Analyzer"
       ReferenceOutputAssembly="false" />
     <Analyzer
-      Include="../../../../managed/packages/Expo.ModulesCore.Generator/bin/Debug/netstandard2.0/Expo.ModulesCore.Generator.dll"
+      Include="../../../../packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/bin/Debug/netstandard2.0/Expo.ModulesCore.Generator.dll"
       Condition="'$(PublishAot)' == 'true'" />
   </ItemGroup>
 

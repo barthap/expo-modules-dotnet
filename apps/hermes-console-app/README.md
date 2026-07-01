@@ -70,7 +70,7 @@ points from the published shared library. The native CMake flag
 - Actual result: NativeAOT publish, native build, NativeAOT run, and default
   HostFXR run all completed successfully.
 - Artifacts: NativeAOT publishes under
-  `experiments/hermes-console-app/managed/HermesConsoleApp/bin/<configuration>/net10.0/<rid>/publish/`.
+  `apps/hermes-console-app/managed/HermesConsoleApp/bin/<configuration>/net10.0/<rid>/publish/`.
 - Ownership/lifetime findings: NativeAOT did not require changing the
   `expo_jsi_api` table, opaque runtime handle, owned value release counting, or
   string result release counting.

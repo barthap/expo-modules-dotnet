@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-experiment_dir="$repo_root/experiments/hermes-console-app"
+experiment_dir="$repo_root/apps/hermes-console-app"
 managed_project="$experiment_dir/managed/HermesConsoleApp/HermesConsoleApp.csproj"
 hermes_root="${HERMES_PREBUILT_ROOT:-$repo_root/build/hermes/source/destroot}"
 loader="${EXPO_JSI_DOTNET_LOADER:-hostfxr}"
@@ -78,7 +78,7 @@ EOF
 build_generator_analyzer() {
   echo "==> Building modules generator analyzer"
   dotnet build \
-    "$repo_root/managed/packages/Expo.ModulesCore.Generator/Expo.ModulesCore.Generator.csproj" \
+    "$repo_root/packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/Expo.ModulesCore.Generator.csproj" \
     -c Debug
 }
 
@@ -122,6 +122,7 @@ configure_native_app() {
 
   echo
   echo "==> Configuring cmake"
+  rm -rf "$build_dir"
   cmake \
     -S "$experiment_dir/native" \
     -B "$build_dir" \
