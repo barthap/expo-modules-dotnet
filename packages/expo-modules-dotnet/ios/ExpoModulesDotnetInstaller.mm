@@ -142,7 +142,7 @@ RCT_EXPORT_MODULE()
   }
 
   if (!installed) {
-    NSLog(@"[ExpoModulesDotnet] NativeAOT ExampleModule.add runtime is not ready.");
+    NSLog(@"[ExpoModulesDotnet] NativeAOT module runtime is not ready.");
   }
 
   return installed;
