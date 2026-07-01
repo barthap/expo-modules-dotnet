@@ -15,10 +15,11 @@ public sealed class GeneratedMathAndTextModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      GeneratedMathAndTextModuleProvider.Register(runtime);
+      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
+      GeneratedMathAndTextModuleProvider.Register(runtime, modules);
 
       using var result = fixture.Evaluate(
-          "globalThis.expo.modules.Math.add(41.5, true)",
+          "globalThis._expoDotnet.modules.Math.add(41.5, true)",
           "modules-core-math-add.js"
       );
 
@@ -35,10 +36,11 @@ public sealed class GeneratedMathAndTextModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      GeneratedMathAndTextModuleProvider.Register(runtime);
+      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
+      GeneratedMathAndTextModuleProvider.Register(runtime, modules);
 
       using var result = fixture.Evaluate(
-          "globalThis.expo.modules.Text.greet('Zoë\\u0000JS')",
+          "globalThis._expoDotnet.modules.Text.greet('Zoë\\u0000JS')",
           "modules-core-text-greet.js"
       );
 
@@ -55,10 +57,11 @@ public sealed class GeneratedMathAndTextModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      GeneratedMathAndTextModuleProvider.Register(runtime);
+      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
+      GeneratedMathAndTextModuleProvider.Register(runtime, modules);
 
       using var result = fixture.Evaluate(
-          "try { globalThis.expo.modules.Text.greet(42); 'no error'; } catch (e) { e.message; }",
+          "try { globalThis._expoDotnet.modules.Text.greet(42); 'no error'; } catch (e) { e.message; }",
           "modules-core-text-error.js"
       );
 
@@ -81,10 +84,10 @@ public sealed class GeneratedMathAndTextModuleTests
 
   private static class GeneratedMathAndTextModuleProvider
   {
-    public static void Register(JavaScriptRuntime runtime)
+    public static void Register(JavaScriptRuntime runtime, JavaScriptObject modules)
     {
-      using var math = ModuleRegistry.DefineModule(runtime, "Math");
-      using var text = ModuleRegistry.DefineModule(runtime, "Text");
+      using var math = ModuleRegistry.DefineModule(runtime, modules, "Math");
+      using var text = ModuleRegistry.DefineModule(runtime, modules, "Text");
 
       GeneratedFunction.DefineSync(
           runtime,

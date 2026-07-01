@@ -98,7 +98,7 @@ void jsi_main(jsi::Runtime &rt, CSharpAPI &cs)
   }
 
   auto callback_result = rt.evaluateJavaScript(
-    std::make_unique<jsi::StringBuffer>("global.expo.modules.Math.add(41.5, true);"),
+    std::make_unique<jsi::StringBuffer>("global._expoDotnet.modules.Math.add(41.5, true);"),
     "generated-module-dispatch.js");
   if (!callback_result.isNumber() || callback_result.asNumber() != 42.5) {
     throw std::runtime_error("Generated module dispatch proof failed.");
@@ -106,7 +106,7 @@ void jsi_main(jsi::Runtime &rt, CSharpAPI &cs)
   std::cout << "JS called generated-looking C# module: " << callback_result.asNumber() << std::endl;
 
   auto text_result = rt.evaluateJavaScript(
-    std::make_unique<jsi::StringBuffer>("global.expo.modules.Text.greet('Zoë\\u0000JS');"),
+    std::make_unique<jsi::StringBuffer>("global._expoDotnet.modules.Text.greet('Zoë\\u0000JS');"),
     "generated-module-string-dispatch.js");
   const auto expected_text = std::string("Hello, Zoë\0JS", sizeof("Hello, Zoë\0JS") - 1);
   if (!text_result.isString() || text_result.asString(rt).utf8(rt) != expected_text) {
@@ -116,7 +116,7 @@ void jsi_main(jsi::Runtime &rt, CSharpAPI &cs)
             << std::endl;
 
   auto v2_result = rt.evaluateJavaScript(
-    std::make_unique<jsi::StringBuffer>("global.expo.modules.V2Math.add(20.25, 22.25);"),
+    std::make_unique<jsi::StringBuffer>("global._expoDotnet.modules.V2Math.add(20.25, 22.25);"),
     "generated-v2-module-dispatch.js");
   if (!v2_result.isNumber() || v2_result.asNumber() != 42.5) {
     throw std::runtime_error("Generated v2 module dispatch proof failed.");
@@ -125,7 +125,7 @@ void jsi_main(jsi::Runtime &rt, CSharpAPI &cs)
 
   try {
     rt.evaluateJavaScript(
-      std::make_unique<jsi::StringBuffer>("global.expo.modules.Text.greet(42);"),
+      std::make_unique<jsi::StringBuffer>("global._expoDotnet.modules.Text.greet(42);"),
       "generated-module-string-type-error.js");
     throw std::runtime_error("Expected wrong-type Text.greet call to throw.");
   } catch (const jsi::JSError &) {
@@ -165,9 +165,8 @@ int main()
 
     auto value_release_count = release_counter.value_release_count;
     std::cout << "Released owned value handles: " << value_release_count << std::endl;
-    if (value_release_count != 27) {
-      throw std::runtime_error(
-        "Expected exactly twenty-seven counted owned value handle releases.");
+    if (value_release_count != 25) {
+      throw std::runtime_error("Expected exactly twenty-five counted owned value handle releases.");
     }
 
     auto string_release_count = release_counter.string_release_count;

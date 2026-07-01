@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Expo.JSI;
+using Expo.ModulesCore;
 using Expo.ModulesCore.Generated;
 
 namespace HermesConsoleApp;
@@ -76,8 +77,9 @@ public static class EntryPoints
     try
     {
       var runtime = JavaScriptRuntime.FromNative(api, runtimeHandle);
-      GeneratedModuleProvider.Register(runtime);
-      ExpoModulesProvider_HermesConsoleApp.Register(runtime);
+      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
+      GeneratedModuleProvider.Register(runtime, modules);
+      ExpoModulesProvider_HermesConsoleApp.Register(runtime, modules);
       return 0;
     }
     catch (Exception ex)

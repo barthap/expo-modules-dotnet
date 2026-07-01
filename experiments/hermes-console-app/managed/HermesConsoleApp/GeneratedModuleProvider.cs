@@ -4,11 +4,9 @@ namespace HermesConsoleApp;
 
 internal static class GeneratedModuleProvider
 {
-  public static void Register(JavaScriptRuntime runtime)
+  public static void Register(JavaScriptRuntime runtime, JavaScriptObject modules)
   {
     using var global = runtime.Global();
-    using var expo = runtime.CreateObject();
-    using var modules = runtime.CreateObject();
     using var math = runtime.CreateObject();
     using var text = runtime.CreateObject();
 
@@ -31,12 +29,6 @@ internal static class GeneratedModuleProvider
 
     using var textValue = text.AsValue();
     modules.SetProperty("Text", textValue);
-
-    using var modulesValue = modules.AsValue();
-    expo.SetProperty("modules", modulesValue);
-
-    using var expoValue = expo.AsValue();
-    global.SetProperty("expo", expoValue);
 
     Console.WriteLine("registered generated-looking Math module");
   }

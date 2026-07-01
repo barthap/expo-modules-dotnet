@@ -13,10 +13,18 @@ Define the boundary between low-level `Expo.JSI` wrappers and the
 helpers, and typed conversion helpers above `Expo.JSI`.
 
 #### Scenario: Generated-looking provider registers a module
-- **GIVEN** generated-looking provider code has a `JavaScriptRuntime`
-- **WHEN** it installs a module under `globalThis.expo.modules`
+- **GIVEN** generated-looking provider code has a `JavaScriptRuntime` and a
+  JavaScript modules object
+- **WHEN** it installs a module under the supplied modules object
 - **THEN** it SHALL use `Expo.ModulesCore` helpers instead of placing
   module-layer abstractions in `Expo.JSI`
+- **AND** it SHALL NOT hardcode `globalThis.expo.modules`
+
+#### Scenario: Managed proof uses default dotnet namespace
+- **GIVEN** managed proof or test code needs a default modules object
+- **WHEN** it asks `Expo.ModulesCore` for the default dotnet modules object
+- **THEN** the helper SHALL create or return `globalThis._expoDotnet.modules`
+- **AND** it SHALL NOT create or mutate `globalThis.expo`
 
 ### Requirement: ModulesCore Avoids Inert Authored Syntax
 
@@ -56,8 +64,8 @@ Generated sync function glue SHALL decode arguments, call authored methods
 directly, and encode return values through typed helpers.
 
 #### Scenario: Generated sync module function is called from JavaScript
-- **GIVEN** a generated provider registered a module under
-  `globalThis.expo.modules`
+- **GIVEN** a generated provider registered a module under a caller-supplied
+  modules object
 - **WHEN** JavaScript calls a generated sync function with supported arguments
 - **THEN** the generated host function SHALL decode arguments through typed
   codecs

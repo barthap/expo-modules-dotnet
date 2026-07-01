@@ -1,4 +1,5 @@
 using Expo.JSI;
+using Expo.ModulesCore;
 using Expo.ModulesCore.Generated;
 using Expo.ModulesCore.Tests.Fixtures;
 using Xunit;
@@ -14,10 +15,11 @@ public sealed class GeneratedAttributeModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(runtime);
+      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(runtime, modules);
 
       using var result = fixture.Evaluate(
-          "globalThis.expo.modules.GeneratedMath.add(20.25, 22.25)",
+          "globalThis._expoDotnet.modules.GeneratedMath.add(20.25, 22.25)",
           "generated-attribute-math-add.js"
       );
 
@@ -34,10 +36,11 @@ public sealed class GeneratedAttributeModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(runtime);
+      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(runtime, modules);
 
       using var result = fixture.Evaluate(
-          "globalThis.expo.modules.GeneratedMath.AddOneWhen(41.5, true)",
+          "globalThis._expoDotnet.modules.GeneratedMath.AddOneWhen(41.5, true)",
           "generated-attribute-math-default-name.js"
       );
 
@@ -54,10 +57,11 @@ public sealed class GeneratedAttributeModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(runtime);
+      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(runtime, modules);
 
       using var result = fixture.Evaluate(
-          "globalThis.expo.modules.GeneratedText.greet('Zoë\\u0000JS')",
+          "globalThis._expoDotnet.modules.GeneratedText.greet('Zoë\\u0000JS')",
           "generated-attribute-text-greet.js"
       );
 
@@ -74,11 +78,12 @@ public sealed class GeneratedAttributeModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(runtime);
+      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(runtime, modules);
 
       using var result = fixture.Evaluate(
-          "const labels = globalThis.expo.modules.GeneratedArray.labels(); " +
-          "globalThis.expo.modules.GeneratedArray.sum([1, 2, 3.5]) + ':' + labels.join(',')",
+          "const labels = globalThis._expoDotnet.modules.GeneratedArray.labels(); " +
+          "globalThis._expoDotnet.modules.GeneratedArray.sum([1, 2, 3.5]) + ':' + labels.join(',')",
           "generated-attribute-array.js"
       );
 

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Expo.JSI;
+using Expo.ModulesCore;
 using Expo.ModulesCore.Codecs;
 using Expo.ModulesCore.Tests.Fixtures;
 using Xunit;
@@ -16,10 +17,11 @@ public sealed class GeneratedArrayModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      GeneratedArrayModuleProvider.Register(runtime);
+      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
+      GeneratedArrayModuleProvider.Register(runtime, modules);
 
       using var result = fixture.Evaluate(
-          "globalThis.expo.modules.Array.sum([1, 2, 3.5])",
+          "globalThis._expoDotnet.modules.Array.sum([1, 2, 3.5])",
           "array-sum.js"
       );
 
@@ -36,10 +38,11 @@ public sealed class GeneratedArrayModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      GeneratedArrayModuleProvider.Register(runtime);
+      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
+      GeneratedArrayModuleProvider.Register(runtime, modules);
 
       using var result = fixture.Evaluate(
-          "const labels = globalThis.expo.modules.Array.labels(); Array.isArray(labels) && labels.join(',')",
+          "const labels = globalThis._expoDotnet.modules.Array.labels(); Array.isArray(labels) && labels.join(',')",
           "array-labels.js"
       );
 
@@ -58,9 +61,9 @@ public sealed class GeneratedArrayModuleTests
 
   private static class GeneratedArrayModuleProvider
   {
-    public static void Register(JavaScriptRuntime runtime)
+    public static void Register(JavaScriptRuntime runtime, JavaScriptObject modules)
     {
-      using var array = ModuleRegistry.DefineModule(runtime, "Array");
+      using var array = ModuleRegistry.DefineModule(runtime, modules, "Array");
 
       GeneratedFunction.DefineSync(
           runtime,

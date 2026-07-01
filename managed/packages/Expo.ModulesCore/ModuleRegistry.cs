@@ -4,19 +4,28 @@ namespace Expo.ModulesCore;
 
 public static class ModuleRegistry
 {
-  public static JavaScriptObject DefineModule(JavaScriptRuntime runtime, string moduleName)
+  public static JavaScriptObject DefineModule(
+      JavaScriptRuntime runtime,
+      JavaScriptObject modules,
+      string moduleName)
   {
     ArgumentNullException.ThrowIfNull(runtime);
+    ArgumentNullException.ThrowIfNull(modules);
     ArgumentException.ThrowIfNullOrWhiteSpace(moduleName);
-
-    using var global = runtime.Global();
-    using var expo = GetOrCreateObject(runtime, global, "expo");
-    using var modules = GetOrCreateObject(runtime, expo, "modules");
 
     var module = runtime.CreateObject();
     using var moduleValue = module.AsValue();
     modules.SetProperty(moduleName, moduleValue);
     return module;
+  }
+
+  public static JavaScriptObject GetOrCreateDotnetModulesObject(JavaScriptRuntime runtime)
+  {
+    ArgumentNullException.ThrowIfNull(runtime);
+
+    using var global = runtime.Global();
+    using var expoDotnet = GetOrCreateObject(runtime, global, "_expoDotnet");
+    return GetOrCreateObject(runtime, expoDotnet, "modules");
   }
 
   private static JavaScriptObject GetOrCreateObject(

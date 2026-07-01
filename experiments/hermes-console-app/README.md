@@ -7,17 +7,18 @@ through HostFXR or NativeAOT, and verifies bridge paths without P/Invoke:
 - managed code can create, inspect, read, and release JavaScript values through
   opaque JSI handles;
 - JavaScript installs and calls a generated-looking module function at
-  `global.expo.modules.Math.add`. Native C++ owns the JSI host function
+  `globalThis._expoDotnet.modules.Math.add`. Native C++ owns the JSI host function
   plumbing, while C# generated-looking code decodes borrowed arguments, calls
   `MathModule.Add`, and returns an owned JavaScript value handle.
 - JavaScript installs and calls a v2-syntax module function at
-  `global.expo.modules.V2Math.add`. The module lives in the same
+  `globalThis._expoDotnet.modules.V2Math.add`. The module lives in the same
   `HermesConsoleApp.csproj`, uses `[ExpoModule]` / `[JS]` authored syntax, and
   is registered through the Roslyn-generated provider.
 - managed code can create and read JavaScript strings as strict UTF-8 text,
   including non-ASCII data and embedded NUL bytes;
-- JavaScript installs and calls `global.expo.modules.Text.greet`, which decodes
-  a borrowed string argument in C# and returns a JavaScript string value.
+- JavaScript installs and calls `globalThis._expoDotnet.modules.Text.greet`,
+  which decodes a borrowed string argument in C# and returns a JavaScript
+  string value.
 
 Managed JSI calls must run on the Hermes executor thread. The native proof
 uses the console runtime executor's synchronous path before entering managed

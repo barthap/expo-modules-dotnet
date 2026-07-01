@@ -178,13 +178,14 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine();
     builder.AppendLine($"public static class {providerTypeName}");
     builder.AppendLine("{");
-    builder.AppendLine("  public static void Register(global::Expo.JSI.JavaScriptRuntime runtime)");
+    builder.AppendLine("  public static void Register(global::Expo.JSI.JavaScriptRuntime runtime, global::Expo.JSI.JavaScriptObject modules)");
     builder.AppendLine("  {");
     builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(runtime);");
+    builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(modules);");
     foreach (var module in moduleModels)
     {
       var moduleVariable = $"module_{SanitizeIdentifier(module.ModuleName)}";
-      builder.AppendLine($"    using var {moduleVariable} = ModuleRegistry.DefineModule(runtime, \"{EscapeString(module.ModuleName)}\");");
+      builder.AppendLine($"    using var {moduleVariable} = ModuleRegistry.DefineModule(runtime, modules, \"{EscapeString(module.ModuleName)}\");");
       foreach (var function in module.Functions.Values)
       {
         builder.AppendLine("    GeneratedFunction.DefineSync(");
