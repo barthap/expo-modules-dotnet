@@ -12,6 +12,7 @@
 		514201552437B4B40078DB4F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 514201532437B4B40078DB4F /* Main.storyboard */; };
 		514201582437B4B40078DB4F /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 514201572437B4B40078DB4F /* main.m */; };
 		68339ACA83C4F94CC7AC7F05 /* libPods-desktopapp-macOS.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 77EBC93A9DB7DA790CB9D2FE /* libPods-desktopapp-macOS.a */; };
+		8095D86122E1B84B04678852 /* Managed in Resources */ = {isa = PBXBuildFile; fileRef = 8A5DB5D9AF05CC825807EEF0 /* Managed */; };
 		C0806158D3CC1F112F5E7725 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = FBD05BDB6EF36AA8C6311AB7 /* PrivacyInfo.xcprivacy */; };
 		C81DFE9399440C3299CF9206 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B74E909CF22EC1B8B97950 /* ExpoModulesProvider.swift */; };
 		FEB022489526957AAF722AEA /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = FBD05BDB6EF36AA8C6311AB7 /* PrivacyInfo.xcprivacy */; };
@@ -30,6 +31,7 @@
 		514201572437B4B40078DB4F /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		514201592437B4B40078DB4F /* desktopapp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = desktopapp.entitlements; sourceTree = "<group>"; };
 		77EBC93A9DB7DA790CB9D2FE /* libPods-desktopapp-macOS.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-desktopapp-macOS.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		8A5DB5D9AF05CC825807EEF0 /* Managed */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder; path = Managed; sourceTree = "<group>"; };
 		DA83A7034438808498687FDB /* Pods-desktopapp-macOS.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-desktopapp-macOS.release.xcconfig"; path = "Target Support Files/Pods-desktopapp-macOS/Pods-desktopapp-macOS.release.xcconfig"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		FBD05BDB6EF36AA8C6311AB7 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -110,6 +112,7 @@
 				FBD05BDB6EF36AA8C6311AB7 /* PrivacyInfo.xcprivacy */,
 				8FED181713192636054917E7 /* Pods */,
 				167A7B5C3C64A5D09E471622 /* ExpoModulesProviders */,
+				8A5DB5D9AF05CC825807EEF0 /* Managed */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -164,6 +167,7 @@
 				4CC625C8933515CC9C104283 /* [Expo] Configure project */,
 				514201452437B4B30078DB4F /* Sources */,
 				514201462437B4B30078DB4F /* Frameworks */,
+				E662CD0F0906509F39C4E4A2 /* Build Managed .NET Artifacts */,
 				514201472437B4B30078DB4F /* Resources */,
 				381D8A6E24576A4E00465D17 /* Bundle React Native code and images */,
 				F16C76AD38D65A22C2CB4B58 /* [CP] Embed Pods Frameworks */,
@@ -230,6 +234,7 @@
 				514201522437B4B40078DB4F /* Assets.xcassets in Resources */,
 				514201552437B4B40078DB4F /* Main.storyboard in Resources */,
 				C0806158D3CC1F112F5E7725 /* PrivacyInfo.xcprivacy in Resources */,
+				8095D86122E1B84B04678852 /* Managed in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -344,6 +349,26 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-desktopapp-macOS/expo-configure-project.sh\"\n";
+		};
+		E662CD0F0906509F39C4E4A2 /* Build Managed .NET Artifacts */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Managed .NET Artifacts";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/../scripts/build-managed.sh\"";
+			showEnvVarsInLog = 0;
 		};
 		F16C76AD38D65A22C2CB4B58 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
