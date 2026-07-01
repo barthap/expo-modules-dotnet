@@ -9,6 +9,10 @@
 
 #include "ReactNativeRuntimeConnector.h"
 
+@protocol ExpoModulesDotnetInstalling
+- (BOOL)installModules;
+@end
+
 namespace {
 
 using RegisterModulesFn = int (*)(const expo_jsi_api *, expo_jsi_runtime_handle);
@@ -75,13 +79,32 @@ public:
   explicit ExpoModulesDotnetInstallerTurboModule(
     const facebook::react::ObjCTurboModule::InitParams &params)
     : facebook::react::TurboModule(params.moduleName, params.jsInvoker)
+    , installer_(static_cast<id<ExpoModulesDotnetInstalling>>(params.instance))
   {
+    methodMap_["installModules"] = MethodMetadata{
+      .argCount = 0,
+      .invoker = ExpoModulesDotnetInstallerTurboModule::installModules,
+    };
   }
+
+private:
+  static facebook::jsi::Value installModules(facebook::jsi::Runtime &runtime,
+                                             facebook::react::TurboModule &turboModule,
+                                             const facebook::jsi::Value *,
+                                             size_t)
+  {
+    auto &installerTurboModule =
+      static_cast<ExpoModulesDotnetInstallerTurboModule &>(turboModule);
+    return facebook::jsi::Value([installerTurboModule.installer_ installModules]);
+  }
+
+  id<ExpoModulesDotnetInstalling> installer_;
 };
 
 } // namespace
 
-@interface ExpoModulesDotnetInstaller : NSObject <RCTBridgeModule, RCTTurboModuleWithJSIBindings>
+@interface ExpoModulesDotnetInstaller
+  : NSObject <RCTBridgeModule, RCTTurboModuleWithJSIBindings, ExpoModulesDotnetInstalling>
 @end
 
 @implementation ExpoModulesDotnetInstaller {
@@ -108,8 +131,21 @@ RCT_EXPORT_MODULE()
   auto installedRuntime =
     std::make_shared<InstalledRuntime>(std::move(connector), runtimeHandle);
 
-  installedRuntime->registerModules();
   _installedRuntimes.push_back(std::move(installedRuntime));
+}
+
+- (BOOL)installModules
+{
+  BOOL installed = NO;
+  for (const auto &installedRuntime : _installedRuntimes) {
+    installed = installedRuntime->registerModules() || installed;
+  }
+
+  if (!installed) {
+    NSLog(@"[ExpoModulesDotnet] NativeAOT ExampleModule.add runtime is not ready.");
+  }
+
+  return installed;
 }
 
 @end

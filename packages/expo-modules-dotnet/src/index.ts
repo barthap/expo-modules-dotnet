@@ -10,8 +10,17 @@ declare global {
 }
 
 function ensureInstalled(): void {
+  if (globalThis._expoDotnet?.modules != null) {
+    return;
+  }
+
   if (ExpoModulesDotnetInstaller == null) {
     throw new Error('expo-modules-dotnet native installer is not available.');
+  }
+
+  const installed = ExpoModulesDotnetInstaller.installModules();
+  if (!installed || globalThis._expoDotnet?.modules == null) {
+    throw new Error('expo-modules-dotnet native installer did not install _expoDotnet.');
   }
 }
 

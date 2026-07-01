@@ -90,19 +90,34 @@ bool registerV2Module(InstalledRuntime &installedRuntime)
   return true;
 }
 
-void installV2Module(facebook::jsi::Runtime &runtime,
-                     const std::shared_ptr<facebook::react::CallInvoker> &callInvoker)
+void prepareV2ModuleRuntime(facebook::jsi::Runtime &runtime,
+                            const std::shared_ptr<facebook::react::CallInvoker> &callInvoker)
 {
   auto connector =
     std::make_unique<expo::dotnet::ReactNativeRuntimeConnector>(runtime, callInvoker);
   auto runtimeHandle = expo::dotnet::createReactNativeRuntimeHandle(*connector);
   auto installedRuntime = std::make_shared<InstalledRuntime>(std::move(connector), runtimeHandle);
 
-  registerV2Module(*installedRuntime);
-
   std::lock_guard<std::mutex> lock(installedRuntimesMutex);
   installedRuntimes.push_back(std::move(installedRuntime));
-  __android_log_print(ANDROID_LOG_INFO, kLogTag, "NativeAOT ExampleModule.add installer ran.");
+  __android_log_print(ANDROID_LOG_INFO, kLogTag, "NativeAOT ExampleModule.add runtime captured.");
+}
+
+bool installV2Modules()
+{
+  std::lock_guard<std::mutex> lock(installedRuntimesMutex);
+
+  bool installed = false;
+  for (auto &installedRuntime : installedRuntimes) {
+    installed = registerV2Module(*installedRuntime) || installed;
+  }
+
+  if (!installed) {
+    __android_log_print(
+      ANDROID_LOG_ERROR, kLogTag, "NativeAOT ExampleModule.add runtime is not ready.");
+  }
+
+  return installed;
 }
 
 } // namespace
@@ -119,6 +134,7 @@ public:
     javaClassLocal()->registerNatives({
       makeNativeMethod("getBindingsInstaller",
                        ExpoModulesDotnetBindingsInstaller::getBindingsInstaller),
+      makeNativeMethod("installModules", ExpoModulesDotnetBindingsInstaller::installModules),
     });
   }
 
@@ -129,8 +145,13 @@ private:
     return facebook::react::BindingsInstallerHolder::newObjectCxxArgs(
       [](facebook::jsi::Runtime &runtime,
          const std::shared_ptr<facebook::react::CallInvoker> &callInvoker) {
-        installV2Module(runtime, callInvoker);
+        prepareV2ModuleRuntime(runtime, callInvoker);
       });
+  }
+
+  static bool installModules(facebook::jni::alias_ref<ExpoModulesDotnetBindingsInstaller>)
+  {
+    return installV2Modules();
   }
 };
 

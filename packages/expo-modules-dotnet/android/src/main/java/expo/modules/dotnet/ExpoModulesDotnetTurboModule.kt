@@ -3,6 +3,7 @@ package expo.modules.dotnet
 import com.facebook.proguard.annotations.DoNotStrip
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
+import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.module.annotations.ReactModule
 import com.facebook.react.turbomodule.core.interfaces.BindingsInstallerHolder
 import com.facebook.react.turbomodule.core.interfaces.TurboModule
@@ -19,6 +20,10 @@ class ExpoModulesDotnetTurboModule(reactContext: ReactApplicationContext) :
 
   @DoNotStrip
   external override fun getBindingsInstaller(): BindingsInstallerHolder
+
+  @DoNotStrip
+  @ReactMethod(isBlockingSynchronousMethod = true)
+  external fun installModules(): Boolean
 
   companion object {
     const val NAME = "ExpoModulesDotnetInstaller"
