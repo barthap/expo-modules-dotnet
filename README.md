@@ -19,12 +19,14 @@ now match the direction of the project.
 ## Repository Shape
 
 - `packages/expo-modules-dotnet` is the public Expo adapter package. It owns the
-  JavaScript API, TurboModule installer, Android/iOS glue, reusable C++ JSI
+  JavaScript API, TurboModule installer, Android/iOS/macOS glue, reusable C++ JSI
   bridge, managed core packages, and Hermes-backed testhost.
 - `packages/example-module` is an authored .NET Expo module package. It owns the
   example C# module, a small JS facade, and the NativeAOT publish/staging proof.
 - `apps/mobile-app` is the Expo app that consumes both packages and proves the
   native path on iOS and Android.
+- `apps/desktop-app` is the Expo Desktop / React Native macOS app that consumes
+  both packages and proves the desktop HostFXR path.
 - `apps/hermes-console-app` is a headless Hermes integration app/proof.
 - `experiments/` contains narrow smoke proofs only, such as HostFXR and
   NativeAOT loader experiments.
@@ -64,14 +66,15 @@ steps, see `apps/mobile-app/README.md`.
 
 The mobile proof validates that an Expo app can load the public
 `expo-modules-dotnet` adapter, call through an authored `example-module`
-facade, and reach C# module logic from React Native Hermes.
+facade, and reach C# module logic from React Native Hermes. The desktop proof
+validates the same module path on React Native macOS using HostFXR by default.
 
 Some pieces are deliberately temporary:
 
 - .NET module autolinking does not exist yet.
 - NativeAOT artifacts are manually staged into the adapter package for now.
-- The package boundary will be pressure-tested further by macOS and Windows
-  apps with their own React Native versions.
+- The package boundary still needs Windows/RNW evidence with its own React
+  Native version lane.
 
 ## Development Docs
 

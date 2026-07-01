@@ -50,6 +50,9 @@ exception rules.
 - `apps/mobile-app/` is the NativeAOT React Native integration proof app. It
   consumes `expo-modules-dotnet` and `example-module` as workspace
   dependencies.
+- `apps/desktop-app/` is the Expo Desktop / React Native macOS integration
+  proof app. It consumes the same workspace packages on the React Native 0.81
+  lane and defaults to HostFXR-managed artifact staging.
 - `apps/hermes-console-app/` is the reusable headless Hermes integration app
   proof and can run through HostFXR or NativeAOT.
 - `experiments/hostfxr-smoke/` and `experiments/nativeaot-smoke/` preserve

@@ -88,9 +88,9 @@ The managed interop layer SHALL validate the native API table before using it.
 
 ### Requirement: Loader Choice Preserves ABI Shape
 
-The Hermes console proof MAY load managed module logic through HostFXR or a
-NativeAOT shared library, but the loader choice SHALL NOT change the C ABI
-shape passed into managed code.
+The Hermes console proof and desktop React Native macOS proof MAY load managed
+module logic through HostFXR or a NativeAOT shared library, but the loader
+choice SHALL NOT change the C ABI shape passed into managed code.
 
 #### Scenario: NativeAOT proof runs against the same ABI
 - **GIVEN** the Hermes console proof is built with `EXPO_JSI_DOTNET_LOADER=nativeaot`
@@ -107,6 +107,25 @@ shape passed into managed code.
 - **AND** the registration path SHALL NOT depend on HostFXR, runtime assembly
   scanning, JSON, or hot-path reflection
 
+#### Scenario: Desktop HostFXR entry point runs against React Native macOS Hermes
+- **GIVEN** `apps/desktop-app` stages `ExampleModule.dll`,
+  `ExampleModule.runtimeconfig.json`, `ExampleModule.deps.json`, managed bridge
+  assemblies, and `libnethost.dylib` into the macOS app bundle
+- **WHEN** the macOS adapter selects the `hostfxr` loader
+- **THEN** native code SHALL initialize HostFXR from the staged runtime config
+- **AND** resolve the `[UnmanagedCallersOnly]` registration method using
+  `UNMANAGEDCALLERSONLY_METHOD`
+- **AND** call the resolved entry point with the same `expo_jsi_api` table and
+  opaque runtime handle shape used by NativeAOT
+
+#### Scenario: Desktop NativeAOT entry point uses the same registration ABI
+- **GIVEN** `apps/desktop-app` selects the `nativeaot` loader and stages a
+  platform `libExampleModule.dylib`
+- **WHEN** the macOS adapter registers modules
+- **THEN** native code SHALL resolve `example_module_register_modules`
+- **AND** call it with the same `expo_jsi_api` table and opaque runtime handle
+  shape used by HostFXR
+
 ### Requirement: React Native Runtime Connector Preserves ABI Ownership
 
 `packages/expo-modules-dotnet/native/packages/jsi` SHALL provide a React Native
@@ -115,8 +134,9 @@ runtime connector that adapts an already-created Hermes
 JSI layouts to managed code. The connector MAY store the borrowed runtime as a
 raw pointer, but it SHALL keep that pointer inside an owned holder that models
 invalidation separately from React Native runtime ownership. The current
-implementation evidence is the `apps/mobile-app` proof; this requirement does
-not by itself define a production mobile adapter lifecycle.
+implementation evidence is the `apps/mobile-app` proof and the
+`apps/desktop-app` React Native macOS proof; this requirement does not by
+itself define a production adapter lifecycle.
 
 #### Scenario: React Native connector creates managed runtime handle
 - **GIVEN** React Native provides an active Hermes runtime and `CallInvoker`
@@ -126,9 +146,9 @@ not by itself define a production mobile adapter lifecycle.
 - **AND** managed code SHALL observe only the ABI table and opaque handle
 
 #### Scenario: Borrowed runtime lifetime is bounded by native host
-- **GIVEN** React Native invokes a TurboModule JSI bindings installer
-- **WHEN** the installer registers NativeAOT module bindings into the borrowed
-  runtime
+- **GIVEN** React Native invokes a TurboModule installer or JSI bindings
+  installer
+- **WHEN** the installer registers module bindings into the borrowed runtime
 - **THEN** it SHALL keep the borrowed runtime connector and opaque runtime handle
   alive at least as long as those bindings can run
 - **AND** invalidation SHALL clear the holder before downstream code can use the

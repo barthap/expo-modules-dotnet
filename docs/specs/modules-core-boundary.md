@@ -97,7 +97,9 @@ actionable diagnostics.
 
 The generator SHALL keep module discovery library-local. App-level aggregation
 is future autolinking work. Until that exists, authored module packages may
-stage NativeAOT artifacts into documented adapter-owned locations manually.
+stage NativeAOT artifacts into documented adapter-owned locations manually, and
+app proofs may stage HostFXR artifacts into app-owned bundle resources
+manually.
 
 #### Scenario: Multiple libraries are linked into an app
 - **GIVEN** future autolinking resolves several dotnet Expo libraries
@@ -112,6 +114,15 @@ stage NativeAOT artifacts into documented adapter-owned locations manually.
 - **THEN** the adapter SHALL first touch its TurboModule installer
 - **AND** it SHALL return `globalThis._expoDotnet.modules[name]` when present
 - **AND** it SHALL throw a plain JavaScript `Error` when the module is missing
+
+#### Scenario: Desktop app stages HostFXR artifacts manually
+- **GIVEN** the React Native macOS proof app uses the `hostfxr` loader
+- **WHEN** its app-local build script runs
+- **THEN** it SHALL build the authored module assembly
+- **AND** stage the managed assembly, runtime config, dependency file, managed
+  bridge assemblies, and `libnethost.dylib` into the app-owned `Managed`
+  bundle resource
+- **AND** this manual staging SHALL NOT be treated as .NET module autolinking
 
 ### Requirement: Generated Bindings Avoid Hot-Path Reflection
 

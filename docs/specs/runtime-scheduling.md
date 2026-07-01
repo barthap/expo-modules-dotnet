@@ -49,8 +49,9 @@ borrowed `facebook::jsi::Runtime` together with a React Native `CallInvoker`
 inside an explicit runtime-state holder. The raw runtime pointer SHALL be
 non-owning; the holder and its invalidation state SHALL be the lifetime
 primitive used by connector executors or longer-lived native values.
-The current implementation evidence is the `apps/mobile-app` proof; it routes
-through `CallInvoker`, which does not expose task priorities.
+The current implementation evidence is the `apps/mobile-app` proof and the
+`apps/desktop-app` React Native macOS proof. Both route through `CallInvoker`,
+which does not expose task priorities.
 
 #### Scenario: React Native connector schedules work
 - **GIVEN** native platform glue has a borrowed React Native Hermes runtime and
@@ -62,6 +63,16 @@ through `CallInvoker`, which does not expose task priorities.
   borrowed runtime and invoker are still valid
 - **AND** task priority SHALL be treated as advisory when the host scheduling
   primitive cannot honor it
+
+#### Scenario: React Native macOS registers sync modules from the host function
+- **GIVEN** React Native macOS exposes the installer TurboModule to JavaScript
+- **WHEN** JavaScript calls `ExpoModulesDotnetInstaller.installModules()`
+- **THEN** the macOS adapter MAY capture the current
+  `facebook::jsi::Runtime` from that TurboModule host function
+- **AND** it SHALL create the managed runtime handle without requiring
+  `CallInvoker::invokeSync`
+- **AND** generated synchronous module functions SHALL run as direct JSI host
+  functions inside the current JavaScript call
 
 ### Requirement: Runtime Task Context Ownership
 

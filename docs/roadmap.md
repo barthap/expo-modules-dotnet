@@ -18,6 +18,9 @@ current behavior; archived docs provide provenance.
 - `apps/mobile-app` is an accepted NativeAOT React Native integration proof. It
   validates the adapter seam, but it is not a production mobile adapter and
   still leaves reload-safe teardown unresolved.
+- `apps/desktop-app` is an accepted Expo Desktop / React Native macOS
+  integration proof. It validates HostFXR-managed module registration and the
+  generated synchronous module path on the React Native 0.81 macOS lane.
 
 ## Priority Roadmap
 
@@ -28,7 +31,9 @@ derived from real React Native hosts before the portable teardown contract is
 frozen. The `apps/mobile-app` proof is useful evidence, but it uses newer
 React Native / Expo versions than the near-term production targets.
 
-1. **React Native macOS lifecycle/scheduler proof**
+1. **React Native macOS lifecycle/scheduler proof** — completed proof evidence
+   lives in `apps/desktop-app`; remaining work is production lifecycle cleanup,
+   reload teardown, and broader scheduler coverage.
    - Mount the portable bridge into a real React Native macOS / Expo 54-era host.
    - Install one generated synchronous C# module into the real Hermes runtime.
    - Identify runtime install, reload, invalidation, and teardown hooks.
@@ -213,9 +218,9 @@ options.
 
 ## Backlog: Platform Adapters
 
-- **P0 — React Native macOS adapter**: Reuse headless core, macOS scheduler and
-  lifecycle services. The first macOS slice is the lifecycle/scheduler proof
-  with one generated synchronous module.
+- **P0 — React Native macOS adapter**: The first macOS HostFXR proof lives in
+  `apps/desktop-app`. Production follow-up still needs reload-safe lifecycle
+  services, teardown, and broader scheduler evidence.
 - **P0 — RNW adapter**: Runtime installation, scheduler mapping, Windows
   lifecycle, expo-desktop integration. The first RNW slice is the
   lifecycle/scheduler proof, not full production packaging polish.
