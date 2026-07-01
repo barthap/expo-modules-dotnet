@@ -1,17 +1,91 @@
-# Expo Modules C\#
+# Expo Modules C#
 
-Portable C# / JSI bridge research for Expo Modules.
+Portable C#/.NET modules for Expo and React Native, connected to JavaScript
+through JSI.
 
-This repo explores a cross-platform architecture where C++ owns JSI mechanics,
-C# owns module logic, and a small C ABI connects them. The first goal is a
-headless bridge that can be developed on macOS, with later adapters for React
-Native Windows and React Native macOS.
+The core architecture is intentionally small:
 
-Start with:
+```text
+C++ owns JSI mechanics.
+C# owns module logic.
+A C ABI with opaque handles connects them.
+```
 
-- `docs/README.md` for the research plan
-- `docs/agent-plan/` for implementation phases
-- `docs/learning-guide/` for .NET interop background
+The current repo is a pnpm workspace that proves this shape with a public Expo
+adapter package, an authored .NET example module, and runnable apps. It is still
+early production-readiness work, not a published SDK, but the package boundaries
+now match the direction of the project.
 
-Previous Windows-first prototype: [expo-modules-windows](<previous-windows-prototype-repo>).
+## Repository Shape
 
+- `packages/expo-modules-dotnet` is the public Expo adapter package. It owns the
+  JavaScript API, TurboModule installer, Android/iOS glue, reusable C++ JSI
+  bridge, managed core packages, and Hermes-backed testhost.
+- `packages/example-module` is an authored .NET Expo module package. It owns the
+  example C# module, a small JS facade, and the NativeAOT publish/staging proof.
+- `apps/mobile-app` is the Expo app that consumes both packages and proves the
+  native path on iOS and Android.
+- `apps/hermes-console-app` is a headless Hermes integration app/proof.
+- `experiments/` contains narrow smoke proofs only, such as HostFXR and
+  NativeAOT loader experiments.
+- `docs/specs/` contains the current living specs. `docs/archive/` is historical
+  evidence, not the source of truth.
+
+## Quick Start
+
+Install JavaScript workspace dependencies:
+
+```bash
+pnpm install
+```
+
+Run the managed/Hermes test suite:
+
+```bash
+scripts/test-managed.sh
+```
+
+Type-check the mobile proof:
+
+```bash
+pnpm --filter mobile-app typecheck
+```
+
+Build and stage the example NativeAOT module for the mobile app:
+
+```bash
+pnpm --filter example-module build:nativeaot
+```
+
+For the full iOS and Android run instructions, including native project refresh
+steps, see `apps/mobile-app/README.md`.
+
+## Current Status
+
+The mobile proof validates that an Expo app can load the public
+`expo-modules-dotnet` adapter, call through an authored `example-module`
+facade, and reach C# module logic from React Native Hermes.
+
+Some pieces are deliberately temporary:
+
+- .NET module autolinking does not exist yet.
+- NativeAOT artifacts are manually staged into the adapter package for now.
+- The package boundary will be pressure-tested further by macOS and Windows
+  apps with their own React Native versions.
+
+## Development Docs
+
+Start with `docs/README.md` for the full documentation map and workflow.
+
+Useful next reads:
+
+- `docs/specs/README.md` for how living specs are organized.
+- `docs/roadmap.md` for the current roadmap.
+- `docs/references/previous-windows-prototype.md` for historical context from
+  the earlier Windows-first prototype.
+
+Before finishing code changes, run:
+
+```bash
+scripts/format.sh --check --all
+```

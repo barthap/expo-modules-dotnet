@@ -57,11 +57,24 @@ contain machine-specific paths or local workflow notes. Do not commit it.
 
 ## Constraints
 
-- Keep the portable core headless unless the task explicitly asks for a platform adapter.
-- Do not introduce RNW, WinUI, AppKit, or packaging dependencies into the portable core.
+- Keep managed core packages and reusable native bridge code portable and
+  headless unless the task explicitly asks for platform adapter work.
+- Keep package boundaries clear:
+  - `packages/expo-modules-dotnet` owns the public Expo adapter, TurboModule
+    installer, reusable JSI bridge, managed core packages, and testhost.
+  - Authored .NET modules such as `packages/example-module` own module C# code,
+    JS facade code, and temporary NativeAOT staging, but not React Native
+    installer glue.
+  - `apps/*` are runnable apps/proofs; `experiments/*` are narrow smoke proofs.
+- Do not introduce RNW, WinUI, AppKit, or host packaging dependencies into the
+  managed core or reusable native bridge unless that work is explicitly scoped
+  to a platform adapter proof.
 - Do not expose raw `jsi::Runtime`, `jsi::Value`, or `jsi::Object` layouts to C#.
 - Do not use runtime hot-path reflection for v2 generated bindings.
-- Prefer HostFXR for early development, but keep ABI and generated bindings NativeAOT-compatible.
+- Treat HostFXR as a development/proof loader; keep ABI and generated bindings
+  NativeAOT-compatible.
+- Treat manual NativeAOT artifact staging as temporary proof infrastructure, not
+  the final .NET module autolinking architecture.
 - Do not create GitHub PRs, publish packages, or post comments without explicit user approval.
 - Do not commit local absolute paths, usernames, machine names, private hostnames,
   concrete local repo paths, or machine-specific install paths. Use repo-relative
@@ -71,6 +84,10 @@ contain machine-specific paths or local workflow notes. Do not commit it.
 ## Verification
 
 Run the Hermes-backed managed test suite with `scripts/test-managed.sh`.
+
+For workspace/package changes, run `pnpm install --frozen-lockfile` or the
+repo-selected pnpm install command. For mobile JavaScript changes, run
+`pnpm --filter mobile-app typecheck`.
 
 Before finishing code changes, run `scripts/format.sh --check --all`. If it
 fails because files need formatting, run `scripts/format.sh` and then repeat
