@@ -11,6 +11,12 @@ bin/
 obj/
 TestResults/
 
+packages/expo-modules-dotnet/android/src/main/jniLibs/
+packages/expo-modules-dotnet/android/.cxx/
+packages/expo-modules-dotnet/android/build/
+packages/expo-modules-dotnet/android/kls_database.db
+packages/expo-modules-dotnet/ios/NativeLibs/
+
 build/
 cmake-build-*/
 CMakeFiles/

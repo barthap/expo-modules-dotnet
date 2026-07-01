@@ -17,7 +17,7 @@ public static class EntryPoints
     try
     {
       var runtime = JavaScriptRuntime.FromNative(api, runtimeHandle);
-      using var modules = ModuleRegistry.GetOrCreateExpoModulesObject(runtime);
+      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
       ExpoModulesProvider_ExampleModule.Register(runtime, modules);
       Console.WriteLine("ExampleModule registered ExampleModule.add.");
       return 0;
