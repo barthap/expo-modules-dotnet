@@ -5,6 +5,8 @@
 using char_t = char;
 using hostfxr_handle = void *;
 
+#define UNMANAGEDCALLERSONLY_METHOD ((const char_t *)-1)
+
 struct get_hostfxr_parameters {
   size_t size;
   const char_t *assembly_path;

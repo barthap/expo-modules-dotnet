@@ -11,6 +11,8 @@
 
 @protocol ExpoModulesDotnetInstalling
 - (BOOL)installModules;
+- (BOOL)installModulesWithRuntime:(facebook::jsi::Runtime &)runtime
+                       callInvoker:(const std::shared_ptr<facebook::react::CallInvoker> &)callInvoker;
 @end
 
 namespace {
@@ -73,6 +75,7 @@ public:
     const facebook::react::ObjCTurboModule::InitParams &params)
     : facebook::react::TurboModule(params.moduleName, params.jsInvoker)
     , installer_(static_cast<id<ExpoModulesDotnetInstalling>>(params.instance))
+    , jsInvoker_(params.jsInvoker)
   {
     methodMap_["installModules"] = MethodMetadata{
       .argCount = 0,
@@ -88,10 +91,13 @@ private:
   {
     auto &installerTurboModule =
       static_cast<ExpoModulesDotnetInstallerTurboModule &>(turboModule);
-    return facebook::jsi::Value([installerTurboModule.installer_ installModules]);
+    return facebook::jsi::Value(
+      [installerTurboModule.installer_ installModulesWithRuntime:runtime
+                                                     callInvoker:installerTurboModule.jsInvoker_]);
   }
 
   id<ExpoModulesDotnetInstalling> installer_;
+  std::shared_ptr<facebook::react::CallInvoker> jsInvoker_;
 };
 
 } // namespace
@@ -126,6 +132,16 @@ RCT_EXPORT_MODULE()
     std::make_shared<InstalledRuntime>(std::move(connector), runtimeHandle, std::move(moduleConfig));
 
   _installedRuntimes.push_back(std::move(installedRuntime));
+}
+
+- (BOOL)installModulesWithRuntime:(facebook::jsi::Runtime &)runtime
+                       callInvoker:(const std::shared_ptr<facebook::react::CallInvoker> &)callInvoker
+{
+  if (_installedRuntimes.empty()) {
+    [self installJSIBindingsWithRuntime:runtime callInvoker:callInvoker];
+  }
+
+  return [self installModules];
 }
 
 - (BOOL)installModules

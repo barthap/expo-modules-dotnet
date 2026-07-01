@@ -139,7 +139,7 @@ RegisterModulesFn resolveHostFxrRegisterModules(const ManagedModuleConfig &confi
   status = loadAssemblyAndGetFunctionPointer(config.assemblyPath.c_str(),
                                              config.typeName.c_str(),
                                              config.methodName.c_str(),
-                                             nullptr,
+                                             UNMANAGEDCALLERSONLY_METHOD,
                                              nullptr,
                                              &registerModules);
   if (status != 0 || registerModules == nullptr) {
