@@ -129,7 +129,7 @@ run_cxx_format() {
     rg --files -0 \
       -g '*.c' -g '*.cc' -g '*.cpp' -g '*.cxx' \
       -g '*.h' -g '*.hh' -g '*.hpp' -g '*.hxx' \
-      native experiments
+      packages apps experiments
   )
 
   if [[ "${#files[@]}" -eq 0 ]]; then
@@ -154,7 +154,7 @@ run_csharp_format() {
     projects+=("$project")
   done < <(
     cd "$repo_root"
-    rg --files -g '*.csproj' managed experiments
+    rg --files -g '*.csproj' packages apps experiments
   )
 
   if [[ "${#projects[@]}" -eq 0 ]]; then

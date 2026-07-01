@@ -88,14 +88,18 @@ endif()
 
 add_executable(
   hermes_console_app
-  main.cpp ManagedProofLoader.cpp
+  main.cpp
+  ManagedProofLoader.cpp
   "${REPO_ROOT}/packages/expo-modules-dotnet/native/packages/jsi/src/ExpoJsiBridge.cpp"
-  "${REPO_ROOT}/packages/expo-modules-dotnet/native/packages/jsi/src/HermesConsoleRuntimeConnector.cpp")
+  "${REPO_ROOT}/packages/expo-modules-dotnet/native/packages/jsi/src/HermesConsoleRuntimeConnector.cpp"
+)
 
 target_include_directories(
   hermes_console_app
-  PRIVATE "${HERMES_ROOT}/include" "${REPO_ROOT}/packages/expo-modules-dotnet/native/include"
-          "${REPO_ROOT}/packages/expo-modules-dotnet/native/packages/jsi/include")
+  PRIVATE
+    "${HERMES_ROOT}/include"
+    "${REPO_ROOT}/packages/expo-modules-dotnet/native/include"
+    "${REPO_ROOT}/packages/expo-modules-dotnet/native/packages/jsi/include")
 
 if(EXPO_JSI_DOTNET_LOADER STREQUAL "hostfxr")
   target_compile_definitions(
