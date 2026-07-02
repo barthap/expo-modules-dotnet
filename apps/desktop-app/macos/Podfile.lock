@@ -2626,7 +2626,7 @@ SPEC CHECKSUMS:
   ExpoKeepAwake: 55f75eca6499bb9e4231ebad6f3e9cb8f99c0296
   ExpoLogBox: 63977cf56b04547c713535d2d4e9bbf2f012e3c6
   ExpoModulesCore: 20899b4dd703e10a543ff4c50ee1543e47d90082
-  ExpoModulesDotnet: 27d001bdfed19e6e64292154e875648aa5fe838a
+  ExpoModulesDotnet: 429f73328e0dd5a511e5bd8080df87243d513def
   ExpoModulesJSI: abc606cf32f6eeb4e2ad44ec3fc4b24143abd8f6
   fast_float: 20817c22759af6ac8d4d67e6e059b8b499953656
   FBLazyVector: e8ec216d79635ba4c9fb0e9becc30391ca4bff1b

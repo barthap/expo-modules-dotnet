@@ -11,11 +11,15 @@ without relying on `executeSync()` / `CallInvoker::invokeSync()`.
 
 - `pnpm install`
 - `pnpm --filter desktop-app typecheck`
+- `pnpm --filter mobile-app typecheck`
 - `RBENV_VERSION=system pod install` from `apps/desktop-app/macos`
 - `xcodebuild build -workspace apps/desktop-app/macos/desktopapp.xcworkspace -scheme desktopapp-macOS -configuration Debug -destination 'platform=macOS' 2>&1 | xcsift -f toon`
 - `apps/desktop-app/scripts/build-managed.sh`
 - `pnpm --filter desktop-app start -- --localhost`
 - `EXPO_DOTNET_LOADER=hostfxr <built desktopapp executable>`
+- `scripts/test-managed.sh`
+- `scripts/format.sh --check --all`
+- `git diff --check`
 
 ## Expected Result
 

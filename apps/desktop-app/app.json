@@ -2,14 +2,6 @@
   "expo": {
     "name": "Desktop App",
     "slug": "desktop-app",
-    "scheme": "desktopapp",
-    "extra": {
-      "expoModulesDotnet": {
-        "loader": "hostfxr",
-        "assemblyName": "ExampleModule",
-        "entryPointType": "ExampleModule.EntryPoints, ExampleModule",
-        "entryPointMethod": "RegisterModules"
-      }
-    }
+    "scheme": "desktopapp"
   }
 }

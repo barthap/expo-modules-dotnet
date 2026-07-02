@@ -1,11 +1,15 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
+
+namespace expo::modules::dotnet {
 
 using char_t = char;
 using hostfxr_handle = void *;
 
-#define UNMANAGEDCALLERSONLY_METHOD ((const char_t *)-1)
+inline const char_t *unmanagedCallersOnlyMethod =
+  reinterpret_cast<const char_t *>(static_cast<intptr_t>(-1));
 
 struct get_hostfxr_parameters {
   size_t size;
@@ -37,3 +41,5 @@ using load_assembly_and_get_function_pointer_fn = int (*)(const char_t *assembly
                                                           const char_t *delegate_type_name,
                                                           void *reserved,
                                                           void **delegate);
+
+} // namespace expo::modules::dotnet

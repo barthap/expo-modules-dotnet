@@ -26,14 +26,21 @@ Pod::Spec.new do |s|
     ].join(' '),
   }
 
-  s.private_header_files = [
+  native_headers = [
     'native/include/**/*.h',
     'native/packages/jsi/include/**/*.{h,hpp}',
   ]
-  s.ios.source_files = 'ios/**/*.{m,mm,swift,cpp}'
+
+  s.private_header_files = native_headers
+  s.ios.source_files = native_headers + ['ios/**/*.{m,mm,swift,cpp,h,hpp}']
   s.ios.private_header_files = 'ios/**/*.{h,hpp}'
-  s.tvos.source_files = 'ios/**/*.{m,mm,swift,cpp}'
+  s.tvos.source_files = native_headers + ['ios/**/*.{m,mm,swift,cpp,h,hpp}']
   s.tvos.private_header_files = 'ios/**/*.{h,hpp}'
-  s.osx.source_files = 'macos/**/*.{m,mm,swift,cpp}'
+  s.osx.source_files = native_headers + [
+    'ios/ExpoModulesDotnetModule.swift',
+    'ios/ExpoJsiBridgeForward.cpp',
+    'ios/ReactNativeRuntimeConnectorForward.cpp',
+    'macos/**/*.{m,mm,swift,cpp,h,hpp}',
+  ]
   s.osx.private_header_files = 'macos/**/*.{h,hpp}'
 end

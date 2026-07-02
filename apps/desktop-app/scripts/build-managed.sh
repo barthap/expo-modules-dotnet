@@ -66,11 +66,12 @@ latest_nethost_library() {
 
   latest_version="$(
     find "$pack_root" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; |
+      awk '/^[0-9]+([.][0-9]+){2,}$/' |
       sort -t. -k1,1n -k2,2n -k3,3n |
       tail -n 1
   )"
   if [[ -z "$latest_version" ]]; then
-    echo "No .NET host pack versions found under $pack_root" >&2
+    echo "No stable .NET host pack versions found under $pack_root" >&2
     exit 1
   fi
 
@@ -80,6 +81,10 @@ latest_nethost_library() {
 reset_managed_dir() {
   mkdir -p "$managed_dir"
   find "$managed_dir" -mindepth 1 ! -name .gitignore ! -name .gitkeep -exec rm -rf {} +
+}
+
+write_loader_config() {
+  printf '%s\n' "$loader" >"$managed_dir/ExpoModulesDotnet.loader"
 }
 
 dotnet_build_env() {
@@ -107,6 +112,7 @@ build_hostfxr() {
   dotnet_build_env build "$managed_project" -c "$configuration"
 
   reset_managed_dir
+  write_loader_config
   find "$output_dir" -maxdepth 1 \( -name '*.dll' -o -name '*.deps.json' -o -name '*.runtimeconfig.json' \) \
     -exec cp {} "$managed_dir/" \;
 
@@ -130,6 +136,7 @@ publish_nativeaot() {
     /p:NativeLib=Shared
 
   reset_managed_dir
+  write_loader_config
   cp "$publish_dir/libExampleModule.dylib" "$managed_dir/"
 }
 

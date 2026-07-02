@@ -131,6 +131,7 @@ RCT_EXPORT_MODULE()
   auto installedRuntime =
     std::make_shared<InstalledRuntime>(std::move(connector), runtimeHandle, std::move(moduleConfig));
 
+  _installedRuntimes.clear();
   _installedRuntimes.push_back(std::move(installedRuntime));
 }
 

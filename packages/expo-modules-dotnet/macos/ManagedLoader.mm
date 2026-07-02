@@ -13,6 +13,7 @@ namespace expo::modules::dotnet {
 namespace {
 
 constexpr const char *kManagedSubdirectory = "Managed";
+constexpr const char *kLoaderConfigName = "ExpoModulesDotnet";
 constexpr const char *kRegisterModulesSymbol = "example_module_register_modules";
 constexpr const char *kEntryPointType = "ExampleModule.EntryPoints, ExampleModule";
 constexpr const char *kEntryPointMethod = "RegisterModules";
@@ -25,19 +26,62 @@ std::string pathForBundledResource(NSString *name, NSString *extension)
   if (url == nil) {
     url = [[NSBundle mainBundle] URLForResource:name withExtension:extension];
   }
+  if (url == nil) {
+    NSLog(@"[ExpoModulesDotnet] Missing managed artifact Managed/%@.%@. Run "
+           "apps/desktop-app/scripts/build-managed.sh before launching the macOS app.",
+          name,
+          extension);
+  }
   return url == nil ? std::string() : std::string([[url path] UTF8String]);
 }
 
-ManagedLoaderKind selectedLoaderKind()
+ManagedLoaderKind parseLoaderKind(NSString *loader)
+{
+  if ([loader isEqualToString:@"nativeaot"]) {
+    return ManagedLoaderKind::NativeAot;
+  }
+  return ManagedLoaderKind::HostFxr;
+}
+
+NSString *loaderKindFromEnvironment()
 {
   const char *loader = getenv("EXPO_DOTNET_LOADER");
   if (loader == nullptr || loader[0] == '\0') {
     loader = getenv("EXPO_JSI_DOTNET_LOADER");
   }
-  if (loader != nullptr && strcmp(loader, "nativeaot") == 0) {
-    return ManagedLoaderKind::NativeAot;
+  return loader == nullptr || loader[0] == '\0' ? nil : @(loader);
+}
+
+NSString *loaderKindFromBundle()
+{
+  NSURL *url = [[NSBundle mainBundle] URLForResource:@(kLoaderConfigName)
+                                      withExtension:@"loader"
+                                       subdirectory:@(kManagedSubdirectory)];
+  if (url == nil) {
+    return nil;
   }
-  return ManagedLoaderKind::HostFxr;
+
+  NSError *error = nil;
+  NSString *loader = [NSString stringWithContentsOfURL:url
+                                             encoding:NSUTF8StringEncoding
+                                                error:&error];
+  if (loader == nil) {
+    NSLog(@"[ExpoModulesDotnet] Failed to read Managed/%s.loader: %@",
+          kLoaderConfigName,
+          error.localizedDescription);
+    return nil;
+  }
+
+  return [loader stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+}
+
+ManagedLoaderKind selectedLoaderKind()
+{
+  NSString *loader = loaderKindFromEnvironment();
+  if (loader == nil) {
+    loader = loaderKindFromBundle();
+  }
+  return parseLoaderKind(loader);
 }
 
 void *openLibrary(const std::string &path)
@@ -116,7 +160,7 @@ RegisterModulesFn resolveHostFxrRegisterModules(const ManagedModuleConfig &confi
 
   hostfxr_handle hostContext = nullptr;
   auto status = initializeForRuntimeConfig(config.runtimeConfigPath.c_str(), nullptr, &hostContext);
-  if (status != 0 || hostContext == nullptr) {
+  if (status < 0 || status > 2 || hostContext == nullptr) {
     NSLog(@"[ExpoModulesDotnet] hostfxr_initialize_for_runtime_config failed with status %d.",
           status);
     return nullptr;
@@ -139,7 +183,7 @@ RegisterModulesFn resolveHostFxrRegisterModules(const ManagedModuleConfig &confi
   status = loadAssemblyAndGetFunctionPointer(config.assemblyPath.c_str(),
                                              config.typeName.c_str(),
                                              config.methodName.c_str(),
-                                             UNMANAGEDCALLERSONLY_METHOD,
+                                             unmanagedCallersOnlyMethod,
                                              nullptr,
                                              &registerModules);
   if (status != 0 || registerModules == nullptr) {
