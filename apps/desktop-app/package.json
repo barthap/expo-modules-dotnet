@@ -7,7 +7,7 @@
     "start": "pnpm start:bundler",
     "start:bundler": "expo start --localhost",
     "macos": "pnpm run:macos",
-    "run:macos": "pnpm build:managed && react-native run-macos",
+    "run:macos": "react-native run-macos",
     "build:managed": "./scripts/build-managed.sh",
     "typecheck": "tsc --noEmit"
   },

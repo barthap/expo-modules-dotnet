@@ -6,14 +6,13 @@
 
 #include <array>
 #include <cstdlib>
-#include <cstring>
 #include <dlfcn.h>
 
 namespace expo::modules::dotnet {
 namespace {
 
 constexpr const char *kManagedSubdirectory = "Managed";
-constexpr const char *kLoaderConfigName = "ExpoModulesDotnet";
+NSString *const kLoaderInfoPlistKey = @"ExpoModulesDotnetLoader";
 constexpr const char *kRegisterModulesSymbol = "example_module_register_modules";
 constexpr const char *kEntryPointType = "ExampleModule.EntryPoints, ExampleModule";
 constexpr const char *kEntryPointMethod = "RegisterModules";
@@ -52,23 +51,10 @@ NSString *loaderKindFromEnvironment()
   return loader == nullptr || loader[0] == '\0' ? nil : @(loader);
 }
 
-NSString *loaderKindFromBundle()
+NSString *loaderKindFromInfoPlist()
 {
-  NSURL *url = [[NSBundle mainBundle] URLForResource:@(kLoaderConfigName)
-                                      withExtension:@"loader"
-                                       subdirectory:@(kManagedSubdirectory)];
-  if (url == nil) {
-    return nil;
-  }
-
-  NSError *error = nil;
-  NSString *loader = [NSString stringWithContentsOfURL:url
-                                             encoding:NSUTF8StringEncoding
-                                                error:&error];
-  if (loader == nil) {
-    NSLog(@"[ExpoModulesDotnet] Failed to read Managed/%s.loader: %@",
-          kLoaderConfigName,
-          error.localizedDescription);
+  id loader = [[NSBundle mainBundle] objectForInfoDictionaryKey:kLoaderInfoPlistKey];
+  if (![loader isKindOfClass:NSString.class]) {
     return nil;
   }
 
@@ -79,7 +65,7 @@ ManagedLoaderKind selectedLoaderKind()
 {
   NSString *loader = loaderKindFromEnvironment();
   if (loader == nil) {
-    loader = loaderKindFromBundle();
+    loader = loaderKindFromInfoPlist();
   }
   return parseLoaderKind(loader);
 }

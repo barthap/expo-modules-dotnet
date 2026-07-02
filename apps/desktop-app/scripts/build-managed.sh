@@ -13,7 +13,7 @@ Usage: apps/desktop-app/scripts/build-managed.sh
 
 Environment:
   CONFIGURATION          .NET configuration. Default: Debug for HostFXR, Release for NativeAOT
-  EXPO_DOTNET_LOADER     Managed loader: hostfxr or nativeaot. Default: hostfxr
+  EXPO_DOTNET_LOADER     Managed loader: hostfxr or nativeaot. Xcode default: hostfxr
   EXPO_JSI_DOTNET_LOADER Compatibility alias for EXPO_DOTNET_LOADER
 EOF
 }
@@ -83,10 +83,6 @@ reset_managed_dir() {
   find "$managed_dir" -mindepth 1 ! -name .gitignore ! -name .gitkeep -exec rm -rf {} +
 }
 
-write_loader_config() {
-  printf '%s\n' "$loader" >"$managed_dir/ExpoModulesDotnet.loader"
-}
-
 dotnet_build_env() {
   env \
     -u ACTION \
@@ -112,7 +108,6 @@ build_hostfxr() {
   dotnet_build_env build "$managed_project" -c "$configuration"
 
   reset_managed_dir
-  write_loader_config
   find "$output_dir" -maxdepth 1 \( -name '*.dll' -o -name '*.deps.json' -o -name '*.runtimeconfig.json' \) \
     -exec cp {} "$managed_dir/" \;
 
@@ -136,7 +131,6 @@ publish_nativeaot() {
     /p:NativeLib=Shared
 
   reset_managed_dir
-  write_loader_config
   cp "$publish_dir/libExampleModule.dylib" "$managed_dir/"
 }
 
