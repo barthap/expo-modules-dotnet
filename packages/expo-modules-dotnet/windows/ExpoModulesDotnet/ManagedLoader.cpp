@@ -6,6 +6,8 @@
 
 #include <array>
 #include <filesystem>
+#include <mutex>
+#include <sstream>
 #include <string>
 
 namespace expo::modules::dotnet {
@@ -16,10 +18,36 @@ constexpr const wchar_t *kRegisterModulesSymbol = L"example_module_register_modu
 constexpr const wchar_t *kEntryPointType = L"ExampleModule.EntryPoints, ExampleModule";
 constexpr const wchar_t *kEntryPointMethod = L"RegisterModules";
 
+std::mutex g_errorMutex;
+std::wstring g_lastError;
+
 void logMessage(const wchar_t *message)
 {
   OutputDebugStringW(message);
   OutputDebugStringW(L"\n");
+}
+
+void setLastError(std::wstring message)
+{
+  logMessage(message.c_str());
+  std::lock_guard<std::mutex> lock(g_errorMutex);
+  g_lastError = std::move(message);
+}
+
+std::wstring statusMessage(const wchar_t *operation, int status)
+{
+  std::wstringstream message;
+  message << L"[ExpoModulesDotnet] " << operation << L" failed with status " << status
+          << L" (0x" << std::hex << static_cast<unsigned int>(status) << L").";
+  return message.str();
+}
+
+std::wstring windowsErrorMessage(const wchar_t *operation, DWORD error)
+{
+  std::wstringstream message;
+  message << L"[ExpoModulesDotnet] " << operation << L" failed with Windows error " << error
+          << L" (0x" << std::hex << error << L").";
+  return message.str();
 }
 
 std::filesystem::path moduleDirectory()
@@ -115,14 +143,14 @@ HMODULE openHostFxr(const ManagedModuleConfig &config)
 {
   auto nethost = openLibrary(config.nethostPath);
   if (nethost == nullptr) {
-    logMessage(L"[ExpoModulesDotnet] Failed to load nethost.dll.");
+    setLastError(windowsErrorMessage(L"LoadLibraryW(nethost.dll)", GetLastError()));
     return nullptr;
   }
 
   auto getHostFxrPath =
     reinterpret_cast<get_hostfxr_path_fn>(GetProcAddress(nethost, "get_hostfxr_path"));
   if (getHostFxrPath == nullptr) {
-    logMessage(L"[ExpoModulesDotnet] Failed to resolve get_hostfxr_path.");
+    setLastError(windowsErrorMessage(L"GetProcAddress(get_hostfxr_path)", GetLastError()));
     return nullptr;
   }
 
@@ -130,13 +158,13 @@ HMODULE openHostFxr(const ManagedModuleConfig &config)
   size_t hostFxrPathSize = hostFxrPath.size();
   auto status = getHostFxrPath(hostFxrPath.data(), &hostFxrPathSize, nullptr);
   if (status != 0) {
-    logMessage(L"[ExpoModulesDotnet] get_hostfxr_path failed.");
+    setLastError(statusMessage(L"get_hostfxr_path", status));
     return nullptr;
   }
 
   auto hostFxr = LoadLibraryW(hostFxrPath.data());
   if (hostFxr == nullptr) {
-    logMessage(L"[ExpoModulesDotnet] Failed to load hostfxr.");
+    setLastError(windowsErrorMessage(L"LoadLibraryW(hostfxr)", GetLastError()));
   }
   return hostFxr;
 }
@@ -145,13 +173,14 @@ RegisterModulesFn resolveNativeAotRegisterModules(const ManagedModuleConfig &con
 {
   auto library = openLibrary(config.nativeLibraryPath);
   if (library == nullptr) {
-    logMessage(L"[ExpoModulesDotnet] Failed to load NativeAOT ExampleModule library.");
+    setLastError(windowsErrorMessage(L"LoadLibraryW(NativeAOT ExampleModule)", GetLastError()));
     return nullptr;
   }
 
   auto symbol = GetProcAddress(library, "example_module_register_modules");
   if (symbol == nullptr) {
-    logMessage(L"[ExpoModulesDotnet] Failed to resolve example_module_register_modules.");
+    setLastError(windowsErrorMessage(L"GetProcAddress(example_module_register_modules)",
+                                     GetLastError()));
     return nullptr;
   }
 
@@ -175,7 +204,8 @@ RegisterModulesFn resolveHostFxrRegisterModules(const ManagedModuleConfig &confi
 
   if (initializeForRuntimeConfig == nullptr || getRuntimeDelegate == nullptr ||
       closeHostContext == nullptr) {
-    logMessage(L"[ExpoModulesDotnet] Failed to resolve required hostfxr exports.");
+    setLastError(windowsErrorMessage(L"GetProcAddress(required hostfxr exports)",
+                                     GetLastError()));
     return nullptr;
   }
 
@@ -183,7 +213,7 @@ RegisterModulesFn resolveHostFxrRegisterModules(const ManagedModuleConfig &confi
   auto status =
     initializeForRuntimeConfig(config.runtimeConfigPath.c_str(), nullptr, &hostContext);
   if (status < 0 || status > 2 || hostContext == nullptr) {
-    logMessage(L"[ExpoModulesDotnet] hostfxr_initialize_for_runtime_config failed.");
+    setLastError(statusMessage(L"hostfxr_initialize_for_runtime_config", status));
     return nullptr;
   }
 
@@ -193,7 +223,7 @@ RegisterModulesFn resolveHostFxrRegisterModules(const ManagedModuleConfig &confi
                               &loadAssemblyDelegate);
   closeHostContext(hostContext);
   if (status != 0 || loadAssemblyDelegate == nullptr) {
-    logMessage(L"[ExpoModulesDotnet] hostfxr_get_runtime_delegate failed.");
+    setLastError(statusMessage(L"hostfxr_get_runtime_delegate", status));
     return nullptr;
   }
 
@@ -208,10 +238,18 @@ RegisterModulesFn resolveHostFxrRegisterModules(const ManagedModuleConfig &confi
                                              nullptr,
                                              &registerModules);
   if (status != 0 || registerModules == nullptr) {
-    logMessage(L"[ExpoModulesDotnet] load_assembly_and_get_function_pointer failed.");
+    std::wstringstream message;
+    message << statusMessage(L"load_assembly_and_get_function_pointer", status)
+            << L" assembly=" << config.assemblyPath << L" type=" << config.typeName
+            << L" method=" << config.methodName << L".";
+    setLastError(message.str());
     return nullptr;
   }
 
+  {
+    std::lock_guard<std::mutex> lock(g_errorMutex);
+    g_lastError.clear();
+  }
   return reinterpret_cast<RegisterModulesFn>(registerModules);
 }
 
@@ -255,6 +293,12 @@ RegisterModulesFn resolveRegisterModules(const ManagedModuleConfig &config)
       return resolveHostFxrRegisterModules(config);
   }
   return nullptr;
+}
+
+std::wstring managedLoaderLastError()
+{
+  std::lock_guard<std::mutex> lock(g_errorMutex);
+  return g_lastError;
 }
 
 } // namespace expo::modules::dotnet

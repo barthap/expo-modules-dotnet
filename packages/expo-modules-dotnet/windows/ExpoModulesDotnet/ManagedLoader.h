@@ -26,5 +26,6 @@ struct ManagedModuleConfig {
 ManagedModuleConfig loadExampleModuleConfig();
 const wchar_t *managedLoaderKindName(ManagedLoaderKind loaderKind);
 RegisterModulesFn resolveRegisterModules(const ManagedModuleConfig &config);
+std::wstring managedLoaderLastError();
 
 } // namespace expo::modules::dotnet

@@ -16,10 +16,14 @@ REACT_MODULE(ExpoModulesDotnetInstaller)
 struct ExpoModulesDotnetInstaller
 {
   REACT_INIT(Initialize)
-  void Initialize(winrt::Microsoft::ReactNative::ReactContext const &reactContext) noexcept;
+  void Initialize(winrt::Microsoft::ReactNative::ReactContext const &reactContext,
+                  facebook::jsi::Runtime &runtime) noexcept;
 
   REACT_SYNC_METHOD(installModules)
   bool installModules() noexcept;
+
+  REACT_SYNC_METHOD(getLastError)
+  std::string getLastError() noexcept;
 
 private:
   struct InstalledRuntime;

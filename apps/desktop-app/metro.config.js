@@ -38,6 +38,7 @@ const originalGetModulesRunBeforeMainModule =
 config.serializer.getModulesRunBeforeMainModule = () => {
   try {
     return [
+      require.resolve('react-native-windows/Libraries/Core/InitializeCore'),
       require.resolve('react-native/Libraries/Core/InitializeCore'),
       require.resolve('react-native-macos/Libraries/Core/InitializeCore'),
     ];

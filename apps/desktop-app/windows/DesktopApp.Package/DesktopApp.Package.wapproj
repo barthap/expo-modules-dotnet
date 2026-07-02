@@ -14,6 +14,7 @@
   <Import Project="$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.WindowsSdk.Default.props" />
   <PropertyGroup>
     <WapProjPath Condition="'$(WapProjPath)'==''">$(MSBuildExtensionsPath)\Microsoft\DesktopBridge\</WapProjPath>
+    <ExpoDotnetManagedDir>$(MSBuildThisFileDirectory)..\Managed\</ExpoDotnetManagedDir>
   </PropertyGroup>
   <Import Project="$(WapProjPath)\Microsoft.DesktopBridge.props" />
   <ItemGroup Label="ProjectConfigurations">
@@ -74,5 +75,14 @@
     </PropertyGroup>
     <Error Condition="!Exists('$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.Composition.Package.props')" Text="$([System.String]::Format('$(ErrorText)', '$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.Composition.Package.props'))" />
     <Error Condition="!Exists('$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.Composition.Package.targets')" Text="$([System.String]::Format('$(ErrorText)', '$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.Composition.Package.targets'))" />
+  </Target>
+  <Target Name="AddExpoDotnetManagedPackagePayload" BeforeTargets="_WritePayloadFiles">
+    <ItemGroup>
+      <ExpoDotnetManagedArtifacts Include="$(ExpoDotnetManagedDir)**\*.*" Exclude="$(ExpoDotnetManagedDir).gitignore;$(ExpoDotnetManagedDir).gitkeep" />
+      <AppxPackagePayload Include="@(ExpoDotnetManagedArtifacts)">
+        <TargetPath>DesktopApp\Managed\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+        <PackagePath>DesktopApp\Managed\%(RecursiveDir)%(Filename)%(Extension)</PackagePath>
+      </AppxPackagePayload>
+    </ItemGroup>
   </Target>
 </Project>

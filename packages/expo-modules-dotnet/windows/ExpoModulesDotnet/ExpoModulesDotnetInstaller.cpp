@@ -29,6 +29,34 @@ std::wstring toWide(const char *value)
   return result;
 }
 
+std::string toUtf8(const std::wstring &value)
+{
+  if (value.empty()) {
+    return "";
+  }
+  const int length = WideCharToMultiByte(CP_UTF8,
+                                         0,
+                                         value.c_str(),
+                                         static_cast<int>(value.size()),
+                                         nullptr,
+                                         0,
+                                         nullptr,
+                                         nullptr);
+  if (length <= 0) {
+    return "";
+  }
+  std::string result(static_cast<size_t>(length), '\0');
+  WideCharToMultiByte(CP_UTF8,
+                      0,
+                      value.c_str(),
+                      static_cast<int>(value.size()),
+                      result.data(),
+                      length,
+                      nullptr,
+                      nullptr);
+  return result;
+}
+
 } // namespace
 
 struct ExpoModulesDotnetInstaller::InstalledRuntime final
@@ -67,7 +95,8 @@ struct ExpoModulesDotnetInstaller::InstallerState final
 };
 
 void ExpoModulesDotnetInstaller::Initialize(
-  winrt::Microsoft::ReactNative::ReactContext const &reactContext) noexcept
+  winrt::Microsoft::ReactNative::ReactContext const &reactContext,
+  facebook::jsi::Runtime &runtime) noexcept
 {
   auto state = std::make_shared<InstallerState>();
   state_ = state;
@@ -85,57 +114,58 @@ void ExpoModulesDotnetInstaller::Initialize(
     state->installStarted = true;
   }
 
-  callInvoker->invokeAsync(
-    [state, callInvoker](facebook::jsi::Runtime &runtime) mutable {
-      try {
-        auto connector =
-          std::make_unique<expo::dotnet::ReactNativeRuntimeConnector>(runtime, callInvoker);
-        auto runtimeHandle = expo::dotnet::createReactNativeRuntimeHandle(*connector);
-        auto moduleConfig = expo::modules::dotnet::loadExampleModuleConfig();
+  try {
+    auto connector =
+      std::make_unique<expo::dotnet::ReactNativeRuntimeConnector>(runtime, callInvoker);
+    auto runtimeHandle = expo::dotnet::createReactNativeRuntimeHandle(*connector);
+    auto moduleConfig = expo::modules::dotnet::loadExampleModuleConfig();
 
-        auto installedRuntime = std::make_shared<InstalledRuntime>(
-          std::move(connector), runtimeHandle, std::move(moduleConfig));
+    auto installedRuntime = std::make_shared<InstalledRuntime>(
+      std::move(connector), runtimeHandle, std::move(moduleConfig));
 
-        auto registerModules =
-          expo::modules::dotnet::resolveRegisterModules(installedRuntime->moduleConfig);
-        if (registerModules == nullptr) {
-          throw std::runtime_error("Failed to resolve ExampleModule registration entry point.");
-        }
-
-        auto status = registerModules(expo::dotnet::reactNativeExpoJsiApi(),
-                                      installedRuntime->runtimeHandle);
-        if (status != 0) {
-          throw std::runtime_error("ExampleModule registration failed.");
-        }
-
-        {
-          std::lock_guard<std::mutex> lock(state->mutex);
-          state->installedRuntime = std::move(installedRuntime);
-          state->registered = true;
-          state->lastError.clear();
-        }
-
-        logMessage(L"[ExpoModulesDotnet] Windows ExampleModule.add module registered.");
-      } catch (const std::exception &ex) {
-        std::wstring message = L"[ExpoModulesDotnet] Windows module registration failed: ";
-        message += toWide(ex.what());
-        {
-          std::lock_guard<std::mutex> lock(state->mutex);
-          state->lastError = message;
-          state->registered = false;
-        }
-        logMessage(message);
-      } catch (...) {
-        const std::wstring message =
-          L"[ExpoModulesDotnet] Windows module registration failed with an unknown exception.";
-        {
-          std::lock_guard<std::mutex> lock(state->mutex);
-          state->lastError = message;
-          state->registered = false;
-        }
-        logMessage(message);
+    auto registerModules =
+      expo::modules::dotnet::resolveRegisterModules(installedRuntime->moduleConfig);
+    if (registerModules == nullptr) {
+      auto loaderError = expo::modules::dotnet::managedLoaderLastError();
+      if (loaderError.empty()) {
+        throw std::runtime_error("Failed to resolve ExampleModule registration entry point.");
       }
-    });
+      throw std::runtime_error(toUtf8(loaderError).c_str());
+    }
+
+    auto status = registerModules(expo::dotnet::reactNativeExpoJsiApi(),
+                                  installedRuntime->runtimeHandle);
+    if (status != 0) {
+      throw std::runtime_error("ExampleModule registration failed.");
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(state->mutex);
+      state->installedRuntime = std::move(installedRuntime);
+      state->registered = true;
+      state->lastError.clear();
+    }
+
+    logMessage(L"[ExpoModulesDotnet] Windows ExampleModule.add module registered.");
+  } catch (const std::exception &ex) {
+    std::wstring message = L"[ExpoModulesDotnet] Windows module registration failed: ";
+    message += toWide(ex.what());
+    {
+      std::lock_guard<std::mutex> lock(state->mutex);
+      state->lastError = message;
+      state->registered = false;
+    }
+    logMessage(message);
+  } catch (...) {
+    const std::wstring message =
+      L"[ExpoModulesDotnet] Windows module registration failed with an unknown exception.";
+    {
+      std::lock_guard<std::mutex> lock(state->mutex);
+      state->lastError = message;
+      state->registered = false;
+    }
+    logMessage(message);
+  }
 }
 
 bool ExpoModulesDotnetInstaller::installModules() noexcept
@@ -159,6 +189,26 @@ bool ExpoModulesDotnetInstaller::installModules() noexcept
     logMessage(L"[ExpoModulesDotnet] Windows module registration has not started.");
   }
   return false;
+}
+
+std::string ExpoModulesDotnetInstaller::getLastError() noexcept
+{
+  auto state = state_;
+  if (state == nullptr) {
+    return "Windows installer has not been initialized.";
+  }
+
+  std::lock_guard<std::mutex> lock(state->mutex);
+  if (!state->lastError.empty()) {
+    return toUtf8(state->lastError);
+  }
+  if (state->registered) {
+    return "";
+  }
+  if (state->installStarted) {
+    return "Windows module registration did not complete.";
+  }
+  return "Windows module registration has not started.";
 }
 
 } // namespace winrt::ExpoModulesDotnet
