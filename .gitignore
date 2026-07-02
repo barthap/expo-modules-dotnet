@@ -6,6 +6,7 @@ AGENTS.local.md
 .idea/
 .vscode/
 node_modules/
+.expo/
 
 bin/
 obj/

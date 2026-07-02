@@ -17,8 +17,10 @@ pnpm --filter desktop-app typecheck
 ```
 
 `pnpm --filter desktop-app windows` is the preferred Windows entry point. It
-wraps `react-native run-windows` with the MSBuild property needed by the VS
-2026 toolchain.
+builds through React Native Windows, skips the RNW Appx deploy helper, starts
+Metro when needed, and launches the unpackaged `windows/x64/Debug/DesktopApp.exe`.
+This avoids a RNW/PowerShell 7 issue where `Get-AppxPackage` can fail while
+loading the Windows `Appx` module.
 
 ## Windows Setup
 
@@ -30,16 +32,21 @@ Use Visual Studio 2026 with:
 - pnpm 11.
 - PowerShell 7 available as `pwsh.exe` for RNW CLI tooling.
 
-If you run React Native Windows directly, pass the toolset explicitly:
+If you run React Native Windows directly, pass the toolset explicitly. To build
+without deploying:
 
 ```powershell
-pnpm --filter desktop-app exec react-native run-windows --msbuildprops PlatformToolset=v145
+pnpm --filter desktop-app exec react-native run-windows --no-deploy --no-launch --msbuildprops PlatformToolset=v145
 ```
 
 Bare `react-native run-windows` may fail with a `v143` toolset error because
 some Expo Desktop dependency projects inside `node_modules` still target the
 older VS 2022 toolset. Do not install `v143` just for this proof unless you
 explicitly want to satisfy those package projects locally.
+
+Running bare `react-native run-windows` may also fail during RNW's Appx deploy
+phase if its PowerShell helper cannot load `Get-AppxPackage`. Use the repo
+script above for the current proof app.
 
 ## Visual Studio
 
@@ -54,6 +61,19 @@ prompted, or build from the command line with:
 ```powershell
 MSBuild.exe apps/desktop-app/windows/DesktopApp.sln /restore /p:Configuration=Debug /p:Platform=x64 /p:PlatformToolset=v145 /m:1
 ```
+
+The app project disables RNW's MSBuild-time autolink check because RNW 0.81's
+generated C++ output is not byte-for-byte stable with this repo's formatting
+rules. Regenerate autolink files manually from `apps/desktop-app` when native
+dependencies change:
+
+```powershell
+pnpm exec react-native autolink-windows --sln "windows\DesktopApp.sln" --proj "windows\DesktopApp\DesktopApp.vcxproj"
+```
+
+The solution also disables MSBuild-time `codegen-windows` for this proof app.
+The generated native sources are checked in; rerun the RNW codegen/autolink
+steps manually when native package inputs change.
 
 ## Managed Artifacts
 
