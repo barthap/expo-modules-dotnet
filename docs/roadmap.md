@@ -221,6 +221,13 @@ options.
 - **P0 — React Native macOS adapter**: The first macOS HostFXR proof lives in
   `apps/desktop-app`. Production follow-up still needs reload-safe lifecycle
   services, teardown, and broader scheduler evidence.
+- **P0 — Expo Desktop prebuild integration**: If `apps/desktop-app` moves from
+  a checked-in macOS project to an `expo-desktop` prebuild flow, preserve the
+  current native wiring through an Expo config plugin. The plugin should own the
+  managed artifact build phase, `EXPO_DOTNET_LOADER` build setting,
+  `ExpoModulesDotnetLoader` `Info.plist` entry, `Managed` folder resource, and
+  any macOS Podfile/autolinking shim still required by the supported
+  `expo-desktop` / React Native macOS lane.
 - **P0 — RNW adapter**: Runtime installation, scheduler mapping, Windows
   lifecycle, expo-desktop integration. The first RNW slice is the
   lifecycle/scheduler proof, not full production packaging polish.
