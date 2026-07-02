@@ -88,9 +88,9 @@ The managed interop layer SHALL validate the native API table before using it.
 
 ### Requirement: Loader Choice Preserves ABI Shape
 
-The Hermes console proof and desktop React Native macOS proof MAY load managed
-module logic through HostFXR or a NativeAOT shared library, but the loader
-choice SHALL NOT change the C ABI shape passed into managed code.
+The Hermes console proof and desktop React Native macOS/Windows proofs MAY load
+managed module logic through HostFXR or a NativeAOT shared library, but the
+loader choice SHALL NOT change the C ABI shape passed into managed code.
 
 #### Scenario: NativeAOT proof runs against the same ABI
 - **GIVEN** the Hermes console proof is built with `EXPO_JSI_DOTNET_LOADER=nativeaot`
@@ -118,6 +118,17 @@ choice SHALL NOT change the C ABI shape passed into managed code.
 - **AND** call the resolved entry point with the same `expo_jsi_api` table and
   opaque runtime handle shape used by NativeAOT
 
+#### Scenario: Desktop HostFXR entry point runs against React Native Windows Hermes
+- **GIVEN** `apps/desktop-app` stages `ExampleModule.dll`,
+  `ExampleModule.runtimeconfig.json`, `ExampleModule.deps.json`, managed bridge
+  assemblies, and `nethost.dll` into the Windows app `Managed` directory
+- **WHEN** the Windows adapter selects the `hostfxr` loader
+- **THEN** native code SHALL initialize HostFXR from the staged runtime config
+- **AND** resolve the `[UnmanagedCallersOnly]` registration method using
+  `UNMANAGEDCALLERSONLY_METHOD`
+- **AND** call the resolved entry point with the same `expo_jsi_api` table and
+  opaque runtime handle shape used by macOS
+
 #### Scenario: Desktop NativeAOT entry point uses the same registration ABI
 - **GIVEN** `apps/desktop-app` selects the `nativeaot` loader and stages a
   platform `libExampleModule.dylib`
@@ -135,8 +146,8 @@ JSI layouts to managed code. The connector MAY store the borrowed runtime as a
 raw pointer, but it SHALL keep that pointer inside an owned holder that models
 invalidation separately from React Native runtime ownership. The current
 implementation evidence is the `apps/mobile-app` proof and the
-`apps/desktop-app` React Native macOS proof; this requirement does not by
-itself define a production adapter lifecycle.
+`apps/desktop-app` React Native macOS and Windows proofs; this requirement does
+not by itself define a production adapter lifecycle.
 
 #### Scenario: React Native connector creates managed runtime handle
 - **GIVEN** React Native provides an active Hermes runtime and `CallInvoker`
