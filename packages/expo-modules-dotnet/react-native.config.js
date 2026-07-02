@@ -7,6 +7,16 @@ module.exports = {
         packageInstance: 'new ExpoModulesDotnetTurboPackage()',
       },
       ios: {},
+      windows: {
+        sourceDir: './windows',
+        solutionFile: 'ExpoModulesDotnet.sln',
+        projects: [
+          {
+            projectFile: 'ExpoModulesDotnet\\ExpoModulesDotnet.vcxproj',
+            directDependency: true,
+          },
+        ],
+      },
     },
   },
 };

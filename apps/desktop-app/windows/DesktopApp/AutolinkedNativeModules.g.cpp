@@ -3,12 +3,26 @@
 #include "pch.h"
 #include "AutolinkedNativeModules.g.h"
 
+// Includes from expo-desktop-modules-core
+#include <winrt/ExpoModulesCore.h>
+
+// Includes from expo-desktop-stubs
+#include <winrt/ExpoDesktopStubs.h>
+
+// Includes from expo-modules-dotnet
+#include <winrt/ExpoModulesDotnet.h>
+
 namespace winrt::Microsoft::ReactNative
 {
 
 void RegisterAutolinkedNativeModulePackages(winrt::Windows::Foundation::Collections::IVector<winrt::Microsoft::ReactNative::IReactPackageProvider> const& packageProviders)
-{ 
-    UNREFERENCED_PARAMETER(packageProviders);
+{
+    // IReactPackageProviders from expo-desktop-modules-core
+    packageProviders.Append(winrt::ExpoModulesCore::ReactPackageProvider());
+    // IReactPackageProviders from expo-desktop-stubs
+    packageProviders.Append(winrt::ExpoDesktopStubs::ReactPackageProvider());
+    // IReactPackageProviders from expo-modules-dotnet
+    packageProviders.Append(winrt::ExpoModulesDotnet::ReactPackageProvider());
 }
 
 }

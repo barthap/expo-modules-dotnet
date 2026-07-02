@@ -21,6 +21,13 @@
     -->
     <UseExperimentalNuget>true</UseExperimentalNuget>
 
+    <HermesPlatform Condition="'$(HermesPlatform)' == '' and '$(Platform)' == 'Win32'">x86</HermesPlatform>
+    <HermesPlatform Condition="'$(HermesPlatform)' == '' and '$(Platform)' == 'x64'">x64</HermesPlatform>
+    <HermesPlatform Condition="'$(HermesPlatform)' == '' and '$(Platform)' == 'ARM64'">arm64</HermesPlatform>
+    <HermesPlatform Condition="'$(HermesPlatform)' == '' and '$(Platform)' == 'ARM64EC'">arm64ec</HermesPlatform>
+
+    <CodegenCommand Condition="'$(CodegenCommand)' == ''">&quot;$(SolutionDir)..\node_modules\.bin\react-native.CMD&quot; codegen-windows</CodegenCommand>
+
     <ReactExperimentalFeaturesSet>true</ReactExperimentalFeaturesSet>
   </PropertyGroup>
 

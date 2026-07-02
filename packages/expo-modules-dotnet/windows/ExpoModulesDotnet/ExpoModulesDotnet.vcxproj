@@ -1,26 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- This project was created with react-native-windows 0.81.18 -->
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="$(SolutionDir)\ExperimentalFeatures.props" Condition="Exists('$(SolutionDir)\ExperimentalFeatures.props')" />
   <PropertyGroup Label="Globals">
     <CppWinRTOptimized>true</CppWinRTOptimized>
-    <!-- Prevent MSB4006 circular dependency in CppWinRT during parallel builds (https://github.com/microsoft/cppwinrt/issues/950) -->
-    <CppWinRTGenerateWindowsMetadata>true</CppWinRTGenerateWindowsMetadata>
     <MinimalCoreWin>true</MinimalCoreWin>
-    <ProjectGuid>{395EF03B-9868-419B-9BF5-DFFD3BE5F6A2}</ProjectGuid>
-    <ProjectName>DesktopApp</ProjectName>
+    <ProjectGuid>{A7B9E08A-8F3B-4B3B-A521-2E6D6BB55F40}</ProjectGuid>
+    <ProjectName>ExpoModulesDotnet</ProjectName>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>DesktopApp</RootNamespace>
+    <RootNamespace>ExpoModulesDotnet</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
     <DefaultLanguage>en-US</DefaultLanguage>
     <MinimumVisualStudioVersion>18.0</MinimumVisualStudioVersion>
     <AppxPackage>false</AppxPackage>
   </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Label="ReactNativeWindowsProps">
     <ReactNativeWindowsDir Condition="'$(ReactNativeWindowsDir)' == ''">$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), 'node_modules\react-native-windows\package.json'))\node_modules\react-native-windows\</ReactNativeWindowsDir>
+    <ReactNativeDir Condition="'$(ReactNativeDir)' == ''">$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), 'node_modules\react-native\package.json'))\node_modules\react-native\</ReactNativeDir>
+    <RunAutolinkCheck>false</RunAutolinkCheck>
+    <RunCodegenWindows>false</RunCodegenWindows>
   </PropertyGroup>
   <Import Project="$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.WindowsSdk.Default.props" />
-  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
@@ -48,9 +48,10 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>Unicode</CharacterSet>
     <PlatformToolset>v145</PlatformToolset>
+    <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
     <UseDebugLibraries>true</UseDebugLibraries>
@@ -66,7 +67,7 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <ImportGroup Label="ReactNativeWindowsPropertySheets">
-    <Import Project="$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.Composition.CppApp.props" />
+    <Import Project="$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.props" Condition="Exists('$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.props')" />
   </ImportGroup>
   <ItemDefinitionGroup>
     <ClCompile>
@@ -76,16 +77,22 @@
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <AdditionalOptions>%(AdditionalOptions) /bigobj</AdditionalOptions>
-      <DisableSpecificWarnings>4453;28204</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4453;28204;4100</DisableSpecificWarnings>
+      <PreprocessorDefinitions>_WINRT_DLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalUsingDirectories>$(WindowsSDK_WindowsMetadata);$(AdditionalUsingDirectories)</AdditionalUsingDirectories>
       <AdditionalIncludeDirectories>
         $(MSBuildThisFileDirectory);
+        $(MSBuildThisFileDirectory)..\..\native\include;
+        $(MSBuildThisFileDirectory)..\..\native\packages\jsi\include;
+        $(ReactNativeDir)\ReactCommon;
         %(AdditionalIncludeDirectories)
       </AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>shell32.lib;user32.lib;windowsapp.lib;%(AdditionalDependenices)</AdditionalDependencies>
-      <SubSystem>Windows</SubSystem>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>shell32.lib;user32.lib;windowsapp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <SubSystem>Console</SubSystem>
+      <GenerateWindowsMetadata>true</GenerateWindowsMetadata>
+      <ModuleDefinitionFile>ExpoModulesDotnet.def</ModuleDefinitionFile>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
@@ -99,56 +106,52 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <PropertyGroup Label="UserMacros" />
-  <PropertyGroup Label="ExpoModulesDotnet">
-    <ExpoDotnetLoader Condition="'$(ExpoDotnetLoader)' == ''">hostfxr</ExpoDotnetLoader>
-    <ExpoDotnetManagedDir>$(MSBuildThisFileDirectory)..\Managed\</ExpoDotnetManagedDir>
-  </PropertyGroup>
   <ItemGroup>
-    <ClInclude Include="DesktopApp.h" />
+    <ClInclude Include="ExpoModulesDotnetInstaller.h" />
+    <ClInclude Include="ManagedHostFxr.h" />
+    <ClInclude Include="ManagedLoader.h" />
+    <ClInclude Include="ReactPackageProvider.h">
+      <DependentUpon>ReactPackageProvider.idl</DependentUpon>
+    </ClInclude>
     <ClInclude Include="resource.h" />
-    <ClInclude Include="AutolinkedNativeModules.g.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="..\..\native\include\expo_jsi.h" />
+    <ClInclude Include="..\..\native\packages\jsi\include\ExpoJsiBridge.h" />
+    <ClInclude Include="..\..\native\packages\jsi\include\JsiRuntimeConnector.h" />
+    <ClInclude Include="..\..\native\packages\jsi\include\ReactNativeRuntimeConnector.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="DesktopApp.cpp" />
-    <ClCompile Include="AutolinkedNativeModules.g.cpp" />
     <ClCompile Include="pch.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">Create</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">Create</PrecompiledHeader>
+      <PrecompiledHeader>Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="ExpoModulesDotnetInstaller.cpp" />
+    <ClCompile Include="ManagedLoader.cpp" />
+    <ClCompile Include="ReactPackageProvider.cpp">
+      <DependentUpon>ReactPackageProvider.idl</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="$(GeneratedFilesDir)module.g.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\native\packages\jsi\src\ExpoJsiBridge.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\native\packages\jsi\src\ReactNativeRuntimeConnector.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="DesktopApp.rc" />
-  </ItemGroup>
-  <ItemGroup>
-    <Image Include="DesktopApp.ico" />
-    <Image Include="small.ico" />
+    <Midl Include="ReactPackageProvider.idl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ReactNativeWindowsTargets">
-    <Import Project="$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.Composition.CppApp.targets" Condition="Exists('$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.Composition.CppApp.targets')" />
+    <Import Project="$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.targets" Condition="Exists('$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.targets')" />
   </ImportGroup>
-  <ItemGroup>
-  </ItemGroup>
   <Target Name="EnsureReactNativeWindowsTargets" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
       <ErrorText>This project references targets in your node_modules\react-native-windows folder. The missing file is {0}.</ErrorText>
     </PropertyGroup>
-    <Error Condition="!Exists('$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.Composition.CppApp.props')" Text="$([System.String]::Format('$(ErrorText)', '$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.Composition.CppApp.props'))" />
-    <Error Condition="!Exists('$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.Composition.CppApp.targets')" Text="$([System.String]::Format('$(ErrorText)', '$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.Composition.CppApp.targets'))" />
-  </Target>
-  <Target Name="BuildExpoDotnetManagedArtifacts" BeforeTargets="PrepareForBuild">
-    <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\..\scripts\build-managed.ps1&quot;" EnvironmentVariables="EXPO_DOTNET_LOADER=$(ExpoDotnetLoader);CONFIGURATION=$(Configuration)" />
-  </Target>
-  <Target Name="CopyExpoDotnetManagedArtifacts" AfterTargets="Build">
-    <ItemGroup>
-      <ExpoDotnetManagedArtifacts Include="$(ExpoDotnetManagedDir)**\*.*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(ExpoDotnetManagedArtifacts)" DestinationFiles="@(ExpoDotnetManagedArtifacts->'$(OutDir)Managed\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Error Condition="!Exists('$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.props')" Text="$([System.String]::Format('$(ErrorText)', '$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.props'))" />
+    <Error Condition="!Exists('$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.targets')" Text="$([System.String]::Format('$(ErrorText)', '$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.targets'))" />
   </Target>
 </Project>
