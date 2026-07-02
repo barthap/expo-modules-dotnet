@@ -1,6 +1,19 @@
 const { getDefaultConfig } = require('expo/metro-config');
 
+const fs = require('fs');
+const path = require('path');
+
 const config = getDefaultConfig(__dirname);
+const rnwPath = fs.realpathSync(
+  path.resolve(require.resolve('react-native-windows/package.json'), '..')
+);
+
+config.resolver.blockList = [
+  new RegExp(`${path.resolve(__dirname, 'windows').replace(/[/\\]/g, '/')}.*`),
+  new RegExp(`${rnwPath}/build/.*`),
+  new RegExp(`${rnwPath}/target/.*`),
+  /.*\.ProjectImports\.zip/,
+];
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (
@@ -8,6 +21,13 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     (moduleName === 'react-native' || moduleName.startsWith('react-native/'))
   ) {
     const newModuleName = moduleName.replace('react-native', 'react-native-macos');
+    return context.resolveRequest(context, newModuleName, platform);
+  }
+  if (
+    platform === 'windows' &&
+    (moduleName === 'react-native' || moduleName.startsWith('react-native/'))
+  ) {
+    const newModuleName = moduleName.replace('react-native', 'react-native-windows');
     return context.resolveRequest(context, newModuleName, platform);
   }
   return context.resolveRequest(context, moduleName, platform);

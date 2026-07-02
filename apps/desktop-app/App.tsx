@@ -1,6 +1,6 @@
 import { add } from 'example-module';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 
 export default function App() {
   const [message, setMessage] = useState('Loading C# module...');
@@ -22,7 +22,7 @@ export default function App() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>Expo.ModulesCore macOS</Text>
+      <Text style={styles.label}>Expo.ModulesCore {Platform.OS}</Text>
       <Text style={styles.result}>{message}</Text>
     </View>
   );

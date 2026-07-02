@@ -37,8 +37,8 @@
   },
   "react-native-windows": {
     "init-windows": {
-      "name": "desktopapp",
-      "namespace": "desktopapp",
+      "name": "DesktopApp",
+      "namespace": "DesktopApp",
       "template": "cpp-app"
     }
   }
