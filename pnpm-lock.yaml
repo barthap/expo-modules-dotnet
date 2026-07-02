@@ -47,6 +47,10 @@ catalogs:
       specifier: ~6.0.3
       version: 6.0.3
 
+patchedDependencies:
+  '@react-native-windows/cli@0.81.6': 5f05f1c862995a100166a1e47e0ca3b4e42326de8c0ac244d01af055cf09129f
+  '@react-native-windows/find-dotnet-tools@0.0.0-canary.2': e55a4eceb451547f5f2686de0c82cb7c5322d18f9dfdbe49601befdca4fbd5c3
+
 importers:
 
   .: {}
@@ -6565,10 +6569,10 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.1.17
 
-  '@react-native-windows/cli@0.81.6(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(tslib@2.8.1)':
+  '@react-native-windows/cli@0.81.6(patch_hash=5f05f1c862995a100166a1e47e0ca3b4e42326de8c0ac244d01af055cf09129f)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(tslib@2.8.1)':
     dependencies:
       '@react-native-windows/codegen': 0.81.6(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))
-      '@react-native-windows/find-dotnet-tools': 0.0.0-canary.2
+      '@react-native-windows/find-dotnet-tools': 0.0.0-canary.2(patch_hash=e55a4eceb451547f5f2686de0c82cb7c5322d18f9dfdbe49601befdca4fbd5c3)
       '@react-native-windows/fs': 0.81.1
       '@react-native-windows/package-utils': 0.81.1
       '@react-native-windows/telemetry': 0.81.2(tslib@2.8.1)
@@ -6604,7 +6608,7 @@ snapshots:
       source-map-support: 0.5.21
       yargs: 16.2.2
 
-  '@react-native-windows/find-dotnet-tools@0.0.0-canary.2':
+  '@react-native-windows/find-dotnet-tools@0.0.0-canary.2(patch_hash=e55a4eceb451547f5f2686de0c82cb7c5322d18f9dfdbe49601befdca4fbd5c3)':
     dependencies:
       '@react-native-windows/fs': 0.0.0-canary.72
 
@@ -9926,7 +9930,7 @@ snapshots:
       '@react-native-community/cli': 17.0.0(typescript@5.9.3)
       '@react-native-community/cli-platform-android': 17.0.0
       '@react-native-community/cli-platform-ios': 17.0.0
-      '@react-native-windows/cli': 0.81.6(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(tslib@2.8.1)
+      '@react-native-windows/cli': 0.81.6(patch_hash=5f05f1c862995a100166a1e47e0ca3b4e42326de8c0ac244d01af055cf09129f)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(tslib@2.8.1)
       '@react-native/assets': 1.0.0
       '@react-native/assets-registry': 0.81.6
       '@react-native/codegen': 0.81.6(@babel/core@7.29.7)

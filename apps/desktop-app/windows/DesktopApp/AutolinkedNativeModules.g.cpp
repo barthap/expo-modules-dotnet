@@ -16,7 +16,7 @@ namespace winrt::Microsoft::ReactNative
 {
 
 void RegisterAutolinkedNativeModulePackages(winrt::Windows::Foundation::Collections::IVector<winrt::Microsoft::ReactNative::IReactPackageProvider> const& packageProviders)
-{
+{ 
     // IReactPackageProviders from expo-desktop-modules-core
     packageProviders.Append(winrt::ExpoModulesCore::ReactPackageProvider());
     // IReactPackageProviders from expo-desktop-stubs

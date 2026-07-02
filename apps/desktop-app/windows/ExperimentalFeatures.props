@@ -27,7 +27,6 @@
     <HermesPlatform Condition="'$(HermesPlatform)' == '' and '$(Platform)' == 'ARM64EC'">arm64ec</HermesPlatform>
 
     <CodegenCommand Condition="'$(CodegenCommand)' == ''">&quot;$(SolutionDir)..\node_modules\.bin\react-native.CMD&quot; codegen-windows</CodegenCommand>
-    <RunCodegenWindows>false</RunCodegenWindows>
 
     <ReactExperimentalFeaturesSet>true</ReactExperimentalFeaturesSet>
   </PropertyGroup>

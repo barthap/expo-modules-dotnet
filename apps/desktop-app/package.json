@@ -8,8 +8,8 @@
     "start:bundler": "expo start --localhost",
     "macos": "pnpm run:macos",
     "run:macos": "react-native run-macos",
-    "windows": "powershell -ExecutionPolicy Bypass -File ./scripts/run-windows.ps1",
-    "run:windows": "powershell -ExecutionPolicy Bypass -File ./scripts/run-windows.ps1",
+    "windows": "pnpm run:windows",
+    "run:windows": "react-native run-windows",
     "build:managed": "./scripts/build-managed.sh",
     "build:managed:windows": "powershell -ExecutionPolicy Bypass -File ./scripts/build-managed.ps1",
     "typecheck": "tsc --noEmit"

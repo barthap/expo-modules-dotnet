@@ -17,10 +17,11 @@ pnpm --filter desktop-app typecheck
 ```
 
 `pnpm --filter desktop-app windows` is the preferred Windows entry point. It
-builds through React Native Windows, skips the RNW Appx deploy helper, starts
-Metro when needed, and launches the unpackaged `windows/x64/Debug/DesktopApp.exe`.
-This avoids a RNW/PowerShell 7 issue where `Get-AppxPackage` can fail while
-loading the Windows `Appx` module.
+delegates to the standard React Native Windows CLI flow:
+
+```powershell
+react-native run-windows
+```
 
 ## Windows Setup
 
@@ -28,52 +29,50 @@ Use Visual Studio 2026 with:
 
 - MSVC x64/x86 platform toolset `v145`.
 - Windows SDK `10.0.22621.0` or newer.
-- Node 22 or newer.
+- Node 22 or newer. The Node 24 bundled with VS 2026 works.
 - pnpm 11.
-- PowerShell 7 available as `pwsh.exe` for RNW CLI tooling.
+- Windows PowerShell for RNW Appx deployment.
 
-If you run React Native Windows directly, pass the toolset explicitly. To build
-without deploying:
+To run React Native Windows directly:
 
 ```powershell
-pnpm --filter desktop-app exec react-native run-windows --no-deploy --no-launch --msbuildprops PlatformToolset=v145
+pnpm --filter desktop-app exec react-native run-windows
 ```
 
-Bare `react-native run-windows` may fail with a `v143` toolset error because
-some Expo Desktop dependency projects inside `node_modules` still target the
-older VS 2022 toolset. Do not install `v143` just for this proof unless you
-explicitly want to satisfy those package projects locally.
-
-Running bare `react-native run-windows` may also fail during RNW's Appx deploy
-phase if its PowerShell helper cannot load `Get-AppxPackage`. Use the repo
-script above for the current proof app.
+The workspace patches two RNW 0.81.6 CLI packages so local Windows deploys use
+Windows PowerShell before the NuGet-restored PowerShell 7.6.1 fallback, and so
+the elevated helper relaunches the current PowerShell host correctly. On
+Windows 10, the NuGet PowerShell can fail to load the Windows `Appx` module
+during `react-native run-windows` deploy.
 
 ## Visual Studio
 
-Opening `apps/desktop-app/windows/DesktopApp.sln` in VS 2026 may prompt to
-retarget `ExpoModulesCore` and `ExpoDesktopStubs` from `v143` to `v145`. That
-prompt comes from npm dependency projects under `node_modules`, not from this
-app's checked-in Windows project.
+Open `apps/desktop-app/windows/DesktopApp.sln`, select `Debug` / `x64`, set
+`DesktopApp.Package` as the startup project, start Metro separately, then press
+Run/Debug.
 
-For local VS builds, retarget those dependency projects to `v145` when
-prompted, or build from the command line with:
+The app includes `Directory.Build.targets`, which lets dependency projects that
+still declare `v143` build with `v145` when the VS 2026 toolset is installed.
+If VS still shows a setup-assistant retarget prompt, it comes from npm
+dependency project files under `node_modules`; the checked-in build does not
+require installing `v143` for this proof.
+
+To build from the command line with the same solution:
 
 ```powershell
-MSBuild.exe apps/desktop-app/windows/DesktopApp.sln /restore /p:Configuration=Debug /p:Platform=x64 /p:PlatformToolset=v145 /m:1
+MSBuild.exe apps/desktop-app/windows/DesktopApp.sln /restore /p:Configuration=Debug /p:Platform=x64 /m:1
 ```
 
-The app project disables RNW's MSBuild-time autolink check because RNW 0.81's
-generated C++ output is not byte-for-byte stable with this repo's formatting
-rules. Regenerate autolink files manually from `apps/desktop-app` when native
-dependencies change:
+RNW autolink is enabled in both CLI and MSBuild/VS flows. Regenerate autolink
+files manually from `apps/desktop-app` when native dependencies change:
 
 ```powershell
 pnpm exec react-native autolink-windows --sln "windows\DesktopApp.sln" --proj "windows\DesktopApp\DesktopApp.vcxproj"
 ```
 
-The solution also disables MSBuild-time `codegen-windows` for this proof app.
-The generated native sources are checked in; rerun the RNW codegen/autolink
-steps manually when native package inputs change.
+`AutolinkedNativeModules.g.*` files are RNW-generated and checked in, matching
+the RNW app template. Do not hand-format them; the MSBuild autolink check
+compares the generated output byte-for-byte.
 
 ## Managed Artifacts
 

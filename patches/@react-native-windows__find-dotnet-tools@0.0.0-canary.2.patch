@@ -1,0 +1,34 @@
+diff --git a/README.md b/README.md
+index f131d82984b50eae0104a24db9abfe807183bd0b..b332656177fcb083f76c5e8fd15eae8bade0184c 100644
+--- a/README.md
++++ b/README.md
+@@ -22,8 +22,9 @@ Add the package as a dependency:
+ 
+ Locates a PowerShell executable by checking, in order:
+ 
+-1. A `dotnet-tool`-restored copy of `pwsh.exe` (skipped in CI builds)
+-2. `pwsh.exe` on the system PATH
++1. Windows PowerShell on local Windows machines
++2. A `dotnet-tool`-restored copy of `pwsh.exe` (skipped in CI builds)
++3. `pwsh.exe` on the system PATH
+ 
+-Throws an error if `pwsh.exe` cannot be found.
++Throws an error if no PowerShell executable can be found.
+ 
+diff --git a/lib-commonjs/findDotnetTools.js b/lib-commonjs/findDotnetTools.js
+index 0f2a290680c3f988c7e8ae3f2b0acbe79d9a3d66..a86310b8676eaf7bc7062038f0242a652901f19f 100644
+--- a/lib-commonjs/findDotnetTools.js
++++ b/lib-commonjs/findDotnetTools.js
+@@ -44,6 +44,12 @@ exports.getNugetGlobalPackagesFolder = getNugetGlobalPackagesFolder;
+  * Throws if no pwsh.exe can be located.
+  */
+ function findPowerShell() {
++    if (process.platform === 'win32') {
++        const windowsPowerShell = path_1.default.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
++        if (fs_1.default.existsSync(windowsPowerShell)) {
++            return windowsPowerShell;
++        }
++    }
+     // Build agents already have PowerShell (pwsh) installed
+     if (!process.env.TF_BUILD) {
+         const nugetPackages = getNugetGlobalPackagesFolder();

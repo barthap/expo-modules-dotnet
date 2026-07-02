@@ -1,0 +1,5 @@
+<Project>
+  <PropertyGroup Condition="'$(PlatformToolset)' == 'v143' and Exists('$(VCTargetsPath)\Platforms\$(Platform)\PlatformToolsets\v145\Toolset.props')">
+    <PlatformToolset>v145</PlatformToolset>
+  </PropertyGroup>
+</Project>
