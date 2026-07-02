@@ -57,6 +57,9 @@ importers:
 
   apps/desktop-app:
     dependencies:
+      '@babel/runtime':
+        specifier: 7.29.7
+        version: 7.29.7
       example-module:
         specifier: workspace:*
         version: link:../../packages/example-module

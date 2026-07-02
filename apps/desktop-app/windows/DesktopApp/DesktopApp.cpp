@@ -50,7 +50,7 @@ _Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, PSTR 
   settings.UseFastRefresh(false);
 #else
   // Load the JS bundle from Metro
-  settings.JavaScriptBundleFile(L"index");
+  settings.JavaScriptBundleFile(L".expo/.virtual-metro-entry");
   // Enable hot reload
   settings.UseFastRefresh(true);
 #endif
