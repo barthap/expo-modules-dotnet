@@ -36,6 +36,10 @@ public sealed class ExpoModulesGeneratorTests
         source
     );
     Assert.DoesNotContain("public static void Register(global::Expo.JSI.JavaScriptRuntime runtime", source);
+    Assert.Contains("global::System.ArgumentNullException.ThrowIfNull(context);", source);
+    Assert.Contains("using var modules = context.GetOrCreateDotnetModulesObject();", source);
+    Assert.Contains("Register(context, modules);", source);
+    Assert.Contains("global::System.ArgumentNullException.ThrowIfNull(modules);", source);
     Assert.Contains("ModuleRegistry.DefineModule(context.Runtime, modules, \"Math\")", source);
     Assert.Contains("context.GetOrCreateModule(\"Math\", static () => new global::Expo.TestModules.MathModule())", source);
   }
@@ -117,5 +121,132 @@ public sealed class ExpoModulesGeneratorTests
     var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI002");
     Assert.Contains("Bad", diagnostic.GetMessage());
     Assert.Contains("System.Decimal", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorReportsStaticJSMethod()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class BadModule
+        {
+          [JS]
+          public static double Bad() => 1.0;
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI004");
+    Assert.Contains("Bad", diagnostic.GetMessage());
+    Assert.Contains("static", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorReportsGenericJSMethod()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class BadModule
+        {
+          [JS]
+          public T Bad<T>(T value) => value;
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI004");
+    Assert.Contains("Bad", diagnostic.GetMessage());
+    Assert.Contains("generic", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorReportsDuplicateJavaScriptFunctionName()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Math")]
+        public sealed partial class MathModule
+        {
+          [JS("same")]
+          public double Add(double value) => value + 1.0;
+
+          [JS("same")]
+          public double Increment(double value) => value + 2.0;
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI005");
+    Assert.Contains("Math", diagnostic.GetMessage());
+    Assert.Contains("same", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorReportsUnsupportedModuleConstructor()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class BadModule
+        {
+          public BadModule(double value) {}
+
+          [JS]
+          public double Value() => 1.0;
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI003");
+    Assert.Contains("Bad", diagnostic.GetMessage());
+    Assert.DoesNotContain("new global::Expo.TestModules.BadModule()", string.Join("\n", result.GeneratedSources.Select(source => source.Text)));
+  }
+
+  [Fact]
+  public void GeneratorReportsDuplicateModuleName()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Math")]
+        public sealed partial class FirstModule
+        {
+          [JS]
+          public double Add(double value) => value + 1.0;
+        }
+
+        [ExpoModule("Math")]
+        public sealed partial class SecondModule
+        {
+          [JS]
+          public double Increment(double value) => value + 2.0;
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI006");
+    Assert.Contains("Math", diagnostic.GetMessage());
+    Assert.DoesNotContain("ModuleRegistry.DefineModule(context.Runtime, modules, \"Math\")", string.Join("\n", result.GeneratedSources.Select(source => source.Text)));
   }
 }

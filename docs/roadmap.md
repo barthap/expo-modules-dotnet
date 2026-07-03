@@ -75,63 +75,63 @@ Completed scope:
 
 ### P1: Authoring Path And Error Quality
 
-5. **Source generator hardening**
+1. **Source generator hardening** (complete)
    - Keep generated bindings direct-call and reflection-free.
    - Strengthen diagnostics, generated source inspection, and provider shape
      stability for synchronous `[JS]` functions.
 
-6. **Minimal codec expansion**
+2. **Minimal codec expansion**
    - Add the types needed for ordinary small modules: integer types, nullable
      primitives, enums, simple records, and `Dictionary<string, T>`.
    - Keep ArrayBuffer, SharedObject, and NativeState out of this slice.
 
-7. **Module package metadata**
+3. **Module package metadata**
    - Define enough `expo-module.config.json` / dotnet package metadata for
      future autolinking to consume, without implementing full autolinking yet.
 
-8. **Self-contained ABI errors**
+4. **Self-contained ABI errors**
    - Replace `thread_local` error message lifetime with self-contained error
      results before the ABI grows much further.
 
 ### P2: Interactive Module Capabilities
 
-10. **Function calling from C#**
+1. **Function calling from C#**
     - Add `call_function` / `call_as_constructor` support for retained JS
       callbacks and later event delivery.
 
-11. **Async module methods / promises**
+2. **Async module methods / promises**
     - Generate promise-returning bindings for `Task` / `Task<T>` methods after
       cross-host scheduler semantics are known.
 
-12. **Events / EventEmitter**
+3. **Events / EventEmitter**
     - Build module-to-JS event emission on top of function calling, async
       scheduling, and lifecycle-safe teardown.
 
 ### P2/P3: Richer Runtime Surface
 
-13. **ArrayBuffer / binary data**
+1. **ArrayBuffer / binary data**
     - Add binary transfer wrappers and ABI support for file, camera, crypto,
       WebSocket, and data-heavy modules.
 
-14. **HostObject / NativeState / SharedObject**
+2. **HostObject / NativeState / SharedObject**
     - Add the object/state primitives needed for SharedObject, SharedRef, lazy
       module access, and dynamic property surfaces.
 
-15. **Lazy module initialization**
+3. **Lazy module initialization**
     - Instantiate modules on first JS access once HostObject and lifecycle
       semantics are ready.
 
 ### P3: Optimization And Tooling Polish
 
-16. **Handle allocation optimization**
+1. **Handle allocation optimization**
     - Revisit arena/pool allocation or primitive inline representations when
       profiling shows handle allocation pressure on hot paths.
 
-17. **Structured DevTools error fields**
+2. **Structured DevTools error fields**
     - Split message and stack fields after simple C# stack trace propagation is
       working.
 
-18. **Scheduler priority semantics**
+3. **Scheduler priority semantics**
     - Keep priority advisory for hosts that cannot honor it; implement real
       priority only when a host scheduler exposes that capability.
 

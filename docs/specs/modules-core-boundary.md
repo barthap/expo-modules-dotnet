@@ -60,6 +60,21 @@ current compilation.
 - **AND** generated code SHALL expose a stable provider that future app-level
   autolinking can call
 
+#### Scenario: Generated provider shape is stable
+- **GIVEN** a library project declares at least one `[ExpoModule]`
+- **WHEN** the project is compiled
+- **THEN** generated code SHALL include a deterministic provider name derived
+  from the current compilation
+- **AND** the provider SHALL expose `Register(DotnetRuntimeContext context)`
+- **AND** the provider SHALL expose
+  `Register(DotnetRuntimeContext context, JavaScriptObject modules)`
+- **AND** the default overload SHALL install under the context-owned default
+  dotnet modules object
+- **AND** the explicit overload SHALL install under the supplied modules object
+- **AND** generated registration SHALL use `DotnetRuntimeContext` module
+  instances
+- **AND** generated registration SHALL NOT require runtime reflection
+
 ### Requirement: Sync Function Generation Uses Direct Calls
 
 Generated sync function glue SHALL decode arguments, call authored methods
@@ -85,13 +100,42 @@ directly, and encode return values through typed helpers.
 ### Requirement: Unsupported Signatures Are Build Diagnostics
 
 Unsupported generated function signatures SHALL fail at build time with
-actionable diagnostics.
+actionable diagnostics. Unsupported shapes SHALL fail the consuming compilation
+instead of silently skipping affected modules or emitting invalid generated C#.
 
 #### Scenario: Unsupported parameter type is used
 - **GIVEN** a `[JS]` method has an unsupported parameter type
 - **WHEN** the project is compiled
 - **THEN** the generator SHALL report a diagnostic naming the unsupported type
 - **AND** generated runtime glue SHALL NOT attempt dynamic invocation
+
+#### Scenario: Unsupported return type is used
+- **GIVEN** a `[JS]` method has an unsupported return type
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report a diagnostic naming the unsupported type
+- **AND** generated runtime glue SHALL NOT attempt dynamic invocation
+
+#### Scenario: Unsupported module constructor is used
+- **GIVEN** a module cannot be constructed by a public or internal
+  parameterless constructor
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report a diagnostic naming the exported module
+- **AND** generated code SHALL NOT rely on runtime reflection to create the
+  module
+
+#### Scenario: Unsupported method shape is used
+- **GIVEN** a `[JS]` method is static or generic
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report a diagnostic naming the method and
+  unsupported shape
+- **AND** generated source SHALL NOT emit a fallback dispatch path
+
+#### Scenario: Duplicate exported names are used
+- **GIVEN** two generated modules have the same exported module name, or two
+  generated functions in one module have the same exported JavaScript name
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report a diagnostic naming the duplicate export
+- **AND** duplicate names SHALL NOT be resolved by source order
 
 ### Requirement: App Aggregation Remains Future Autolinking Work
 

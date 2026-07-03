@@ -61,13 +61,34 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     }
 
     var diagnostics = new List<ExpoDiagnosticModel>();
+    var canConstruct = HasUsableConstructor(typeSymbol);
+    if (!canConstruct)
+    {
+      diagnostics.Add(new ExpoDiagnosticModel(
+          ExpoModulesDiagnostics.UnsupportedModuleConstructor.Id,
+          typeSymbol.Locations.FirstOrDefault(),
+          new EquatableArray<string>(new[] { moduleName })
+      ));
+    }
+
     var functions = GetFunctions(typeSymbol, diagnostics);
 
     return new ExpoModuleModel(
         typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
         moduleName,
+        typeSymbol.Locations.FirstOrDefault(),
+        canConstruct,
         new EquatableArray<ExpoFunctionModel>(functions),
         new EquatableArray<ExpoDiagnosticModel>(diagnostics)
+    );
+  }
+
+  private static bool HasUsableConstructor(INamedTypeSymbol typeSymbol)
+  {
+    return typeSymbol.InstanceConstructors.Any(constructor =>
+        constructor.Parameters.Length == 0 &&
+        (constructor.DeclaredAccessibility == Accessibility.Public ||
+            constructor.DeclaredAccessibility == Accessibility.Internal)
     );
   }
 
@@ -75,9 +96,11 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       INamedTypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics)
   {
+    var functions = new List<ExpoFunctionModel>();
+
     foreach (var member in typeSymbol.GetMembers().OfType<IMethodSymbol>())
     {
-      if (member.MethodKind != MethodKind.Ordinary || member.IsStatic || member.IsGenericMethod)
+      if (member.MethodKind != MethodKind.Ordinary)
       {
         continue;
       }
@@ -86,6 +109,38 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
           attribute.AttributeClass?.ToDisplayString() == JSAttributeMetadataName);
       if (jsAttribute is null)
       {
+        continue;
+      }
+
+      if (member.IsStatic)
+      {
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.UnsupportedJSMethodShape.Id,
+            member.Locations.FirstOrDefault(),
+            new EquatableArray<string>(
+                new[]
+                {
+                    member.Name,
+                    "static",
+                }
+            )
+        ));
+        continue;
+      }
+
+      if (member.IsGenericMethod)
+      {
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.UnsupportedJSMethodShape.Id,
+            member.Locations.FirstOrDefault(),
+            new EquatableArray<string>(
+                new[]
+                {
+                    member.Name,
+                    "generic",
+                }
+            )
+        ));
         continue;
       }
 
@@ -146,13 +201,51 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         continue;
       }
 
-      yield return new ExpoFunctionModel(
+      functions.Add(new ExpoFunctionModel(
           member.Name,
           javaScriptName,
+          member.Locations.FirstOrDefault(),
           member.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
           returnCodec,
           new EquatableArray<ExpoParameterModel>(parameters)
-      );
+      ));
+    }
+
+    foreach (var group in functions.GroupBy(function => function.JavaScriptName))
+    {
+      var duplicateFunctions = group.ToArray();
+      if (duplicateFunctions.Length <= 1)
+      {
+        continue;
+      }
+
+      diagnostics.Add(new ExpoDiagnosticModel(
+          ExpoModulesDiagnostics.DuplicateJavaScriptFunctionName.Id,
+          duplicateFunctions[1].Location,
+          new EquatableArray<string>(
+              new[]
+              {
+                  typeSymbol.Name,
+                  group.Key,
+              }
+          )
+      ));
+    }
+
+    var duplicateNames = new HashSet<string>(
+        functions
+            .GroupBy(function => function.JavaScriptName)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key),
+        StringComparer.Ordinal
+    );
+
+    foreach (var function in functions)
+    {
+      if (!duplicateNames.Contains(function.JavaScriptName))
+      {
+        yield return function;
+      }
     }
   }
 
@@ -162,10 +255,37 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       IEnumerable<ExpoModuleModel> modules)
   {
     var moduleModels = modules.ToArray();
+    var duplicateModuleNames = new HashSet<string>(
+        moduleModels
+            .GroupBy(module => module.ModuleName)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key),
+        StringComparer.Ordinal
+    );
+
     foreach (var diagnostic in moduleModels.SelectMany(module => module.Diagnostics.Values))
     {
       context.ReportDiagnostic(ToDiagnostic(diagnostic));
     }
+
+    foreach (var group in moduleModels.GroupBy(module => module.ModuleName))
+    {
+      var duplicateModules = group.ToArray();
+      if (duplicateModules.Length <= 1)
+      {
+        continue;
+      }
+
+      context.ReportDiagnostic(ToDiagnostic(new ExpoDiagnosticModel(
+          ExpoModulesDiagnostics.DuplicateModuleName.Id,
+          duplicateModules[1].Location,
+          new EquatableArray<string>(new[] { group.Key })
+      )));
+    }
+
+    moduleModels = moduleModels
+        .Where(module => module.CanConstruct && !duplicateModuleNames.Contains(module.ModuleName))
+        .ToArray();
 
     var providerTypeName = $"ExpoModulesProvider_{SanitizeIdentifier(assemblyName)}";
     var builder = new StringBuilder();
@@ -227,6 +347,9 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       "EXPOJSI001" => ExpoModulesDiagnostics.UnsupportedParameterType,
       "EXPOJSI002" => ExpoModulesDiagnostics.UnsupportedReturnType,
       "EXPOJSI003" => ExpoModulesDiagnostics.UnsupportedModuleConstructor,
+      "EXPOJSI004" => ExpoModulesDiagnostics.UnsupportedJSMethodShape,
+      "EXPOJSI005" => ExpoModulesDiagnostics.DuplicateJavaScriptFunctionName,
+      "EXPOJSI006" => ExpoModulesDiagnostics.DuplicateModuleName,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());

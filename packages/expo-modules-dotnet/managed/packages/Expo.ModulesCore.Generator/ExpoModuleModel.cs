@@ -5,12 +5,15 @@ namespace Expo.ModulesCore.Generator;
 internal sealed record ExpoModuleModel(
     string FullyQualifiedTypeName,
     string ModuleName,
+    Location? Location,
+    bool CanConstruct,
     EquatableArray<ExpoFunctionModel> Functions,
     EquatableArray<ExpoDiagnosticModel> Diagnostics);
 
 internal sealed record ExpoFunctionModel(
     string MethodName,
     string JavaScriptName,
+    Location? Location,
     string ReturnType,
     string ReturnCodecExpression,
     EquatableArray<ExpoParameterModel> Parameters);

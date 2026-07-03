@@ -30,4 +30,31 @@ internal static class ExpoModulesDiagnostics
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true
   );
+
+  public static readonly DiagnosticDescriptor UnsupportedJSMethodShape = new(
+      id: "EXPOJSI004",
+      title: "Unsupported Expo module method shape",
+      messageFormat: "Method '{0}' cannot be exported to JavaScript because it is {1}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor DuplicateJavaScriptFunctionName = new(
+      id: "EXPOJSI005",
+      title: "Duplicate Expo module JavaScript function name",
+      messageFormat: "Module '{0}' exports duplicate JavaScript function name '{1}'",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor DuplicateModuleName = new(
+      id: "EXPOJSI006",
+      title: "Duplicate Expo module name",
+      messageFormat: "Multiple Expo modules export module name '{0}'",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
 }
