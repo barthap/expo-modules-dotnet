@@ -6,12 +6,29 @@ namespace Expo.ModulesCore.Tests.Generated;
 [ExpoModule("GeneratedMath")]
 public sealed partial class GeneratedMathModule
 {
+  public double? LastNullable { get; private set; }
+
   [JS("add")]
   public double Add(double a, double b) => a + b;
 
   [JS]
   public double AddOneWhen(double value, bool shouldAddOne) =>
       shouldAddOne ? value + 1.0 : value;
+
+  [JS]
+  public void StoreNullable(double? value)
+  {
+    LastNullable = value;
+  }
+
+  [JS]
+  public void StoreNullableWithDefault(double? value = 42.0)
+  {
+    LastNullable = value;
+  }
+
+  [JS]
+  public double? ReadNullable() => LastNullable;
 }
 
 [ExpoModule]

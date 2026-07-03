@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -151,8 +152,9 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         javaScriptName = explicitName;
       }
 
-      var returnCodec = GetCodecExpression(member.ReturnType);
-      if (returnCodec is null)
+      var returnsVoid = member.ReturnsVoid || member.ReturnType.SpecialType == SpecialType.System_Void;
+      var returnCodec = returnsVoid ? string.Empty : GetCodecExpression(member.ReturnType);
+      if (!returnsVoid && returnCodec is null)
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedReturnType.Id,
@@ -192,7 +194,11 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         parameters.Add(new ExpoParameterModel(
             parameter.Name,
             parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-            parameterCodec
+            parameterCodec,
+            parameter.HasExplicitDefaultValue,
+            parameter.HasExplicitDefaultValue
+                ? GetDefaultValueExpression(parameter.Type, parameter.ExplicitDefaultValue)
+                : string.Empty
         ));
       }
 
@@ -206,7 +212,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
           javaScriptName,
           member.Locations.FirstOrDefault(),
           member.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-          returnCodec,
+          returnCodec ?? string.Empty,
+          returnsVoid,
           new EquatableArray<ExpoParameterModel>(parameters)
       ));
     }
@@ -321,7 +328,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         builder.AppendLine("        context,");
         builder.AppendLine($"        {moduleVariable},");
         builder.AppendLine($"        \"{EscapeString(function.JavaScriptName)}\",");
-        builder.AppendLine($"        {function.Parameters.Values.Count},");
+        builder.AppendLine($"        {GetRequiredParameterCount(function)},");
         builder.AppendLine($"        {GetHostFunctionName(module, function)},");
         builder.AppendLine($"        {moduleInstanceVariable}");
         builder.AppendLine("    );");
@@ -367,18 +374,26 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine("      global::Expo.JSI.JavaScriptArguments arguments,");
     builder.AppendLine("      object context)");
     builder.AppendLine("  {");
-    builder.AppendLine($"    GeneratedFunction.RequireArgumentCount(\"{EscapeString(module.ModuleName)}.{EscapeString(function.JavaScriptName)}\", arguments, {function.Parameters.Values.Count});");
+    builder.AppendLine($"    GeneratedFunction.RequireArgumentCount(\"{EscapeString(module.ModuleName)}.{EscapeString(function.JavaScriptName)}\", arguments, {GetRequiredParameterCount(function)}, {function.Parameters.Values.Count});");
     builder.AppendLine();
     builder.AppendLine($"    var module = ({module.FullyQualifiedTypeName})context;");
 
     for (var index = 0; index < function.Parameters.Values.Count; index++)
     {
       var parameter = function.Parameters.Values[index];
-      builder.AppendLine($"    var {parameter.Name} = {GetDecodeExpression(parameter.CodecExpression, index)};");
+      builder.AppendLine($"    var {parameter.Name} = {GetParameterExpression(parameter, index)};");
     }
 
     var argumentList = string.Join(", ", function.Parameters.Values.Select(parameter => parameter.Name));
-    builder.AppendLine($"    return {function.ReturnCodecExpression}.Encode(module.{function.MethodName}({argumentList}), runtime);");
+    if (function.ReturnsVoid)
+    {
+      builder.AppendLine($"    module.{function.MethodName}({argumentList});");
+      builder.AppendLine("    return runtime.CreateUndefined();");
+    }
+    else
+    {
+      builder.AppendLine($"    return {function.ReturnCodecExpression}.Encode(module.{function.MethodName}({argumentList}), runtime);");
+    }
     builder.AppendLine("  }");
   }
 
@@ -395,6 +410,20 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
   private static string GetHostFunctionName(ExpoModuleModel module, ExpoFunctionModel function) =>
       $"{SanitizeIdentifier(module.ModuleName)}_{SanitizeIdentifier(function.JavaScriptName)}_HostFunction";
 
+  private static int GetRequiredParameterCount(ExpoFunctionModel function) =>
+      function.Parameters.Values.Count(parameter => !parameter.HasDefaultValue);
+
+  private static string GetParameterExpression(ExpoParameterModel parameter, int index)
+  {
+    var decodeExpression = GetDecodeExpression(parameter.CodecExpression, index);
+    if (!parameter.HasDefaultValue)
+    {
+      return decodeExpression;
+    }
+
+    return $"arguments.Count <= {index} || arguments.GetValue({index}).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? {parameter.DefaultValueExpression} : {decodeExpression}";
+  }
+
   private static string GetDecodeExpression(string codecExpression, int index)
   {
     var methodName = codecExpression.StartsWith("JavaScriptArrayCodec<", StringComparison.Ordinal)
@@ -405,12 +434,41 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 
   private static string? GetCodecExpression(ITypeSymbol typeSymbol)
   {
+    if (TryGetNullableCodec(typeSymbol) is { } nullableCodec)
+    {
+      return nullableCodec;
+    }
+
     return typeSymbol.SpecialType switch
     {
       SpecialType.System_Boolean => "BoolCodec",
       SpecialType.System_Double => "DoubleCodec",
       SpecialType.System_String => "StringCodec",
       _ => TryGetReadOnlyListCodec(typeSymbol),
+    };
+  }
+
+  private static string GetDefaultValueExpression(ITypeSymbol typeSymbol, object? value)
+  {
+    if (value is null)
+    {
+      return "null";
+    }
+
+    if (typeSymbol is INamedTypeSymbol namedType &&
+        namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
+    {
+      typeSymbol = namedType.TypeArguments.Single();
+    }
+
+    return typeSymbol.SpecialType switch
+    {
+      SpecialType.System_Boolean => (bool)value ? "true" : "false",
+      SpecialType.System_Double => ((double)value).ToString("R", CultureInfo.InvariantCulture),
+      SpecialType.System_String => $"\"{EscapeString((string)value)}\"",
+      _ => throw new InvalidOperationException(
+          $"Unsupported default value type: {typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}"
+      ),
     };
   }
 
@@ -424,6 +482,25 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       SpecialType.System_Decimal => "System.Decimal",
       _ => typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
     };
+  }
+
+  private static string? TryGetNullableCodec(ITypeSymbol typeSymbol)
+  {
+    if (typeSymbol is not INamedTypeSymbol namedType ||
+        namedType.ConstructedFrom.SpecialType != SpecialType.System_Nullable_T)
+    {
+      return null;
+    }
+
+    var valueType = namedType.TypeArguments.Single();
+    var valueCodec = GetCodecExpression(valueType);
+    if (valueCodec is null)
+    {
+      return null;
+    }
+
+    var valueTypeName = valueType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    return $"NullableCodec<{valueTypeName}, {valueCodec}>";
   }
 
   private static string? TryGetReadOnlyListCodec(ITypeSymbol typeSymbol)

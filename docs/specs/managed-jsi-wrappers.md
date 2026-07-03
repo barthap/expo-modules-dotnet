@@ -15,7 +15,8 @@ native JavaScript runtime.
 
 #### Scenario: Runtime creates primitive values
 - **GIVEN** managed code has a `JavaScriptRuntime`
-- **WHEN** it calls `CreateNumber`, `CreateBool`, or `CreateString`
+- **WHEN** it calls `CreateNumber`, `CreateBool`, `CreateString`,
+  `CreateUndefined`, or `CreateNull`
 - **THEN** the runtime SHALL call the ABI and return an owned
   `JavaScriptValue`
 

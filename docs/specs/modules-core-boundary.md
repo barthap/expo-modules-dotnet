@@ -47,6 +47,26 @@ attributes are consumed by the Roslyn generator.
 - **THEN** the generator SHALL emit direct-call registration glue for that
   module
 
+#### Scenario: Void sync function returns undefined
+- **GIVEN** a generated sync function wraps an authored method returning `void`
+- **WHEN** JavaScript calls the generated function
+- **THEN** generated dispatch SHALL call the authored method and return
+  JavaScript `undefined`
+
+#### Scenario: Nullable value types preserve nullish values
+- **GIVEN** a generated sync function accepts or returns a nullable value type
+- **WHEN** JavaScript passes `null` or explicit `undefined` to a required
+  nullable argument
+- **THEN** generated dispatch SHALL pass C# `null`
+- **AND** a C# nullable return value of `null` SHALL become JavaScript `null`
+
+#### Scenario: Optional nullable arguments use defaults for omission
+- **GIVEN** a generated sync function has a nullable value-type parameter with a
+  C# default value
+- **WHEN** JavaScript omits the argument or passes explicit `undefined`
+- **THEN** generated dispatch SHALL pass the C# default value
+- **AND** explicit JavaScript `null` SHALL still pass C# `null`
+
 ### Requirement: Generated Providers Are Library-Local
 
 The Roslyn generator SHALL emit one deterministic provider for modules in the

@@ -16,12 +16,15 @@ internal sealed record ExpoFunctionModel(
     Location? Location,
     string ReturnType,
     string ReturnCodecExpression,
+    bool ReturnsVoid,
     EquatableArray<ExpoParameterModel> Parameters);
 
 internal sealed record ExpoParameterModel(
     string Name,
     string TypeName,
-    string CodecExpression);
+    string CodecExpression,
+    bool HasDefaultValue,
+    string DefaultValueExpression);
 
 internal sealed record ExpoDiagnosticModel(
     string DescriptorId,

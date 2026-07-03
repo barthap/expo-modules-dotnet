@@ -71,4 +71,24 @@ public static class GeneratedFunction
       );
     }
   }
+
+  public static void RequireArgumentCount(
+      string functionName,
+      JavaScriptArguments arguments,
+      uint min,
+      uint max)
+  {
+    ArgumentException.ThrowIfNullOrWhiteSpace(functionName);
+    if (min > max)
+    {
+      throw new ArgumentOutOfRangeException(nameof(min), "Minimum count cannot exceed maximum count.");
+    }
+
+    if (arguments.Count < min || arguments.Count > max)
+    {
+      throw new ArgumentException(
+          $"{functionName} expects between {min} and {max} arguments, got {arguments.Count}."
+      );
+    }
+  }
 }

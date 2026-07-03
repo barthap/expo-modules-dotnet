@@ -53,6 +53,100 @@ public sealed class GeneratedAttributeModuleTests
   }
 
   [Fact]
+  public void GeneratedProviderReturnsUndefinedForVoidFunction()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var result = fixture.Evaluate(
+          "globalThis._expoDotnet.modules.GeneratedMath.StoreNullable(7)",
+          "generated-attribute-void-return.js"
+      );
+
+      Assert.Equal(JavaScriptValueKind.Undefined, result.Kind);
+      return true;
+    });
+  }
+
+  [Theory]
+  [InlineData("null")]
+  [InlineData("undefined")]
+  public void GeneratedProviderAcceptsNullishNullableArguments(string argument)
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var result = fixture.Evaluate(
+          $"globalThis._expoDotnet.modules.GeneratedMath.StoreNullable({argument}); " +
+          "globalThis._expoDotnet.modules.GeneratedMath.ReadNullable()",
+          "generated-attribute-nullable-argument.js"
+      );
+
+      Assert.Equal(JavaScriptValueKind.Null, result.Kind);
+      return true;
+    });
+  }
+
+  [Theory]
+  [InlineData("")]
+  [InlineData("undefined")]
+  public void GeneratedProviderUsesDefaultForMissingOrUndefinedOptionalNullableArguments(
+      string argument
+  )
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var result = fixture.Evaluate(
+          $"globalThis._expoDotnet.modules.GeneratedMath.StoreNullableWithDefault({argument}); " +
+          "globalThis._expoDotnet.modules.GeneratedMath.ReadNullable()",
+          "generated-attribute-nullable-default.js"
+      );
+
+      Assert.Equal(JavaScriptValueKind.Number, result.Kind);
+      Assert.Equal(42.0, result.AsDouble());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void GeneratedProviderPreservesExplicitNullForOptionalNullableArguments()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var result = fixture.Evaluate(
+          "globalThis._expoDotnet.modules.GeneratedMath.StoreNullableWithDefault(null); " +
+          "globalThis._expoDotnet.modules.GeneratedMath.ReadNullable()",
+          "generated-attribute-nullable-default-null.js"
+      );
+
+      Assert.Equal(JavaScriptValueKind.Null, result.Kind);
+      return true;
+    });
+  }
+
+  [Fact]
   public void GeneratedProviderPreservesStrings()
   {
     using var fixture = HermesRuntimeFixture.Create();
