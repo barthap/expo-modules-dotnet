@@ -15,8 +15,9 @@ public sealed class GeneratedMathAndTextModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
-      GeneratedMathAndTextModuleProvider.Register(runtime, modules);
+      using var session = new RuntimeSession(runtime);
+      using var modules = session.GetOrCreateDotnetModulesObject();
+      GeneratedMathAndTextModuleProvider.Register(session, modules);
 
       using var result = fixture.Evaluate(
           "globalThis._expoDotnet.modules.Math.add(41.5, true)",
@@ -41,8 +42,9 @@ public sealed class GeneratedMathAndTextModuleTests
           "modules-core-existing-module-setup.js"
       );
 
-      using var modules = ModuleRegistry.GetOrCreateExpoModulesObject(runtime);
-      GeneratedMathAndTextModuleProvider.Register(runtime, modules);
+      using var session = new RuntimeSession(runtime);
+      using var modules = session.GetOrCreateExpoModulesObject();
+      GeneratedMathAndTextModuleProvider.Register(session, modules);
 
       using var result = fixture.Evaluate(
           "globalThis.expo.modules.Math.nativeValue + globalThis.expo.modules.Math.add(41.5, true)",
@@ -62,8 +64,9 @@ public sealed class GeneratedMathAndTextModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
-      GeneratedMathAndTextModuleProvider.Register(runtime, modules);
+      using var session = new RuntimeSession(runtime);
+      using var modules = session.GetOrCreateDotnetModulesObject();
+      GeneratedMathAndTextModuleProvider.Register(session, modules);
 
       using var result = fixture.Evaluate(
           "globalThis._expoDotnet.modules.Text.greet('Zoë\\u0000JS')",
@@ -83,8 +86,9 @@ public sealed class GeneratedMathAndTextModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
-      GeneratedMathAndTextModuleProvider.Register(runtime, modules);
+      using var session = new RuntimeSession(runtime);
+      using var modules = session.GetOrCreateDotnetModulesObject();
+      GeneratedMathAndTextModuleProvider.Register(session, modules);
 
       using var result = fixture.Evaluate(
           "try { globalThis._expoDotnet.modules.Text.greet(42); 'no error'; } catch (e) { e.message; }",
@@ -110,26 +114,28 @@ public sealed class GeneratedMathAndTextModuleTests
 
   private static class GeneratedMathAndTextModuleProvider
   {
-    public static void Register(JavaScriptRuntime runtime, JavaScriptObject modules)
+    public static void Register(RuntimeSession session, JavaScriptObject modules)
     {
-      using var math = ModuleRegistry.DefineModule(runtime, modules, "Math");
-      using var text = ModuleRegistry.DefineModule(runtime, modules, "Text");
+      using var math = ModuleRegistry.DefineModule(session.Runtime, modules, "Math");
+      using var text = ModuleRegistry.DefineModule(session.Runtime, modules, "Text");
+      var mathModule = session.GetOrCreateModule("Math", static () => new MathModule());
+      var textModule = session.GetOrCreateModule("Text", static () => new TextModule());
 
       GeneratedFunction.DefineSync(
-          runtime,
+          session,
           math,
           "add",
           2,
           MathAddHostFunction,
-          new MathModule()
+          mathModule
       );
       GeneratedFunction.DefineSync(
-          runtime,
+          session,
           text,
           "greet",
           1,
           TextGreetHostFunction,
-          new TextModule()
+          textModule
       );
     }
 

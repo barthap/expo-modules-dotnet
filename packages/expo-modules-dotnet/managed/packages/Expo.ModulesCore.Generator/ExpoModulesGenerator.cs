@@ -178,23 +178,32 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine();
     builder.AppendLine($"public static class {providerTypeName}");
     builder.AppendLine("{");
-    builder.AppendLine("  public static void Register(global::Expo.JSI.JavaScriptRuntime runtime, global::Expo.JSI.JavaScriptObject modules)");
+    builder.AppendLine("  public static void Register(global::Expo.ModulesCore.RuntimeSession session)");
     builder.AppendLine("  {");
-    builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(runtime);");
+    builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(session);");
+    builder.AppendLine("    using var modules = session.GetOrCreateDotnetModulesObject();");
+    builder.AppendLine("    Register(session, modules);");
+    builder.AppendLine("  }");
+    builder.AppendLine();
+    builder.AppendLine("  public static void Register(global::Expo.ModulesCore.RuntimeSession session, global::Expo.JSI.JavaScriptObject modules)");
+    builder.AppendLine("  {");
+    builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(session);");
     builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(modules);");
     foreach (var module in moduleModels)
     {
       var moduleVariable = $"module_{SanitizeIdentifier(module.ModuleName)}";
-      builder.AppendLine($"    using var {moduleVariable} = ModuleRegistry.DefineModule(runtime, modules, \"{EscapeString(module.ModuleName)}\");");
+      var moduleInstanceVariable = $"instance_{SanitizeIdentifier(module.ModuleName)}";
+      builder.AppendLine($"    using var {moduleVariable} = ModuleRegistry.DefineModule(session.Runtime, modules, \"{EscapeString(module.ModuleName)}\");");
+      builder.AppendLine($"    var {moduleInstanceVariable} = session.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", static () => new {module.FullyQualifiedTypeName}());");
       foreach (var function in module.Functions.Values)
       {
         builder.AppendLine("    GeneratedFunction.DefineSync(");
-        builder.AppendLine("        runtime,");
+        builder.AppendLine("        session,");
         builder.AppendLine($"        {moduleVariable},");
         builder.AppendLine($"        \"{EscapeString(function.JavaScriptName)}\",");
         builder.AppendLine($"        {function.Parameters.Values.Count},");
         builder.AppendLine($"        {GetHostFunctionName(module, function)},");
-        builder.AppendLine($"        new {module.FullyQualifiedTypeName}()");
+        builder.AppendLine($"        {moduleInstanceVariable}");
         builder.AppendLine("    );");
       }
     }
