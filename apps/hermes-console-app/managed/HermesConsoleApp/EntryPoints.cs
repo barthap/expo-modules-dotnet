@@ -9,6 +9,32 @@ namespace HermesConsoleApp;
 public static class EntryPoints
 {
   [UnmanagedCallersOnly(
+      EntryPoint = "hermes_console_app_create_session",
+      CallConvs = new[] { typeof(CallConvCdecl) }
+  )]
+  public static nint CreateRuntimeContext(nint api, nint runtimeHandle)
+  {
+    try
+    {
+      return CreateRuntimeContextCore(api, runtimeHandle);
+    }
+    catch (Exception ex)
+    {
+      Console.Error.WriteLine(ex);
+      return 0;
+    }
+  }
+
+  [UnmanagedCallersOnly(
+      EntryPoint = "hermes_console_app_teardown_session",
+      CallConvs = new[] { typeof(CallConvCdecl) }
+  )]
+  public static void TeardownRuntimeContext(nint runtimeContext)
+  {
+    TeardownRuntimeContextCore(runtimeContext);
+  }
+
+  [UnmanagedCallersOnly(
       EntryPoint = "hermes_console_app_run",
       CallConvs = new[] { typeof(CallConvCdecl) }
   )]
@@ -76,10 +102,10 @@ public static class EntryPoints
   {
     try
     {
-      var runtime = JavaScriptRuntime.FromNative(api, runtimeHandle);
-      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
-      GeneratedModuleProvider.Register(runtime, modules);
-      ExpoModulesProvider_HermesConsoleApp.Register(runtime, modules);
+      if (CreateRuntimeContextCore(api, runtimeHandle) == 0)
+      {
+        return 1;
+      }
       return 0;
     }
     catch (Exception ex)
@@ -87,5 +113,39 @@ public static class EntryPoints
       Console.Error.WriteLine(ex);
       return 1;
     }
+  }
+
+  private static nint CreateRuntimeContextCore(nint api, nint runtimeHandle)
+  {
+    var runtime = JavaScriptRuntime.FromNative(api, runtimeHandle);
+    var context = new DotnetRuntimeContext(runtime);
+    try
+    {
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      GeneratedModuleProvider.Register(context, modules);
+      ExpoModulesProvider_HermesConsoleApp.Register(context, modules);
+      return GCHandle.ToIntPtr(GCHandle.Alloc(context));
+    }
+    catch
+    {
+      context.Dispose();
+      throw;
+    }
+  }
+
+  private static void TeardownRuntimeContextCore(nint runtimeContext)
+  {
+    if (runtimeContext == 0)
+    {
+      return;
+    }
+
+    var handle = GCHandle.FromIntPtr(runtimeContext);
+    if (handle.Target is DotnetRuntimeContext context)
+    {
+      context.Dispose();
+    }
+
+    handle.Free();
   }
 }

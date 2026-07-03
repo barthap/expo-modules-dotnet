@@ -1,28 +1,25 @@
 using Expo.JSI;
+using Expo.ModulesCore;
 
 namespace HermesConsoleApp;
 
 internal static class GeneratedModuleProvider
 {
-  public static void Register(JavaScriptRuntime runtime, JavaScriptObject modules)
+  public static void Register(DotnetRuntimeContext context, JavaScriptObject modules)
   {
+    var runtime = context.Runtime;
     using var global = runtime.Global();
     using var math = runtime.CreateObject();
     using var text = runtime.CreateObject();
 
-    var mathModule = new MathModule();
-    var textModule = new TextModule();
-    using var add = runtime.CreateHostFunction("add", 2, MathAddHostFunction, mathModule);
-    using var greet = runtime.CreateHostFunction("greet", 1, TextGreetHostFunction, textModule);
+    var mathModule = context.GetOrCreateModule("HermesConsoleApp.Math", static () => new MathModule());
+    var textModule = context.GetOrCreateModule("HermesConsoleApp.Text", static () => new TextModule());
 
     using var globalValue = global.AsValue();
     global.SetProperty("global", globalValue);
 
-    using var addValue = add.AsValue();
-    math.SetProperty("add", addValue);
-
-    using var greetValue = greet.AsValue();
-    text.SetProperty("greet", greetValue);
+    GeneratedFunction.DefineSync(context, math, "add", 2, MathAddHostFunction, mathModule);
+    GeneratedFunction.DefineSync(context, text, "greet", 1, TextGreetHostFunction, textModule);
 
     using var mathValue = math.AsValue();
     modules.SetProperty("Math", mathValue);

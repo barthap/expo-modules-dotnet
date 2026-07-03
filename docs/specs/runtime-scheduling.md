@@ -59,10 +59,25 @@ React Native call-invoker primitives, which do not expose task priorities.
 - **WHEN** managed code schedules runtime work through `JavaScriptRuntime`
 - **THEN** the React Native connector SHALL route asynchronous work through
   `CallInvoker::invokeAsync`
-- **AND** sync execution SHALL route through `CallInvoker::invokeSync` when the
-  borrowed runtime and invoker are still valid
+- **AND** generic managed sync execution SHALL remain gated by a passive
+  capability check
 - **AND** task priority SHALL be treated as advisory when the host scheduling
   primitive cannot honor it
+
+#### Scenario: Generated synchronous module function is called
+- **GIVEN** a generated synchronous C# module function is installed as a JSI host
+  function
+- **WHEN** JavaScript calls that function
+- **THEN** the function SHALL execute in the current JSI call
+- **AND** it SHALL NOT require `CallInvoker::invokeSync` or equivalent sync
+  scheduler support
+
+#### Scenario: Scheduled work reaches an invalidated runtime
+- **GIVEN** managed code scheduled runtime work through a React Native connector
+- **AND** the host invalidated the connector runtime holder before that work ran
+- **WHEN** native observes the invalidated holder
+- **THEN** the scheduled work SHALL fail, cancel, or release without touching
+  stale JSI
 
 #### Scenario: React Native macOS registers sync modules from the host function
 - **GIVEN** React Native macOS exposes the installer TurboModule to JavaScript

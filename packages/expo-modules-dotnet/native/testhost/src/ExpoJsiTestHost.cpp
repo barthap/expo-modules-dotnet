@@ -371,6 +371,15 @@ extern "C" void expo_jsi_testhost_set_sync_execution_supported(
   }
 }
 
+extern "C" void expo_jsi_testhost_invalidate_runtime(
+  expo_jsi_testhost_runtime_handle testhostRuntime)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  if (testhost != nullptr) {
+    testhost->connector.invalidate();
+  }
+}
+
 extern "C" void expo_jsi_testhost_release_runtime(expo_jsi_testhost_runtime_handle testhostRuntime)
 {
   auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
