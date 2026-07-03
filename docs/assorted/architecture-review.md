@@ -132,22 +132,31 @@ layer (B) or (C) on top.
 
 ## Finding 2: Module Instance Lifecycle And Runtime Reload
 
+Status: solved by the runtime lifecycle milestone. `DotnetRuntimeContext` is now
+the runtime-scoped managed owner for module instances and generated host-function
+registrations, and Android, iOS, macOS, and Windows adapters call the managed
+teardown path from their runtime/module invalidation hooks. See
+`docs/specs/modules-core-boundary.md`, `docs/specs/runtime-and-abi.md`, and
+`docs/specs/runtime-scheduling.md` for the accepted contract.
+
 ### Concern
+
+This was the original concern before the runtime lifecycle work:
 
 When React Native reloads (Fast Refresh, full dev reload), the JS runtime is
 destroyed and a new one is created. On the native side,
 `JsiRuntimeConnector::invalidate()` is called, which shuts down the executor
 and releases queued work.
 
-However, there is no mechanism to notify the managed side that:
+At the time, there was no mechanism to notify the managed side that:
 - Its module instances should be torn down.
 - GCHandle pins for host-function callback contexts should be released.
 - Module state accumulated during the previous runtime session is stale.
 
-After a reload, the old module instances and their pinned handles remain alive
-on the managed heap, leaked. The new runtime gets fresh module registrations
-(assuming the adapter calls `Register` again), but the old managed objects are
-never cleaned up.
+After a reload, the old module instances and their pinned handles could remain
+alive on the managed heap. The new runtime would get fresh module registrations
+(assuming the adapter called `Register` again), but the old managed objects were
+not cleaned up deterministically.
 
 ### Why It Matters
 
@@ -201,6 +210,10 @@ prevents use-after-free but does not release resources.
 Combine (A) and (B). Design the teardown callback into the connector interface
 now, and make the module registry runtime-scoped so teardown has a clear scope
 to clean up. Add (C) as a defense-in-depth safety check.
+
+Implemented as `DotnetRuntimeContext`, app-composed `expo_dotnet_*` lifecycle
+entry points, adapter-owned runtime records, and invalidation-before-teardown
+ordering across the React Native host adapters.
 
 ---
 
@@ -389,9 +402,9 @@ blocking pattern in a real adapter — that would be a mistake.
 
 ## Summary
 
-| # | Finding | Risk | Effort | Recommendation |
-|---|---------|------|--------|----------------|
-| 1 | Handle allocation cost | Medium | Medium | Arena allocator scoped to task boundary |
-| 2 | Module lifecycle / reload teardown | High | Medium | Teardown callback + runtime-scoped registry |
-| 3 | C# stack traces lost across ABI | Low | Low | Include `ex.ToString()` in error message |
-| 4 | `thread_local` error message lifetime | Medium | Low | Copy error into result struct |
+| # | Finding | Status | Risk | Effort | Recommendation |
+|---|---------|--------|------|--------|----------------|
+| 1 | Handle allocation cost | Open | Medium | Medium | Arena allocator scoped to task boundary |
+| 2 | Module lifecycle / reload teardown | Solved | High | Medium | `DotnetRuntimeContext` + managed teardown callback |
+| 3 | C# stack traces lost across ABI | Open | Low | Low | Include `ex.ToString()` in error message |
+| 4 | `thread_local` error message lifetime | Open | Medium | Low | Copy error into result struct |
