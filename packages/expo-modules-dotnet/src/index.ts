@@ -9,6 +9,10 @@ declare global {
     | undefined;
 }
 
+type InstallerDiagnostics = {
+  getLastError?: () => string;
+};
+
 function ensureInstalled(): void {
   if (globalThis._expoDotnet?.modules != null) {
     return;
@@ -20,7 +24,13 @@ function ensureInstalled(): void {
 
   const installed = ExpoModulesDotnetInstaller.installModules();
   if (!installed || globalThis._expoDotnet?.modules == null) {
-    throw new Error('expo-modules-dotnet native installer did not install _expoDotnet.');
+    const nativeError =
+      (ExpoModulesDotnetInstaller as InstallerDiagnostics).getLastError?.() ?? '';
+    throw new Error(
+      nativeError.length > 0
+        ? `expo-modules-dotnet native installer did not install _expoDotnet: ${nativeError}`
+        : 'expo-modules-dotnet native installer did not install _expoDotnet.'
+    );
   }
 }
 

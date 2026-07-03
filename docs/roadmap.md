@@ -21,6 +21,10 @@ current behavior; archived docs provide provenance.
 - `apps/desktop-app` is an accepted Expo Desktop / React Native macOS
   integration proof. It validates HostFXR-managed module registration and the
   generated synchronous module path on the React Native 0.81 macOS lane.
+- `apps/desktop-app` also contains a React Native Windows proof project. Direct
+  MSBuild validates the Windows adapter, HostFXR artifact staging, and app
+  output layout on the React Native Windows 0.81 lane; the RNW CLI
+  build/deploy path still has VS 2026/PDB locking follow-up work.
 
 ## Priority Roadmap
 
@@ -41,11 +45,12 @@ React Native / Expo versions than the near-term production targets.
    - Compare findings against `apps/mobile-app`.
    - Exclude autolinking, views, broad packaging polish, and Windows/RNW work.
 
-2. **React Native Windows lifecycle/scheduler proof**
-   - Repeat the same narrow proof shape against RNW / Expo 54 after the Windows
-     development environment is ready.
-   - Focus on runtime install, scheduler mapping, sync execution behavior,
-     teardown hooks, and RNW-specific packaging/build constraints.
+2. **React Native Windows lifecycle/scheduler proof** — initial adapter and
+   direct MSBuild proof are in `apps/desktop-app`; remaining work is runtime
+   launch evidence through the RNW CLI, reload teardown, and smoothing VS 2026
+   build/deploy constraints.
+   - Focus follow-up work on runtime install observation, teardown hooks, and
+     RNW-specific packaging/build constraints.
    - Compare against macOS and the mobile proof before changing the portable
      contract.
 
@@ -228,9 +233,10 @@ options.
   `ExpoModulesDotnetLoader` `Info.plist` entry, `Managed` folder resource, and
   any macOS Podfile/autolinking shim still required by the supported
   `expo-desktop` / React Native macOS lane.
-- **P0 — RNW adapter**: Runtime installation, scheduler mapping, Windows
-  lifecycle, expo-desktop integration. The first RNW slice is the
-  lifecycle/scheduler proof, not full production packaging polish.
+- **P0 — RNW adapter**: Initial Windows adapter and direct MSBuild proof live
+  in `apps/desktop-app` and `packages/expo-modules-dotnet/windows`. Remaining
+  production work includes RNW CLI launch reliability, reload-safe lifecycle,
+  and expo-desktop prebuild/config-plugin integration.
 - **P3 — View adapters**: Platform-specific native view creation, prop mapping,
   event routing. Platform-gated — no view concepts in the portable core.
 - **P3 — NativeAOT for iOS and Android**: The current proof lives under

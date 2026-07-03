@@ -1,0 +1,18 @@
+diff --git a/src/powershell/WindowsStoreAppUtils.psm1 b/src/powershell/WindowsStoreAppUtils.psm1
+index df64fcac0fdd8a0ea8182fbcbf40d12f6fab11b0..598df4145d3c7c7df5aea360e6dc45e8adf61515 100644
+--- a/src/powershell/WindowsStoreAppUtils.psm1
++++ b/src/powershell/WindowsStoreAppUtils.psm1
+@@ -156,7 +156,12 @@ function Invoke-ElevatedScriptBlock {
+             "& ([ScriptBlock]::Create([System.Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('$encodedCommand')))) @(ConvertFrom-Json ([System.Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('$encodedArgs'))))"
+         )
+ 
+-        $process = Start-Process -FilePath "$PSHOME\pwsh.exe" -ArgumentList $startArgs `
++        $powershellExe = Join-Path $PSHOME "pwsh.exe"
++        if (-not (Test-Path $powershellExe)) {
++            $powershellExe = Join-Path $PSHOME "powershell.exe"
++        }
++
++        $process = Start-Process -FilePath $powershellExe -ArgumentList $startArgs `
+             -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
+ 
+         if ($process.ExitCode -ne 0) {

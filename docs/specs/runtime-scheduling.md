@@ -50,8 +50,8 @@ inside an explicit runtime-state holder. The raw runtime pointer SHALL be
 non-owning; the holder and its invalidation state SHALL be the lifetime
 primitive used by connector executors or longer-lived native values.
 The current implementation evidence is the `apps/mobile-app` proof and the
-`apps/desktop-app` React Native macOS proof. Both route through `CallInvoker`,
-which does not expose task priorities.
+`apps/desktop-app` React Native macOS and Windows proofs. They route through
+React Native call-invoker primitives, which do not expose task priorities.
 
 #### Scenario: React Native connector schedules work
 - **GIVEN** native platform glue has a borrowed React Native Hermes runtime and
@@ -73,6 +73,17 @@ which does not expose task priorities.
   `CallInvoker::invokeSync`
 - **AND** generated synchronous module functions SHALL run as direct JSI host
   functions inside the current JavaScript call
+
+#### Scenario: React Native Windows registers sync modules from the RNW runtime callback
+- **GIVEN** React Native Windows exposes the installer native module and active
+  Hermes runtime to adapter initialization
+- **WHEN** the Windows adapter registers generated C# module functions
+- **THEN** it SHALL create the managed runtime handle without requiring
+  `CallInvoker::invokeSync`
+- **AND** generated synchronous module functions SHALL run as direct JSI host
+  functions inside the current JavaScript call
+- **AND** RNW CLI build/deploy issues SHALL be recorded as toolchain evidence,
+  not as proof that direct JSI host functions are unsupported
 
 ### Requirement: Runtime Task Context Ownership
 

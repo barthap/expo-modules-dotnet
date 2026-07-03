@@ -1,0 +1,9 @@
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+Win32/
+ARM64/
+Generated Files/
+*.binlog

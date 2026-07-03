@@ -28,7 +28,7 @@ catalogs:
     react: 19.1.4
     react-native: 0.81.6
     react-native-macos: 0.81.7
-    react-native-windows: 0.81.18
+    react-native-windows: 0.81.29
   react-native-86:
     "@expo/config": 57.0.1
     "@expo/config-plugins": 57.0.1
@@ -41,3 +41,7 @@ catalogs:
     react: 19.2.3
     react-native: 0.86.0
     typescript: ~6.0.3
+
+patchedDependencies:
+  '@react-native-windows/cli@0.81.6': patches/@react-native-windows__cli@0.81.6.patch
+  '@react-native-windows/find-dotnet-tools@0.0.0-canary.2': patches/@react-native-windows__find-dotnet-tools@0.0.0-canary.2.patch

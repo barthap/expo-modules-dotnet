@@ -116,12 +116,13 @@ manually.
 - **AND** it SHALL throw a plain JavaScript `Error` when the module is missing
 
 #### Scenario: Desktop app stages HostFXR artifacts manually
-- **GIVEN** the React Native macOS proof app uses the `hostfxr` loader
+- **GIVEN** the React Native macOS or Windows proof app uses the `hostfxr`
+  loader
 - **WHEN** its app-local build script runs
 - **THEN** it SHALL build the authored module assembly
 - **AND** stage the managed assembly, runtime config, dependency file, managed
-  bridge assemblies, and `libnethost.dylib` into the app-owned `Managed`
-  bundle resource
+  bridge assemblies, and platform `nethost` runtime library into the app-owned
+  `Managed` location
 - **AND** this manual staging SHALL NOT be treated as .NET module autolinking
 
 ### Requirement: Generated Bindings Avoid Hot-Path Reflection
