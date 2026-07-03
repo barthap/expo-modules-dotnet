@@ -1,0 +1,4 @@
+interface:
+  display_name: "RNW Windows Setup"
+  short_description: "Triage RNW Windows setup in this repo"
+  default_prompt: "Use $rnw-windows-setup to diagnose a React Native Windows setup or build failure in expo-modules-dotnet."
