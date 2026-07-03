@@ -62,8 +62,8 @@ def main() -> int:
     output = result.stdout.strip()
     reason = (
         "Formatting check failed. Run `scripts/format.sh` on Unix/macOS or "
-        "`scripts\\format.ps1` on Windows, inspect the diff, then rerun "
-        "`python scripts/format.py --check --all` before finalizing."
+        "`scripts\\format.ps1` on Windows, inspect the diff, then rerun the "
+        "same command with `--check --all` before finalizing."
     )
     if output:
         reason = f"{reason}\n\nFormatter output:\n{output[-4000:]}"
