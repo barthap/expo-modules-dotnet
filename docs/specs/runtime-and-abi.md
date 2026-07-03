@@ -154,6 +154,39 @@ itself define a production adapter lifecycle.
 - **AND** invalidation SHALL clear the holder before downstream code can use the
   borrowed runtime pointer again
 
+### Requirement: Managed Runtime Lifecycle Entry Points
+
+Generated managed module libraries SHALL expose a session creation entry point
+and an idempotent teardown entry point that native host adapters can call for
+one JavaScript runtime.
+
+The native ABI keeps `expo_jsi_runtime_handle` opaque. The managed session
+handle is also opaque to native code and SHALL be passed back only to the
+matching managed teardown entry point.
+
+#### Scenario: Native adapter creates a managed runtime session
+- **GIVEN** a host adapter has an `expo_jsi_api` table and opaque runtime handle
+- **WHEN** it calls the managed create-session entry point
+- **THEN** managed code SHALL register modules through a runtime-scoped session
+- **AND** native SHALL retain only the opaque managed session handle and teardown
+  function pointer
+
+#### Scenario: Native adapter tears down a managed runtime session
+- **GIVEN** the host reports runtime or module invalidation
+- **WHEN** the adapter tears down the runtime session
+- **THEN** it SHALL invalidate the runtime holder
+- **AND** call the managed teardown entry point exactly once for that native
+  install record
+- **AND** release the opaque runtime handle
+- **AND** drop borrowed runtime and scheduler references
+
+#### Scenario: Host reports late invalidation
+- **GIVEN** a host cannot report invalidation while JSI access is still valid
+- **WHEN** the adapter tears down the managed session
+- **THEN** teardown SHALL avoid JSI access
+- **AND** still release managed pins and non-JSI module state
+- **AND** stale scheduled work SHALL not touch the runtime
+
 ### Requirement: ArrayBuffer Is Not Yet Wrapped
 
 The ABI value-kind enum MAY identify `ArrayBuffer`, but the managed package

@@ -14,8 +14,12 @@ namespace {
 constexpr const char *kManagedSubdirectory = "Managed";
 NSString *const kLoaderInfoPlistKey = @"ExpoModulesDotnetLoader";
 constexpr const char *kRegisterModulesSymbol = "example_module_register_modules";
+constexpr const char *kCreateSessionSymbol = "example_module_create_session";
+constexpr const char *kTeardownSessionSymbol = "example_module_teardown_session";
 constexpr const char *kEntryPointType = "ExampleModule.EntryPoints, ExampleModule";
 constexpr const char *kEntryPointMethod = "RegisterModules";
+constexpr const char *kCreateSessionMethod = "CreateSession";
+constexpr const char *kTeardownSessionMethod = "TeardownSession";
 
 std::string pathForBundledResource(NSString *name, NSString *extension)
 {
@@ -107,7 +111,7 @@ void *openHostFxr(const ManagedModuleConfig &config)
   return hostFxr;
 }
 
-RegisterModulesFn resolveNativeAotRegisterModules(const ManagedModuleConfig &config)
+void *resolveNativeAotSymbol(const ManagedModuleConfig &config, const char *symbolName)
 {
   void *library = openLibrary(config.nativeLibraryPath);
   if (library == nullptr) {
@@ -115,16 +119,16 @@ RegisterModulesFn resolveNativeAotRegisterModules(const ManagedModuleConfig &con
     return nullptr;
   }
 
-  auto *symbol = dlsym(library, kRegisterModulesSymbol);
+  auto *symbol = dlsym(library, symbolName);
   if (symbol == nullptr) {
-    NSLog(@"[ExpoModulesDotnet] Failed to resolve %s: %s", kRegisterModulesSymbol, dlerror());
+    NSLog(@"[ExpoModulesDotnet] Failed to resolve %s: %s", symbolName, dlerror());
     return nullptr;
   }
 
-  return reinterpret_cast<RegisterModulesFn>(symbol);
+  return symbol;
 }
 
-RegisterModulesFn resolveHostFxrRegisterModules(const ManagedModuleConfig &config)
+void *resolveHostFxrMethod(const ManagedModuleConfig &config, const char *methodName)
 {
   void *hostFxr = openHostFxr(config);
   if (hostFxr == nullptr) {
@@ -168,7 +172,7 @@ RegisterModulesFn resolveHostFxrRegisterModules(const ManagedModuleConfig &confi
   void *registerModules = nullptr;
   status = loadAssemblyAndGetFunctionPointer(config.assemblyPath.c_str(),
                                              config.typeName.c_str(),
-                                             config.methodName.c_str(),
+                                             methodName,
                                              unmanagedCallersOnlyMethod,
                                              nullptr,
                                              &registerModules);
@@ -178,7 +182,7 @@ RegisterModulesFn resolveHostFxrRegisterModules(const ManagedModuleConfig &confi
     return nullptr;
   }
 
-  return reinterpret_cast<RegisterModulesFn>(registerModules);
+  return registerModules;
 }
 
 } // namespace
@@ -215,9 +219,34 @@ RegisterModulesFn resolveRegisterModules(const ManagedModuleConfig &config)
 {
   switch (config.loaderKind) {
     case ManagedLoaderKind::NativeAot:
-      return resolveNativeAotRegisterModules(config);
+      return reinterpret_cast<RegisterModulesFn>(
+        resolveNativeAotSymbol(config, kRegisterModulesSymbol));
     case ManagedLoaderKind::HostFxr:
-      return resolveHostFxrRegisterModules(config);
+      return reinterpret_cast<RegisterModulesFn>(
+        resolveHostFxrMethod(config, config.methodName.c_str()));
+  }
+}
+
+ManagedSessionEntryPoints resolveSessionEntryPoints(const ManagedModuleConfig &config)
+{
+  ManagedSessionEntryPoints entryPoints;
+  switch (config.loaderKind) {
+    case ManagedLoaderKind::NativeAot:
+      entryPoints.registerModules =
+        reinterpret_cast<RegisterModulesFn>(resolveNativeAotSymbol(config, kRegisterModulesSymbol));
+      entryPoints.createSession =
+        reinterpret_cast<CreateSessionFn>(resolveNativeAotSymbol(config, kCreateSessionSymbol));
+      entryPoints.teardownSession =
+        reinterpret_cast<TeardownSessionFn>(resolveNativeAotSymbol(config, kTeardownSessionSymbol));
+      return entryPoints;
+    case ManagedLoaderKind::HostFxr:
+      entryPoints.registerModules =
+        reinterpret_cast<RegisterModulesFn>(resolveHostFxrMethod(config, config.methodName.c_str()));
+      entryPoints.createSession =
+        reinterpret_cast<CreateSessionFn>(resolveHostFxrMethod(config, kCreateSessionMethod));
+      entryPoints.teardownSession =
+        reinterpret_cast<TeardownSessionFn>(resolveHostFxrMethod(config, kTeardownSessionMethod));
+      return entryPoints;
   }
 }
 

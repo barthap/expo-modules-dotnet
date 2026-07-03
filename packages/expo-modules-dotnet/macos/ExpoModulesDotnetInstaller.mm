@@ -30,11 +30,15 @@ public:
 
   ~InstalledRuntime()
   {
-    if (runtimeHandle_ != nullptr) {
-      expo::dotnet::releaseReactNativeRuntimeHandle(runtimeHandle_);
-    }
     if (connector_ != nullptr) {
       connector_->invalidate();
+    }
+    if (managedSession_ != nullptr && teardownSession_ != nullptr) {
+      teardownSession_(managedSession_);
+      managedSession_ = nullptr;
+    }
+    if (runtimeHandle_ != nullptr) {
+      expo::dotnet::releaseReactNativeRuntimeHandle(runtimeHandle_);
     }
   }
 
@@ -44,16 +48,28 @@ public:
       return true;
     }
 
-    auto registerModules = expo::modules::dotnet::resolveRegisterModules(moduleConfig_);
-    if (registerModules == nullptr) {
-      return false;
-    }
+    auto entryPoints = expo::modules::dotnet::resolveSessionEntryPoints(moduleConfig_);
+    if (entryPoints.createSession != nullptr && entryPoints.teardownSession != nullptr) {
+      managedSession_ =
+        entryPoints.createSession(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
+      teardownSession_ = entryPoints.teardownSession;
+      if (managedSession_ == nullptr) {
+        NSLog(@"[ExpoModulesDotnet] %s ExampleModule session registration failed.",
+              expo::modules::dotnet::managedLoaderKindName(moduleConfig_.loaderKind));
+        return false;
+      }
+    } else {
+      if (entryPoints.registerModules == nullptr) {
+        return false;
+      }
 
-    auto status = registerModules(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
-    if (status != 0) {
-      NSLog(@"[ExpoModulesDotnet] %s ExampleModule.add registration failed.",
-            expo::modules::dotnet::managedLoaderKindName(moduleConfig_.loaderKind));
-      return false;
+      auto status =
+        entryPoints.registerModules(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
+      if (status != 0) {
+        NSLog(@"[ExpoModulesDotnet] %s ExampleModule.add registration failed.",
+              expo::modules::dotnet::managedLoaderKindName(moduleConfig_.loaderKind));
+        return false;
+      }
     }
 
     NSLog(@"[ExpoModulesDotnet] %s ExampleModule.add module registered.",
@@ -66,6 +82,8 @@ private:
   std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector_;
   expo_jsi_runtime_handle runtimeHandle_ = nullptr;
   expo::modules::dotnet::ManagedModuleConfig moduleConfig_;
+  void *managedSession_ = nullptr;
+  expo::modules::dotnet::TeardownSessionFn teardownSession_ = nullptr;
   bool registered_ = false;
 };
 
@@ -157,6 +175,11 @@ RCT_EXPORT_MODULE()
   }
 
   return installed;
+}
+
+- (void)invalidate
+{
+  _installedRuntimes.clear();
 }
 
 @end

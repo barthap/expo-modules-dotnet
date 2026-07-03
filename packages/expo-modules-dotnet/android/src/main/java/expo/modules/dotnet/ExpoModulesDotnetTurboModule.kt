@@ -25,6 +25,13 @@ class ExpoModulesDotnetTurboModule(reactContext: ReactApplicationContext) :
   @ReactMethod(isBlockingSynchronousMethod = true)
   external fun installModules(): Boolean
 
+  private external fun invalidateRuntime()
+
+  override fun invalidate() {
+    invalidateRuntime()
+    super.invalidate()
+  }
+
   companion object {
     const val NAME = "ExpoModulesDotnetInstaller"
 

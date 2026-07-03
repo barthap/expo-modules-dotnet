@@ -16,6 +16,8 @@
 namespace {
 
 using RegisterModulesFn = int (*)(const expo_jsi_api *, expo_jsi_runtime_handle);
+using CreateSessionFn = void *(*)(const expo_jsi_api *, expo_jsi_runtime_handle);
+using TeardownSessionFn = void (*)(void *);
 
 RegisterModulesFn resolveRegisterModules()
 {
@@ -25,6 +27,18 @@ RegisterModulesFn resolveRegisterModules()
     return nullptr;
   }
   return reinterpret_cast<RegisterModulesFn>(symbol);
+}
+
+CreateSessionFn resolveCreateSession()
+{
+  auto *symbol = dlsym(RTLD_DEFAULT, "example_module_create_session");
+  return reinterpret_cast<CreateSessionFn>(symbol);
+}
+
+TeardownSessionFn resolveTeardownSession()
+{
+  auto *symbol = dlsym(RTLD_DEFAULT, "example_module_teardown_session");
+  return reinterpret_cast<TeardownSessionFn>(symbol);
 }
 
 class InstalledRuntime final {
@@ -38,11 +52,15 @@ public:
 
   ~InstalledRuntime()
   {
-    if (runtimeHandle_ != nullptr) {
-      expo::dotnet::releaseReactNativeRuntimeHandle(runtimeHandle_);
-    }
     if (connector_ != nullptr) {
       connector_->invalidate();
+    }
+    if (managedSession_ != nullptr && teardownSession_ != nullptr) {
+      teardownSession_(managedSession_);
+      managedSession_ = nullptr;
+    }
+    if (runtimeHandle_ != nullptr) {
+      expo::dotnet::releaseReactNativeRuntimeHandle(runtimeHandle_);
     }
   }
 
@@ -52,15 +70,25 @@ public:
       return true;
     }
 
-    auto registerModules = resolveRegisterModules();
-    if (registerModules == nullptr) {
-      return false;
-    }
-
-    auto status = registerModules(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
-    if (status != 0) {
-      NSLog(@"[ExpoModulesDotnet] NativeAOT ExampleModule.add registration failed.");
-      return false;
+    auto createSession = resolveCreateSession();
+    auto teardownSession = resolveTeardownSession();
+    if (createSession != nullptr && teardownSession != nullptr) {
+      managedSession_ = createSession(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
+      teardownSession_ = teardownSession;
+      if (managedSession_ == nullptr) {
+        NSLog(@"[ExpoModulesDotnet] NativeAOT ExampleModule session registration failed.");
+        return false;
+      }
+    } else {
+      auto registerModules = resolveRegisterModules();
+      if (registerModules == nullptr) {
+        return false;
+      }
+      auto status = registerModules(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
+      if (status != 0) {
+        NSLog(@"[ExpoModulesDotnet] NativeAOT ExampleModule.add registration failed.");
+        return false;
+      }
     }
 
     NSLog(@"[ExpoModulesDotnet] NativeAOT ExampleModule.add module registered.");
@@ -71,6 +99,8 @@ public:
 private:
   std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector_;
   expo_jsi_runtime_handle runtimeHandle_ = nullptr;
+  void *managedSession_ = nullptr;
+  TeardownSessionFn teardownSession_ = nullptr;
   bool registered_ = false;
 };
 
@@ -131,6 +161,7 @@ RCT_EXPORT_MODULE()
   auto installedRuntime =
     std::make_shared<InstalledRuntime>(std::move(connector), runtimeHandle);
 
+  _installedRuntimes.clear();
   _installedRuntimes.push_back(std::move(installedRuntime));
 }
 
@@ -146,6 +177,11 @@ RCT_EXPORT_MODULE()
   }
 
   return installed;
+}
+
+- (void)invalidate
+{
+  _installedRuntimes.clear();
 }
 
 @end
