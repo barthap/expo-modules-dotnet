@@ -12,6 +12,14 @@ enum class ManagedLoaderKind {
 };
 
 using RegisterModulesFn = int (*)(const expo_jsi_api *, expo_jsi_runtime_handle);
+using CreateRuntimeContextFn = void *(*)(const expo_jsi_api *, expo_jsi_runtime_handle);
+using TeardownRuntimeContextFn = void (*)(void *);
+
+struct ManagedRuntimeContextEntryPoints {
+  RegisterModulesFn registerModules = nullptr;
+  CreateRuntimeContextFn createRuntimeContext = nullptr;
+  TeardownRuntimeContextFn teardownRuntimeContext = nullptr;
+};
 
 struct ManagedModuleConfig {
   ManagedLoaderKind loaderKind = ManagedLoaderKind::HostFxr;
@@ -26,5 +34,7 @@ struct ManagedModuleConfig {
 ManagedModuleConfig loadExampleModuleConfig();
 const char *managedLoaderKindName(ManagedLoaderKind loaderKind);
 RegisterModulesFn resolveRegisterModules(const ManagedModuleConfig &config);
+ManagedRuntimeContextEntryPoints resolveRuntimeContextEntryPoints(
+  const ManagedModuleConfig &config);
 
 } // namespace expo::modules::dotnet

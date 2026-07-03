@@ -133,7 +133,8 @@ loader choice SHALL NOT change the C ABI shape passed into managed code.
 - **GIVEN** `apps/desktop-app` selects the `nativeaot` loader and stages a
   platform `libExampleModule.dylib`
 - **WHEN** the macOS adapter registers modules
-- **THEN** native code SHALL resolve `example_module_register_modules`
+- **THEN** native code SHALL resolve the app-composed `expo_dotnet_register_modules`
+  entry point
 - **AND** call it with the same `expo_jsi_api` table and opaque runtime handle
   shape used by HostFXR
 
@@ -164,6 +165,39 @@ not by itself define a production adapter lifecycle.
   alive at least as long as those bindings can run
 - **AND** invalidation SHALL clear the holder before downstream code can use the
   borrowed runtime pointer again
+
+### Requirement: Managed Runtime Lifecycle Entry Points
+
+Generated managed module libraries SHALL expose a runtime context creation entry point
+and an idempotent teardown entry point that native host adapters can call for
+one JavaScript runtime.
+
+The native ABI keeps `expo_jsi_runtime_handle` opaque. The managed runtime context
+handle is also opaque to native code and SHALL be passed back only to the
+matching managed teardown entry point.
+
+#### Scenario: Native adapter creates a managed runtime context
+- **GIVEN** a host adapter has an `expo_jsi_api` table and opaque runtime handle
+- **WHEN** it calls the managed create-runtime-context entry point
+- **THEN** managed code SHALL register modules through a runtime-scoped context
+- **AND** native SHALL retain only the opaque managed runtime context handle and teardown
+  function pointer
+
+#### Scenario: Native adapter tears down a managed runtime context
+- **GIVEN** the host reports runtime or module invalidation
+- **WHEN** the adapter tears down the runtime context
+- **THEN** it SHALL invalidate the runtime holder
+- **AND** call the managed teardown entry point exactly once for that native
+  install record
+- **AND** release the opaque runtime handle
+- **AND** drop borrowed runtime and scheduler references
+
+#### Scenario: Host reports late invalidation
+- **GIVEN** a host cannot report invalidation while JSI access is still valid
+- **WHEN** the adapter tears down the managed runtime context
+- **THEN** teardown SHALL avoid JSI access
+- **AND** still release managed pins and non-JSI module state
+- **AND** stale scheduled work SHALL not touch the runtime
 
 ### Requirement: ArrayBuffer Is Not Yet Wrapped
 

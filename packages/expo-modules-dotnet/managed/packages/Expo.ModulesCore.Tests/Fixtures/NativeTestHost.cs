@@ -18,6 +18,7 @@ internal static unsafe class NativeTestHost
   private static delegate* unmanaged[Cdecl]<nint, void> drainTasks;
   private static delegate* unmanaged[Cdecl]<nint, ExpoJsiError> waitUntilIdle;
   private static delegate* unmanaged[Cdecl]<nint, byte, void> setSyncExecutionSupported;
+  private static delegate* unmanaged[Cdecl]<nint, void> invalidateRuntime;
   private static delegate* unmanaged[Cdecl]<nint, void> releaseRuntime;
 
   private static bool initialized;
@@ -115,6 +116,12 @@ internal static unsafe class NativeTestHost
     setSyncExecutionSupported(testHostRuntime, supported ? (byte)1 : (byte)0);
   }
 
+  internal static void InvalidateRuntime(nint testHostRuntime)
+  {
+    EnsureLoaded();
+    invalidateRuntime(testHostRuntime);
+  }
+
   internal static void ReleaseRuntime(nint testHostRuntime)
   {
     EnsureLoaded();
@@ -166,6 +173,11 @@ internal static unsafe class NativeTestHost
       (delegate* unmanaged[Cdecl]<nint, byte, void>)LoadExport(
           library,
           "expo_jsi_testhost_set_sync_execution_supported"
+      );
+    invalidateRuntime =
+      (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
+          library,
+          "expo_jsi_testhost_invalidate_runtime"
       );
     releaseRuntime =
       (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(

@@ -4,7 +4,6 @@
 #import <ReactCommon/RCTTurboModuleWithJSIBindings.h>
 
 #include <memory>
-#include <vector>
 
 #include "ManagedLoader.h"
 #include "ReactNativeRuntimeConnector.h"
@@ -30,11 +29,15 @@ public:
 
   ~InstalledRuntime()
   {
-    if (runtimeHandle_ != nullptr) {
-      expo::dotnet::releaseReactNativeRuntimeHandle(runtimeHandle_);
-    }
     if (connector_ != nullptr) {
       connector_->invalidate();
+    }
+    if (managedRuntimeContext_ != nullptr && teardownRuntimeContext_ != nullptr) {
+      teardownRuntimeContext_(managedRuntimeContext_);
+      managedRuntimeContext_ = nullptr;
+    }
+    if (runtimeHandle_ != nullptr) {
+      expo::dotnet::releaseReactNativeRuntimeHandle(runtimeHandle_);
     }
   }
 
@@ -44,19 +47,31 @@ public:
       return true;
     }
 
-    auto registerModules = expo::modules::dotnet::resolveRegisterModules(moduleConfig_);
-    if (registerModules == nullptr) {
-      return false;
+    auto entryPoints = expo::modules::dotnet::resolveRuntimeContextEntryPoints(moduleConfig_);
+    if (entryPoints.createRuntimeContext != nullptr && entryPoints.teardownRuntimeContext != nullptr) {
+      managedRuntimeContext_ =
+        entryPoints.createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
+      teardownRuntimeContext_ = entryPoints.teardownRuntimeContext;
+      if (managedRuntimeContext_ == nullptr) {
+        NSLog(@"[ExpoModulesDotnet] %s runtime context registration failed.",
+              expo::modules::dotnet::managedLoaderKindName(moduleConfig_.loaderKind));
+        return false;
+      }
+    } else {
+      if (entryPoints.registerModules == nullptr) {
+        return false;
+      }
+
+      auto status =
+        entryPoints.registerModules(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
+      if (status != 0) {
+        NSLog(@"[ExpoModulesDotnet] %s managed module registration failed.",
+              expo::modules::dotnet::managedLoaderKindName(moduleConfig_.loaderKind));
+        return false;
+      }
     }
 
-    auto status = registerModules(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
-    if (status != 0) {
-      NSLog(@"[ExpoModulesDotnet] %s ExampleModule.add registration failed.",
-            expo::modules::dotnet::managedLoaderKindName(moduleConfig_.loaderKind));
-      return false;
-    }
-
-    NSLog(@"[ExpoModulesDotnet] %s ExampleModule.add module registered.",
+    NSLog(@"[ExpoModulesDotnet] %s managed modules registered.",
           expo::modules::dotnet::managedLoaderKindName(moduleConfig_.loaderKind));
     registered_ = true;
     return true;
@@ -66,6 +81,8 @@ private:
   std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector_;
   expo_jsi_runtime_handle runtimeHandle_ = nullptr;
   expo::modules::dotnet::ManagedModuleConfig moduleConfig_;
+  void *managedRuntimeContext_ = nullptr;
+  expo::modules::dotnet::TeardownRuntimeContextFn teardownRuntimeContext_ = nullptr;
   bool registered_ = false;
 };
 
@@ -107,10 +124,10 @@ private:
 @end
 
 @implementation ExpoModulesDotnetInstaller {
-  // The install records own the connector state, not the RN runtime. Releasing
-  // this vector invalidates the borrowed runtime holder before the managed ABI
-  // handle is released.
-  std::vector<std::shared_ptr<InstalledRuntime>> _installedRuntimes;
+  // The install record owns connector state, not the RN runtime. Resetting it
+  // invalidates the borrowed runtime holder before the managed ABI handle is
+  // released.
+  std::shared_ptr<InstalledRuntime> _installedRuntime;
 }
 
 RCT_EXPORT_MODULE()
@@ -131,14 +148,13 @@ RCT_EXPORT_MODULE()
   auto installedRuntime =
     std::make_shared<InstalledRuntime>(std::move(connector), runtimeHandle, std::move(moduleConfig));
 
-  _installedRuntimes.clear();
-  _installedRuntimes.push_back(std::move(installedRuntime));
+  _installedRuntime = std::move(installedRuntime);
 }
 
 - (BOOL)installModulesWithRuntime:(facebook::jsi::Runtime &)runtime
                        callInvoker:(const std::shared_ptr<facebook::react::CallInvoker> &)callInvoker
 {
-  if (_installedRuntimes.empty()) {
+  if (_installedRuntime == nullptr) {
     [self installJSIBindingsWithRuntime:runtime callInvoker:callInvoker];
   }
 
@@ -147,16 +163,17 @@ RCT_EXPORT_MODULE()
 
 - (BOOL)installModules
 {
-  BOOL installed = NO;
-  for (const auto &installedRuntime : _installedRuntimes) {
-    installed = installedRuntime->registerModules() || installed;
-  }
-
-  if (!installed) {
+  if (_installedRuntime == nullptr) {
     NSLog(@"[ExpoModulesDotnet] macOS module runtime is not ready.");
+    return NO;
   }
 
-  return installed;
+  return _installedRuntime->registerModules();
+}
+
+- (void)invalidate
+{
+  _installedRuntime.reset();
 }
 
 @end
