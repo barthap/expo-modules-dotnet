@@ -89,11 +89,7 @@ Completed scope:
    - Define enough `expo-module.config.json` / dotnet package metadata for
      future autolinking to consume, without implementing full autolinking yet.
 
-8. **C# stack traces across the ABI**
-   - Preserve managed exception stack traces through host-function error
-     propagation so LogBox and DevTools expose useful C# context.
-
-9. **Self-contained ABI errors**
+8. **Self-contained ABI errors**
    - Replace `thread_local` error message lifetime with self-contained error
      results before the ABI grows much further.
 
@@ -212,16 +208,12 @@ options.
   reduce per-call heap allocation pressure on hot paths (Finding 1).
 - **P1 — `thread_local` error message lifetime**: Make error results
   self-contained instead of pointing into thread-local storage (Finding 4).
-- **P1 — C# stack traces across ABI**: Include full exception stack trace in
-  error messages forwarded to JS for dev tooling visibility (Finding 3).
 - **P3 — Mobile scheduler priority no-op**: `apps/mobile-app` routes
   through React Native `CallInvoker`, which has no priority lane, so
   `JsiRuntimeTaskPriority` is advisory/no-op for that proof.
 
 ## Backlog: Dev Tooling
 
-- **P1 — C# stack traces in LogBox / DevTools**: Forward managed exception stack
-  traces through the ABI error path so they appear in React Native dev tools.
 - **P3 — Structured error display**: Separate message and stack fields in error
   propagation for cleaner DevTools integration.
 - **P3 — Development-only verbose errors**: Compile-time or runtime flag to

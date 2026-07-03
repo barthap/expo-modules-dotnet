@@ -26,7 +26,7 @@ internal sealed unsafe class HostFunctionContext
 
   public ExpoJsiError CaptureException(Exception exception)
   {
-    var message = exception.Message;
+    var message = exception.ToString();
     if (string.IsNullOrEmpty(message))
     {
       message = exception.GetType().FullName ?? exception.GetType().Name;

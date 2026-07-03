@@ -47,6 +47,8 @@ Managed exceptions SHALL NOT cross unmanaged callback frames.
 - **WHEN** control returns to native
 - **THEN** managed code SHALL return `ok = 0` with an error captured through
   the callback context
+- **AND** the captured error message SHALL include managed exception stack-trace
+  context
 
 ### Requirement: JavaScript Error Objects
 
