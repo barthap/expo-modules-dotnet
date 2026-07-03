@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement a production runtime lifecycle contract where each JavaScript runtime owns a managed module session that can be torn down deterministically by host adapters.
+**Goal:** Implement a production runtime lifecycle contract where each JavaScript runtime owns a managed module context that can be torn down deterministically by host adapters.
 
-**Architecture:** Add an `Expo.ModulesCore` runtime session that owns generated module instances and invalidatable host-function registration state. Native adapters keep owning borrowed runtime holders and invoke a managed teardown callback during invalidation; headless Hermes tests model both early teardown and late no-JSI invalidation. Generated sync functions stay direct JSI host functions and do not depend on sync scheduler support.
+**Architecture:** Add an `Expo.ModulesCore` runtime context that owns generated module instances and invalidatable host-function registration state. Native adapters keep owning borrowed runtime holders and invoke a managed teardown callback during invalidation; headless Hermes tests model both early teardown and late no-JSI invalidation. Generated sync functions stay direct JSI host functions and do not depend on sync scheduler support.
 
 **Tech Stack:** C#/.NET 10, Roslyn source generator, xUnit, C ABI, C++17 JSI bridge, Hermes testhost, React Native TurboModule/native module adapters for Android/iOS/macOS/Windows.
 
@@ -12,22 +12,22 @@
 
 ## File Structure
 
-- Create `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/RuntimeSession.cs`
-  - Runtime-scoped owner for generated module instances, host-function registration contexts, teardown state, and session invalidation.
+- Create `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/DotnetRuntimeContext.cs`
+  - Runtime-scoped owner for generated module instances, host-function registration contexts, teardown state, and context invalidation.
 - Create `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/GeneratedHostFunctionRegistration.cs`
   - Small invalidatable callback context pinned by `Expo.JSI.HostFunctionContext`; holds module/callback state while live and clears module references during teardown.
 - Modify `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/GeneratedFunction.cs`
-  - Add session-aware `DefineSync` overload and route generated host functions through invalidatable registrations.
+  - Add context-aware `DefineSync` overload and route generated host functions through invalidatable registrations.
 - Modify `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/ModuleRegistry.cs`
-  - Add session-oriented module object helpers without removing existing static convenience APIs.
+  - Add context-oriented module object helpers without removing existing static convenience APIs.
 - Modify `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/ExpoModulesGenerator.cs`
-  - Emit generated providers that receive a runtime session and register module instances through it.
+  - Emit generated providers that receive a runtime context and register module instances through it.
 - Modify `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests/ExpoModulesGeneratorTests.cs`
   - Update generated source expectations for the new provider shape.
-- Create `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests/Generated/RuntimeSessionTests.cs`
+- Create `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests/Generated/DotnetRuntimeContextTests.cs`
   - Prove teardown releases module references and rejects calls after teardown.
 - Modify existing generated module tests under `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests/Generated/`
-  - Register through `RuntimeSession` and keep behavior coverage unchanged.
+  - Register through `DotnetRuntimeContext` and keep behavior coverage unchanged.
 - Modify entry points:
   - `packages/example-module/dotnet/ExampleModule/EntryPoints.cs`
   - `apps/hermes-console-app/managed/HermesConsoleApp/EntryPoints.cs`
@@ -54,23 +54,23 @@ Do not add artifact staging, loader configuration, package registration, prebuil
 
 ---
 
-## Task 1: Managed Runtime Session
+## Task 1: Managed Dotnet Runtime Context
 
 **Files:**
-- Create: `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/RuntimeSession.cs`
+- Create: `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/DotnetRuntimeContext.cs`
 - Create: `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/GeneratedHostFunctionRegistration.cs`
 - Modify: `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/GeneratedFunction.cs`
-- Test: `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests/Generated/RuntimeSessionTests.cs`
+- Test: `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests/Generated/DotnetRuntimeContextTests.cs`
 
 - [ ] **Step 1: Write failing teardown tests**
 
   Add tests that:
 
-  - create a runtime session;
-  - register a generated-style sync function through the session;
+  - create a runtime context;
+  - register a generated-style sync function through the context;
   - verify the function works before teardown;
-  - call session teardown;
-  - verify a later JS call throws a clear disposed-session error;
+  - call context teardown;
+  - verify a later JS call throws a clear disposed-context error;
   - verify the module instance is no longer strongly retained after teardown.
 
   Use `WeakReference` for the module-retention assertion. Avoid asserting GC timing unless the test explicitly forces collection after clearing all strong references.
@@ -82,12 +82,12 @@ Do not add artifact staging, loader configuration, package registration, prebuil
   ```sh
   EXPO_JSI_TESTHOST_LIBRARY="$(pwd)/packages/expo-modules-dotnet/native/testhost/build/libexpo_jsi_testhost.dylib" \
     dotnet test packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests/Expo.ModulesCore.Tests.csproj \
-    --filter RuntimeSessionTests
+    --filter DotnetRuntimeContextTests
   ```
 
-  Expected: fail because `RuntimeSession` does not exist.
+  Expected: fail because `DotnetRuntimeContext` does not exist.
 
-- [ ] **Step 3: Implement `RuntimeSession`**
+- [ ] **Step 3: Implement `DotnetRuntimeContext`**
 
   Minimum API:
 
@@ -107,19 +107,19 @@ Do not add artifact staging, loader configuration, package registration, prebuil
 
   - hold module instance and callback delegate while live;
   - expose `Invoke(...)`;
-  - clear module/callback references on session teardown;
+  - clear module/callback references on context teardown;
   - throw a clear `ObjectDisposedException` if invoked after teardown;
   - tolerate native release callback arriving later.
 
-  Do not try to free the native `HostFunctionContext` GCHandle directly from the session. The native host-function value owns that pin until JSI releases the function. Session teardown only clears the heavy managed references behind the small pinned shell.
+  Do not try to free the native `HostFunctionContext` GCHandle directly from the context. The native host-function value owns that pin until JSI releases the function. Runtime context teardown only clears the heavy managed references behind the small pinned shell.
 
-- [ ] **Step 5: Add session-aware `GeneratedFunction.DefineSync`**
+- [ ] **Step 5: Add context-aware `GeneratedFunction.DefineSync`**
 
-  Add an overload that receives `RuntimeSession`, `JavaScriptObject module`, function metadata, callback, and module instance. Keep existing overloads only as compatibility wrappers if needed for existing tests.
+  Add an overload that receives `DotnetRuntimeContext`, `JavaScriptObject module`, function metadata, callback, and module instance. Keep existing overloads only as compatibility wrappers if needed for existing tests.
 
 - [ ] **Step 6: Run focused tests**
 
-  Run the same `dotnet test --filter RuntimeSessionTests` command.
+  Run the same `dotnet test --filter DotnetRuntimeContextTests` command.
 
   Expected: pass.
 
@@ -128,12 +128,12 @@ Do not add artifact staging, loader configuration, package registration, prebuil
   ```sh
   git add packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore \
     packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests
-  git commit -m "feat: add runtime-scoped module session"
+  git commit -m "feat: add runtime-scoped module context"
   ```
 
 ---
 
-## Task 2: Generated Provider Session Shape
+## Task 2: Generated Provider Runtime Context Shape
 
 **Files:**
 - Modify: `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/ExpoModulesGenerator.cs`
@@ -145,10 +145,10 @@ Do not add artifact staging, loader configuration, package registration, prebuil
   Change expectations so generated providers expose:
 
   ```csharp
-  public static void Register(global::Expo.ModulesCore.RuntimeSession session)
+  public static void Register(global::Expo.ModulesCore.DotnetRuntimeContext context)
   ```
 
-  or an equivalent session-first shape. The generated provider should not instantiate modules directly inside `GeneratedFunction.DefineSync`; module instances should be created through the session.
+  or an equivalent context-first shape. The generated provider should not instantiate modules directly inside `GeneratedFunction.DefineSync`; module instances should be created through the context.
 
 - [ ] **Step 2: Run generator tests and confirm failure**
 
@@ -160,13 +160,13 @@ Do not add artifact staging, loader configuration, package registration, prebuil
 
 - [ ] **Step 3: Update `ExpoModulesGenerator`**
 
-  Emit session-oriented provider code:
+  Emit context-oriented provider code:
 
-  - validate `session`;
-  - get modules object from session;
+  - validate `context`;
+  - get modules object from context;
   - define each module object through `ModuleRegistry`;
-  - get or create one module instance per module name through session;
-  - call session-aware `GeneratedFunction.DefineSync`.
+  - get or create one module instance per module name through context;
+  - call context-aware `GeneratedFunction.DefineSync`.
 
   Preserve direct-call, reflection-free generated function bodies.
 
@@ -179,7 +179,7 @@ Do not add artifact staging, loader configuration, package registration, prebuil
   ExpoModulesProvider_...Register(runtime, modules);
   ```
 
-  with session registration.
+  with context registration.
 
 - [ ] **Step 5: Run generator and module tests**
 
@@ -197,7 +197,7 @@ Do not add artifact staging, loader configuration, package registration, prebuil
   git add packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator \
     packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests \
     packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests
-  git commit -m "feat: generate session-backed module providers"
+  git commit -m "feat: generate context-backed module providers"
   ```
 
 ---
@@ -220,22 +220,22 @@ Do not add artifact staging, loader configuration, package registration, prebuil
 
   Prefer additive exported entry points or result structs only if the NativeAOT and HostFXR paths can both resolve them cleanly. Do not break the current simple registration entry point until native callers are updated in the same plan.
 
-- [ ] **Step 2: Factor managed session creation**
+- [ ] **Step 2: Factor managed runtime context creation**
 
   Add a helper in each managed proof entry point that:
 
   - creates `JavaScriptRuntime.FromNative(...)`;
-  - creates `RuntimeSession`;
-  - registers the generated provider through the session;
-  - returns the session as teardown context.
+  - creates `DotnetRuntimeContext`;
+  - registers the generated provider through the context;
+  - returns the context as teardown context.
 
 - [ ] **Step 3: Add teardown export/callback**
 
-  Add a managed callback that accepts the session context and calls session teardown idempotently. Use `GCHandle` only for the session context, and make ownership explicit.
+  Add a managed callback that accepts the context context and calls context teardown idempotently. Use `GCHandle` only for the context context, and make ownership explicit.
 
 - [ ] **Step 4: Update hermes console hand-written provider path**
 
-  If `apps/hermes-console-app/managed/HermesConsoleApp/GeneratedModuleProvider.cs` still bypasses generated session helpers, either migrate it to `RuntimeSession` or document it as a proof-only compatibility path and ensure teardown still clears module references.
+  If `apps/hermes-console-app/managed/HermesConsoleApp/GeneratedModuleProvider.cs` still bypasses generated context helpers, either migrate it to `DotnetRuntimeContext` or document it as a proof-only compatibility path and ensure teardown still clears module references.
 
 - [ ] **Step 5: Run managed tests**
 
@@ -271,7 +271,7 @@ Do not add artifact staging, loader configuration, package registration, prebuil
   Add tests that ask the testhost to:
 
   - create a runtime;
-  - register a session-backed provider;
+  - register a context-backed provider;
   - trigger early teardown;
   - trigger late invalidation;
   - release queued work before it runs.
@@ -409,7 +409,7 @@ Do not add artifact staging, loader configuration, package registration, prebuil
 
   - `runtime-and-abi.md` for teardown callback / opaque handle ownership;
   - `runtime-scheduling.md` for stale work and scheduler semantics;
-  - `modules-core-boundary.md` for runtime session and generated provider shape.
+  - `modules-core-boundary.md` for runtime context and generated provider shape.
 
 - [ ] **Step 2: Update roadmap**
 

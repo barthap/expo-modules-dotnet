@@ -12,11 +12,11 @@ public static class EntryPoints
       EntryPoint = "hermes_console_app_create_session",
       CallConvs = new[] { typeof(CallConvCdecl) }
   )]
-  public static nint CreateSession(nint api, nint runtimeHandle)
+  public static nint CreateRuntimeContext(nint api, nint runtimeHandle)
   {
     try
     {
-      return CreateSessionCore(api, runtimeHandle);
+      return CreateRuntimeContextCore(api, runtimeHandle);
     }
     catch (Exception ex)
     {
@@ -29,9 +29,9 @@ public static class EntryPoints
       EntryPoint = "hermes_console_app_teardown_session",
       CallConvs = new[] { typeof(CallConvCdecl) }
   )]
-  public static void TeardownSession(nint sessionContext)
+  public static void TeardownRuntimeContext(nint runtimeContext)
   {
-    TeardownSessionCore(sessionContext);
+    TeardownRuntimeContextCore(runtimeContext);
   }
 
   [UnmanagedCallersOnly(
@@ -102,7 +102,7 @@ public static class EntryPoints
   {
     try
     {
-      if (CreateSessionCore(api, runtimeHandle) == 0)
+      if (CreateRuntimeContextCore(api, runtimeHandle) == 0)
       {
         return 1;
       }
@@ -115,35 +115,35 @@ public static class EntryPoints
     }
   }
 
-  private static nint CreateSessionCore(nint api, nint runtimeHandle)
+  private static nint CreateRuntimeContextCore(nint api, nint runtimeHandle)
   {
     var runtime = JavaScriptRuntime.FromNative(api, runtimeHandle);
-    var session = new RuntimeSession(runtime);
+    var context = new DotnetRuntimeContext(runtime);
     try
     {
-      using var modules = session.GetOrCreateDotnetModulesObject();
-      GeneratedModuleProvider.Register(session, modules);
-      ExpoModulesProvider_HermesConsoleApp.Register(session, modules);
-      return GCHandle.ToIntPtr(GCHandle.Alloc(session));
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      GeneratedModuleProvider.Register(context, modules);
+      ExpoModulesProvider_HermesConsoleApp.Register(context, modules);
+      return GCHandle.ToIntPtr(GCHandle.Alloc(context));
     }
     catch
     {
-      session.Dispose();
+      context.Dispose();
       throw;
     }
   }
 
-  private static void TeardownSessionCore(nint sessionContext)
+  private static void TeardownRuntimeContextCore(nint runtimeContext)
   {
-    if (sessionContext == 0)
+    if (runtimeContext == 0)
     {
       return;
     }
 
-    var handle = GCHandle.FromIntPtr(sessionContext);
-    if (handle.Target is RuntimeSession session)
+    var handle = GCHandle.FromIntPtr(runtimeContext);
+    if (handle.Target is DotnetRuntimeContext context)
     {
-      session.Dispose();
+      context.Dispose();
     }
 
     handle.Free();

@@ -5,7 +5,6 @@
 
 #include <dlfcn.h>
 #include <memory>
-#include <vector>
 
 #include "ReactNativeRuntimeConnector.h"
 
@@ -16,29 +15,29 @@
 namespace {
 
 using RegisterModulesFn = int (*)(const expo_jsi_api *, expo_jsi_runtime_handle);
-using CreateSessionFn = void *(*)(const expo_jsi_api *, expo_jsi_runtime_handle);
-using TeardownSessionFn = void (*)(void *);
+using CreateRuntimeContextFn = void *(*)(const expo_jsi_api *, expo_jsi_runtime_handle);
+using TeardownRuntimeContextFn = void (*)(void *);
 
 RegisterModulesFn resolveRegisterModules()
 {
-  auto *symbol = dlsym(RTLD_DEFAULT, "example_module_register_modules");
+  auto *symbol = dlsym(RTLD_DEFAULT, "expo_dotnet_register_modules");
   if (symbol == nullptr) {
-    NSLog(@"[ExpoModulesDotnet] Failed to resolve example_module_register_modules: %s", dlerror());
+    NSLog(@"[ExpoModulesDotnet] Failed to resolve expo_dotnet_register_modules: %s", dlerror());
     return nullptr;
   }
   return reinterpret_cast<RegisterModulesFn>(symbol);
 }
 
-CreateSessionFn resolveCreateSession()
+CreateRuntimeContextFn resolveCreateRuntimeContext()
 {
-  auto *symbol = dlsym(RTLD_DEFAULT, "example_module_create_session");
-  return reinterpret_cast<CreateSessionFn>(symbol);
+  auto *symbol = dlsym(RTLD_DEFAULT, "expo_dotnet_create_runtime_context");
+  return reinterpret_cast<CreateRuntimeContextFn>(symbol);
 }
 
-TeardownSessionFn resolveTeardownSession()
+TeardownRuntimeContextFn resolveTeardownRuntimeContext()
 {
-  auto *symbol = dlsym(RTLD_DEFAULT, "example_module_teardown_session");
-  return reinterpret_cast<TeardownSessionFn>(symbol);
+  auto *symbol = dlsym(RTLD_DEFAULT, "expo_dotnet_teardown_runtime_context");
+  return reinterpret_cast<TeardownRuntimeContextFn>(symbol);
 }
 
 class InstalledRuntime final {
@@ -55,9 +54,9 @@ public:
     if (connector_ != nullptr) {
       connector_->invalidate();
     }
-    if (managedSession_ != nullptr && teardownSession_ != nullptr) {
-      teardownSession_(managedSession_);
-      managedSession_ = nullptr;
+    if (managedRuntimeContext_ != nullptr && teardownRuntimeContext_ != nullptr) {
+      teardownRuntimeContext_(managedRuntimeContext_);
+      managedRuntimeContext_ = nullptr;
     }
     if (runtimeHandle_ != nullptr) {
       expo::dotnet::releaseReactNativeRuntimeHandle(runtimeHandle_);
@@ -70,13 +69,13 @@ public:
       return true;
     }
 
-    auto createSession = resolveCreateSession();
-    auto teardownSession = resolveTeardownSession();
-    if (createSession != nullptr && teardownSession != nullptr) {
-      managedSession_ = createSession(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
-      teardownSession_ = teardownSession;
-      if (managedSession_ == nullptr) {
-        NSLog(@"[ExpoModulesDotnet] NativeAOT ExampleModule session registration failed.");
+    auto createRuntimeContext = resolveCreateRuntimeContext();
+    auto teardownRuntimeContext = resolveTeardownRuntimeContext();
+    if (createRuntimeContext != nullptr && teardownRuntimeContext != nullptr) {
+      managedRuntimeContext_ = createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
+      teardownRuntimeContext_ = teardownRuntimeContext;
+      if (managedRuntimeContext_ == nullptr) {
+        NSLog(@"[ExpoModulesDotnet] NativeAOT runtime context registration failed.");
         return false;
       }
     } else {
@@ -86,12 +85,12 @@ public:
       }
       auto status = registerModules(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
       if (status != 0) {
-        NSLog(@"[ExpoModulesDotnet] NativeAOT ExampleModule.add registration failed.");
+        NSLog(@"[ExpoModulesDotnet] NativeAOT managed module registration failed.");
         return false;
       }
     }
 
-    NSLog(@"[ExpoModulesDotnet] NativeAOT ExampleModule.add module registered.");
+    NSLog(@"[ExpoModulesDotnet] NativeAOT managed modules registered.");
     registered_ = true;
     return true;
   }
@@ -99,8 +98,8 @@ public:
 private:
   std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector_;
   expo_jsi_runtime_handle runtimeHandle_ = nullptr;
-  void *managedSession_ = nullptr;
-  TeardownSessionFn teardownSession_ = nullptr;
+  void *managedRuntimeContext_ = nullptr;
+  TeardownRuntimeContextFn teardownRuntimeContext_ = nullptr;
   bool registered_ = false;
 };
 
@@ -138,10 +137,10 @@ private:
 @end
 
 @implementation ExpoModulesDotnetInstaller {
-  // The install records own the connector state, not the RN runtime. Releasing
-  // this vector invalidates the borrowed runtime holder before the managed ABI
-  // handle is released.
-  std::vector<std::shared_ptr<InstalledRuntime>> _installedRuntimes;
+  // The install record owns connector state, not the RN runtime. Resetting it
+  // invalidates the borrowed runtime holder before the managed ABI handle is
+  // released.
+  std::shared_ptr<InstalledRuntime> _installedRuntime;
 }
 
 RCT_EXPORT_MODULE()
@@ -161,27 +160,22 @@ RCT_EXPORT_MODULE()
   auto installedRuntime =
     std::make_shared<InstalledRuntime>(std::move(connector), runtimeHandle);
 
-  _installedRuntimes.clear();
-  _installedRuntimes.push_back(std::move(installedRuntime));
+  _installedRuntime = std::move(installedRuntime);
 }
 
 - (BOOL)installModules
 {
-  BOOL installed = NO;
-  for (const auto &installedRuntime : _installedRuntimes) {
-    installed = installedRuntime->registerModules() || installed;
-  }
-
-  if (!installed) {
+  if (_installedRuntime == nullptr) {
     NSLog(@"[ExpoModulesDotnet] NativeAOT module runtime is not ready.");
+    return NO;
   }
 
-  return installed;
+  return _installedRuntime->registerModules();
 }
 
 - (void)invalidate
 {
-  _installedRuntimes.clear();
+  _installedRuntime.reset();
 }
 
 @end

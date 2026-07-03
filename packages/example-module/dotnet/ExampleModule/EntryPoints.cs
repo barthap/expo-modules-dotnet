@@ -8,15 +8,18 @@ namespace ExampleModule;
 
 public static class EntryPoints
 {
+  // Temporary app-composition entry points until .NET module autolinking
+  // generates the composed provider list. ExampleModule contributes its
+  // generated provider; it does not own the runtime context lifetime.
   [UnmanagedCallersOnly(
-      EntryPoint = "example_module_create_session",
+      EntryPoint = "expo_dotnet_create_runtime_context",
       CallConvs = new[] { typeof(CallConvCdecl) }
   )]
-  public static nint CreateSession(nint api, nint runtimeHandle)
+  public static nint CreateRuntimeContext(nint api, nint runtimeHandle)
   {
     try
     {
-      return CreateSessionCore(api, runtimeHandle);
+      return CreateRuntimeContextCore(api, runtimeHandle);
     }
     catch (Exception ex)
     {
@@ -26,23 +29,23 @@ public static class EntryPoints
   }
 
   [UnmanagedCallersOnly(
-      EntryPoint = "example_module_teardown_session",
+      EntryPoint = "expo_dotnet_teardown_runtime_context",
       CallConvs = new[] { typeof(CallConvCdecl) }
   )]
-  public static void TeardownSession(nint sessionContext)
+  public static void TeardownRuntimeContext(nint runtimeContext)
   {
-    TeardownSessionCore(sessionContext);
+    TeardownRuntimeContextCore(runtimeContext);
   }
 
   [UnmanagedCallersOnly(
-      EntryPoint = "example_module_register_modules",
+      EntryPoint = "expo_dotnet_register_modules",
       CallConvs = new[] { typeof(CallConvCdecl) }
   )]
   public static int RegisterModules(nint api, nint runtimeHandle)
   {
     try
     {
-      if (CreateSessionCore(api, runtimeHandle) == 0)
+      if (CreateRuntimeContextCore(api, runtimeHandle) == 0)
       {
         return 1;
       }
@@ -57,33 +60,33 @@ public static class EntryPoints
     }
   }
 
-  private static nint CreateSessionCore(nint api, nint runtimeHandle)
+  private static nint CreateRuntimeContextCore(nint api, nint runtimeHandle)
   {
     var runtime = JavaScriptRuntime.FromNative(api, runtimeHandle);
-    var session = new RuntimeSession(runtime);
+    var context = new DotnetRuntimeContext(runtime);
     try
     {
-      ExpoModulesProvider_ExampleModule.Register(session);
-      return GCHandle.ToIntPtr(GCHandle.Alloc(session));
+      ExpoModulesProvider_ExampleModule.Register(context);
+      return GCHandle.ToIntPtr(GCHandle.Alloc(context));
     }
     catch
     {
-      session.Dispose();
+      context.Dispose();
       throw;
     }
   }
 
-  private static void TeardownSessionCore(nint sessionContext)
+  private static void TeardownRuntimeContextCore(nint runtimeContext)
   {
-    if (sessionContext == 0)
+    if (runtimeContext == 0)
     {
       return;
     }
 
-    var handle = GCHandle.FromIntPtr(sessionContext);
-    if (handle.Target is RuntimeSession session)
+    var handle = GCHandle.FromIntPtr(runtimeContext);
+    if (handle.Target is DotnetRuntimeContext context)
     {
-      session.Dispose();
+      context.Dispose();
     }
 
     handle.Free();

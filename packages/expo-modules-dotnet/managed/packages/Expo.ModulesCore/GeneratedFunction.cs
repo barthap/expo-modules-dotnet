@@ -5,21 +5,21 @@ namespace Expo.ModulesCore;
 public static class GeneratedFunction
 {
   public static void DefineSync(
-      RuntimeSession session,
+      DotnetRuntimeContext runtimeContext,
       JavaScriptObject module,
       string name,
       uint parameterCount,
       JavaScriptHostFunction callback,
       object context)
   {
-    ArgumentNullException.ThrowIfNull(session);
+    ArgumentNullException.ThrowIfNull(runtimeContext);
     ArgumentNullException.ThrowIfNull(module);
     ArgumentException.ThrowIfNullOrWhiteSpace(name);
     ArgumentNullException.ThrowIfNull(callback);
     ArgumentNullException.ThrowIfNull(context);
 
-    var registration = session.RegisterHostFunction(callback, context);
-    using var function = session.Runtime.CreateHostFunction(
+    var registration = runtimeContext.RegisterHostFunction(callback, context);
+    using var function = runtimeContext.Runtime.CreateHostFunction(
         name,
         parameterCount,
         InvokeGeneratedHostFunction,

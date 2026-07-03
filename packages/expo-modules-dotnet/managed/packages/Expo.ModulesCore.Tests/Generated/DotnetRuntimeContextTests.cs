@@ -5,52 +5,52 @@ using Xunit;
 
 namespace Expo.ModulesCore.Tests.Generated;
 
-public sealed class RuntimeSessionTests
+public sealed class DotnetRuntimeContextTests
 {
   [Fact]
-  public void SessionBackedFunctionFailsAfterTeardown()
+  public void ContextBackedFunctionFailsAfterTeardown()
   {
     using var fixture = HermesRuntimeFixture.Create();
 
     fixture.Runtime.Execute(runtime =>
     {
-      using var session = new RuntimeSession(runtime);
-      using var modules = session.GetOrCreateDotnetModulesObject();
-      RegisterLifecycleModule(session, modules, out _);
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      RegisterLifecycleModule(context, modules, out _);
 
       using var beforeTeardown = fixture.Evaluate(
           "globalThis._expoDotnet.modules.Lifecycle.value()",
-          "runtime-session-before-teardown.js"
+          "runtime-context-before-teardown.js"
       );
       Assert.Equal(42.0, beforeTeardown.AsDouble());
 
-      session.Dispose();
+      context.Dispose();
 
       using var afterTeardown = fixture.Evaluate(
           "try { globalThis._expoDotnet.modules.Lifecycle.value(); 'no error'; } catch (e) { e.message; }",
-          "runtime-session-after-teardown.js"
+          "runtime-context-after-teardown.js"
       );
       Assert.Equal(JavaScriptValueKind.String, afterTeardown.Kind);
-      Assert.Contains("RuntimeSession", afterTeardown.AsString());
+      Assert.Contains("DotnetRuntimeContext", afterTeardown.AsString());
 
       return true;
     });
   }
 
   [Fact]
-  public void SessionTeardownReleasesModuleInstances()
+  public void ContextTeardownReleasesModuleInstances()
   {
     using var fixture = HermesRuntimeFixture.Create();
     WeakReference moduleReference = null!;
 
     fixture.Runtime.Execute(runtime =>
     {
-      using var session = new RuntimeSession(runtime);
-      using var modules = session.GetOrCreateDotnetModulesObject();
-      RegisterLifecycleModule(session, modules, out moduleReference);
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      RegisterLifecycleModule(context, modules, out moduleReference);
 
       Assert.True(moduleReference.IsAlive);
-      session.Dispose();
+      context.Dispose();
       return true;
     });
 
@@ -59,16 +59,16 @@ public sealed class RuntimeSessionTests
   }
 
   private static void RegisterLifecycleModule(
-      RuntimeSession session,
+      DotnetRuntimeContext context,
       JavaScriptObject modules,
       out WeakReference moduleReference
   )
   {
-    using var module = ModuleRegistry.DefineModule(session.Runtime, modules, "Lifecycle");
+    using var module = ModuleRegistry.DefineModule(context.Runtime, modules, "Lifecycle");
     var lifecycleModule = new LifecycleModule();
     moduleReference = new WeakReference(lifecycleModule);
     GeneratedFunction.DefineSync(
-        session,
+        context,
         module,
         "value",
         0,

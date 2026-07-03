@@ -164,29 +164,29 @@ future autolinking is expected to aggregate generated providers.
 - **WHEN** the behavior is above low-level `Expo.JSI`
 - **THEN** the test SHALL live in `Expo.ModulesCore.Tests`
 
-### Requirement: Runtime-Scoped Managed Sessions
+### Requirement: Runtime-Scoped Dotnet Runtime Contexts
 
 Generated module registration SHALL create or receive a runtime-scoped
-`RuntimeSession` that owns module instances and generated host-function
+`DotnetRuntimeContext` that owns module instances and generated host-function
 registrations for one JavaScript runtime.
 
 Static registration helpers MAY remain as compatibility wrappers, but the
-production owner is the runtime session. Managed teardown SHALL be deterministic
+production owner is the runtime context. Managed teardown SHALL be deterministic
 and idempotent; it SHALL NOT depend on finalizers or ordinary GC timing.
 
-#### Scenario: Provider registers through a runtime session
-- **GIVEN** a host adapter creates a managed runtime session for a JavaScript
+#### Scenario: Provider registers through a runtime context
+- **GIVEN** a host adapter creates a managed runtime context for a JavaScript
   runtime
 - **WHEN** a generated provider registers module functions
-- **THEN** generated module instances SHALL be owned by that runtime session
+- **THEN** generated module instances SHALL be owned by that runtime context
 - **AND** generated host-function registrations SHALL be owned by that runtime
-  session
+  context
 
-#### Scenario: Runtime session is torn down
-- **GIVEN** a runtime session owns module instances and generated host-function
+#### Scenario: Dotnet runtime context is torn down
+- **GIVEN** a runtime context owns module instances and generated host-function
   registrations
 - **WHEN** the host invokes the managed teardown callback
-- **THEN** the session SHALL release managed module state exactly once
-- **AND** future use of that session SHALL fail loudly
+- **THEN** the context SHALL release managed module state exactly once
+- **AND** future use of that context SHALL fail loudly
 - **AND** later native JSI host-function release callbacks SHALL NOT double-free
   managed state

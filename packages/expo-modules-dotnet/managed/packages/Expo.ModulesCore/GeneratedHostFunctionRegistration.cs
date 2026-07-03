@@ -29,7 +29,7 @@ public sealed class GeneratedHostFunctionRegistration : IDisposable
 
     lock (gate)
     {
-      ObjectDisposedException.ThrowIf(disposed, typeof(RuntimeSession));
+      ObjectDisposedException.ThrowIf(disposed, typeof(DotnetRuntimeContext));
       callbackSnapshot = callback!;
       callbackStateSnapshot = callbackState!;
     }

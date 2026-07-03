@@ -6,7 +6,7 @@ Define the production runtime lifecycle and scheduling contract for the
 portable C# / JSI bridge.
 
 This milestone moves beyond host proofs. Each React Native host adapter must
-create a runtime-scoped managed session for each JavaScript runtime, attach it
+create a runtime-scoped managed context for each JavaScript runtime, attach it
 to a host-owned borrowed runtime holder, and tear it down deterministically
 when the host invalidates or destroys that runtime.
 
@@ -33,7 +33,7 @@ Current repository evidence:
   inside an owned invalidatable holder and captures that holder weakly for
   scheduled work.
 - `ModuleRegistry` is currently a static helper, not a runtime-owned module
-  session.
+  context.
 - `HostFunctionContext` is pinned by `GCHandle` and released only through the
   native host-function release callback.
 
@@ -60,14 +60,14 @@ Upstream Expo and React Native evidence:
 
 ### Included
 
-- Add a portable runtime-session concept above `Expo.JSI` and below generated
+- Add a portable runtime-context concept above `Expo.JSI` and below generated
   module registration.
-- Make generated module registration create or receive a runtime-scoped session
+- Make generated module registration create or receive a runtime-scoped context
   instead of relying on static helper state.
 - Add a managed teardown callback that host adapters can invoke during runtime
   invalidation.
 - Track and release managed module instances, host-function callback contexts,
-  and managed pins through the runtime session.
+  and managed pins through the runtime context.
 - Define stale async work behavior when the runtime is invalidated before the
   work runs or before promise settlement reaches JavaScript.
 - Define host adapter responsibilities for runtime acquisition, scheduler
@@ -99,9 +99,9 @@ Upstream Expo and React Native evidence:
 
 ## Accepted Design
 
-### Runtime Session
+### Dotnet Runtime Context
 
-`Expo.ModulesCore` SHALL introduce a runtime-scoped session object. The exact
+`Expo.ModulesCore` SHALL introduce a runtime-scoped context object. The exact
 type name may change during implementation, but the role is fixed:
 
 - own module instances for one JavaScript runtime;
@@ -111,15 +111,15 @@ type name may change during implementation, but the role is fixed:
 - reject or fault use after teardown;
 - be safe to call teardown more than once.
 
-Generated providers SHALL register modules through the session. Static helper
-methods may remain as convenience wrappers, but the runtime session is the
+Generated providers SHALL register modules through the context. Static helper
+methods may remain as convenience wrappers, but the runtime context is the
 production owner.
 
 ### Managed Teardown Callback
 
 Module registration entry points SHALL return or register a managed teardown
 callback with the native adapter. The callback receives a managed context for
-the runtime session and releases managed state for that runtime.
+the runtime context and releases managed state for that runtime.
 
 The callback SHALL NOT depend on finalizers or ordinary GC timing.
 
@@ -150,9 +150,9 @@ The preferred teardown sequence is:
 1. The host reports runtime/module invalidation.
 2. The adapter marks the runtime holder invalid so new scheduled work is
    rejected.
-3. The adapter invokes the managed teardown callback for the runtime session.
-4. The managed session cancels pending managed work and disposes module state.
-5. The managed session releases host-function callback pins and managed
+3. The adapter invokes the managed teardown callback for the runtime context.
+4. The managed runtime context cancels pending managed work and disposes module state.
+5. The managed runtime context releases host-function callback pins and managed
    resources.
 6. The adapter releases the opaque runtime handle.
 7. The adapter drops scheduler and borrowed-runtime references.
@@ -218,27 +218,27 @@ and executor shutdown independently.
 
 ## Delta Requirements
 
-### ADDED Requirement: Runtime-Scoped Managed Session
+### ADDED Requirement: Runtime-Scoped Dotnet Runtime Context
 
 Generated module registration SHALL create or receive a runtime-scoped managed
-session that owns module instances and host-function callback registrations for
+context that owns module instances and host-function callback registrations for
 one JavaScript runtime.
 
-#### Scenario: Module registration creates runtime session
+#### Scenario: Module registration creates runtime context
 
 - **GIVEN** a host adapter invokes generated module registration for a runtime
 - **WHEN** the generated provider defines module functions
 - **THEN** module instances and callback registrations SHALL be owned by the
-  runtime session
+  runtime context
 - **AND** the provider SHALL return or register a teardown callback for that
-  session
+  context
 
-#### Scenario: Runtime session is torn down
+#### Scenario: Dotnet runtime context is torn down
 
-- **GIVEN** the runtime session owns module instances and callback pins
+- **GIVEN** the runtime context owns module instances and callback pins
 - **WHEN** the host invokes the managed teardown callback
-- **THEN** the session SHALL release module state and callback pins exactly once
-- **AND** future use of that session SHALL fail loudly
+- **THEN** the context SHALL release module state and callback pins exactly once
+- **AND** future use of that context SHALL fail loudly
 
 ### ADDED Requirement: Host-Called Runtime Invalidation
 
@@ -249,7 +249,7 @@ their runtime or module invalidation hooks.
 
 - **GIVEN** the host reports runtime invalidation while JSI access is still
   valid
-- **WHEN** the adapter tears down the runtime session
+- **WHEN** the adapter tears down the runtime context
 - **THEN** the adapter SHALL invalidate the runtime holder
 - **AND** invoke managed teardown
 - **AND** release the opaque runtime handle
@@ -259,7 +259,7 @@ their runtime or module invalidation hooks.
 
 - **GIVEN** the host reports invalidation after the runtime can no longer be
   touched
-- **WHEN** the adapter tears down the runtime session
+- **WHEN** the adapter tears down the runtime context
 - **THEN** managed teardown SHALL avoid JSI access
 - **AND** still release managed pins and non-JSI module state
 - **AND** stale scheduled work SHALL not touch the runtime
@@ -279,7 +279,7 @@ runtime invalidation.
 
 #### Scenario: Async promise completes after invalidation
 
-- **GIVEN** a managed async operation completes after its runtime session is
+- **GIVEN** a managed async operation completes after its runtime context is
   torn down
 - **WHEN** it attempts to settle a JavaScript promise
 - **THEN** settlement SHALL not touch stale JSI
@@ -315,7 +315,7 @@ The implementation is accepted when:
 
 - `scripts/test-managed.sh` passes.
 - `scripts/format.sh --check --all` passes.
-- Managed tests prove runtime-session teardown releases module state and
+- Managed tests prove runtime-context teardown releases module state and
   callback pins.
 - Managed tests prove scheduled work is faulted, cancelled, or released when
   runtime invalidation happens before execution.

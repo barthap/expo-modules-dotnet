@@ -15,9 +15,9 @@ public sealed class GeneratedAttributeModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      using var session = new RuntimeSession(runtime);
-      using var modules = session.GetOrCreateDotnetModulesObject();
-      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(session, modules);
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
           "globalThis._expoDotnet.modules.GeneratedMath.add(20.25, 22.25)",
@@ -37,9 +37,9 @@ public sealed class GeneratedAttributeModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      using var session = new RuntimeSession(runtime);
-      using var modules = session.GetOrCreateDotnetModulesObject();
-      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(session, modules);
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
           "globalThis._expoDotnet.modules.GeneratedMath.AddOneWhen(41.5, true)",
@@ -59,9 +59,9 @@ public sealed class GeneratedAttributeModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      using var session = new RuntimeSession(runtime);
-      using var modules = session.GetOrCreateDotnetModulesObject();
-      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(session, modules);
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
           "globalThis._expoDotnet.modules.GeneratedText.greet('Zoë\\u0000JS')",
@@ -81,9 +81,9 @@ public sealed class GeneratedAttributeModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      using var session = new RuntimeSession(runtime);
-      using var modules = session.GetOrCreateDotnetModulesObject();
-      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(session, modules);
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
           "const labels = globalThis._expoDotnet.modules.GeneratedArray.labels(); " +

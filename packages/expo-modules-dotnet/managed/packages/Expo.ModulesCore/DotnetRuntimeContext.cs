@@ -9,16 +9,16 @@ namespace Expo.ModulesCore;
 /// Expo's native <c>AppContext</c> plays upstream. Expo's <c>AppContext</c>
 /// ties together a module registry, runtime access, lifecycle hooks, event
 /// dispatch, scheduler integration, shared objects, and other app services for
-/// a React runtime. <c>RuntimeSession</c> intentionally starts smaller: it owns
+/// a React runtime. <c>DotnetRuntimeContext</c> intentionally starts smaller: it owns
 /// the generated module instances and generated host-function registrations
 /// that are scoped to a single runtime.
 ///
-/// The session exists so React Native host adapters can tear managed state down
+/// The context exists so React Native host adapters can tear managed state down
 /// deterministically when a runtime reloads or is destroyed. Without a
 /// runtime-scoped owner, registration would install JSI host functions and then
 /// rely on native host-function finalizers or ordinary GC timing to release
 /// managed callback pins and module instances. A host adapter can instead call
-/// <see cref="Dispose" /> for the session that belongs to the invalidated
+/// <see cref="Dispose" /> for the context that belongs to the invalidated
 /// runtime, releasing managed state promptly and making future use fail loudly.
 ///
 /// Future module-facing APIs may expose a fuller <c>AppContext</c>-style object
@@ -26,14 +26,14 @@ namespace Expo.ModulesCore;
 /// primitive for the generated binding layer unless that broader context takes
 /// over the same lifetime responsibilities.
 /// </summary>
-public sealed class RuntimeSession : IDisposable
+public sealed class DotnetRuntimeContext : IDisposable
 {
   private readonly object gate = new();
   private readonly List<GeneratedHostFunctionRegistration> hostFunctionRegistrations = [];
   private readonly Dictionary<string, object> moduleInstances = new(StringComparer.Ordinal);
   private bool disposed;
 
-  public RuntimeSession(JavaScriptRuntime runtime)
+  public DotnetRuntimeContext(JavaScriptRuntime runtime)
   {
     Runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
   }
@@ -139,6 +139,6 @@ public sealed class RuntimeSession : IDisposable
 
   private void ThrowIfDisposedLocked()
   {
-    ObjectDisposedException.ThrowIf(disposed, typeof(RuntimeSession));
+    ObjectDisposedException.ThrowIf(disposed, typeof(DotnetRuntimeContext));
   }
 }

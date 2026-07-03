@@ -178,27 +178,27 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine();
     builder.AppendLine($"public static class {providerTypeName}");
     builder.AppendLine("{");
-    builder.AppendLine("  public static void Register(global::Expo.ModulesCore.RuntimeSession session)");
+    builder.AppendLine("  public static void Register(global::Expo.ModulesCore.DotnetRuntimeContext context)");
     builder.AppendLine("  {");
-    builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(session);");
-    builder.AppendLine("    using var modules = session.GetOrCreateDotnetModulesObject();");
-    builder.AppendLine("    Register(session, modules);");
+    builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(context);");
+    builder.AppendLine("    using var modules = context.GetOrCreateDotnetModulesObject();");
+    builder.AppendLine("    Register(context, modules);");
     builder.AppendLine("  }");
     builder.AppendLine();
-    builder.AppendLine("  public static void Register(global::Expo.ModulesCore.RuntimeSession session, global::Expo.JSI.JavaScriptObject modules)");
+    builder.AppendLine("  public static void Register(global::Expo.ModulesCore.DotnetRuntimeContext context, global::Expo.JSI.JavaScriptObject modules)");
     builder.AppendLine("  {");
-    builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(session);");
+    builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(context);");
     builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(modules);");
     foreach (var module in moduleModels)
     {
       var moduleVariable = $"module_{SanitizeIdentifier(module.ModuleName)}";
       var moduleInstanceVariable = $"instance_{SanitizeIdentifier(module.ModuleName)}";
-      builder.AppendLine($"    using var {moduleVariable} = ModuleRegistry.DefineModule(session.Runtime, modules, \"{EscapeString(module.ModuleName)}\");");
-      builder.AppendLine($"    var {moduleInstanceVariable} = session.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", static () => new {module.FullyQualifiedTypeName}());");
+      builder.AppendLine($"    using var {moduleVariable} = ModuleRegistry.DefineModule(context.Runtime, modules, \"{EscapeString(module.ModuleName)}\");");
+      builder.AppendLine($"    var {moduleInstanceVariable} = context.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", static () => new {module.FullyQualifiedTypeName}());");
       foreach (var function in module.Functions.Values)
       {
         builder.AppendLine("    GeneratedFunction.DefineSync(");
-        builder.AppendLine("        session,");
+        builder.AppendLine("        context,");
         builder.AppendLine($"        {moduleVariable},");
         builder.AppendLine($"        \"{EscapeString(function.JavaScriptName)}\",");
         builder.AppendLine($"        {function.Parameters.Values.Count},");

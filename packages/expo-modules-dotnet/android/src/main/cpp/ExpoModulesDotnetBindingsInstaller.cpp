@@ -4,7 +4,6 @@
 #include <fbjni/fbjni.h>
 #include <memory>
 #include <mutex>
-#include <vector>
 
 #include "ReactNativeRuntimeConnector.h"
 
@@ -13,14 +12,14 @@ namespace {
 constexpr const char *kLogTag = "ExpoModulesDotnet";
 
 using RegisterModulesFn = int (*)(const expo_jsi_api *, expo_jsi_runtime_handle);
-using CreateSessionFn = void *(*)(const expo_jsi_api *, expo_jsi_runtime_handle);
-using TeardownSessionFn = void (*)(void *);
+using CreateRuntimeContextFn = void *(*)(const expo_jsi_api *, expo_jsi_runtime_handle);
+using TeardownRuntimeContextFn = void (*)(void *);
 
 struct InstalledRuntime {
   std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector;
   expo_jsi_runtime_handle runtimeHandle = nullptr;
-  void *managedSession = nullptr;
-  TeardownSessionFn teardownSession = nullptr;
+  void *managedRuntimeContext = nullptr;
+  TeardownRuntimeContextFn teardownRuntimeContext = nullptr;
   bool registered = false;
 
   InstalledRuntime(std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector,
@@ -35,9 +34,9 @@ struct InstalledRuntime {
     if (connector != nullptr) {
       connector->invalidate();
     }
-    if (managedSession != nullptr && teardownSession != nullptr) {
-      teardownSession(managedSession);
-      managedSession = nullptr;
+    if (managedRuntimeContext != nullptr && teardownRuntimeContext != nullptr) {
+      teardownRuntimeContext(managedRuntimeContext);
+      managedRuntimeContext = nullptr;
     }
     if (runtimeHandle != nullptr) {
       expo::dotnet::releaseReactNativeRuntimeHandle(runtimeHandle);
@@ -45,10 +44,10 @@ struct InstalledRuntime {
   }
 };
 
-std::mutex installedRuntimesMutex;
-std::vector<std::shared_ptr<InstalledRuntime>> installedRuntimes;
+std::mutex installedRuntimeMutex;
+std::shared_ptr<InstalledRuntime> installedRuntime;
 
-void *resolveExampleModuleSymbol(const char *symbolName)
+void *resolveDotnetAppSymbol(const char *symbolName)
 {
   auto *symbol = dlsym(RTLD_DEFAULT, symbolName);
   if (symbol == nullptr) {
@@ -63,44 +62,42 @@ void *resolveExampleModuleSymbol(const char *symbolName)
 
 RegisterModulesFn resolveRegisterModules()
 {
-  auto *symbol = resolveExampleModuleSymbol("example_module_register_modules");
+  auto *symbol = resolveDotnetAppSymbol("expo_dotnet_register_modules");
   if (symbol == nullptr) {
-    __android_log_print(ANDROID_LOG_ERROR,
-                        kLogTag,
-                        "Failed to resolve example_module_register_modules: %s",
-                        dlerror());
+    __android_log_print(
+      ANDROID_LOG_ERROR, kLogTag, "Failed to resolve expo_dotnet_register_modules: %s", dlerror());
     return nullptr;
   }
   return reinterpret_cast<RegisterModulesFn>(symbol);
 }
 
-CreateSessionFn resolveCreateSession()
+CreateRuntimeContextFn resolveCreateRuntimeContext()
 {
-  auto *symbol = resolveExampleModuleSymbol("example_module_create_session");
-  return reinterpret_cast<CreateSessionFn>(symbol);
+  auto *symbol = resolveDotnetAppSymbol("expo_dotnet_create_runtime_context");
+  return reinterpret_cast<CreateRuntimeContextFn>(symbol);
 }
 
-TeardownSessionFn resolveTeardownSession()
+TeardownRuntimeContextFn resolveTeardownRuntimeContext()
 {
-  auto *symbol = resolveExampleModuleSymbol("example_module_teardown_session");
-  return reinterpret_cast<TeardownSessionFn>(symbol);
+  auto *symbol = resolveDotnetAppSymbol("expo_dotnet_teardown_runtime_context");
+  return reinterpret_cast<TeardownRuntimeContextFn>(symbol);
 }
 
-bool registerExampleModule(InstalledRuntime &installedRuntime)
+bool registerDotnetModules(InstalledRuntime &installedRuntime)
 {
   if (installedRuntime.registered) {
     return true;
   }
 
-  auto createSession = resolveCreateSession();
-  auto teardownSession = resolveTeardownSession();
-  if (createSession != nullptr && teardownSession != nullptr) {
-    installedRuntime.managedSession =
-      createSession(expo::dotnet::reactNativeExpoJsiApi(), installedRuntime.runtimeHandle);
-    installedRuntime.teardownSession = teardownSession;
-    if (installedRuntime.managedSession == nullptr) {
+  auto createRuntimeContext = resolveCreateRuntimeContext();
+  auto teardownRuntimeContext = resolveTeardownRuntimeContext();
+  if (createRuntimeContext != nullptr && teardownRuntimeContext != nullptr) {
+    installedRuntime.managedRuntimeContext =
+      createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), installedRuntime.runtimeHandle);
+    installedRuntime.teardownRuntimeContext = teardownRuntimeContext;
+    if (installedRuntime.managedRuntimeContext == nullptr) {
       __android_log_print(
-        ANDROID_LOG_ERROR, kLogTag, "NativeAOT ExampleModule session registration failed.");
+        ANDROID_LOG_ERROR, kLogTag, "NativeAOT runtime context registration failed.");
       return false;
     }
   } else {
@@ -113,7 +110,7 @@ bool registerExampleModule(InstalledRuntime &installedRuntime)
       registerModules(expo::dotnet::reactNativeExpoJsiApi(), installedRuntime.runtimeHandle);
     if (status != 0) {
       __android_log_print(
-        ANDROID_LOG_ERROR, kLogTag, "NativeAOT ExampleModule.add registration failed.");
+        ANDROID_LOG_ERROR, kLogTag, "NativeAOT managed module registration failed.");
       return false;
     }
   }
@@ -129,33 +126,27 @@ void prepareDotnetModuleRuntime(facebook::jsi::Runtime &runtime,
   auto connector =
     std::make_unique<expo::dotnet::ReactNativeRuntimeConnector>(runtime, callInvoker);
   auto runtimeHandle = expo::dotnet::createReactNativeRuntimeHandle(*connector);
-  auto installedRuntime = std::make_shared<InstalledRuntime>(std::move(connector), runtimeHandle);
 
-  std::lock_guard<std::mutex> lock(installedRuntimesMutex);
-  installedRuntimes.push_back(std::move(installedRuntime));
+  std::lock_guard<std::mutex> lock(installedRuntimeMutex);
+  installedRuntime = std::make_shared<InstalledRuntime>(std::move(connector), runtimeHandle);
   __android_log_print(ANDROID_LOG_INFO, kLogTag, "NativeAOT module runtime captured.");
 }
 
 bool installDotnetModules()
 {
-  std::lock_guard<std::mutex> lock(installedRuntimesMutex);
-
-  bool installed = false;
-  for (auto &installedRuntime : installedRuntimes) {
-    installed = registerExampleModule(*installedRuntime) || installed;
-  }
-
-  if (!installed) {
+  std::lock_guard<std::mutex> lock(installedRuntimeMutex);
+  if (installedRuntime == nullptr) {
     __android_log_print(ANDROID_LOG_ERROR, kLogTag, "NativeAOT module runtime is not ready.");
+    return false;
   }
 
-  return installed;
+  return registerDotnetModules(*installedRuntime);
 }
 
 void invalidateDotnetModules()
 {
-  std::lock_guard<std::mutex> lock(installedRuntimesMutex);
-  installedRuntimes.clear();
+  std::lock_guard<std::mutex> lock(installedRuntimeMutex);
+  installedRuntime.reset();
 }
 
 } // namespace

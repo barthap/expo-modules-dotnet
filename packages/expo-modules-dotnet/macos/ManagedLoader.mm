@@ -13,13 +13,13 @@ namespace {
 
 constexpr const char *kManagedSubdirectory = "Managed";
 NSString *const kLoaderInfoPlistKey = @"ExpoModulesDotnetLoader";
-constexpr const char *kRegisterModulesSymbol = "example_module_register_modules";
-constexpr const char *kCreateSessionSymbol = "example_module_create_session";
-constexpr const char *kTeardownSessionSymbol = "example_module_teardown_session";
+constexpr const char *kRegisterModulesSymbol = "expo_dotnet_register_modules";
+constexpr const char *kCreateRuntimeContextSymbol = "expo_dotnet_create_runtime_context";
+constexpr const char *kTeardownRuntimeContextSymbol = "expo_dotnet_teardown_runtime_context";
 constexpr const char *kEntryPointType = "ExampleModule.EntryPoints, ExampleModule";
 constexpr const char *kEntryPointMethod = "RegisterModules";
-constexpr const char *kCreateSessionMethod = "CreateSession";
-constexpr const char *kTeardownSessionMethod = "TeardownSession";
+constexpr const char *kCreateRuntimeContextMethod = "CreateRuntimeContext";
+constexpr const char *kTeardownRuntimeContextMethod = "TeardownRuntimeContext";
 
 std::string pathForBundledResource(NSString *name, NSString *extension)
 {
@@ -227,25 +227,29 @@ RegisterModulesFn resolveRegisterModules(const ManagedModuleConfig &config)
   }
 }
 
-ManagedSessionEntryPoints resolveSessionEntryPoints(const ManagedModuleConfig &config)
+ManagedRuntimeContextEntryPoints resolveRuntimeContextEntryPoints(const ManagedModuleConfig &config)
 {
-  ManagedSessionEntryPoints entryPoints;
+  ManagedRuntimeContextEntryPoints entryPoints;
   switch (config.loaderKind) {
     case ManagedLoaderKind::NativeAot:
       entryPoints.registerModules =
         reinterpret_cast<RegisterModulesFn>(resolveNativeAotSymbol(config, kRegisterModulesSymbol));
-      entryPoints.createSession =
-        reinterpret_cast<CreateSessionFn>(resolveNativeAotSymbol(config, kCreateSessionSymbol));
-      entryPoints.teardownSession =
-        reinterpret_cast<TeardownSessionFn>(resolveNativeAotSymbol(config, kTeardownSessionSymbol));
+      entryPoints.createRuntimeContext =
+        reinterpret_cast<CreateRuntimeContextFn>(
+          resolveNativeAotSymbol(config, kCreateRuntimeContextSymbol));
+      entryPoints.teardownRuntimeContext =
+        reinterpret_cast<TeardownRuntimeContextFn>(
+          resolveNativeAotSymbol(config, kTeardownRuntimeContextSymbol));
       return entryPoints;
     case ManagedLoaderKind::HostFxr:
       entryPoints.registerModules =
         reinterpret_cast<RegisterModulesFn>(resolveHostFxrMethod(config, config.methodName.c_str()));
-      entryPoints.createSession =
-        reinterpret_cast<CreateSessionFn>(resolveHostFxrMethod(config, kCreateSessionMethod));
-      entryPoints.teardownSession =
-        reinterpret_cast<TeardownSessionFn>(resolveHostFxrMethod(config, kTeardownSessionMethod));
+      entryPoints.createRuntimeContext =
+        reinterpret_cast<CreateRuntimeContextFn>(
+          resolveHostFxrMethod(config, kCreateRuntimeContextMethod));
+      entryPoints.teardownRuntimeContext =
+        reinterpret_cast<TeardownRuntimeContextFn>(
+          resolveHostFxrMethod(config, kTeardownRuntimeContextMethod));
       return entryPoints;
   }
 }

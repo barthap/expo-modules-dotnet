@@ -5,21 +5,21 @@ namespace HermesConsoleApp;
 
 internal static class GeneratedModuleProvider
 {
-  public static void Register(RuntimeSession session, JavaScriptObject modules)
+  public static void Register(DotnetRuntimeContext context, JavaScriptObject modules)
   {
-    var runtime = session.Runtime;
+    var runtime = context.Runtime;
     using var global = runtime.Global();
     using var math = runtime.CreateObject();
     using var text = runtime.CreateObject();
 
-    var mathModule = session.GetOrCreateModule("HermesConsoleApp.Math", static () => new MathModule());
-    var textModule = session.GetOrCreateModule("HermesConsoleApp.Text", static () => new TextModule());
+    var mathModule = context.GetOrCreateModule("HermesConsoleApp.Math", static () => new MathModule());
+    var textModule = context.GetOrCreateModule("HermesConsoleApp.Text", static () => new TextModule());
 
     using var globalValue = global.AsValue();
     global.SetProperty("global", globalValue);
 
-    GeneratedFunction.DefineSync(session, math, "add", 2, MathAddHostFunction, mathModule);
-    GeneratedFunction.DefineSync(session, text, "greet", 1, TextGreetHostFunction, textModule);
+    GeneratedFunction.DefineSync(context, math, "add", 2, MathAddHostFunction, mathModule);
+    GeneratedFunction.DefineSync(context, text, "greet", 1, TextGreetHostFunction, textModule);
 
     using var mathValue = math.AsValue();
     modules.SetProperty("Math", mathValue);
