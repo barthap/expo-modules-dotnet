@@ -2,11 +2,13 @@
 
 #include "ExpoModulesDotnetInstaller.h"
 
+#include <ReactNotificationService.h>
+
 #include <sstream>
+#include <stdexcept>
 #include <utility>
 
-namespace winrt::ExpoModulesDotnet
-{
+namespace winrt::ExpoModulesDotnet {
 namespace {
 
 void logMessage(const std::wstring &message)
@@ -34,14 +36,8 @@ std::string toUtf8(const std::wstring &value)
   if (value.empty()) {
     return "";
   }
-  const int length = WideCharToMultiByte(CP_UTF8,
-                                         0,
-                                         value.c_str(),
-                                         static_cast<int>(value.size()),
-                                         nullptr,
-                                         0,
-                                         nullptr,
-                                         nullptr);
+  const int length = WideCharToMultiByte(
+    CP_UTF8, 0, value.c_str(), static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
   if (length <= 0) {
     return "";
   }
@@ -60,7 +56,7 @@ std::string toUtf8(const std::wstring &value)
 } // namespace
 
 struct ExpoModulesDotnetInstaller::InstalledRuntime final
-{
+  : std::enable_shared_from_this<ExpoModulesDotnetInstaller::InstalledRuntime> {
   InstalledRuntime(std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector,
                    expo_jsi_runtime_handle runtimeHandle,
                    expo::modules::dotnet::ManagedModuleConfig moduleConfig)
@@ -72,21 +68,124 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
 
   ~InstalledRuntime()
   {
-    if (runtimeHandle != nullptr) {
-      expo::dotnet::releaseReactNativeRuntimeHandle(runtimeHandle);
-    }
-    if (connector != nullptr) {
-      connector->invalidate();
-    }
+    teardown();
   }
 
+  bool registerModules()
+  {
+    auto entryPoints = expo::modules::dotnet::resolveRuntimeContextEntryPoints(moduleConfig);
+
+    if (entryPoints.createRuntimeContext != nullptr &&
+        entryPoints.teardownRuntimeContext != nullptr) {
+      auto runtimeContext =
+        entryPoints.createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle);
+      if (runtimeContext == nullptr) {
+        return false;
+      }
+
+      std::lock_guard<std::mutex> lock(mutex);
+      managedRuntimeContext = runtimeContext;
+      teardownRuntimeContext = entryPoints.teardownRuntimeContext;
+      registered = true;
+      return true;
+    }
+
+    if (entryPoints.registerModules == nullptr) {
+      return false;
+    }
+
+    auto status = entryPoints.registerModules(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle);
+    if (status != 0) {
+      return false;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex);
+    registered = true;
+    return true;
+  }
+
+  bool isRegistered() const
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    return registered;
+  }
+
+  void subscribeToInstanceDestroyed(
+    winrt::Microsoft::ReactNative::ReactNotificationService const &notifications)
+  {
+    auto notificationId = winrt::Microsoft::ReactNative::ReactNotificationId<
+      winrt::Microsoft::ReactNative::InstanceDestroyedEventArgs>{L"ReactNative.InstanceSettings",
+                                                                 L"InstanceDestroyed"};
+
+    std::weak_ptr<InstalledRuntime> weakRuntime{shared_from_this()};
+    auto subscription = winrt::Microsoft::ReactNative::ReactNotificationService::Subscribe(
+      notifications.Handle(),
+      notificationId,
+      [weakRuntime](
+        winrt::Windows::Foundation::IInspectable const &,
+        winrt::Microsoft::ReactNative::ReactNotificationArgs<
+          winrt::Microsoft::ReactNative::InstanceDestroyedEventArgs> const &args) noexcept {
+        if (auto runtime = weakRuntime.lock()) {
+          runtime->teardown();
+        }
+        args.Subscription().Unsubscribe();
+      });
+
+    std::lock_guard<std::mutex> lock(mutex);
+    destroyedSubscription = std::move(subscription);
+  }
+
+  void teardown() noexcept
+  {
+    std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connectorToRelease;
+    expo_jsi_runtime_handle runtimeHandleToRelease = nullptr;
+    void *managedRuntimeContextToTeardown = nullptr;
+    expo::modules::dotnet::TeardownRuntimeContextFn teardownRuntimeContextFn = nullptr;
+    winrt::Microsoft::ReactNative::ReactNotificationSubscription subscriptionToRelease{nullptr};
+
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      if (tornDown) {
+        return;
+      }
+
+      tornDown = true;
+      registered = false;
+      if (connector != nullptr) {
+        connector->invalidate();
+      }
+      connectorToRelease = std::move(connector);
+      managedRuntimeContextToTeardown = managedRuntimeContext;
+      managedRuntimeContext = nullptr;
+      teardownRuntimeContextFn = teardownRuntimeContext;
+      teardownRuntimeContext = nullptr;
+      runtimeHandleToRelease = runtimeHandle;
+      runtimeHandle = nullptr;
+      subscriptionToRelease = std::move(destroyedSubscription);
+      destroyedSubscription = nullptr;
+    }
+
+    if (teardownRuntimeContextFn != nullptr && managedRuntimeContextToTeardown != nullptr) {
+      teardownRuntimeContextFn(managedRuntimeContextToTeardown);
+    }
+    if (runtimeHandleToRelease != nullptr) {
+      expo::dotnet::releaseReactNativeRuntimeHandle(runtimeHandleToRelease);
+    }
+    subscriptionToRelease.Unsubscribe();
+  }
+
+  mutable std::mutex mutex;
   std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector;
   expo_jsi_runtime_handle runtimeHandle = nullptr;
   expo::modules::dotnet::ManagedModuleConfig moduleConfig;
+  void *managedRuntimeContext = nullptr;
+  expo::modules::dotnet::TeardownRuntimeContextFn teardownRuntimeContext = nullptr;
+  bool registered = false;
+  bool tornDown = false;
+  winrt::Microsoft::ReactNative::ReactNotificationSubscription destroyedSubscription{nullptr};
 };
 
-struct ExpoModulesDotnetInstaller::InstallerState final
-{
+struct ExpoModulesDotnetInstaller::InstallerState final {
   std::mutex mutex;
   std::shared_ptr<InstalledRuntime> installedRuntime;
   bool installStarted = false;
@@ -123,30 +222,24 @@ void ExpoModulesDotnetInstaller::Initialize(
     auto installedRuntime = std::make_shared<InstalledRuntime>(
       std::move(connector), runtimeHandle, std::move(moduleConfig));
 
-    auto registerModules =
-      expo::modules::dotnet::resolveRegisterModules(installedRuntime->moduleConfig);
-    if (registerModules == nullptr) {
+    if (!installedRuntime->registerModules()) {
       auto loaderError = expo::modules::dotnet::managedLoaderLastError();
       if (loaderError.empty()) {
-        throw std::runtime_error("Failed to resolve ExampleModule registration entry point.");
+        throw std::runtime_error("Failed to register managed runtime context.");
       }
       throw std::runtime_error(toUtf8(loaderError).c_str());
     }
 
-    auto status = registerModules(expo::dotnet::reactNativeExpoJsiApi(),
-                                  installedRuntime->runtimeHandle);
-    if (status != 0) {
-      throw std::runtime_error("ExampleModule registration failed.");
-    }
+    installedRuntime->subscribeToInstanceDestroyed(reactContext.Notifications());
 
     {
       std::lock_guard<std::mutex> lock(state->mutex);
       state->installedRuntime = std::move(installedRuntime);
-      state->registered = true;
+      state->registered = state->installedRuntime->isRegistered();
       state->lastError.clear();
     }
 
-    logMessage(L"[ExpoModulesDotnet] Windows ExampleModule.add module registered.");
+    logMessage(L"[ExpoModulesDotnet] Windows managed modules registered.");
   } catch (const std::exception &ex) {
     std::wstring message = L"[ExpoModulesDotnet] Windows module registration failed: ";
     message += toWide(ex.what());
@@ -177,7 +270,8 @@ bool ExpoModulesDotnetInstaller::installModules() noexcept
   }
 
   std::lock_guard<std::mutex> lock(state->mutex);
-  if (state->registered) {
+  if (state->registered && state->installedRuntime != nullptr &&
+      state->installedRuntime->isRegistered()) {
     return true;
   }
 
@@ -202,7 +296,8 @@ std::string ExpoModulesDotnetInstaller::getLastError() noexcept
   if (!state->lastError.empty()) {
     return toUtf8(state->lastError);
   }
-  if (state->registered) {
+  if (state->registered && state->installedRuntime != nullptr &&
+      state->installedRuntime->isRegistered()) {
     return "";
   }
   if (state->installStarted) {
