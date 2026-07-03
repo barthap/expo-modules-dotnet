@@ -10,9 +10,9 @@
 #undef GetCurrentTime
 #include <unknwn.h>
 
-#include <winrt/base.h>
 #include <CppWinRTIncludes.h>
 #include <winrt/Microsoft.ReactNative.h>
+#include <winrt/base.h>
 
 #include <malloc.h>
 #include <memory.h>

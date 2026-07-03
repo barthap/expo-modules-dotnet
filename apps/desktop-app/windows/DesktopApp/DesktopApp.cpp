@@ -1,8 +1,8 @@
 // DesktopApp.cpp : Defines the entry point for the application.
 //
 
-#include "pch.h"
 #include "DesktopApp.h"
+#include "pch.h"
 
 #include "AutolinkedNativeModules.g.h"
 
@@ -10,15 +10,22 @@
 
 // A PackageProvider containing any turbo modules you define within this app project
 struct CompReactPackageProvider
-    : winrt::implements<CompReactPackageProvider, winrt::Microsoft::ReactNative::IReactPackageProvider> {
- public: // IReactPackageProvider
-  void CreatePackage(winrt::Microsoft::ReactNative::IReactPackageBuilder const &packageBuilder) noexcept {
+  : winrt::implements<CompReactPackageProvider,
+                      winrt::Microsoft::ReactNative::IReactPackageProvider> {
+public: // IReactPackageProvider
+  void CreatePackage(
+    winrt::Microsoft::ReactNative::IReactPackageBuilder const &packageBuilder) noexcept
+  {
     AddAttributedModules(packageBuilder, true);
   }
 };
 
 // The entry point of the Win32 application
-_Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, PSTR /* commandLine */, int showCmd) {
+_Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance,
+                                            HINSTANCE,
+                                            PSTR /* commandLine */,
+                                            int showCmd)
+{
   // Initialize WinRT
   winrt::init_apartment(winrt::apartment_type::single_threaded);
 
@@ -43,7 +50,8 @@ _Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, PSTR 
 #if BUNDLE
   // Load the JS bundle from a file (not Metro):
   // Set the path (on disk) where the .bundle file is located
-  settings.BundleRootPath(std::wstring(L"file://").append(appDirectory).append(L"\\Bundle\\").c_str());
+  settings.BundleRootPath(
+    std::wstring(L"file://").append(appDirectory).append(L"\\Bundle\\").c_str());
   // Set the name of the bundle file (without the .bundle extension)
   settings.JavaScriptBundleFile(L"index.windows");
   // Disable hot reload

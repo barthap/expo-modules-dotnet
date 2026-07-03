@@ -11,8 +11,7 @@
 
 using namespace winrt::Microsoft::ReactNative;
 
-namespace winrt::ExpoModulesDotnet::implementation
-{
+namespace winrt::ExpoModulesDotnet::implementation {
 
 void ReactPackageProvider::CreatePackage(IReactPackageBuilder const &packageBuilder) noexcept
 {

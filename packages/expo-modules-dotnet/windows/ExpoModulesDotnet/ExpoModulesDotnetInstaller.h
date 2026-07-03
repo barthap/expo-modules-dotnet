@@ -9,12 +9,10 @@
 #include "ManagedLoader.h"
 #include "ReactNativeRuntimeConnector.h"
 
-namespace winrt::ExpoModulesDotnet
-{
+namespace winrt::ExpoModulesDotnet {
 
 REACT_MODULE(ExpoModulesDotnetInstaller)
-struct ExpoModulesDotnetInstaller
-{
+struct ExpoModulesDotnetInstaller {
   REACT_INIT(Initialize)
   void Initialize(winrt::Microsoft::ReactNative::ReactContext const &reactContext,
                   facebook::jsi::Runtime &runtime) noexcept;
