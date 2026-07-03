@@ -46,6 +46,7 @@ expo_jsi_error expo_jsi_testhost_wait_until_idle(expo_jsi_testhost_runtime_handl
 
 void expo_jsi_testhost_set_sync_execution_supported(
   expo_jsi_testhost_runtime_handle testhost_runtime, uint8_t supported);
+void expo_jsi_testhost_invalidate_runtime(expo_jsi_testhost_runtime_handle testhost_runtime);
 
 void expo_jsi_testhost_release_runtime(expo_jsi_testhost_runtime_handle testhost_runtime);
 
