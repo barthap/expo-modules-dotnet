@@ -16,55 +16,62 @@ current behavior; archived docs provide provenance.
 - Module dispatch and conversion coverage lives under
   `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests`.
 - `apps/mobile-app` is an accepted NativeAOT React Native integration proof. It
-  validates the adapter seam, but it is not a production mobile adapter and
-  still leaves reload-safe teardown unresolved.
+  validates the adapter seam and now participates in the shared
+  `DotnetRuntimeContext` lifecycle model; it is still not a full production
+  mobile adapter.
 - `apps/desktop-app` is an accepted Expo Desktop / React Native macOS
   integration proof. It validates HostFXR-managed module registration and the
-  generated synchronous module path on the React Native 0.81 macOS lane.
+  generated synchronous module path on the React Native 0.81 macOS lane, with
+  runtime teardown owned by the package adapter.
 - `apps/desktop-app` also contains a React Native Windows proof project. Direct
   MSBuild validates the Windows adapter, HostFXR artifact staging, and app
-  output layout on the React Native Windows 0.81 lane; the RNW CLI
-  build/deploy path still has VS 2026/PDB locking follow-up work.
+  output layout on the React Native Windows 0.81 lane. Windows now follows the
+  shared `DotnetRuntimeContext` lifecycle shape; the RNW CLI build/deploy path
+  still has VS 2026/PDB locking follow-up work.
 
 ## Priority Roadmap
 
 ### P0: Cross-Host Lifecycle And Scheduler Evidence
 
-These items are first because runtime lifecycle and scheduler behavior must be
-derived from real React Native hosts before the portable teardown contract is
-frozen. The `apps/mobile-app` proof is useful evidence, but it uses newer
-React Native / Expo versions than the near-term production targets.
+Status: complete. The portable lifecycle/scheduler contract is now derived from
+mobile, macOS, and Windows host evidence and implemented across the shared
+managed core, headless testhost, and platform adapters. There are no active P0
+roadmap items after this milestone; remaining work is P1+ production hardening,
+autolinking, prebuild/config-plugin integration, and broader module APIs.
 
-1. **React Native macOS lifecycle/scheduler proof** — completed proof evidence
-   lives in `apps/desktop-app`; remaining work is production lifecycle cleanup,
-   reload teardown, and broader scheduler coverage.
-   - Mount the portable bridge into a real React Native macOS / Expo 54-era host.
-   - Install one generated synchronous C# module into the real Hermes runtime.
-   - Identify runtime install, reload, invalidation, and teardown hooks.
-   - Map scheduler primitives and sync execution support honestly.
-   - Compare findings against `apps/mobile-app`.
-   - Exclude autolinking, views, broad packaging polish, and Windows/RNW work.
+Completed scope:
 
-2. **React Native Windows lifecycle/scheduler proof** — initial adapter and
-   direct MSBuild proof are in `apps/desktop-app`; remaining work is runtime
-   launch evidence through the RNW CLI, reload teardown, and smoothing VS 2026
-   build/deploy constraints.
-   - Focus follow-up work on runtime install observation, teardown hooks, and
-     RNW-specific packaging/build constraints.
-   - Compare against macOS and the mobile proof before changing the portable
-     contract.
+1. **React Native macOS lifecycle/scheduler proof**
+   - `apps/desktop-app` mounts the bridge into a real React Native macOS host.
+   - Generated synchronous C# module functions run as direct JSI host functions.
+   - HostFXR and NativeAOT loader paths resolve app-composed `expo_dotnet_*`
+     entry points.
+   - The macOS adapter owns one active runtime record and tears down the managed
+     `DotnetRuntimeContext` from module invalidation.
+
+2. **React Native Windows lifecycle/scheduler proof**
+   - `apps/desktop-app/windows` and `packages/expo-modules-dotnet/windows`
+     validate the RNW adapter, HostFXR artifact staging, and direct MSBuild app
+     output.
+   - The Windows adapter uses the same app-composed `expo_dotnet_*` lifecycle
+     entry points and owns one managed `DotnetRuntimeContext` per RNW runtime.
+   - RNW `InstanceDestroyed` is accepted as a late no-JSI teardown signal for
+     the current context teardown semantics.
 
 3. **Cross-host runtime lifecycle contract**
-   - Define the portable teardown contract from macOS, RNW, and mobile evidence.
-   - Cover runtime-scoped module registry ownership, host-function pins,
-     managed teardown callbacks, stale async work, passive sync capability, and
-     priority semantics.
+   - `DotnetRuntimeContext` owns runtime-scoped module instances,
+     host-function registration state, and managed teardown for one JavaScript
+     runtime.
+   - Host adapters invalidate borrowed runtime holders before managed teardown
+     and release opaque runtime handles after teardown.
+   - Generated synchronous module functions remain direct JSI host functions;
+     host schedulers are used for async runtime work only.
 
 4. **Teardown contract implementation**
-   - Implement the agreed contract in the portable core, testhost, and host
-     adapters.
-   - Verify that runtime invalidation releases managed module state and
-     host-function pins before stale JSI access can occur.
+   - Managed tests cover runtime-context teardown and stale scheduled work.
+   - The headless Hermes testhost models runtime invalidation.
+   - Android, iOS, macOS, and Windows adapters use the shared runtime-context
+     lifecycle model.
 
 ### P1: Authoring Path And Error Quality
 
@@ -180,21 +187,20 @@ ABI support.
 
 ## Backlog: Module System
 
-- **P0 — Module instance lifecycle**: `onCreate`, `onDestroy`, reload-safe
-  teardown — needed for resource cleanup and dev-reload safety. See
-  `docs/assorted/architecture-review.md` Finding 2. The
-  `apps/mobile-app` proof confirms this as the first production
-  integration blocker.
+- **P1 — Module-authored lifecycle hooks**: `onCreate`, `onDestroy`, and future
+  authored resource cleanup hooks on top of the runtime-scoped
+  `DotnetRuntimeContext`. The P0 runtime-context teardown owner exists; authored
+  module lifecycle callbacks still need API design.
 - **P2/P3 — Lazy module initialization**: Modules instantiated on first JS
   access instead of eagerly at registration (depends on HostObject ABI).
 - **P1 — `expo-module.config.json`**: Package metadata for dotnet Expo module
   libraries; define metadata before full autolinking.
 - **P3 — Autolinking**: Build-time discovery and aggregation of dotnet Expo
   module packages into an app-level provider.
-- **P0/P3 — TurboModule integration**: Participation in React Native's
-  TurboModule infrastructure for codegen'd bridging. The current
-  `apps/mobile-app` proof validates the install hook, but production
-  integration remains later than the lifecycle/scheduler proofs.
+- **P1/P3 — TurboModule integration**: Participation in React Native's
+  TurboModule infrastructure for codegen'd bridging. The current mobile and
+  desktop proofs validate package-owned install/teardown hooks; production
+  codegen participation remains later than the lifecycle/scheduler contract.
 
 ## Backlog: Architecture Improvements
 
@@ -223,25 +229,28 @@ options.
 
 ## Backlog: Platform Adapters
 
-- **P0 — React Native macOS adapter**: The first macOS HostFXR proof lives in
-  `apps/desktop-app`. Production follow-up still needs reload-safe lifecycle
-  services, teardown, and broader scheduler evidence.
-- **P0 — Expo Desktop prebuild integration**: If `apps/desktop-app` moves from
+- **P1 — React Native macOS adapter hardening**: The macOS HostFXR and
+  NativeAOT-capable proof lives in `apps/desktop-app`. Lifecycle teardown now
+  follows `DotnetRuntimeContext`; remaining production work is packaging,
+  autolinking, and broader Expo Desktop integration polish.
+- **P1 — Expo Desktop prebuild integration**: If `apps/desktop-app` moves from
   a checked-in macOS project to an `expo-desktop` prebuild flow, preserve the
   current native wiring through an Expo config plugin. The plugin should own the
   managed artifact build phase, `EXPO_DOTNET_LOADER` build setting,
   `ExpoModulesDotnetLoader` `Info.plist` entry, `Managed` folder resource, and
   any macOS Podfile/autolinking shim still required by the supported
   `expo-desktop` / React Native macOS lane.
-- **P0 — RNW adapter**: Initial Windows adapter and direct MSBuild proof live
-  in `apps/desktop-app` and `packages/expo-modules-dotnet/windows`. Remaining
-  production work includes RNW CLI launch reliability, reload-safe lifecycle,
-  and expo-desktop prebuild/config-plugin integration.
+- **P1 — RNW adapter hardening**: Initial Windows adapter and direct MSBuild
+  proof live in `apps/desktop-app` and `packages/expo-modules-dotnet/windows`.
+  Lifecycle teardown now follows `DotnetRuntimeContext`; remaining production
+  work includes RNW CLI launch reliability, PDB/VS build-lock smoothing, and
+  Expo Desktop prebuild/config-plugin integration.
 - **P3 — View adapters**: Platform-specific native view creation, prop mapping,
   event routing. Platform-gated — no view concepts in the portable core.
 - **P3 — NativeAOT for iOS and Android**: The current proof lives under
-  `apps/mobile-app`. Production mobile work still needs reload-safe
-  teardown, trimming/export audits, and platform-specific constraints.
+  `apps/mobile-app` and now uses shared runtime-context teardown. Production
+  mobile work still needs trimming/export audits and platform-specific
+  constraints.
 
 ## Archive Map
 
