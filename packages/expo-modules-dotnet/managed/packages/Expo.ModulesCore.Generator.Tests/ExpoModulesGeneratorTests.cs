@@ -78,6 +78,41 @@ public sealed class ExpoModulesGeneratorTests
   }
 
   [Fact]
+  public void GeneratorEmitsGenericNumberCodecs()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Math")]
+        public sealed partial class MathModule
+        {
+          [JS]
+          public int RoundTripInt(int value) => value;
+
+          [JS]
+          public int? RoundTripNullableInt(int? value) => value;
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains("NumberCodec<int>.Decode(arguments.GetValue(0), runtime)", source);
+    Assert.Contains("NumberCodec<int>.Encode(module.RoundTripInt(value), runtime)", source);
+    Assert.Contains(
+        "NullableCodec<int, NumberCodec<int>>.Decode(arguments.GetValue(0), runtime)",
+        source
+    );
+    Assert.Contains(
+        "NullableCodec<int, NumberCodec<int>>.Encode(module.RoundTripNullableInt(value), runtime)",
+        source
+    );
+  }
+
+  [Fact]
   public void GeneratorReportsUnsupportedParameterType()
   {
     var result = GeneratorTestHost.Run(

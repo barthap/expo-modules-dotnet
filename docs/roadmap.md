@@ -80,9 +80,11 @@ Completed scope:
    - Strengthen diagnostics, generated source inspection, and provider shape
      stability for synchronous `[JS]` functions.
 
-2. **Minimal codec expansion**
-   - Add the types needed for ordinary small modules: integer types, nullable
-     primitives, enums, simple records, and `Dictionary<string, T>`.
+2. **Minimal codec expansion** (partial)
+   - Complete: null / undefined / void return semantics, nullable value types,
+     and generic numeric primitive codecs for signed integers, unsigned
+     integers, `float`, and `double`.
+   - Remaining: enums, simple records, and `Dictionary<string, T>`.
    - Keep ArrayBuffer, SharedObject, and NativeState out of this slice.
 
 3. **Module package metadata**
@@ -165,14 +167,14 @@ These are planned type conversions for the source generator and codec layer.
 Each requires a codec implementation, a generator case, and possibly underlying
 ABI support.
 
-- **P1 — `int` / integer types**: Most common parameter type in practice
-  (currently only `double` is supported).
+- **P1 — `int` / integer types** (complete): Signed and unsigned integer
+  primitives are supported through the generic number codec.
 - **P1 — `Dictionary<string, T>`**: Object-to-dictionary conversion for
   record-like parameters.
 - **P1 — Record types**: Structured C# types mapped to/from JS objects via
   generated property-level codecs.
-- **P1 — Nullable types**: `T?` support for optional parameters and return
-  values.
+- **P1 — Nullable types** (complete for value primitives): `T?` support exists
+  for optional parameters and return values over supported value codecs.
 - **P2/P3 — `byte[]` / `ReadOnlyMemory<byte>`**: Binary data transfer (depends
   on ArrayBuffer ABI).
 - **P1 — Enums**: Mapped to/from JS string or number values.

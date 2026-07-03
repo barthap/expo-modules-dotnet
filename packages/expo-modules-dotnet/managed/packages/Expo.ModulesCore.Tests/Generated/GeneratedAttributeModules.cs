@@ -7,6 +7,7 @@ namespace Expo.ModulesCore.Tests.Generated;
 public sealed partial class GeneratedMathModule
 {
   public double? LastNullable { get; private set; }
+  public int? LastNullableInt { get; private set; }
 
   [JS("add")]
   public double Add(double a, double b) => a + b;
@@ -29,6 +30,24 @@ public sealed partial class GeneratedMathModule
 
   [JS]
   public double? ReadNullable() => LastNullable;
+
+  [JS]
+  public int RoundTripInt(int value) => value;
+
+  [JS]
+  public uint RoundTripUInt(uint value) => value;
+
+  [JS]
+  public float RoundTripFloat(float value) => value;
+
+  [JS]
+  public void StoreNullableInt(int? value)
+  {
+    LastNullableInt = value;
+  }
+
+  [JS]
+  public int? ReadNullableInt() => LastNullableInt;
 }
 
 [ExpoModule]

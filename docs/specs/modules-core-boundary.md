@@ -67,6 +67,18 @@ attributes are consumed by the Roslyn generator.
 - **THEN** generated dispatch SHALL pass the C# default value
 - **AND** explicit JavaScript `null` SHALL still pass C# `null`
 
+#### Scenario: Additional numeric primitives use generic number codecs
+- **GIVEN** a generated sync function accepts or returns a supported CLR
+  numeric primitive such as signed integer, unsigned integer, single, or double
+- **WHEN** JavaScript calls the generated function with a JavaScript number
+- **THEN** generated dispatch SHALL decode through a compile-time generic
+  number codec
+- **AND** encoding SHALL return a JavaScript number
+- **AND** nullable numeric primitives SHALL compose through the nullable codec
+  over the generated numeric codec
+- **AND** fractional JavaScript numbers SHALL be accepted by integer parameters
+  according to the managed numeric conversion semantics
+
 ### Requirement: Generated Providers Are Library-Local
 
 The Roslyn generator SHALL emit one deterministic provider for modules in the

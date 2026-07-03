@@ -147,6 +147,53 @@ public sealed class GeneratedAttributeModuleTests
   }
 
   [Fact]
+  public void GeneratedProviderSupportsAdditionalNumberPrimitiveConversions()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var result = fixture.Evaluate(
+          "const math = globalThis._expoDotnet.modules.GeneratedMath; " +
+          "[math.RoundTripInt(41.8), math.RoundTripUInt(42.2), math.RoundTripFloat(42.5)].join(':')",
+          "generated-attribute-number-primitives.js"
+      );
+
+      Assert.Equal(JavaScriptValueKind.String, result.Kind);
+      Assert.Equal("41:42:42.5", result.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void GeneratedProviderComposesNullableAdditionalNumberPrimitiveConversions()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var result = fixture.Evaluate(
+          "const math = globalThis._expoDotnet.modules.GeneratedMath; " +
+          "math.StoreNullableInt(41.8); const value = math.ReadNullableInt(); " +
+          "math.StoreNullableInt(null); `${value}:${math.ReadNullableInt() === null}`",
+          "generated-attribute-nullable-number-primitive.js"
+      );
+
+      Assert.Equal(JavaScriptValueKind.String, result.Kind);
+      Assert.Equal("41:true", result.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
   public void GeneratedProviderPreservesStrings()
   {
     using var fixture = HermesRuntimeFixture.Create();

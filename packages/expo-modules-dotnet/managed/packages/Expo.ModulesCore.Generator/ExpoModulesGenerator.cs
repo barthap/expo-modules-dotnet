@@ -442,8 +442,17 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     return typeSymbol.SpecialType switch
     {
       SpecialType.System_Boolean => "BoolCodec",
-      SpecialType.System_Double => "DoubleCodec",
       SpecialType.System_String => "StringCodec",
+      SpecialType.System_SByte or
+      SpecialType.System_Byte or
+      SpecialType.System_Int16 or
+      SpecialType.System_UInt16 or
+      SpecialType.System_Int32 or
+      SpecialType.System_UInt32 or
+      SpecialType.System_Int64 or
+      SpecialType.System_UInt64 or
+      SpecialType.System_Single or
+      SpecialType.System_Double => GetNumberCodecExpression(typeSymbol),
       _ => TryGetReadOnlyListCodec(typeSymbol),
     };
   }
@@ -464,13 +473,25 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     return typeSymbol.SpecialType switch
     {
       SpecialType.System_Boolean => (bool)value ? "true" : "false",
-      SpecialType.System_Double => ((double)value).ToString("R", CultureInfo.InvariantCulture),
       SpecialType.System_String => $"\"{EscapeString((string)value)}\"",
+      SpecialType.System_SByte => ((sbyte)value).ToString(CultureInfo.InvariantCulture),
+      SpecialType.System_Byte => ((byte)value).ToString(CultureInfo.InvariantCulture),
+      SpecialType.System_Int16 => ((short)value).ToString(CultureInfo.InvariantCulture),
+      SpecialType.System_UInt16 => ((ushort)value).ToString(CultureInfo.InvariantCulture),
+      SpecialType.System_Int32 => ((int)value).ToString(CultureInfo.InvariantCulture),
+      SpecialType.System_UInt32 => ((uint)value).ToString(CultureInfo.InvariantCulture),
+      SpecialType.System_Int64 => ((long)value).ToString(CultureInfo.InvariantCulture) + "L",
+      SpecialType.System_UInt64 => ((ulong)value).ToString(CultureInfo.InvariantCulture) + "UL",
+      SpecialType.System_Single => ((float)value).ToString("R", CultureInfo.InvariantCulture) + "F",
+      SpecialType.System_Double => ((double)value).ToString("R", CultureInfo.InvariantCulture),
       _ => throw new InvalidOperationException(
           $"Unsupported default value type: {typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}"
       ),
     };
   }
+
+  private static string GetNumberCodecExpression(ITypeSymbol typeSymbol) =>
+      $"NumberCodec<{typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>";
 
   private static string GetDiagnosticTypeName(ITypeSymbol typeSymbol)
   {
