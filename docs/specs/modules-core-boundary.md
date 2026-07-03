@@ -79,6 +79,21 @@ attributes are consumed by the Roslyn generator.
 - **AND** fractional JavaScript numbers SHALL be accepted by integer parameters
   according to the managed numeric conversion semantics
 
+#### Scenario: String-backed convertible primitives parse and format strings
+- **GIVEN** a generated sync function accepts or returns `Guid`, `Uri`,
+  `DateTimeOffset`, or `TimeSpan`
+- **WHEN** JavaScript calls the generated function with a string value
+- **THEN** generated dispatch SHALL decode through a compile-time codec for that
+  CLR type
+- **AND** return values SHALL encode back to JavaScript strings
+
+#### Scenario: Invalid convertible input fails through the host function boundary
+- **GIVEN** a generated sync function expects a string-backed convertible type
+- **WHEN** JavaScript passes a string that the codec cannot parse for that type
+- **THEN** the codec SHALL throw a managed conversion exception
+- **AND** the host-function boundary SHALL expose it to JavaScript as a
+  catchable `Error`
+
 ### Requirement: Generated Providers Are Library-Local
 
 The Roslyn generator SHALL emit one deterministic provider for modules in the

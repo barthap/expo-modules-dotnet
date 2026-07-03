@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -55,6 +56,18 @@ public sealed partial class GeneratedTextModule
 {
   [JS("greet")]
   public string Greet(string name) => $"Hello, {name}";
+
+  [JS]
+  public Guid RoundTripGuid(Guid value) => value;
+
+  [JS]
+  public Uri RoundTripUri(Uri value) => value;
+
+  [JS]
+  public DateTimeOffset RoundTripDateTimeOffset(DateTimeOffset value) => value;
+
+  [JS]
+  public TimeSpan RoundTripTimeSpan(TimeSpan value) => value;
 }
 
 [ExpoModule("GeneratedArray")]

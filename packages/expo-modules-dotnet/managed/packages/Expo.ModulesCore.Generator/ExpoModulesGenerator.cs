@@ -439,6 +439,11 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       return nullableCodec;
     }
 
+    if (TryGetConvertibleCodec(typeSymbol) is { } convertibleCodec)
+    {
+      return convertibleCodec;
+    }
+
     return typeSymbol.SpecialType switch
     {
       SpecialType.System_Boolean => "BoolCodec",
@@ -492,6 +497,18 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 
   private static string GetNumberCodecExpression(ITypeSymbol typeSymbol) =>
       $"NumberCodec<{typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>";
+
+  private static string? TryGetConvertibleCodec(ITypeSymbol typeSymbol)
+  {
+    return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) switch
+    {
+      "global::System.Guid" => "GuidCodec",
+      "global::System.Uri" => "UriCodec",
+      "global::System.DateTimeOffset" => "DateTimeOffsetCodec",
+      "global::System.TimeSpan" => "TimeSpanCodec",
+      _ => null,
+    };
+  }
 
   private static string GetDiagnosticTypeName(ITypeSymbol typeSymbol)
   {

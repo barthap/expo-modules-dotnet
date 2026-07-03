@@ -216,6 +216,61 @@ public sealed class GeneratedAttributeModuleTests
   }
 
   [Fact]
+  public void GeneratedProviderSupportsStringBackedConvertiblePrimitives()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var result = fixture.Evaluate(
+          "const text = globalThis._expoDotnet.modules.GeneratedText; " +
+          "const guid = text.RoundTripGuid('46b59d07-31d0-4e6e-90fd-0f2979f2f5e7'); " +
+          "const uri = text.RoundTripUri('https://example.com/path?x=1'); " +
+          "const instant = text.RoundTripDateTimeOffset('2026-07-03T12:34:56.7890000+02:00'); " +
+          "const span = text.RoundTripTimeSpan('01:02:03'); " +
+          "[guid, uri, instant, span].join('|')",
+          "generated-attribute-convertibles.js"
+      );
+
+      Assert.Equal(JavaScriptValueKind.String, result.Kind);
+      Assert.Equal(
+          "46b59d07-31d0-4e6e-90fd-0f2979f2f5e7|https://example.com/path?x=1|2026-07-03T12:34:56.7890000+02:00|01:02:03",
+          result.AsString()
+      );
+      return true;
+    });
+  }
+
+  [Fact]
+  public void GeneratedProviderReportsInvalidConvertiblePrimitiveAsJavaScriptError()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var result = fixture.Evaluate(
+          "try { " +
+          "  globalThis._expoDotnet.modules.GeneratedText.RoundTripUri('not a url'); " +
+          "  'no error'; " +
+          "} catch (e) { e.message; }",
+          "generated-attribute-invalid-convertible.js"
+      );
+
+      Assert.Equal(JavaScriptValueKind.String, result.Kind);
+      Assert.Contains("uri", result.AsString(), StringComparison.OrdinalIgnoreCase);
+      return true;
+    });
+  }
+
+  [Fact]
   public void GeneratedProviderSupportsReadOnlyListConversions()
   {
     using var fixture = HermesRuntimeFixture.Create();
