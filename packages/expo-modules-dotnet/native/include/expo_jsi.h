@@ -105,6 +105,10 @@ typedef expo_jsi_value_result (*expo_jsi_create_number_fn)(expo_jsi_runtime_hand
 typedef expo_jsi_value_result (*expo_jsi_create_bool_fn)(expo_jsi_runtime_handle runtime,
                                                          uint8_t value);
 
+typedef expo_jsi_value_result (*expo_jsi_create_primitive_value_fn)(expo_jsi_runtime_handle runtime,
+                                                                    expo_jsi_value_kind kind,
+                                                                    uint64_t value);
+
 typedef expo_jsi_value_result (*expo_jsi_create_string_fn)(expo_jsi_runtime_handle runtime,
                                                            const uint8_t *data,
                                                            int32_t length);
@@ -263,6 +267,7 @@ typedef struct expo_jsi_api {
   expo_jsi_is_promise_fn is_promise;
   expo_jsi_is_error_fn is_error;
   expo_jsi_coerce_to_string_fn coerce_to_string;
+  expo_jsi_create_primitive_value_fn create_primitive_value;
 } expo_jsi_api;
 
 #ifdef __cplusplus

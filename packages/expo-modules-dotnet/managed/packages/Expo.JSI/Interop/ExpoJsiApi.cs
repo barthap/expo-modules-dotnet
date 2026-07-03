@@ -223,6 +223,12 @@ internal readonly unsafe struct ExpoJsiApi
     ExpoJsiValueHandle,
     ExpoJsiStringResult> CoerceToString;
 
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueKind,
+    ulong,
+    ExpoJsiValueResult> CreatePrimitiveValue;
+
   private static readonly UTF8Encoding StrictUtf8 = new(
     encoderShouldEmitUTF8Identifier: false,
     throwOnInvalidBytes: true
@@ -276,6 +282,7 @@ internal readonly unsafe struct ExpoJsiApi
       || this.IsPromise is null
       || this.IsError is null
       || this.CoerceToString is null
+      || this.CreatePrimitiveValue is null
     )
     {
       throw new InvalidOperationException("Expo JSI API table is missing required functions.");
@@ -295,6 +302,16 @@ internal readonly unsafe struct ExpoJsiApi
   public ExpoJsiValueResult CreateBoolValue(ExpoJsiRuntimeHandle runtimeHandle, bool value)
   {
     return CreateBool(runtimeHandle, value ? (byte)1 : (byte)0);
+  }
+
+  public ExpoJsiValueResult CreateUndefinedValue(ExpoJsiRuntimeHandle runtimeHandle)
+  {
+    return CreatePrimitiveValue(runtimeHandle, ExpoJsiValueKind.Undefined, 0);
+  }
+
+  public ExpoJsiValueResult CreateNullValue(ExpoJsiRuntimeHandle runtimeHandle)
+  {
+    return CreatePrimitiveValue(runtimeHandle, ExpoJsiValueKind.Null, 0);
   }
 
   public ExpoJsiValueResult CreateStringValue(ExpoJsiRuntimeHandle runtimeHandle, string value)
@@ -627,5 +644,5 @@ internal readonly unsafe struct ExpoJsiApi
   }
 
   public static uint ExpectedSize => (uint)sizeof(ExpoJsiApi);
-  public const uint ExpectedVersion = 12;
+  public const uint ExpectedVersion = 13;
 }

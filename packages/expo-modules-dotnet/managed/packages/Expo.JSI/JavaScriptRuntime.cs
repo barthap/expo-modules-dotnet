@@ -138,6 +138,38 @@ public sealed unsafe class JavaScriptRuntime
   }
 
   /// <summary>
+  /// Creates an owned JavaScript undefined value.
+  /// </summary>
+  /// <remarks>
+  /// The returned <see cref="JavaScriptValue" /> must be disposed by the caller.
+  /// </remarks>
+  public JavaScriptValue CreateUndefined()
+  {
+    var result = context.Api->CreateUndefinedValue(context.RuntimeHandle);
+    if (!result.IsOk)
+    {
+      JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript undefined.");
+    }
+    return JavaScriptValue.FromOwnedHandle(context, result.Value);
+  }
+
+  /// <summary>
+  /// Creates an owned JavaScript null value.
+  /// </summary>
+  /// <remarks>
+  /// The returned <see cref="JavaScriptValue" /> must be disposed by the caller.
+  /// </remarks>
+  public JavaScriptValue CreateNull()
+  {
+    var result = context.Api->CreateNullValue(context.RuntimeHandle);
+    if (!result.IsOk)
+    {
+      JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript null.");
+    }
+    return JavaScriptValue.FromOwnedHandle(context, result.Value);
+  }
+
+  /// <summary>
   /// Creates an owned JavaScript string value.
   /// </summary>
   /// <remarks>

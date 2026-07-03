@@ -47,6 +47,34 @@ public sealed class JavaScriptPrimitiveTests
     });
   }
 
+  [Fact]
+  public void CreateUndefinedRoundTrips()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var value = runtime.CreateUndefined();
+      Assert.Equal(JavaScriptValueKind.Undefined, value.Kind);
+      Assert.True(value.IsNullish);
+      return true;
+    });
+  }
+
+  [Fact]
+  public void CreateNullRoundTrips()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var value = runtime.CreateNull();
+      Assert.Equal(JavaScriptValueKind.Null, value.Kind);
+      Assert.True(value.IsNullish);
+      return true;
+    });
+  }
+
   [Theory]
   [InlineData("hello")]
   [InlineData("Zoë")]

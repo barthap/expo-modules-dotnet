@@ -181,7 +181,7 @@ namespace {
 
 namespace jsi = facebook::jsi;
 
-constexpr uint32_t kApiVersion = 12;
+constexpr uint32_t kApiVersion = 13;
 thread_local std::string lastErrorMessage;
 
 struct StringResultBuffer {
@@ -487,6 +487,32 @@ expo_jsi_value_result createBool(expo_jsi_runtime_handle runtime, uint8_t value)
     return makeErrorResult(12, ex.what());
   } catch (...) {
     return makeErrorResult(13, "Unknown native exception while creating boolean.");
+  }
+}
+
+expo_jsi_value_result createPrimitiveValue(expo_jsi_runtime_handle runtime,
+                                           expo_jsi_value_kind kind,
+                                           uint64_t value)
+{
+  (void)value;
+  expo_jsi_error error{};
+  if (tryRuntimeHandle(runtime, &error) == nullptr) {
+    return expo_jsi_value_result{0, nullptr, error};
+  }
+
+  try {
+    switch (kind) {
+    case EXPO_JSI_VALUE_UNDEFINED:
+      return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value::undefined()));
+    case EXPO_JSI_VALUE_NULL:
+      return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value::null()));
+    default:
+      return makeErrorResult(116, "Unsupported primitive value kind.");
+    }
+  } catch (const std::exception &ex) {
+    return makeErrorResult(117, ex.what());
+  } catch (...) {
+    return makeErrorResult(118, "Unknown native exception while creating primitive value.");
   }
 }
 
@@ -1443,6 +1469,7 @@ const expo_jsi_api kApi{
   isPromise,
   isError,
   coerceToString,
+  createPrimitiveValue,
 };
 
 } // namespace
