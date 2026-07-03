@@ -100,3 +100,23 @@ internal readonly unsafe struct ExpoJsiStringResult
 
   public bool IsOk => Ok != 0;
 }
+
+[StructLayout(LayoutKind.Sequential)]
+internal readonly unsafe struct ExpoJsiPropertyName
+{
+  public readonly byte* Data;
+  public readonly int Length;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal readonly unsafe struct ExpoJsiPropertyNamesResult
+{
+  public readonly int Ok;
+  public readonly ExpoJsiPropertyName* Names;
+  public readonly int Count;
+  public readonly nint ReleaseContext;
+  public readonly delegate* unmanaged[Cdecl]<nint, void> Release;
+  public readonly ExpoJsiError Error;
+
+  public bool IsOk => Ok != 0;
+}

@@ -43,6 +43,38 @@ internal readonly unsafe struct JavaScriptObjectInner
     return result.Value;
   }
 
+  public IReadOnlyList<string> GetOwnPropertyNames()
+  {
+    var result = Context.Api->GetObjectOwnPropertyNames(Context.RuntimeHandle, Handle);
+    try
+    {
+      if (!result.IsOk)
+      {
+        JsiContext.ThrowNativeError(
+            result.Error,
+            "Failed to get JavaScript object property names."
+        );
+      }
+
+      var names = new string[result.Count];
+      for (var index = 0; index < result.Count; index++)
+      {
+        names[index] = Encoding.UTF8.GetString(
+            new ReadOnlySpan<byte>(result.Names[index].Data, result.Names[index].Length)
+        );
+      }
+
+      return names;
+    }
+    finally
+    {
+      if (result.ReleaseContext != 0 && result.Release is not null)
+      {
+        result.Release(result.ReleaseContext);
+      }
+    }
+  }
+
   public ExpoJsiValueHandle AsValue()
   {
     var result = Context.Api->RetainValueAs(

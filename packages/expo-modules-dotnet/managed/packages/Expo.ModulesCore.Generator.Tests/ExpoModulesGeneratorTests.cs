@@ -284,4 +284,213 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Contains("Math", diagnostic.GetMessage());
     Assert.DoesNotContain("ModuleRegistry.DefineModule(context.Runtime, modules, \"Math\")", string.Join("\n", result.GeneratedSources.Select(source => source.Text)));
   }
+
+  [Fact]
+  public void GeneratorEmitsEnumAndDictionaryCodecs()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System.Collections.Generic;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public enum Mode
+        {
+          Slow,
+          Fast,
+        }
+
+        [ExpoModule("Codec")]
+        public sealed partial class CodecModule
+        {
+          [JS]
+          public Mode RoundTripMode(Mode mode) => mode;
+
+          [JS]
+          public double Total(Dictionary<string, double> values) => 0.0;
+
+          [JS]
+          public IReadOnlyDictionary<string, string> Labels() => new Dictionary<string, string>();
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains("StringEnumCodec<global::Expo.TestModules.Mode>.Decode(arguments.GetValue(0), runtime)", source);
+    Assert.Contains("StringEnumCodec<global::Expo.TestModules.Mode>.Encode(module.RoundTripMode(mode), runtime)", source);
+    Assert.Contains("JavaScriptDictionaryCodec<double, NumberCodec<double>>.DecodeToDictionary(arguments.GetValue(0), runtime)", source);
+    Assert.Contains("JavaScriptDictionaryCodec<string, StringCodec>.Encode(module.Labels(), runtime)", source);
+  }
+
+  [Fact]
+  public void GeneratorReportsUnsupportedDictionaryKeyType()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System.Collections.Generic;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Bad")]
+        public sealed partial class BadModule
+        {
+          [JS]
+          public double Bad(Dictionary<int, double> values) => 0.0;
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI001");
+    Assert.Contains("values", diagnostic.GetMessage());
+    Assert.Contains("Dictionary", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorUsesExplicitNumberEnumRepresentation()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public enum ParameterMode
+        {
+          Slow,
+          Fast,
+        }
+
+        [JSEnum(EnumRepresentation.Number)]
+        public enum TypeMode
+        {
+          Disabled,
+          Enabled,
+        }
+
+        [ExpoModule("Enums")]
+        public sealed partial class EnumsModule
+        {
+          [JS]
+          [return: JSEnum(EnumRepresentation.Number)]
+          public ParameterMode RoundTrip(
+              [JSEnum(EnumRepresentation.Number)] ParameterMode mode) => mode;
+
+          [JS]
+          public TypeMode RoundTripTypeMode(TypeMode mode) => mode;
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains("NumberEnumCodec<global::Expo.TestModules.ParameterMode>.Decode(arguments.GetValue(0), runtime)", source);
+    Assert.Contains("NumberEnumCodec<global::Expo.TestModules.ParameterMode>.Encode(module.RoundTrip(mode), runtime)", source);
+    Assert.Contains("NumberEnumCodec<global::Expo.TestModules.TypeMode>.Decode(arguments.GetValue(0), runtime)", source);
+    Assert.Contains("NumberEnumCodec<global::Expo.TestModules.TypeMode>.Encode(module.RoundTripTypeMode(mode), runtime)", source);
+  }
+
+  [Fact]
+  public void GeneratorEmitsSimpleRecordCodecs()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public record User(string Name, int Age);
+        public record class UserClass(string Name, int Age);
+        public readonly record struct UserStruct(string Name, int Age);
+
+        [ExpoModule("Records")]
+        public sealed partial class RecordsModule
+        {
+          [JS]
+          public User RoundTripUser(User user) => user;
+
+          [JS]
+          public UserClass RoundTripUserClass(UserClass user) => user;
+
+          [JS]
+          public UserStruct RoundTripUserStruct(UserStruct user) => user;
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains("private readonly struct UserCodec : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.User>", source);
+    Assert.Contains("private readonly struct UserClassCodec : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.UserClass>", source);
+    Assert.Contains("private readonly struct UserStructCodec : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.UserStruct>", source);
+    Assert.Contains("return new global::Expo.TestModules.User(name, age);", source);
+    Assert.Contains("return new global::Expo.TestModules.UserClass(name, age);", source);
+    Assert.Contains("return new global::Expo.TestModules.UserStruct(name, age);", source);
+  }
+
+  [Fact]
+  public void GeneratorEmitsNestedSimpleRecordCodecs()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public enum Status
+        {
+          Draft,
+          Published,
+        }
+
+        public record Address(string City);
+        public record User(string Name, Address Address, Status Status);
+
+        [ExpoModule("NestedRecords")]
+        public sealed partial class NestedRecordsModule
+        {
+          [JS]
+          public User Move(User user) => user;
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains("private readonly struct AddressCodec : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.Address>", source);
+    Assert.Contains("private readonly struct UserCodec : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.User>", source);
+    Assert.Contains("var address = AddressCodec.Decode(obj.GetProperty(\"Address\"), runtime);", source);
+    Assert.Contains("var status = StringEnumCodec<global::Expo.TestModules.Status>.Decode(obj.GetProperty(\"Status\"), runtime);", source);
+    Assert.Contains("using var address = AddressCodec.Encode(value.Address, runtime);", source);
+    Assert.Contains("using var status = StringEnumCodec<global::Expo.TestModules.Status>.Encode(value.Status, runtime);", source);
+    Assert.Contains("return new global::Expo.TestModules.User(name, address, status);", source);
+  }
+
+  [Fact]
+  public void GeneratorReportsUnsupportedRecordFieldType()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public record Bad(decimal Value);
+
+        [ExpoModule("BadRecords")]
+        public sealed partial class BadRecordsModule
+        {
+          [JS]
+          public Bad RoundTrip(Bad value) => value;
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI007");
+    Assert.Contains("Bad", diagnostic.GetMessage());
+    Assert.Contains("Value", diagnostic.GetMessage());
+    Assert.Contains("System.Decimal", diagnostic.GetMessage());
+  }
 }

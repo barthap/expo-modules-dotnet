@@ -79,3 +79,41 @@ public sealed partial class GeneratedArrayModule
   [JS("labels")]
   public IReadOnlyList<string> Labels() => ["one", "two"];
 }
+
+public record CodecUser(string Name, int Age);
+
+public record class CodecUserClass(string Name, int Age);
+
+public readonly record struct CodecUserStruct(string Name, int Age);
+
+public record CodecAddress(string City);
+
+public enum CodecRecordStatus
+{
+  Draft,
+  Published,
+}
+
+public record CodecUserWithAddress(string Name, CodecAddress Address, CodecRecordStatus Status);
+
+[ExpoModule("GeneratedRecords")]
+public sealed partial class GeneratedRecordsModule
+{
+  [JS("rename")]
+  public CodecUser Rename(CodecUser user) => user with { Name = user.Name + "!" };
+
+  [JS("renameClass")]
+  public CodecUserClass RenameClass(CodecUserClass user) => user with { Name = user.Name + "!" };
+
+  [JS("renameStruct")]
+  public CodecUserStruct RenameStruct(CodecUserStruct user) =>
+      user with { Name = user.Name + "!" };
+
+  [JS("moveNested")]
+  public CodecUserWithAddress MoveNested(CodecUserWithAddress user) =>
+      user with
+      {
+        Address = user.Address with { City = user.Address.City + "!" },
+        Status = CodecRecordStatus.Published,
+      };
+}

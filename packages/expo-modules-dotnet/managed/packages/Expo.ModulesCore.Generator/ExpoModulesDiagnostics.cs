@@ -57,4 +57,13 @@ internal static class ExpoModulesDiagnostics
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true
   );
+
+  public static readonly DiagnosticDescriptor UnsupportedRecordField = new(
+      id: "EXPOJSI007",
+      title: "Unsupported Expo record field",
+      messageFormat: "Record '{0}' field '{1}' uses unsupported type '{2}'",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
 }

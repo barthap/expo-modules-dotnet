@@ -53,6 +53,11 @@ public sealed class JavaScriptObject : IJavaScriptValueRepresentable, IDisposabl
     JavaScriptValue.FromOwnedHandle(context, Inner.GetProperty(name));
 
   /// <summary>
+  /// Gets this object's own property names as managed strings.
+  /// </summary>
+  public IReadOnlyList<string> GetOwnPropertyNames() => Inner.GetOwnPropertyNames();
+
+  /// <summary>
   /// Clones this object as an owned JavaScript value handle.
   /// </summary>
   /// <remarks>

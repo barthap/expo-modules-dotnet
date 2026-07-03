@@ -8,6 +8,7 @@ internal sealed record ExpoModuleModel(
     Location? Location,
     bool CanConstruct,
     EquatableArray<ExpoFunctionModel> Functions,
+    EquatableArray<ExpoGeneratedRecordCodecModel> RecordCodecs,
     EquatableArray<ExpoDiagnosticModel> Diagnostics);
 
 internal sealed record ExpoFunctionModel(
@@ -30,6 +31,19 @@ internal sealed record ExpoDiagnosticModel(
     string DescriptorId,
     Location? Location,
     EquatableArray<string> Arguments);
+
+internal sealed record ExpoGeneratedRecordCodecModel(
+    string CodecTypeName,
+    string RecordTypeName,
+    EquatableArray<ExpoGeneratedRecordFieldModel> Fields,
+    Location? Location);
+
+internal sealed record ExpoGeneratedRecordFieldModel(
+    string ParameterName,
+    string PropertyName,
+    string TypeName,
+    string CodecExpression,
+    Location? Location);
 
 internal readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>
     where T : IEquatable<T>

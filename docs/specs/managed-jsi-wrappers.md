@@ -37,6 +37,14 @@ functions, promises, promise values, and error objects.
 - **THEN** the wrapper SHALL call the object property ABI functions using UTF-8
   property names
 
+#### Scenario: Object wrapper enumerates own property names
+- **GIVEN** a `JavaScriptObject`
+- **WHEN** managed code asks for own property names
+- **THEN** the wrapper SHALL call the object property-name ABI using opaque
+  handles
+- **AND** return managed strings that remain valid after the native call
+- **AND** inherited prototype properties SHALL NOT be returned
+
 #### Scenario: Array wrapper accesses indexes
 - **GIVEN** a `JavaScriptArray`
 - **WHEN** managed code reads length, gets a value, or sets a value at an index

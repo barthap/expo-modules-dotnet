@@ -41,6 +41,11 @@ public readonly ref struct JavaScriptObjectRef
   }
 
   /// <summary>
+  /// Gets this object's own property names as managed strings.
+  /// </summary>
+  public IReadOnlyList<string> GetOwnPropertyNames() => Inner.GetOwnPropertyNames();
+
+  /// <summary>
   /// Retains this object ref as an owned JavaScript object wrapper.
   /// </summary>
   /// <remarks>

@@ -64,6 +64,49 @@ public sealed class JavaScriptObjectTests
   }
 
   [Fact]
+  public void GetOwnPropertyNamesReturnsOwnEnumerableAndNonEnumerableNames()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(_ =>
+    {
+      using var value = fixture.Evaluate(
+          "(() => { const obj = { alpha: 1, zażółć: 2 }; Object.defineProperty(obj, 'hidden', { value: 3, enumerable: false }); return obj; })()",
+          "object-property-names.js"
+      );
+      using var target = value.AsObject();
+
+      var names = target.GetOwnPropertyNames();
+
+      Assert.Contains("alpha", names);
+      Assert.Contains("zażółć", names);
+      Assert.Contains("hidden", names);
+      return true;
+    });
+  }
+
+  [Fact]
+  public void GetOwnPropertyNamesExcludesPrototypeProperties()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(_ =>
+    {
+      using var value = fixture.Evaluate(
+          "(() => { const proto = { inherited: 1 }; const obj = Object.create(proto); obj.own = 2; return obj; })()",
+          "own-property-names.js"
+      );
+      using var target = value.AsObject();
+
+      var names = target.GetOwnPropertyNames();
+
+      Assert.Contains("own", names);
+      Assert.DoesNotContain("inherited", names);
+      return true;
+    });
+  }
+
+  [Fact]
   public void JavaScriptValueAsObjectRetainsAfterValidation()
   {
     using var fixture = HermesRuntimeFixture.Create();

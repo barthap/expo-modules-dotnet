@@ -10,6 +10,7 @@ namespace Expo.ModulesCore.Generator;
 public sealed class ExpoModulesGenerator : IIncrementalGenerator
 {
   private const string ExpoModuleAttributeMetadataName = "Expo.ModulesCore.ExpoModuleAttribute";
+  private const string JSEnumAttributeMetadataName = "Expo.ModulesCore.JSEnumAttribute";
   private const string JSAttributeMetadataName = "Expo.ModulesCore.JSAttribute";
 
   public void Initialize(IncrementalGeneratorInitializationContext context)
@@ -72,7 +73,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       ));
     }
 
-    var functions = GetFunctions(typeSymbol, diagnostics);
+    var recordCodecs = new List<ExpoGeneratedRecordCodecModel>();
+    var functions = GetFunctions(typeSymbol, diagnostics, recordCodecs);
 
     return new ExpoModuleModel(
         typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
@@ -80,6 +82,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         typeSymbol.Locations.FirstOrDefault(),
         canConstruct,
         new EquatableArray<ExpoFunctionModel>(functions),
+        new EquatableArray<ExpoGeneratedRecordCodecModel>(recordCodecs),
         new EquatableArray<ExpoDiagnosticModel>(diagnostics)
     );
   }
@@ -95,7 +98,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 
   private static IEnumerable<ExpoFunctionModel> GetFunctions(
       INamedTypeSymbol typeSymbol,
-      List<ExpoDiagnosticModel> diagnostics)
+      List<ExpoDiagnosticModel> diagnostics,
+      List<ExpoGeneratedRecordCodecModel> recordCodecs)
   {
     var functions = new List<ExpoFunctionModel>();
 
@@ -152,8 +156,16 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         javaScriptName = explicitName;
       }
 
+      // Validate the generated return path before collecting parameters.
       var returnsVoid = member.ReturnsVoid || member.ReturnType.SpecialType == SpecialType.System_Void;
-      var returnCodec = returnsVoid ? string.Empty : GetCodecExpression(member.ReturnType);
+      var returnCodec = returnsVoid
+          ? string.Empty
+          : GetCodecExpression(
+              member.ReturnType,
+              diagnostics,
+              recordCodecs,
+              member.GetReturnTypeAttributes()
+          );
       if (!returnsVoid && returnCodec is null)
       {
         diagnostics.Add(new ExpoDiagnosticModel(
@@ -170,10 +182,16 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         continue;
       }
 
+      // Validate each generated argument path and preserve authored defaults.
       var parameters = new List<ExpoParameterModel>();
       foreach (var parameter in member.Parameters)
       {
-        var parameterCodec = GetCodecExpression(parameter.Type);
+        var parameterCodec = GetCodecExpression(
+            parameter.Type,
+            diagnostics,
+            recordCodecs,
+            parameter.GetAttributes()
+        );
         if (parameterCodec is null)
         {
           diagnostics.Add(new ExpoDiagnosticModel(
@@ -305,6 +323,11 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine();
     builder.AppendLine($"public static class {providerTypeName}");
     builder.AppendLine("{");
+    foreach (var recordCodec in moduleModels.SelectMany(module => module.RecordCodecs.Values))
+    {
+      EmitRecordCodec(builder, recordCodec);
+    }
+
     builder.AppendLine("  public static void Register(global::Expo.ModulesCore.DotnetRuntimeContext context)");
     builder.AppendLine("  {");
     builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(context);");
@@ -357,6 +380,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       "EXPOJSI004" => ExpoModulesDiagnostics.UnsupportedJSMethodShape,
       "EXPOJSI005" => ExpoModulesDiagnostics.DuplicateJavaScriptFunctionName,
       "EXPOJSI006" => ExpoModulesDiagnostics.DuplicateModuleName,
+      "EXPOJSI007" => ExpoModulesDiagnostics.UnsupportedRecordField,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());
@@ -397,6 +421,45 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine("  }");
   }
 
+  private static void EmitRecordCodec(StringBuilder builder, ExpoGeneratedRecordCodecModel codec)
+  {
+    builder.AppendLine($"  private readonly struct {codec.CodecTypeName} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<{codec.RecordTypeName}>");
+    builder.AppendLine("  {");
+    builder.AppendLine($"    public static {codec.RecordTypeName} Decode(global::Expo.JSI.JavaScriptValueRef value, global::Expo.JSI.JavaScriptRuntime runtime)");
+    builder.AppendLine("    {");
+    builder.AppendLine("      var obj = value.AsObject();");
+    foreach (var field in codec.Fields.Values)
+    {
+      builder.AppendLine($"      var {field.ParameterName} = {field.CodecExpression}.Decode(obj.GetProperty(\"{EscapeString(field.PropertyName)}\"), runtime);");
+    }
+    builder.AppendLine($"      return new {codec.RecordTypeName}({string.Join(", ", codec.Fields.Values.Select(field => field.ParameterName))});");
+    builder.AppendLine("    }");
+    builder.AppendLine();
+    builder.AppendLine($"    public static {codec.RecordTypeName} Decode(global::Expo.JSI.JavaScriptValue value, global::Expo.JSI.JavaScriptRuntime runtime)");
+    builder.AppendLine("    {");
+    builder.AppendLine("      using var obj = value.AsObject();");
+    foreach (var field in codec.Fields.Values)
+    {
+      builder.AppendLine($"      using var {field.ParameterName}Value = obj.GetProperty(\"{EscapeString(field.PropertyName)}\");");
+      builder.AppendLine($"      var {field.ParameterName} = {field.CodecExpression}.Decode({field.ParameterName}Value, runtime);");
+    }
+    builder.AppendLine($"      return new {codec.RecordTypeName}({string.Join(", ", codec.Fields.Values.Select(field => field.ParameterName))});");
+    builder.AppendLine("    }");
+    builder.AppendLine();
+    builder.AppendLine($"    public static global::Expo.JSI.JavaScriptValue Encode({codec.RecordTypeName} value, global::Expo.JSI.JavaScriptRuntime runtime)");
+    builder.AppendLine("    {");
+    builder.AppendLine("      using var obj = runtime.CreateObject();");
+    foreach (var field in codec.Fields.Values)
+    {
+      builder.AppendLine($"      using var {field.ParameterName} = {field.CodecExpression}.Encode(value.{field.PropertyName}, runtime);");
+      builder.AppendLine($"      obj.SetProperty(\"{EscapeString(field.PropertyName)}\", {field.ParameterName});");
+    }
+    builder.AppendLine("      return obj.AsValue();");
+    builder.AppendLine("    }");
+    builder.AppendLine("  }");
+    builder.AppendLine();
+  }
+
   private static string SanitizeIdentifier(string value)
   {
     var builder = new StringBuilder(value.Length);
@@ -426,15 +489,26 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 
   private static string GetDecodeExpression(string codecExpression, int index)
   {
-    var methodName = codecExpression.StartsWith("JavaScriptArrayCodec<", StringComparison.Ordinal)
-        ? "DecodeToArray"
-        : "Decode";
+    var methodName = "Decode";
+    if (codecExpression.StartsWith("JavaScriptArrayCodec<", StringComparison.Ordinal))
+    {
+      methodName = "DecodeToArray";
+    }
+    else if (codecExpression.StartsWith("JavaScriptDictionaryCodec<", StringComparison.Ordinal))
+    {
+      methodName = "DecodeToDictionary";
+    }
+
     return $"{codecExpression}.{methodName}(arguments.GetValue({index}), runtime)";
   }
 
-  private static string? GetCodecExpression(ITypeSymbol typeSymbol)
+  private static string? GetCodecExpression(
+      ITypeSymbol typeSymbol,
+      List<ExpoDiagnosticModel> diagnostics,
+      List<ExpoGeneratedRecordCodecModel> recordCodecs,
+      IEnumerable<AttributeData>? usageAttributes = null)
   {
-    if (TryGetNullableCodec(typeSymbol) is { } nullableCodec)
+    if (TryGetNullableCodec(typeSymbol, diagnostics, recordCodecs) is { } nullableCodec)
     {
       return nullableCodec;
     }
@@ -442,6 +516,18 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     if (TryGetConvertibleCodec(typeSymbol) is { } convertibleCodec)
     {
       return convertibleCodec;
+    }
+    if (typeSymbol.TypeKind == TypeKind.Enum)
+    {
+      // Usage-level enum metadata wins over enum-type metadata; string remains the default.
+      var enumTypeName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+      return UsesNumberEnumRepresentation(typeSymbol, usageAttributes)
+          ? $"NumberEnumCodec<{enumTypeName}>"
+          : $"StringEnumCodec<{enumTypeName}>";
+    }
+    if (typeSymbol is INamedTypeSymbol { IsRecord: true } recordType)
+    {
+      return TryGetRecordCodec(recordType, diagnostics, recordCodecs);
     }
 
     return typeSymbol.SpecialType switch
@@ -458,7 +544,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       SpecialType.System_UInt64 or
       SpecialType.System_Single or
       SpecialType.System_Double => GetNumberCodecExpression(typeSymbol),
-      _ => TryGetReadOnlyListCodec(typeSymbol),
+      _ => TryGetReadOnlyListCodec(typeSymbol, diagnostics, recordCodecs) ??
+          TryGetDictionaryCodec(typeSymbol, diagnostics, recordCodecs),
     };
   }
 
@@ -510,6 +597,36 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     };
   }
 
+  private static bool UsesNumberEnumRepresentation(
+      ITypeSymbol enumType,
+      IEnumerable<AttributeData>? usageAttributes)
+  {
+    return GetEnumRepresentation(usageAttributes) == 1 ||
+        GetEnumRepresentation(enumType.GetAttributes()) == 1;
+  }
+
+  private static int? GetEnumRepresentation(IEnumerable<AttributeData>? attributes)
+  {
+    if (attributes is null)
+    {
+      return null;
+    }
+
+    foreach (var attribute in attributes)
+    {
+      if (attribute.AttributeClass?.ToDisplayString() != JSEnumAttributeMetadataName ||
+          attribute.ConstructorArguments.Length != 1 ||
+          attribute.ConstructorArguments[0].Value is not int representation)
+      {
+        continue;
+      }
+
+      return representation;
+    }
+
+    return null;
+  }
+
   private static string GetDiagnosticTypeName(ITypeSymbol typeSymbol)
   {
     return typeSymbol.SpecialType switch
@@ -522,7 +639,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     };
   }
 
-  private static string? TryGetNullableCodec(ITypeSymbol typeSymbol)
+  private static string? TryGetNullableCodec(
+      ITypeSymbol typeSymbol,
+      List<ExpoDiagnosticModel> diagnostics,
+      List<ExpoGeneratedRecordCodecModel> recordCodecs)
   {
     if (typeSymbol is not INamedTypeSymbol namedType ||
         namedType.ConstructedFrom.SpecialType != SpecialType.System_Nullable_T)
@@ -531,7 +651,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     }
 
     var valueType = namedType.TypeArguments.Single();
-    var valueCodec = GetCodecExpression(valueType);
+    var valueCodec = GetCodecExpression(valueType, diagnostics, recordCodecs);
     if (valueCodec is null)
     {
       return null;
@@ -541,7 +661,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     return $"NullableCodec<{valueTypeName}, {valueCodec}>";
   }
 
-  private static string? TryGetReadOnlyListCodec(ITypeSymbol typeSymbol)
+  private static string? TryGetReadOnlyListCodec(
+      ITypeSymbol typeSymbol,
+      List<ExpoDiagnosticModel> diagnostics,
+      List<ExpoGeneratedRecordCodecModel> recordCodecs)
   {
     if (typeSymbol is not INamedTypeSymbol namedType ||
         namedType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) !=
@@ -551,7 +674,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     }
 
     var elementType = namedType.TypeArguments.Single();
-    var elementCodec = GetCodecExpression(elementType);
+    var elementCodec = GetCodecExpression(elementType, diagnostics, recordCodecs);
     if (elementCodec is null)
     {
       return null;
@@ -560,6 +683,112 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     var elementTypeName = elementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
     return $"JavaScriptArrayCodec<{elementTypeName}, {elementCodec}>";
   }
+
+  private static string? TryGetDictionaryCodec(
+      ITypeSymbol typeSymbol,
+      List<ExpoDiagnosticModel> diagnostics,
+      List<ExpoGeneratedRecordCodecModel> recordCodecs)
+  {
+    if (typeSymbol is not INamedTypeSymbol namedType)
+    {
+      return null;
+    }
+
+    var constructedType = namedType.ConstructedFrom.ToDisplayString(
+        SymbolDisplayFormat.FullyQualifiedFormat
+    );
+    if (constructedType is not "global::System.Collections.Generic.Dictionary<TKey, TValue>" and
+        not "global::System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>")
+    {
+      return null;
+    }
+
+    var keyType = namedType.TypeArguments[0];
+    if (keyType.SpecialType != SpecialType.System_String)
+    {
+      return null;
+    }
+
+    var valueType = namedType.TypeArguments[1];
+    var valueCodec = GetCodecExpression(valueType, diagnostics, recordCodecs);
+    if (valueCodec is null)
+    {
+      return null;
+    }
+
+    var valueTypeName = valueType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    return $"JavaScriptDictionaryCodec<{valueTypeName}, {valueCodec}>";
+  }
+
+  private static string? TryGetRecordCodec(
+      INamedTypeSymbol typeSymbol,
+      List<ExpoDiagnosticModel> diagnostics,
+      List<ExpoGeneratedRecordCodecModel> recordCodecs)
+  {
+    var recordTypeName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    var existing = recordCodecs.FirstOrDefault(codec => codec.RecordTypeName == recordTypeName);
+    if (existing is not null)
+    {
+      return existing.CodecTypeName;
+    }
+
+    var constructor = typeSymbol.InstanceConstructors
+        .Where(item =>
+            item.Parameters.Length > 0 &&
+            item.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal)
+        .OrderByDescending(item => item.Parameters.Length)
+        .FirstOrDefault();
+    if (constructor is null)
+    {
+      return null;
+    }
+
+    var fields = new List<ExpoGeneratedRecordFieldModel>();
+    foreach (var parameter in constructor.Parameters)
+    {
+      var property = typeSymbol
+          .GetMembers()
+          .OfType<IPropertySymbol>()
+          .FirstOrDefault(item => item.Name == parameter.Name);
+      var fieldCodec = GetCodecExpression(parameter.Type, diagnostics, recordCodecs);
+      if (property is null || fieldCodec is null)
+      {
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.UnsupportedRecordField.Id,
+            parameter.Locations.FirstOrDefault(),
+            new EquatableArray<string>(
+                new[]
+                {
+                    typeSymbol.Name,
+                    parameter.Name,
+                    GetDiagnosticTypeName(parameter.Type),
+                }
+            )
+        ));
+        return null;
+      }
+
+      fields.Add(new ExpoGeneratedRecordFieldModel(
+          LowerCamel(parameter.Name),
+          property.Name,
+          parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+          fieldCodec,
+          parameter.Locations.FirstOrDefault()
+      ));
+    }
+
+    var codec = new ExpoGeneratedRecordCodecModel(
+        $"{SanitizeIdentifier(typeSymbol.Name)}Codec",
+        recordTypeName,
+        new EquatableArray<ExpoGeneratedRecordFieldModel>(fields),
+        typeSymbol.Locations.FirstOrDefault()
+    );
+    recordCodecs.Add(codec);
+    return codec.CodecTypeName;
+  }
+
+  private static string LowerCamel(string value) =>
+      value.Length == 0 ? value : char.ToLowerInvariant(value[0]) + value.Substring(1);
 
   private static string EscapeString(string value) =>
       value.Replace("\\", "\\\\").Replace("\"", "\\\"");

@@ -177,7 +177,7 @@ namespace {
 
 namespace jsi = facebook::jsi;
 
-constexpr uint32_t kApiVersion = 13;
+constexpr uint32_t kApiVersion = 14;
 thread_local std::string lastErrorMessage;
 
 struct StringResultBuffer {
@@ -187,6 +187,12 @@ struct StringResultBuffer {
   }
 
   std::string value;
+};
+
+struct PropertyNamesResultBuffer {
+  // Property names point into these owned strings until C# copies them.
+  std::vector<std::string> strings;
+  std::vector<expo_jsi_property_name> names;
 };
 
 expo_jsi_error makeError(int32_t code, const char *message)
@@ -411,6 +417,25 @@ expo_jsi_string_result makeStringResult(std::string value)
 expo_jsi_string_result makeStringErrorResult(int32_t code, const char *message)
 {
   return expo_jsi_string_result{0, nullptr, 0, nullptr, nullptr, makeError(code, message)};
+}
+
+expo_jsi_property_names_result makePropertyNamesResult(
+  std::unique_ptr<PropertyNamesResultBuffer> buffer)
+{
+  auto *releaseContext = buffer.release();
+  return expo_jsi_property_names_result{
+    1,
+    releaseContext->names.data(),
+    static_cast<int32_t>(releaseContext->names.size()),
+    releaseContext,
+    [](void *release_context) { delete static_cast<PropertyNamesResultBuffer *>(release_context); },
+    makeOk(),
+  };
+}
+
+expo_jsi_property_names_result makePropertyNamesErrorResult(int32_t code, const char *message)
+{
+  return expo_jsi_property_names_result{0, nullptr, 0, nullptr, nullptr, makeError(code, message)};
 }
 
 jsi::Object checkedObject(jsi::Runtime &runtime, expo_jsi_value_handle value)
@@ -1151,6 +1176,51 @@ expo_jsi_value_result objectGetProperty(expo_jsi_runtime_handle runtime,
   }
 }
 
+expo_jsi_property_names_result objectGetOwnPropertyNames(expo_jsi_runtime_handle runtime,
+                                                         expo_jsi_value_handle object)
+{
+  auto *runtimeHandle = tryRuntimeHandle(runtime, nullptr);
+  if (runtimeHandle == nullptr) {
+    return makePropertyNamesErrorResult(97, "Runtime handle is invalid.");
+  }
+  if (object == nullptr) {
+    return makePropertyNamesErrorResult(98, "Value handle is null.");
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto jsObject = checkedObject(jsRuntime, object);
+    auto objectConstructor = jsRuntime.global().getPropertyAsObject(jsRuntime, "Object");
+    auto getOwnPropertyNames =
+      objectConstructor.getPropertyAsFunction(jsRuntime, "getOwnPropertyNames");
+    auto propertyNamesValue = getOwnPropertyNames.call(jsRuntime, jsi::Value(jsRuntime, jsObject));
+    auto propertyNames = propertyNamesValue.asObject(jsRuntime).asArray(jsRuntime);
+    auto length = propertyNames.size(jsRuntime);
+    auto buffer = std::make_unique<PropertyNamesResultBuffer>();
+    buffer->strings.reserve(length);
+    buffer->names.reserve(length);
+
+    for (size_t index = 0; index < length; index++) {
+      auto nameValue = propertyNames.getValueAtIndex(jsRuntime, index);
+      buffer->strings.push_back(nameValue.asString(jsRuntime).utf8(jsRuntime));
+    }
+
+    for (const auto &name : buffer->strings) {
+      buffer->names.push_back(expo_jsi_property_name{
+        reinterpret_cast<const uint8_t *>(name.data()),
+        static_cast<int32_t>(name.size()),
+      });
+    }
+
+    return makePropertyNamesResult(std::move(buffer));
+  } catch (const std::exception &ex) {
+    return makePropertyNamesErrorResult(99, ex.what());
+  } catch (...) {
+    return makePropertyNamesErrorResult(
+      100, "Unknown native exception while getting object property names.");
+  }
+}
+
 class HostFunctionContext final {
 public:
   HostFunctionContext(expo_jsi_host_function_callback_fn callback,
@@ -1456,6 +1526,7 @@ const expo_jsi_api kApi{
   promiseSettle,
   objectSetProperty,
   objectGetProperty,
+  objectGetOwnPropertyNames,
   createHostFunction,
   getArgumentsCount,
   getArgumentValue,

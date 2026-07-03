@@ -80,11 +80,10 @@ Completed scope:
    - Strengthen diagnostics, generated source inspection, and provider shape
      stability for synchronous `[JS]` functions.
 
-2. **Minimal codec expansion** (partial)
+2. **Minimal codec expansion** (complete)
    - Complete: null / undefined / void return semantics, nullable value types,
-     and generic numeric primitive codecs for signed integers, unsigned
-     integers, `float`, and `double`.
-   - Remaining: enums, simple records, and `Dictionary<string, T>`.
+     generic numeric primitive codecs, enums, simple records, and
+     `Dictionary<string, T>` / `IReadOnlyDictionary<string, T>`.
    - Keep ArrayBuffer, SharedObject, and NativeState out of this slice.
 
 3. **Module package metadata**
@@ -154,8 +153,6 @@ managed wrapper surface.
   SharedObject, lazy module initialization, and dynamic property access.
 - **P2/P3 — NativeState**: Attach native data to JS objects — needed for
   SharedObject and SharedRef patterns.
-- **P1/P2 — Property enumeration**: `getPropertyNames` /
-  `getOwnPropertyNames` — needed for record conversion and object iteration.
 - **P2 — Events / EventEmitter**: Module-to-JS event emission — needed by nearly
   every interactive module, but lower priority than generated async methods.
 - **P2/P3 — `instanceof` checks**: Generalized beyond current Promise/Error —
@@ -169,19 +166,14 @@ ABI support.
 
 - **P1 — `int` / integer types** (complete): Signed and unsigned integer
   primitives are supported through the generic number codec.
-- **P1 — `Dictionary<string, T>`**: Object-to-dictionary conversion for
-  record-like parameters.
-- **P1 — Record types**: Structured C# types mapped to/from JS objects via
-  generated property-level codecs.
 - **P1 — Nullable types** (complete for value primitives): `T?` support exists
   for optional parameters and return values over supported value codecs.
 - **P2/P3 — `byte[]` / `ReadOnlyMemory<byte>`**: Binary data transfer (depends
   on ArrayBuffer ABI).
-- **P1 — Enums**: Mapped to/from JS string or number values.
 - **P2/P3 — SharedObject references**: Typed handles to shared native state
   (depends on NativeState ABI).
-- **P2/P3 — Nested record types**: Records containing other records or
-  collections.
+- **P2/P3 — Record shape extensions**: Custom field naming, non-positional
+  constructors, unknown-field validation, and cyclic record graphs.
 
 ## Backlog: Module System
 

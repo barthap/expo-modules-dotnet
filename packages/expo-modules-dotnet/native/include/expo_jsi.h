@@ -87,6 +87,22 @@ typedef struct expo_jsi_string_result {
   expo_jsi_error error;
 } expo_jsi_string_result;
 
+typedef void (*expo_jsi_release_property_names_fn)(void *release_context);
+
+typedef struct expo_jsi_property_name {
+  const uint8_t *data;
+  int32_t length;
+} expo_jsi_property_name;
+
+typedef struct expo_jsi_property_names_result {
+  int32_t ok;
+  const expo_jsi_property_name *names;
+  int32_t count;
+  void *release_context;
+  expo_jsi_release_property_names_fn release;
+  expo_jsi_error error;
+} expo_jsi_property_names_result;
+
 typedef expo_jsi_value_result (*expo_jsi_host_function_callback_fn)(
   void *callback_context,
   expo_jsi_runtime_handle runtime,
@@ -184,6 +200,9 @@ typedef expo_jsi_value_result (*expo_jsi_object_get_property_fn)(expo_jsi_runtim
                                                                  const char *name,
                                                                  int32_t name_len);
 
+typedef expo_jsi_property_names_result (*expo_jsi_object_get_own_property_names_fn)(
+  expo_jsi_runtime_handle runtime, expo_jsi_value_handle object);
+
 typedef expo_jsi_value_result (*expo_jsi_create_host_function_fn)(
   expo_jsi_runtime_handle runtime,
   const char *name,
@@ -254,6 +273,7 @@ typedef struct expo_jsi_api {
   expo_jsi_promise_settle_fn promise_settle;
   expo_jsi_object_set_property_fn object_set_property;
   expo_jsi_object_get_property_fn object_get_property;
+  expo_jsi_object_get_own_property_names_fn object_get_own_property_names;
   expo_jsi_create_host_function_fn create_host_function;
   expo_jsi_get_arguments_count_fn get_arguments_count;
   expo_jsi_get_argument_value_fn get_argument_value;

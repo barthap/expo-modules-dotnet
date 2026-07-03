@@ -136,6 +136,30 @@ directly, and encode return values through typed helpers.
 - **AND** call the authored method directly
 - **AND** return the encoded result through `Expo.JSI`
 
+#### Scenario: Enum values use generated codecs
+- **GIVEN** a generated sync function accepts or returns a C# enum
+- **WHEN** no explicit enum representation is requested
+- **THEN** generated dispatch SHALL decode and encode the enum as JavaScript
+  strings
+- **AND** integer-backed enum conversion SHALL be available through explicit
+  authored metadata
+
+#### Scenario: Simple records use generated codecs
+- **GIVEN** a generated sync function accepts or returns a positional C#
+  `record`, `record class`, or `record struct`
+- **WHEN** JavaScript passes or receives a plain object
+- **THEN** generated dispatch SHALL convert known fields through generated
+  field codecs
+- **AND** construct records through direct constructor calls
+- **AND** simple nested records SHALL compose through generated field codecs
+
+#### Scenario: String-key dictionaries use JavaScript objects
+- **GIVEN** a generated sync function accepts or returns
+  `Dictionary<string, T>` or `IReadOnlyDictionary<string, T>`
+- **WHEN** `T` has a generated codec
+- **THEN** generated dispatch SHALL map the dictionary to a plain JavaScript
+  object using own property names
+
 #### Scenario: Generated provider augments an existing native module object
 - **GIVEN** a real Expo runtime has already installed a native module object
   under `globalThis.expo.modules`
