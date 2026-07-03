@@ -41,15 +41,17 @@ internal readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>
     _values = values.ToArray();
   }
 
-  public IReadOnlyList<T> Values => _values;
+  public IReadOnlyList<T> Values => _values ?? Array.Empty<T>();
 
-  public bool Equals(EquatableArray<T> other) => _values.SequenceEqual(other._values);
+  public bool Equals(EquatableArray<T> other) =>
+      (_values ?? Array.Empty<T>()).SequenceEqual(other._values ?? Array.Empty<T>());
 
   public override bool Equals(object? obj) =>
       obj is EquatableArray<T> other && Equals(other);
 
   public override int GetHashCode()
   {
+    if (_values is null) return 0;
     unchecked
     {
       var hash = 17;

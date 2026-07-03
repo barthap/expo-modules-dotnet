@@ -37,29 +37,6 @@ public static class EntryPoints
     TeardownRuntimeContextCore(runtimeContext);
   }
 
-  [UnmanagedCallersOnly(
-      EntryPoint = "expo_dotnet_register_modules",
-      CallConvs = new[] { typeof(CallConvCdecl) }
-  )]
-  public static int RegisterModules(nint api, nint runtimeHandle)
-  {
-    try
-    {
-      if (CreateRuntimeContextCore(api, runtimeHandle) == 0)
-      {
-        return 1;
-      }
-
-      Console.WriteLine("ExampleModule registered ExampleModule.add.");
-      return 0;
-    }
-    catch (Exception ex)
-    {
-      Console.Error.WriteLine(ex);
-      return 1;
-    }
-  }
-
   private static nint CreateRuntimeContextCore(nint api, nint runtimeHandle)
   {
     var runtime = JavaScriptRuntime.FromNative(api, runtimeHandle);

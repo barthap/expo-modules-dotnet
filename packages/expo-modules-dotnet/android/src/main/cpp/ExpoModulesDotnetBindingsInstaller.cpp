@@ -11,7 +11,6 @@ namespace {
 
 constexpr const char *kLogTag = "ExpoModulesDotnet";
 
-using RegisterModulesFn = int (*)(const expo_jsi_api *, expo_jsi_runtime_handle);
 using CreateRuntimeContextFn = void *(*)(const expo_jsi_api *, expo_jsi_runtime_handle);
 using TeardownRuntimeContextFn = void (*)(void *);
 
@@ -60,17 +59,6 @@ void *resolveDotnetAppSymbol(const char *symbolName)
   return symbol;
 }
 
-RegisterModulesFn resolveRegisterModules()
-{
-  auto *symbol = resolveDotnetAppSymbol("expo_dotnet_register_modules");
-  if (symbol == nullptr) {
-    __android_log_print(
-      ANDROID_LOG_ERROR, kLogTag, "Failed to resolve expo_dotnet_register_modules: %s", dlerror());
-    return nullptr;
-  }
-  return reinterpret_cast<RegisterModulesFn>(symbol);
-}
-
 CreateRuntimeContextFn resolveCreateRuntimeContext()
 {
   auto *symbol = resolveDotnetAppSymbol("expo_dotnet_create_runtime_context");
@@ -91,28 +79,19 @@ bool registerDotnetModules(InstalledRuntime &installedRuntime)
 
   auto createRuntimeContext = resolveCreateRuntimeContext();
   auto teardownRuntimeContext = resolveTeardownRuntimeContext();
-  if (createRuntimeContext != nullptr && teardownRuntimeContext != nullptr) {
-    installedRuntime.managedRuntimeContext =
-      createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), installedRuntime.runtimeHandle);
-    installedRuntime.teardownRuntimeContext = teardownRuntimeContext;
-    if (installedRuntime.managedRuntimeContext == nullptr) {
-      __android_log_print(
-        ANDROID_LOG_ERROR, kLogTag, "NativeAOT runtime context registration failed.");
-      return false;
-    }
-  } else {
-    auto registerModules = resolveRegisterModules();
-    if (registerModules == nullptr) {
-      return false;
-    }
+  if (createRuntimeContext == nullptr || teardownRuntimeContext == nullptr) {
+    __android_log_print(
+      ANDROID_LOG_ERROR, kLogTag, "Failed to resolve expo_dotnet_create/teardown_runtime_context.");
+    return false;
+  }
 
-    auto status =
-      registerModules(expo::dotnet::reactNativeExpoJsiApi(), installedRuntime.runtimeHandle);
-    if (status != 0) {
-      __android_log_print(
-        ANDROID_LOG_ERROR, kLogTag, "NativeAOT managed module registration failed.");
-      return false;
-    }
+  installedRuntime.managedRuntimeContext =
+    createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), installedRuntime.runtimeHandle);
+  installedRuntime.teardownRuntimeContext = teardownRuntimeContext;
+  if (installedRuntime.managedRuntimeContext == nullptr) {
+    __android_log_print(
+      ANDROID_LOG_ERROR, kLogTag, "NativeAOT runtime context registration failed.");
+    return false;
   }
 
   installedRuntime.registered = true;

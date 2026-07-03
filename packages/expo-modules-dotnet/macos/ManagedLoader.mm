@@ -13,11 +13,9 @@ namespace {
 
 constexpr const char *kManagedSubdirectory = "Managed";
 NSString *const kLoaderInfoPlistKey = @"ExpoModulesDotnetLoader";
-constexpr const char *kRegisterModulesSymbol = "expo_dotnet_register_modules";
 constexpr const char *kCreateRuntimeContextSymbol = "expo_dotnet_create_runtime_context";
 constexpr const char *kTeardownRuntimeContextSymbol = "expo_dotnet_teardown_runtime_context";
 constexpr const char *kEntryPointType = "ExampleModule.EntryPoints, ExampleModule";
-constexpr const char *kEntryPointMethod = "RegisterModules";
 constexpr const char *kCreateRuntimeContextMethod = "CreateRuntimeContext";
 constexpr const char *kTeardownRuntimeContextMethod = "TeardownRuntimeContext";
 
@@ -169,20 +167,20 @@ void *resolveHostFxrMethod(const ManagedModuleConfig &config, const char *method
   auto loadAssemblyAndGetFunctionPointer =
     reinterpret_cast<load_assembly_and_get_function_pointer_fn>(loadAssemblyDelegate);
 
-  void *registerModules = nullptr;
+  void *method = nullptr;
   status = loadAssemblyAndGetFunctionPointer(config.assemblyPath.c_str(),
                                              config.typeName.c_str(),
                                              methodName,
                                              unmanagedCallersOnlyMethod,
                                              nullptr,
-                                             &registerModules);
-  if (status != 0 || registerModules == nullptr) {
+                                             &method);
+  if (status != 0 || method == nullptr) {
     NSLog(@"[ExpoModulesDotnet] load_assembly_and_get_function_pointer failed with status %d.",
           status);
     return nullptr;
   }
 
-  return registerModules;
+  return method;
 }
 
 } // namespace
@@ -192,7 +190,6 @@ ManagedModuleConfig loadExampleModuleConfig()
   ManagedModuleConfig config;
   config.loaderKind = selectedLoaderKind();
   config.typeName = kEntryPointType;
-  config.methodName = kEntryPointMethod;
 
   if (config.loaderKind == ManagedLoaderKind::NativeAot) {
     config.nativeLibraryPath = pathForBundledResource(@"libExampleModule", @"dylib");
@@ -215,25 +212,11 @@ const char *managedLoaderKindName(ManagedLoaderKind loaderKind)
   }
 }
 
-RegisterModulesFn resolveRegisterModules(const ManagedModuleConfig &config)
-{
-  switch (config.loaderKind) {
-    case ManagedLoaderKind::NativeAot:
-      return reinterpret_cast<RegisterModulesFn>(
-        resolveNativeAotSymbol(config, kRegisterModulesSymbol));
-    case ManagedLoaderKind::HostFxr:
-      return reinterpret_cast<RegisterModulesFn>(
-        resolveHostFxrMethod(config, config.methodName.c_str()));
-  }
-}
-
 ManagedRuntimeContextEntryPoints resolveRuntimeContextEntryPoints(const ManagedModuleConfig &config)
 {
   ManagedRuntimeContextEntryPoints entryPoints;
   switch (config.loaderKind) {
     case ManagedLoaderKind::NativeAot:
-      entryPoints.registerModules =
-        reinterpret_cast<RegisterModulesFn>(resolveNativeAotSymbol(config, kRegisterModulesSymbol));
       entryPoints.createRuntimeContext =
         reinterpret_cast<CreateRuntimeContextFn>(
           resolveNativeAotSymbol(config, kCreateRuntimeContextSymbol));
@@ -242,8 +225,6 @@ ManagedRuntimeContextEntryPoints resolveRuntimeContextEntryPoints(const ManagedM
           resolveNativeAotSymbol(config, kTeardownRuntimeContextSymbol));
       return entryPoints;
     case ManagedLoaderKind::HostFxr:
-      entryPoints.registerModules =
-        reinterpret_cast<RegisterModulesFn>(resolveHostFxrMethod(config, config.methodName.c_str()));
       entryPoints.createRuntimeContext =
         reinterpret_cast<CreateRuntimeContextFn>(
           resolveHostFxrMethod(config, kCreateRuntimeContextMethod));

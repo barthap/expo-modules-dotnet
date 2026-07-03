@@ -14,19 +14,8 @@
 
 namespace {
 
-using RegisterModulesFn = int (*)(const expo_jsi_api *, expo_jsi_runtime_handle);
 using CreateRuntimeContextFn = void *(*)(const expo_jsi_api *, expo_jsi_runtime_handle);
 using TeardownRuntimeContextFn = void (*)(void *);
-
-RegisterModulesFn resolveRegisterModules()
-{
-  auto *symbol = dlsym(RTLD_DEFAULT, "expo_dotnet_register_modules");
-  if (symbol == nullptr) {
-    NSLog(@"[ExpoModulesDotnet] Failed to resolve expo_dotnet_register_modules: %s", dlerror());
-    return nullptr;
-  }
-  return reinterpret_cast<RegisterModulesFn>(symbol);
-}
 
 CreateRuntimeContextFn resolveCreateRuntimeContext()
 {
@@ -71,23 +60,16 @@ public:
 
     auto createRuntimeContext = resolveCreateRuntimeContext();
     auto teardownRuntimeContext = resolveTeardownRuntimeContext();
-    if (createRuntimeContext != nullptr && teardownRuntimeContext != nullptr) {
-      managedRuntimeContext_ = createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
-      teardownRuntimeContext_ = teardownRuntimeContext;
-      if (managedRuntimeContext_ == nullptr) {
-        NSLog(@"[ExpoModulesDotnet] NativeAOT runtime context registration failed.");
-        return false;
-      }
-    } else {
-      auto registerModules = resolveRegisterModules();
-      if (registerModules == nullptr) {
-        return false;
-      }
-      auto status = registerModules(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
-      if (status != 0) {
-        NSLog(@"[ExpoModulesDotnet] NativeAOT managed module registration failed.");
-        return false;
-      }
+    if (createRuntimeContext == nullptr || teardownRuntimeContext == nullptr) {
+      NSLog(@"[ExpoModulesDotnet] Failed to resolve create/teardown runtime context entry points.");
+      return false;
+    }
+
+    managedRuntimeContext_ = createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
+    teardownRuntimeContext_ = teardownRuntimeContext;
+    if (managedRuntimeContext_ == nullptr) {
+      NSLog(@"[ExpoModulesDotnet] NativeAOT runtime context registration failed.");
+      return false;
     }
 
     NSLog(@"[ExpoModulesDotnet] NativeAOT managed modules registered.");

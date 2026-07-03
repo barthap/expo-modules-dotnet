@@ -75,31 +75,20 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
   {
     auto entryPoints = expo::modules::dotnet::resolveRuntimeContextEntryPoints(moduleConfig);
 
-    if (entryPoints.createRuntimeContext != nullptr &&
-        entryPoints.teardownRuntimeContext != nullptr) {
-      auto runtimeContext =
-        entryPoints.createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle);
-      if (runtimeContext == nullptr) {
-        return false;
-      }
-
-      std::lock_guard<std::mutex> lock(mutex);
-      managedRuntimeContext = runtimeContext;
-      teardownRuntimeContext = entryPoints.teardownRuntimeContext;
-      registered = true;
-      return true;
-    }
-
-    if (entryPoints.registerModules == nullptr) {
+    if (entryPoints.createRuntimeContext == nullptr ||
+        entryPoints.teardownRuntimeContext == nullptr) {
       return false;
     }
 
-    auto status = entryPoints.registerModules(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle);
-    if (status != 0) {
+    auto runtimeContext =
+      entryPoints.createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle);
+    if (runtimeContext == nullptr) {
       return false;
     }
 
     std::lock_guard<std::mutex> lock(mutex);
+    managedRuntimeContext = runtimeContext;
+    teardownRuntimeContext = entryPoints.teardownRuntimeContext;
     registered = true;
     return true;
   }

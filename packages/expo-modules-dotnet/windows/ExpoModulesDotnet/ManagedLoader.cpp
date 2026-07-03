@@ -14,11 +14,9 @@ namespace expo::modules::dotnet {
 namespace {
 
 constexpr const wchar_t *kManagedSubdirectory = L"Managed";
-constexpr const char *kRegisterModulesSymbol = "expo_dotnet_register_modules";
 constexpr const char *kCreateRuntimeContextSymbol = "expo_dotnet_create_runtime_context";
 constexpr const char *kTeardownRuntimeContextSymbol = "expo_dotnet_teardown_runtime_context";
 constexpr const wchar_t *kEntryPointType = L"ExampleModule.EntryPoints, ExampleModule";
-constexpr const wchar_t *kEntryPointMethod = L"RegisterModules";
 constexpr const wchar_t *kCreateRuntimeContextMethod = L"CreateRuntimeContext";
 constexpr const wchar_t *kTeardownRuntimeContextMethod = L"TeardownRuntimeContext";
 
@@ -279,7 +277,6 @@ ManagedModuleConfig loadExampleModuleConfig()
   ManagedModuleConfig config;
   config.loaderKind = selectedLoaderKind();
   config.typeName = kEntryPointType;
-  config.methodName = kEntryPointMethod;
 
   if (config.loaderKind == ManagedLoaderKind::NativeAot) {
     config.nativeLibraryPath = pathForManagedArtifact(L"ExampleModule.dll");
@@ -303,34 +300,17 @@ const wchar_t *managedLoaderKindName(ManagedLoaderKind loaderKind)
   return L"Unknown";
 }
 
-RegisterModulesFn resolveRegisterModules(const ManagedModuleConfig &config)
-{
-  switch (config.loaderKind) {
-  case ManagedLoaderKind::NativeAot:
-    return reinterpret_cast<RegisterModulesFn>(
-      resolveNativeAotSymbol(config, kRegisterModulesSymbol));
-  case ManagedLoaderKind::HostFxr:
-    return reinterpret_cast<RegisterModulesFn>(
-      resolveHostFxrMethod(config, config.methodName.c_str()));
-  }
-  return nullptr;
-}
-
 ManagedRuntimeContextEntryPoints resolveRuntimeContextEntryPoints(const ManagedModuleConfig &config)
 {
   ManagedRuntimeContextEntryPoints entryPoints;
   switch (config.loaderKind) {
   case ManagedLoaderKind::NativeAot:
-    entryPoints.registerModules =
-      reinterpret_cast<RegisterModulesFn>(resolveNativeAotSymbol(config, kRegisterModulesSymbol));
     entryPoints.createRuntimeContext = reinterpret_cast<CreateRuntimeContextFn>(
       resolveNativeAotSymbol(config, kCreateRuntimeContextSymbol));
     entryPoints.teardownRuntimeContext = reinterpret_cast<TeardownRuntimeContextFn>(
       resolveNativeAotSymbol(config, kTeardownRuntimeContextSymbol));
     break;
   case ManagedLoaderKind::HostFxr:
-    entryPoints.registerModules =
-      reinterpret_cast<RegisterModulesFn>(resolveHostFxrMethod(config, config.methodName.c_str()));
     entryPoints.createRuntimeContext = reinterpret_cast<CreateRuntimeContextFn>(
       resolveHostFxrMethod(config, kCreateRuntimeContextMethod));
     entryPoints.teardownRuntimeContext = reinterpret_cast<TeardownRuntimeContextFn>(

@@ -219,6 +219,11 @@ ordering across the React Native host adapters.
 
 ## Finding 3: Dev Tooling — C# Stack Traces Across The ABI
 
+Status: solved. Managed exceptions now forward `ex.ToString()` (full stack trace)
+as the error message across the ABI. The native host-function trampoline wraps
+this in a `JSError`, so C# stack traces appear in LogBox and DevTools. See commit
+43dc2f94 ("Forward managed stack traces across ABI").
+
 ### Concern
 
 When a managed host-function callback throws, the exception is caught in
@@ -406,5 +411,5 @@ blocking pattern in a real adapter — that would be a mistake.
 |---|---------|--------|------|--------|----------------|
 | 1 | Handle allocation cost | Open | Medium | Medium | Arena allocator scoped to task boundary |
 | 2 | Module lifecycle / reload teardown | Solved | High | Medium | `DotnetRuntimeContext` + managed teardown callback |
-| 3 | C# stack traces lost across ABI | Open | Low | Low | Include `ex.ToString()` in error message |
+| 3 | C# stack traces lost across ABI | Solved | Low | Low | `ex.ToString()` forwarded across ABI (43dc2f94) |
 | 4 | `thread_local` error message lifetime | Open | Medium | Low | Copy error into result struct |

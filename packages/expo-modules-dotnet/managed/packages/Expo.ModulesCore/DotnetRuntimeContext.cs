@@ -131,10 +131,7 @@ public sealed class DotnetRuntimeContext : IDisposable
 
   private void ThrowIfDisposed()
   {
-    lock (gate)
-    {
-      ThrowIfDisposedLocked();
-    }
+    ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed), typeof(DotnetRuntimeContext));
   }
 
   private void ThrowIfDisposedLocked()

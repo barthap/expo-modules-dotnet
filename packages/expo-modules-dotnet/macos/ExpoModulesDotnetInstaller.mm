@@ -48,27 +48,18 @@ public:
     }
 
     auto entryPoints = expo::modules::dotnet::resolveRuntimeContextEntryPoints(moduleConfig_);
-    if (entryPoints.createRuntimeContext != nullptr && entryPoints.teardownRuntimeContext != nullptr) {
-      managedRuntimeContext_ =
-        entryPoints.createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
-      teardownRuntimeContext_ = entryPoints.teardownRuntimeContext;
-      if (managedRuntimeContext_ == nullptr) {
-        NSLog(@"[ExpoModulesDotnet] %s runtime context registration failed.",
-              expo::modules::dotnet::managedLoaderKindName(moduleConfig_.loaderKind));
-        return false;
-      }
-    } else {
-      if (entryPoints.registerModules == nullptr) {
-        return false;
-      }
+    if (entryPoints.createRuntimeContext == nullptr || entryPoints.teardownRuntimeContext == nullptr) {
+      NSLog(@"[ExpoModulesDotnet] Failed to resolve create/teardown runtime context entry points.");
+      return false;
+    }
 
-      auto status =
-        entryPoints.registerModules(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
-      if (status != 0) {
-        NSLog(@"[ExpoModulesDotnet] %s managed module registration failed.",
-              expo::modules::dotnet::managedLoaderKindName(moduleConfig_.loaderKind));
-        return false;
-      }
+    managedRuntimeContext_ =
+      entryPoints.createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
+    teardownRuntimeContext_ = entryPoints.teardownRuntimeContext;
+    if (managedRuntimeContext_ == nullptr) {
+      NSLog(@"[ExpoModulesDotnet] %s runtime context registration failed.",
+            expo::modules::dotnet::managedLoaderKindName(moduleConfig_.loaderKind));
+      return false;
     }
 
     NSLog(@"[ExpoModulesDotnet] %s managed modules registered.",

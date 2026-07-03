@@ -58,11 +58,6 @@ public:
     return std::unique_ptr<ValueHandle>(new ValueHandle(&value));
   }
 
-  jsi::Value &value()
-  {
-    return ownedValue_ != nullptr ? *ownedValue_ : *const_cast<jsi::Value *>(borrowedValue_);
-  }
-
   const jsi::Value &value() const
   {
     return ownedValue_ != nullptr ? *ownedValue_ : *borrowedValue_;
