@@ -14,9 +14,13 @@ namespace expo::modules::dotnet {
 namespace {
 
 constexpr const wchar_t *kManagedSubdirectory = L"Managed";
-constexpr const wchar_t *kRegisterModulesSymbol = L"example_module_register_modules";
+constexpr const char *kRegisterModulesSymbol = "expo_dotnet_register_modules";
+constexpr const char *kCreateRuntimeContextSymbol = "expo_dotnet_create_runtime_context";
+constexpr const char *kTeardownRuntimeContextSymbol = "expo_dotnet_teardown_runtime_context";
 constexpr const wchar_t *kEntryPointType = L"ExampleModule.EntryPoints, ExampleModule";
 constexpr const wchar_t *kEntryPointMethod = L"RegisterModules";
+constexpr const wchar_t *kCreateRuntimeContextMethod = L"CreateRuntimeContext";
+constexpr const wchar_t *kTeardownRuntimeContextMethod = L"TeardownRuntimeContext";
 
 std::mutex g_errorMutex;
 std::wstring g_lastError;
@@ -37,8 +41,8 @@ void setLastError(std::wstring message)
 std::wstring statusMessage(const wchar_t *operation, int status)
 {
   std::wstringstream message;
-  message << L"[ExpoModulesDotnet] " << operation << L" failed with status " << status
-          << L" (0x" << std::hex << static_cast<unsigned int>(status) << L").";
+  message << L"[ExpoModulesDotnet] " << operation << L" failed with status " << status << L" (0x"
+          << std::hex << static_cast<unsigned int>(status) << L").";
   return message.str();
 }
 
@@ -48,6 +52,20 @@ std::wstring windowsErrorMessage(const wchar_t *operation, DWORD error)
   message << L"[ExpoModulesDotnet] " << operation << L" failed with Windows error " << error
           << L" (0x" << std::hex << error << L").";
   return message.str();
+}
+
+std::wstring toWide(const char *value)
+{
+  if (value == nullptr) {
+    return L"";
+  }
+  const int length = MultiByteToWideChar(CP_UTF8, 0, value, -1, nullptr, 0);
+  if (length <= 0) {
+    return L"";
+  }
+  std::wstring result(static_cast<size_t>(length - 1), L'\0');
+  MultiByteToWideChar(CP_UTF8, 0, value, -1, result.data(), length);
+  return result;
 }
 
 std::filesystem::path moduleDirectory()
@@ -94,7 +112,8 @@ std::wstring pathForManagedArtifact(const wchar_t *name)
   if (!std::filesystem::exists(path)) {
     std::wstring message = L"[ExpoModulesDotnet] Missing managed artifact ";
     message += path.wstring();
-    message += L". Run apps/desktop-app/scripts/build-managed.ps1 before launching the Windows app.";
+    message +=
+      L". Run apps/desktop-app/scripts/build-managed.ps1 before launching the Windows app.";
     logMessage(message.c_str());
   }
   return path.wstring();
@@ -114,13 +133,11 @@ ManagedLoaderKind parseLoaderKind(std::wstring loader)
 std::wstring loaderKindFromEnvironment()
 {
   std::array<wchar_t, 64> loader{};
-  auto size = GetEnvironmentVariableW(L"EXPO_DOTNET_LOADER",
-                                      loader.data(),
-                                      static_cast<DWORD>(loader.size()));
+  auto size = GetEnvironmentVariableW(
+    L"EXPO_DOTNET_LOADER", loader.data(), static_cast<DWORD>(loader.size()));
   if (size == 0) {
-    size = GetEnvironmentVariableW(L"EXPO_JSI_DOTNET_LOADER",
-                                   loader.data(),
-                                   static_cast<DWORD>(loader.size()));
+    size = GetEnvironmentVariableW(
+      L"EXPO_JSI_DOTNET_LOADER", loader.data(), static_cast<DWORD>(loader.size()));
   }
   return size == 0 ? std::wstring() : std::wstring(loader.data(), size);
 }
@@ -169,34 +186,39 @@ HMODULE openHostFxr(const ManagedModuleConfig &config)
   return hostFxr;
 }
 
-RegisterModulesFn resolveNativeAotRegisterModules(const ManagedModuleConfig &config)
+void *resolveNativeAotSymbol(const ManagedModuleConfig &config, const char *symbolName)
 {
   auto library = openLibrary(config.nativeLibraryPath);
   if (library == nullptr) {
-    setLastError(windowsErrorMessage(L"LoadLibraryW(NativeAOT ExampleModule)", GetLastError()));
+    setLastError(windowsErrorMessage(L"LoadLibraryW(NativeAOT managed library)", GetLastError()));
     return nullptr;
   }
 
-  auto symbol = GetProcAddress(library, "example_module_register_modules");
+  auto symbol = GetProcAddress(library, symbolName);
   if (symbol == nullptr) {
-    setLastError(windowsErrorMessage(L"GetProcAddress(example_module_register_modules)",
-                                     GetLastError()));
+    std::wstring operation = L"GetProcAddress(";
+    operation += toWide(symbolName);
+    operation += L")";
+    setLastError(windowsErrorMessage(operation.c_str(), GetLastError()));
     return nullptr;
   }
 
-  return reinterpret_cast<RegisterModulesFn>(symbol);
+  {
+    std::lock_guard<std::mutex> lock(g_errorMutex);
+    g_lastError.clear();
+  }
+  return reinterpret_cast<void *>(symbol);
 }
 
-RegisterModulesFn resolveHostFxrRegisterModules(const ManagedModuleConfig &config)
+void *resolveHostFxrMethod(const ManagedModuleConfig &config, const wchar_t *methodName)
 {
   auto hostFxr = openHostFxr(config);
   if (hostFxr == nullptr) {
     return nullptr;
   }
 
-  auto initializeForRuntimeConfig =
-    reinterpret_cast<hostfxr_initialize_for_runtime_config_fn>(
-      GetProcAddress(hostFxr, "hostfxr_initialize_for_runtime_config"));
+  auto initializeForRuntimeConfig = reinterpret_cast<hostfxr_initialize_for_runtime_config_fn>(
+    GetProcAddress(hostFxr, "hostfxr_initialize_for_runtime_config"));
   auto getRuntimeDelegate = reinterpret_cast<hostfxr_get_runtime_delegate_fn>(
     GetProcAddress(hostFxr, "hostfxr_get_runtime_delegate"));
   auto closeHostContext =
@@ -204,23 +226,20 @@ RegisterModulesFn resolveHostFxrRegisterModules(const ManagedModuleConfig &confi
 
   if (initializeForRuntimeConfig == nullptr || getRuntimeDelegate == nullptr ||
       closeHostContext == nullptr) {
-    setLastError(windowsErrorMessage(L"GetProcAddress(required hostfxr exports)",
-                                     GetLastError()));
+    setLastError(windowsErrorMessage(L"GetProcAddress(required hostfxr exports)", GetLastError()));
     return nullptr;
   }
 
   hostfxr_handle hostContext = nullptr;
-  auto status =
-    initializeForRuntimeConfig(config.runtimeConfigPath.c_str(), nullptr, &hostContext);
+  auto status = initializeForRuntimeConfig(config.runtimeConfigPath.c_str(), nullptr, &hostContext);
   if (status < 0 || status > 2 || hostContext == nullptr) {
     setLastError(statusMessage(L"hostfxr_initialize_for_runtime_config", status));
     return nullptr;
   }
 
   void *loadAssemblyDelegate = nullptr;
-  status = getRuntimeDelegate(hostContext,
-                              hdt_load_assembly_and_get_function_pointer,
-                              &loadAssemblyDelegate);
+  status = getRuntimeDelegate(
+    hostContext, hdt_load_assembly_and_get_function_pointer, &loadAssemblyDelegate);
   closeHostContext(hostContext);
   if (status != 0 || loadAssemblyDelegate == nullptr) {
     setLastError(statusMessage(L"hostfxr_get_runtime_delegate", status));
@@ -230,18 +249,18 @@ RegisterModulesFn resolveHostFxrRegisterModules(const ManagedModuleConfig &confi
   auto loadAssemblyAndGetFunctionPointer =
     reinterpret_cast<load_assembly_and_get_function_pointer_fn>(loadAssemblyDelegate);
 
-  void *registerModules = nullptr;
+  void *method = nullptr;
   status = loadAssemblyAndGetFunctionPointer(config.assemblyPath.c_str(),
                                              config.typeName.c_str(),
-                                             config.methodName.c_str(),
+                                             methodName,
                                              unmanagedCallersOnlyMethod,
                                              nullptr,
-                                             &registerModules);
-  if (status != 0 || registerModules == nullptr) {
+                                             &method);
+  if (status != 0 || method == nullptr) {
     std::wstringstream message;
-    message << statusMessage(L"load_assembly_and_get_function_pointer", status)
-            << L" assembly=" << config.assemblyPath << L" type=" << config.typeName
-            << L" method=" << config.methodName << L".";
+    message << statusMessage(L"load_assembly_and_get_function_pointer", status) << L" assembly="
+            << config.assemblyPath << L" type=" << config.typeName << L" method=" << methodName
+            << L".";
     setLastError(message.str());
     return nullptr;
   }
@@ -250,7 +269,7 @@ RegisterModulesFn resolveHostFxrRegisterModules(const ManagedModuleConfig &confi
     std::lock_guard<std::mutex> lock(g_errorMutex);
     g_lastError.clear();
   }
-  return reinterpret_cast<RegisterModulesFn>(registerModules);
+  return method;
 }
 
 } // namespace
@@ -276,10 +295,10 @@ ManagedModuleConfig loadExampleModuleConfig()
 const wchar_t *managedLoaderKindName(ManagedLoaderKind loaderKind)
 {
   switch (loaderKind) {
-    case ManagedLoaderKind::HostFxr:
-      return L"HostFXR";
-    case ManagedLoaderKind::NativeAot:
-      return L"NativeAOT";
+  case ManagedLoaderKind::HostFxr:
+    return L"HostFXR";
+  case ManagedLoaderKind::NativeAot:
+    return L"NativeAOT";
   }
   return L"Unknown";
 }
@@ -287,12 +306,38 @@ const wchar_t *managedLoaderKindName(ManagedLoaderKind loaderKind)
 RegisterModulesFn resolveRegisterModules(const ManagedModuleConfig &config)
 {
   switch (config.loaderKind) {
-    case ManagedLoaderKind::NativeAot:
-      return resolveNativeAotRegisterModules(config);
-    case ManagedLoaderKind::HostFxr:
-      return resolveHostFxrRegisterModules(config);
+  case ManagedLoaderKind::NativeAot:
+    return reinterpret_cast<RegisterModulesFn>(
+      resolveNativeAotSymbol(config, kRegisterModulesSymbol));
+  case ManagedLoaderKind::HostFxr:
+    return reinterpret_cast<RegisterModulesFn>(
+      resolveHostFxrMethod(config, config.methodName.c_str()));
   }
   return nullptr;
+}
+
+ManagedRuntimeContextEntryPoints resolveRuntimeContextEntryPoints(const ManagedModuleConfig &config)
+{
+  ManagedRuntimeContextEntryPoints entryPoints;
+  switch (config.loaderKind) {
+  case ManagedLoaderKind::NativeAot:
+    entryPoints.registerModules =
+      reinterpret_cast<RegisterModulesFn>(resolveNativeAotSymbol(config, kRegisterModulesSymbol));
+    entryPoints.createRuntimeContext = reinterpret_cast<CreateRuntimeContextFn>(
+      resolveNativeAotSymbol(config, kCreateRuntimeContextSymbol));
+    entryPoints.teardownRuntimeContext = reinterpret_cast<TeardownRuntimeContextFn>(
+      resolveNativeAotSymbol(config, kTeardownRuntimeContextSymbol));
+    break;
+  case ManagedLoaderKind::HostFxr:
+    entryPoints.registerModules =
+      reinterpret_cast<RegisterModulesFn>(resolveHostFxrMethod(config, config.methodName.c_str()));
+    entryPoints.createRuntimeContext = reinterpret_cast<CreateRuntimeContextFn>(
+      resolveHostFxrMethod(config, kCreateRuntimeContextMethod));
+    entryPoints.teardownRuntimeContext = reinterpret_cast<TeardownRuntimeContextFn>(
+      resolveHostFxrMethod(config, kTeardownRuntimeContextMethod));
+    break;
+  }
+  return entryPoints;
 }
 
 std::wstring managedLoaderLastError()
