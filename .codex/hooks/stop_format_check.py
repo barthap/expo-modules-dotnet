@@ -3,6 +3,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 
 def emit(payload: dict) -> None:
@@ -20,7 +21,7 @@ def read_input() -> dict:
         return {}
 
 
-def git_root(cwd: str) -> Path | None:
+def git_root(cwd: str) -> Optional[Path]:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
@@ -44,12 +45,12 @@ def main() -> int:
     if root is None:
         return 0
 
-    format_script = root / "scripts" / "format.sh"
+    format_script = root / "scripts" / "format.py"
     if not format_script.is_file():
         return 0
 
     result = subprocess.run(
-        [str(format_script), "--check", "--all"],
+        [sys.executable, str(format_script), "--check", "--all"],
         cwd=root,
         text=True,
         stdout=subprocess.PIPE,
@@ -60,8 +61,9 @@ def main() -> int:
 
     output = result.stdout.strip()
     reason = (
-        "Formatting check failed. Run `scripts/format.sh`, inspect the diff, "
-        "then rerun `scripts/format.sh --check --all` before finalizing."
+        "Formatting check failed. Run `scripts/format.sh` on Unix/macOS or "
+        "`scripts\\format.ps1` on Windows, inspect the diff, then rerun "
+        "`python scripts/format.py --check --all` before finalizing."
     )
     if output:
         reason = f"{reason}\n\nFormatter output:\n{output[-4000:]}"

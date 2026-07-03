@@ -11,6 +11,8 @@ node_modules/
 bin/
 obj/
 TestResults/
+__pycache__/
+*.py[cod]
 
 packages/expo-modules-dotnet/android/src/main/jniLibs/
 packages/expo-modules-dotnet/android/.cxx/
