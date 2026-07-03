@@ -1,5 +1,6 @@
 #include "ExpoJsiBridge.h"
 
+#include <bit>
 #include <cstring>
 #include <exception>
 #include <memory>
@@ -494,7 +495,6 @@ expo_jsi_value_result createPrimitiveValue(expo_jsi_runtime_handle runtime,
                                            expo_jsi_value_kind kind,
                                            uint64_t value)
 {
-  (void)value;
   expo_jsi_error error{};
   if (tryRuntimeHandle(runtime, &error) == nullptr) {
     return expo_jsi_value_result{0, nullptr, error};
@@ -506,6 +506,13 @@ expo_jsi_value_result createPrimitiveValue(expo_jsi_runtime_handle runtime,
       return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value::undefined()));
     case EXPO_JSI_VALUE_NULL:
       return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value::null()));
+    case EXPO_JSI_VALUE_BOOL:
+      return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(value != 0)));
+    case EXPO_JSI_VALUE_NUMBER: {
+      static_assert(sizeof(double) == sizeof(uint64_t));
+      double number = std::bit_cast<double>(value);
+      return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(number)));
+    }
     default:
       return makeErrorResult(116, "Unsupported primitive value kind.");
     }

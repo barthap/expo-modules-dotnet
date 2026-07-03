@@ -66,6 +66,38 @@ expo_jsi_testhost_runtime_t *runtimeFor(expo_jsi_runtime_handle runtime)
   return nullptr;
 }
 
+expo_jsi_value_result countedCreateNumber(expo_jsi_runtime_handle runtime, double value)
+{
+  auto *testhost = runtimeFor(runtime);
+  if (testhost != nullptr) {
+    testhost->counters.deprecated_number_creates++;
+  }
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  return api->create_number(runtime, value);
+}
+
+expo_jsi_value_result countedCreateBool(expo_jsi_runtime_handle runtime, uint8_t value)
+{
+  auto *testhost = runtimeFor(runtime);
+  if (testhost != nullptr) {
+    testhost->counters.deprecated_bool_creates++;
+  }
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  return api->create_bool(runtime, value);
+}
+
+expo_jsi_value_result countedCreatePrimitiveValue(expo_jsi_runtime_handle runtime,
+                                                  expo_jsi_value_kind kind,
+                                                  uint64_t value)
+{
+  auto *testhost = runtimeFor(runtime);
+  if (testhost != nullptr) {
+    testhost->counters.primitive_value_creates++;
+  }
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  return api->create_primitive_value(runtime, kind, value);
+}
+
 void countedReleaseValue(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
 {
   auto *testhost = runtimeFor(runtime);
@@ -197,6 +229,9 @@ const expo_jsi_api *makeCountedApi(expo_jsi_testhost_runtime_t &runtime)
 {
   runtime.innerApi = expo::dotnet::api();
   runtime.countedApi = *runtime.innerApi;
+  runtime.countedApi.create_number = countedCreateNumber;
+  runtime.countedApi.create_bool = countedCreateBool;
+  runtime.countedApi.create_primitive_value = countedCreatePrimitiveValue;
   runtime.countedApi.release_value = countedReleaseValue;
   runtime.countedApi.release_promise = countedReleasePromise;
   runtime.countedApi.get_string = countedGetString;

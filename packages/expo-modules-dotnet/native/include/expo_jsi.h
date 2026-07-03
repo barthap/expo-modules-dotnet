@@ -99,9 +99,11 @@ typedef void (*expo_jsi_task_callback_fn)(void *task_context);
 
 typedef void (*expo_jsi_release_task_context_fn)(void *task_context);
 
+// Deprecated: use expo_jsi_create_primitive_value_fn with EXPO_JSI_VALUE_NUMBER.
 typedef expo_jsi_value_result (*expo_jsi_create_number_fn)(expo_jsi_runtime_handle runtime,
                                                            double value);
 
+// Deprecated: use expo_jsi_create_primitive_value_fn with EXPO_JSI_VALUE_BOOL.
 typedef expo_jsi_value_result (*expo_jsi_create_bool_fn)(expo_jsi_runtime_handle runtime,
                                                          uint8_t value);
 

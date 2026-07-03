@@ -48,6 +48,30 @@ public sealed class JavaScriptPrimitiveTests
   }
 
   [Fact]
+  public void NumberAndBoolCreationUsePrimitiveValueAbi()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.ResetCounters();
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var number = runtime.CreateNumber(42.5);
+      using var trueValue = runtime.CreateBool(true);
+      using var falseValue = runtime.CreateBool(false);
+
+      Assert.Equal(JavaScriptValueKind.Number, number.Kind);
+      Assert.Equal(JavaScriptValueKind.Bool, trueValue.Kind);
+      Assert.Equal(JavaScriptValueKind.Bool, falseValue.Kind);
+      return true;
+    });
+
+    var counters = fixture.Counters;
+    Assert.Equal(3u, counters.PrimitiveValueCreates);
+    Assert.Equal(0u, counters.DeprecatedNumberCreates);
+    Assert.Equal(0u, counters.DeprecatedBoolCreates);
+  }
+
+  [Fact]
   public void CreateUndefinedRoundTrips()
   {
     using var fixture = HermesRuntimeFixture.Create();

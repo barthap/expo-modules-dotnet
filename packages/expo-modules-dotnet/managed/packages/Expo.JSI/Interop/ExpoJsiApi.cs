@@ -296,12 +296,16 @@ internal readonly unsafe struct ExpoJsiApi
   /// <param name="value">The numeric value to create.</param>
   public ExpoJsiValueResult CreateNumberValue(ExpoJsiRuntimeHandle runtimeHandle, double value)
   {
-    return CreateNumber(runtimeHandle, value);
+    return CreatePrimitiveValue(
+      runtimeHandle,
+      ExpoJsiValueKind.Number,
+      BitConverter.DoubleToUInt64Bits(value)
+    );
   }
 
   public ExpoJsiValueResult CreateBoolValue(ExpoJsiRuntimeHandle runtimeHandle, bool value)
   {
-    return CreateBool(runtimeHandle, value ? (byte)1 : (byte)0);
+    return CreatePrimitiveValue(runtimeHandle, ExpoJsiValueKind.Bool, value ? 1u : 0u);
   }
 
   public ExpoJsiValueResult CreateUndefinedValue(ExpoJsiRuntimeHandle runtimeHandle)

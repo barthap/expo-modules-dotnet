@@ -55,14 +55,16 @@ frames.
 - **THEN** it SHALL return `ok = 0` with `expo_jsi_error` populated
 
 #### Scenario: Primitive value creation uses a generic slot
-- **GIVEN** managed code needs a primitive value not covered by legacy create
-  functions
+- **GIVEN** managed code needs a primitive number, boolean, null, or undefined
+  value
 - **WHEN** it calls the primitive value creation ABI entry
 - **THEN** native SHALL receive the JavaScript value kind ordinal plus an
   8-byte payload
 - **AND** null and undefined SHALL ignore the payload
-- **AND** existing number and boolean create functions SHALL remain valid until
-  they are migrated deliberately
+- **AND** number SHALL interpret the payload as double bits
+- **AND** boolean SHALL interpret a non-zero payload as true
+- **AND** legacy number and boolean create functions SHALL remain in the ABI as
+  deprecated compatibility entries
 
 #### Scenario: Boolean read fails
 - **GIVEN** a boolean ABI function returns `0`
