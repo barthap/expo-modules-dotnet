@@ -197,10 +197,10 @@ ABI support.
   libraries; define metadata before full autolinking.
 - **P3 — Autolinking**: Build-time discovery and aggregation of dotnet Expo
   module packages into an app-level provider.
-- **P1/P3 — TurboModule integration**: Participation in React Native's
-  TurboModule infrastructure for codegen'd bridging. The current mobile and
-  desktop proofs validate package-owned install/teardown hooks; production
-  codegen participation remains later than the lifecycle/scheduler contract.
+- **P1/P3 — Installer TurboModule shape**: The JavaScript-facing installer has a
+  typed `TurboModule` spec today, but the native Android/iOS/macOS/Windows
+  installer glue is intentionally hand-written. Revisit only if a concrete
+  React Native codegen need appears for the installer surface.
 
 ## Backlog: Architecture Improvements
 
@@ -229,10 +229,10 @@ options.
 
 ## Backlog: Platform Adapters
 
-- **P1 — React Native macOS adapter hardening**: The macOS HostFXR and
-  NativeAOT-capable proof lives in `apps/desktop-app`. Lifecycle teardown now
-  follows `DotnetRuntimeContext`; remaining production work is packaging,
-  autolinking, and broader Expo Desktop integration polish.
+- **P1 — Desktop packaging cleanup**: The macOS HostFXR and NativeAOT-capable
+  proof lives in `apps/desktop-app`. Lifecycle teardown now follows
+  `DotnetRuntimeContext`; remaining production work is desktop artifact staging
+  polish, managed module autolinking handoff, and packaging cleanup.
 - **P1 — Expo Desktop prebuild integration**: If `apps/desktop-app` moves from
   a checked-in macOS project to an `expo-desktop` prebuild flow, preserve the
   current native wiring through an Expo config plugin. The plugin should own the
@@ -240,11 +240,11 @@ options.
   `ExpoModulesDotnetLoader` `Info.plist` entry, `Managed` folder resource, and
   any macOS Podfile/autolinking shim still required by the supported
   `expo-desktop` / React Native macOS lane.
-- **P1 — RNW adapter hardening**: Initial Windows adapter and direct MSBuild
-  proof live in `apps/desktop-app` and `packages/expo-modules-dotnet/windows`.
-  Lifecycle teardown now follows `DotnetRuntimeContext`; remaining production
-  work includes RNW CLI launch reliability, PDB/VS build-lock smoothing, and
-  Expo Desktop prebuild/config-plugin integration.
+- **P1 — Windows build/deploy reliability**: Initial Windows adapter and direct
+  MSBuild proof live in `apps/desktop-app` and
+  `packages/expo-modules-dotnet/windows`. Lifecycle teardown now follows
+  `DotnetRuntimeContext`; remaining production work includes RNW CLI launch
+  reliability and VS/PDB locking issues.
 - **P3 — View adapters**: Platform-specific native view creation, prop mapping,
   event routing. Platform-gated — no view concepts in the portable core.
 - **P3 — NativeAOT for iOS and Android**: The current proof lives under
