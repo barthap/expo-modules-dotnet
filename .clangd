@@ -8,7 +8,25 @@ CompileFlags:
   CompilationDatabase: build/hostfxr-smoke
 ---
 If:
-  PathMatch: (experiments/hermes-console-hostfxr/native/.*|native/include/.*|native/packages/jsi/(include|src)/.*)
+  PathMatch: apps/hermes-console-app/native/.*
 
 CompileFlags:
-  CompilationDatabase: build/hermes-console-hostfxr
+  CompilationDatabase: build/hermes-console-app/hostfxr
+---
+If:
+  PathMatch: packages/expo-modules-dotnet/native/(include|packages/jsi/(include|src)|testhost)/(.*)
+
+CompileFlags:
+  CompilationDatabase: build/jsi-testhost
+---
+If:
+  PathMatch: packages/expo-modules-dotnet/android/src/main/cpp/.*
+
+CompileFlags:
+  CompilationDatabase: packages/expo-modules-dotnet/android/.cxx/Debug/6q331r1q/arm64-v8a
+---
+If:
+  PathMatch: (apps/mobile-app/android/app/build/generated/.*|packages/expo-modules-dotnet/android/build/generated/.*)
+
+CompileFlags:
+  CompilationDatabase: apps/mobile-app/android/app/.cxx/Debug/733u1813/arm64-v8a
