@@ -208,16 +208,17 @@ instead of silently skipping affected modules or emitting invalid generated C#.
 - **THEN** the generator SHALL report a diagnostic naming the duplicate export
 - **AND** duplicate names SHALL NOT be resolved by source order
 
-### Requirement: App Aggregation Remains Future Autolinking Work
+### Requirement: App Aggregation Is Owned By Dotnet Autolinking
 
-The generator SHALL keep module discovery library-local. App-level aggregation
-is future autolinking work. Until that exists, authored module packages may
-stage NativeAOT artifacts into documented adapter-owned locations manually, and
-app proofs may stage HostFXR artifacts into app-owned bundle resources
-manually.
+The generator SHALL keep module discovery library-local. The dotnet
+autolinking CLI SHALL own app-level aggregation by generating one stable
+`ExpoDotnetHost` project that calls each library-local generated provider.
+Manual app-owned HostFXR staging is superseded by CLI staging for platforms
+migrated to the tool. Mobile NativeAOT apps SHALL use the autolinking CLI for
+aggregation and staging instead of legacy per-module adapter-owned staging.
 
 #### Scenario: Multiple libraries are linked into an app
-- **GIVEN** future autolinking resolves several dotnet Expo libraries
+- **GIVEN** dotnet autolinking resolves several dotnet Expo libraries
 - **WHEN** an app-level provider is generated
 - **THEN** it SHALL call each library-local generated provider
 - **AND** module class discovery SHALL remain owned by each library's Roslyn
@@ -230,15 +231,22 @@ manually.
 - **AND** it SHALL return `globalThis._expoDotnet.modules[name]` when present
 - **AND** it SHALL throw a plain JavaScript `Error` when the module is missing
 
-#### Scenario: Desktop app stages HostFXR artifacts manually
+#### Scenario: Desktop app stages HostFXR artifacts through the CLI
 - **GIVEN** the React Native macOS or Windows proof app uses the `hostfxr`
   loader
-- **WHEN** its app-local build script runs
-- **THEN** it SHALL build the authored module assembly
-- **AND** stage the managed assembly, runtime config, dependency file, managed
-  bridge assemblies, and platform `nethost` runtime library into the app-owned
-  `Managed` location
-- **AND** this manual staging SHALL NOT be treated as .NET module autolinking
+- **WHEN** the dotnet autolinking CLI stages the generated aggregator
+- **THEN** it SHALL stage the managed assembly, runtime config, dependency
+  file, managed bridge assemblies, and platform `nethost` runtime library into
+  the app-owned `Managed` location
+- **AND** manual app-local HostFXR staging scripts SHALL NOT be required
+
+#### Scenario: Mobile app stages NativeAOT artifacts through the CLI
+- **GIVEN** the React Native iOS or Android proof app uses the `nativeaot`
+  loader
+- **WHEN** the dotnet autolinking CLI stages the generated aggregator
+- **THEN** it SHALL stage the single `ExpoDotnetHost` native library into the
+  app-owned mobile loader location
+- **AND** legacy per-module NativeAOT staging SHALL NOT be required
 
 ### Requirement: Generated Bindings Avoid Hot-Path Reflection
 
@@ -255,7 +263,7 @@ dynamic invocation.
 ### Requirement: Generator Authoring Documentation Is Durable
 
 The repo SHALL document how library authors configure generation today and how
-future autolinking is expected to aggregate generated providers.
+dotnet autolinking aggregates generated providers.
 
 #### Scenario: Developer wants manual repo-local generator wiring
 - **GIVEN** a test or development project cannot consume packaged analyzer
@@ -264,12 +272,13 @@ future autolinking is expected to aggregate generated providers.
 - **THEN** documentation SHALL show the manual analyzer `ProjectReference`
   configuration
 
-#### Scenario: Future dotnet package config is designed
-- **GIVEN** autolinking is not implemented yet
-- **WHEN** future package discovery is documented
-- **THEN** documentation SHALL include a proposed dotnet
+#### Scenario: Dotnet package config is documented
+- **GIVEN** dotnet autolinking resolves module packages
+- **WHEN** package discovery is documented
+- **THEN** documentation SHALL include the parsed dotnet
   `expo-module.config.json` shape
-- **AND** state that this milestone does not parse that config
+- **AND** state that module class discovery remains owned by each library's
+  Roslyn generation step
 
 ### Requirement: ModulesCore Owns Module Tests
 

@@ -26,6 +26,8 @@ Source priority when specs and other materials disagree:
 - `hermes-testhost.md`: Hermes-backed native testhost and managed test suite.
 - `modules-core-boundary.md`: `Expo.ModulesCore` package boundary,
   generated-binding helpers, and module test ownership.
+- `dotnet-autolinking.md`: .NET Expo module discovery, app-level aggregator
+  generation, build, and artifact staging contract.
 
 The public Expo adapter package currently lives at
 `packages/expo-modules-dotnet`. It owns the autolinkable React Native package
