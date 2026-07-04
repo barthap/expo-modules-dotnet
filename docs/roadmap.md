@@ -86,9 +86,9 @@ Completed scope:
      `Dictionary<string, T>` / `IReadOnlyDictionary<string, T>`.
    - Keep ArrayBuffer, SharedObject, and NativeState out of this slice.
 
-3. **Module package metadata**
-   - Define enough `expo-module.config.json` / dotnet package metadata for
-     future autolinking to consume, without implementing full autolinking yet.
+3. **Module package metadata** (complete)
+   - Dotnet Expo module packages declare `platforms: ["dotnet"]` and
+     `dotnet.projects` metadata consumed by the autolinking CLI.
 
 4. **Self-contained ABI errors**
    - Replace `thread_local` error message lifetime with self-contained error
@@ -183,10 +183,12 @@ ABI support.
   module lifecycle callbacks still need API design.
 - **P2/P3 — Lazy module initialization**: Modules instantiated on first JS
   access instead of eagerly at registration (depends on HostObject ABI).
-- **P1 — `expo-module.config.json`**: Package metadata for dotnet Expo module
-  libraries; define metadata before full autolinking.
-- **P3 — Autolinking**: Build-time discovery and aggregation of dotnet Expo
-  module packages into an app-level provider.
+- **P1 — `expo-module.config.json`** (complete): Package metadata for dotnet
+  Expo module libraries is parsed by `expo-modules-dotnet-autolinking`.
+- **P3 — Autolinking** (implemented for macOS/Windows): Build-time discovery
+  and aggregation of dotnet Expo module packages into the generated
+  `ExpoDotnetHost` provider is implemented. iOS and Android integration remains
+  documented future work.
 - **P1/P3 — Installer TurboModule shape**: The JavaScript-facing installer has a
   typed `TurboModule` spec today, but the native Android/iOS/macOS/Windows
   installer glue is intentionally hand-written. Revisit only if a concrete
@@ -217,8 +219,8 @@ options.
 
 - **P1 — Desktop packaging cleanup**: The macOS HostFXR and NativeAOT-capable
   proof lives in `apps/desktop-app`. Lifecycle teardown now follows
-  `DotnetRuntimeContext`; remaining production work is desktop artifact staging
-  polish, managed module autolinking handoff, and packaging cleanup.
+  `DotnetRuntimeContext`; managed module autolinking now owns desktop artifact
+  staging. Remaining production work is packaging cleanup.
 - **P1 — Expo Desktop prebuild integration**: If `apps/desktop-app` moves from
   a checked-in macOS project to an `expo-desktop` prebuild flow, preserve the
   current native wiring through an Expo config plugin. The plugin should own the

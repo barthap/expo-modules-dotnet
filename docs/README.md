@@ -1,6 +1,6 @@
 # Portable C# / JSI Bridge Docs
 
-Last refreshed: 2026-07-01.
+Last refreshed: 2026-07-04.
 
 This directory contains the current documentation for the portable C# / JSI
 bridge. The authoritative current-state specs live in `docs/specs/`. Historical
@@ -44,6 +44,9 @@ exception rules.
   contains generator source-output and diagnostic tests.
 - `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests/`
   contains Hermes-backed module dispatch and conversion tests.
+- `packages/expo-modules-dotnet-autolinking/` contains the CLI that resolves
+  dotnet Expo module packages, generates the `ExpoDotnetHost` aggregator,
+  builds it, and stages loader-expected artifacts for app builds.
 - `packages/example-module/` is an authored .NET Expo module package used by
   example apps. It owns the example C# module source and temporary NativeAOT
   artifact staging script.
@@ -52,7 +55,8 @@ exception rules.
   dependencies.
 - `apps/desktop-app/` is the Expo Desktop / React Native macOS integration
   proof app. It consumes the same workspace packages on the React Native 0.81
-  lane and defaults to HostFXR-managed artifact staging.
+  lane and runs the dotnet autolinking CLI for HostFXR-managed artifact
+  staging.
 - `apps/hermes-console-app/` is the reusable headless Hermes integration app
   proof and can run through HostFXR or NativeAOT.
 - `experiments/hostfxr-smoke/` and `experiments/nativeaot-smoke/` preserve
@@ -76,10 +80,12 @@ For current implementation work:
 1. `docs/specs/README.md`
 2. The specific capability spec under `docs/specs/<capability>.md`
 3. `docs/ownership-mental-model.md` for wrapper/ref lifetime work
-4. `docs/modules-core-generator-authoring.md` for module-library generator
-   wiring and future dotnet autolinking shape
-5. `docs/roadmap.md` for forward direction
-6. `docs/archive/` only when historical rationale or proof evidence is needed
+4. `docs/specs/dotnet-autolinking.md` for current dotnet module autolinking
+   behavior
+5. `docs/assorted/modules-core-generator-authoring.md` for module-library
+   generator wiring and authoring background
+6. `docs/roadmap.md` for forward direction
+7. `docs/archive/` only when historical rationale or proof evidence is needed
 
 For background learning material:
 

@@ -180,9 +180,11 @@ not by itself define a production adapter lifecycle.
 
 ### Requirement: Managed Runtime Lifecycle Entry Points
 
-Generated managed module libraries SHALL expose a runtime context creation entry point
-and an idempotent teardown entry point that native host adapters can call for
-one JavaScript runtime.
+The generated `ExpoDotnetHost` aggregator SHALL expose a runtime context
+creation entry point and an idempotent teardown entry point that native host
+adapters can call for one JavaScript runtime. HostFXR loaders SHALL resolve the
+stable managed type name
+`Expo.ModulesCore.Generated.EntryPoints, ExpoDotnetHost`.
 
 The native ABI keeps `expo_jsi_runtime_handle` opaque. The managed runtime context
 handle is also opaque to native code and SHALL be passed back only to the

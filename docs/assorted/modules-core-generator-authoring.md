@@ -1,9 +1,8 @@
 # Library Authoring And Future Autolinking
 
-This note records the intended authoring and autolinking shape for the first
-`Expo.ModulesCore` Roslyn generator milestone. It is future-facing design
-documentation for the implementation slice; it is not an implemented
-autolinking contract yet.
+This note records the authoring and autolinking shape for the first
+`Expo.ModulesCore` Roslyn generator milestone. The current autolinking
+contract is specified in `docs/specs/dotnet-autolinking.md`.
 
 ## Intended Library Author Experience
 
@@ -157,12 +156,15 @@ Stage 1 is library-local generation:
 - The generator emits direct-call module registration glue for that library.
 - The library build can fail early for unsupported signatures.
 
-Stage 2 is future app-level aggregation:
+Stage 2 is app-level aggregation implemented by
+`packages/expo-modules-dotnet-autolinking`:
 
-- A future autolinking tool resolves dotnet Expo libraries.
-- The tool generates one app-level provider file.
+- The autolinking CLI resolves dotnet Expo libraries from
+  `expo-module.config.json`.
+- The tool generates one app-level `ExpoDotnetHost` project.
 - The app-level provider calls each linked library's generated provider.
-- App startup calls the aggregate provider.
+- App startup calls the aggregate provider through the generated
+  `expo_dotnet_create_runtime_context` entry point.
 
 Illustrative app-level output:
 
@@ -180,10 +182,9 @@ public static class LinkedExpoModulesProvider
 The app-level provider should not discover individual module classes. Module
 class discovery belongs to each library's generator run.
 
-## Proposed Dotnet Config Shape
+## Dotnet Config Shape
 
-This milestone does not parse `expo-module.config.json`. The following shape
-is a proposed future input for dotnet autolinking:
+The autolinking CLI parses `expo-module.config.json` entries with this shape:
 
 ```json
 {
@@ -191,8 +192,8 @@ is a proposed future input for dotnet autolinking:
   "dotnet": {
     "projects": [
       {
-        "path": "src/Expo.Example/Expo.Example.csproj",
-        "assemblyName": "Expo.Example"
+        "path": "dotnet/ExampleModule/ExampleModule.csproj",
+        "assemblyName": "ExampleModule"
       }
     ]
   }
@@ -200,8 +201,9 @@ is a proposed future input for dotnet autolinking:
 ```
 
 `path` identifies the C# project that produces an Expo module assembly.
-`assemblyName` is optional if the autolinking tool can read it from the project
-file, but it may be useful as an explicit stable override.
+`assemblyName` is optional and defaults to the csproj file basename. When
+provided, it must match the assembly name used by the Roslyn generator to name
+`ExpoModulesProvider_{assemblyName}`.
 
 The config should not list individual module classes. The `[ExpoModule]`
 attributes are the source of truth for module class discovery inside the
@@ -211,8 +213,6 @@ library project.
 
 The first generator milestone does not:
 
-- parse `expo-module.config.json`;
-- generate an app-level aggregate provider;
 - package analyzer assets for external NuGet consumption;
 - scan runtime assemblies for module types;
 - inspect referenced assemblies for module classes;
