@@ -1,0 +1,11 @@
+{
+  "platforms": ["dotnet"],
+  "dotnet": {
+    "projects": [
+      {
+        "path": "dotnet/ExampleModule/ExampleModule.csproj",
+        "assemblyName": "ExampleModule"
+      }
+    ]
+  }
+}

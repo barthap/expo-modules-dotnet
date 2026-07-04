@@ -25,4 +25,5 @@
   <PropertyGroup Condition="'$(PublishAot)' == 'true'">
     <NativeLib>Shared</NativeLib>
   </PropertyGroup>
+
 </Project>
