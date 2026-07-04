@@ -36,8 +36,11 @@ slice.
 
 New workspace package `packages/expo-modules-dotnet-autolinking` (TypeScript,
 CLI bin `expo-modules-dotnet-autolinking`). It depends on
-`expo-modules-autolinking/exports` for package discovery only
-(`findModulesAsync`, `expo-module.config.json` parsing, duplicate merging).
+`expo-modules-autolinking/exports` for package discovery only, through the
+non-deprecated dependency-scanning surface (`makeCachedDependenciesLinker` +
+`scanExpoModuleResolutionsForPlatform`, which covers
+`expo-module.config.json` parsing and duplicate merging); the deprecated
+`findModulesAsync` wrapper is not used.
 Upstream `supportsPlatform('dotnet')` already gates through the exact-match
 default branch, so no upstream changes are required. The tool MUST NOT call
 upstream `resolveModulesAsync` or platform dispatch (they throw for unknown
