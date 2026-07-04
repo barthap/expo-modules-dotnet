@@ -30,6 +30,7 @@ public sealed class DotnetRuntimeContext : IDisposable
 {
   private readonly object gate = new();
   private readonly List<GeneratedHostFunctionRegistration> hostFunctionRegistrations = [];
+  private readonly List<IDisposable> retainedCallbacks = [];
   private readonly Dictionary<string, object> moduleInstances = new(StringComparer.Ordinal);
   private bool disposed;
 
@@ -99,9 +100,31 @@ public sealed class DotnetRuntimeContext : IDisposable
     return registration;
   }
 
+  internal T RegisterRetainedCallback<T>(T callback)
+      where T : IDisposable
+  {
+    ArgumentNullException.ThrowIfNull(callback);
+    lock (gate)
+    {
+      try
+      {
+        ThrowIfDisposedLocked();
+        retainedCallbacks.Add(callback);
+      }
+      catch
+      {
+        callback.Dispose();
+        throw;
+      }
+    }
+
+    return callback;
+  }
+
   public void Dispose()
   {
     List<GeneratedHostFunctionRegistration> registrations;
+    List<IDisposable> callbacks;
     List<IDisposable> disposableModules;
 
     lock (gate)
@@ -114,6 +137,8 @@ public sealed class DotnetRuntimeContext : IDisposable
       disposed = true;
       registrations = [.. hostFunctionRegistrations];
       hostFunctionRegistrations.Clear();
+      callbacks = [.. retainedCallbacks];
+      retainedCallbacks.Clear();
       disposableModules = moduleInstances.Values.OfType<IDisposable>().ToList();
       moduleInstances.Clear();
     }
@@ -121,6 +146,11 @@ public sealed class DotnetRuntimeContext : IDisposable
     foreach (var registration in registrations)
     {
       registration.Dispose();
+    }
+
+    foreach (var callback in callbacks)
+    {
+      callback.Dispose();
     }
 
     foreach (var module in disposableModules)
