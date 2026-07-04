@@ -45,3 +45,6 @@ catalogs:
 patchedDependencies:
   '@react-native-windows/cli@0.81.6': patches/@react-native-windows__cli@0.81.6.patch
   '@react-native-windows/find-dotnet-tools@0.0.0-canary.2': patches/@react-native-windows__find-dotnet-tools@0.0.0-canary.2.patch
+
+allowBuilds:
+  esbuild: true
