@@ -6,6 +6,7 @@
 # Files executed by Unix shells must stay LF on every platform.
 *.sh text eol=lf
 *.py text eol=lf
+*.cs text eol=lf
 .envrc text eol=lf
 *.podspec text eol=lf
 *.xcode.env text eol=lf
