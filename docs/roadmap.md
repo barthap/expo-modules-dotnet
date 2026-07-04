@@ -90,9 +90,9 @@ Completed scope:
    - Dotnet Expo module packages declare `platforms: ["dotnet"]` and
      `dotnet.projects` metadata consumed by the autolinking CLI.
 
-4. **Self-contained ABI errors**
-   - Replace `thread_local` error message lifetime with self-contained error
-     results before the ABI grows much further.
+4. **Self-contained ABI errors** (complete)
+   - Complete: `expo_jsi_error` messages are self-contained and released through
+     explicit callbacks instead of pointing into `thread_local` storage.
 
 ### P2: Interactive Module Capabilities
 
@@ -203,8 +203,6 @@ options.
 
 - **P3 — Handle allocation cost**: Arena or pool allocator for `ValueHandle` to
   reduce per-call heap allocation pressure on hot paths (Finding 1).
-- **P1 — `thread_local` error message lifetime**: Make error results
-  self-contained instead of pointing into thread-local storage (Finding 4).
 - **P3 — Mobile scheduler priority no-op**: `apps/mobile-app` routes
   through React Native `CallInvoker`, which has no priority lane, so
   `JsiRuntimeTaskPriority` is advisory/no-op for that proof.

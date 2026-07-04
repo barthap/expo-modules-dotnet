@@ -38,13 +38,13 @@ internal sealed unsafe class HostFunctionContext
     if (length == 0)
     {
       lastErrorMessageLength = 0;
-      return new ExpoJsiError(100, null, 0);
+      return new ExpoJsiError(100, null, 0, 0, null);
     }
 
     lastErrorMessage = (byte*)NativeMemory.Alloc((nuint)length);
     lastErrorMessageLength = length;
     Encoding.UTF8.GetBytes(message, new Span<byte>(lastErrorMessage, lastErrorMessageLength));
-    return new ExpoJsiError(100, lastErrorMessage, lastErrorMessageLength);
+    return new ExpoJsiError(100, lastErrorMessage, lastErrorMessageLength, 0, null);
   }
 
   public nint ToIntPtr()

@@ -22,7 +22,7 @@ public sealed class HermesRuntimeFixture : IDisposable
     var result = NativeTestHost.CreateRuntime();
     if (result.Ok == 0 || result.Api == 0 || result.Runtime == 0 || result.TestHostRuntime == 0)
     {
-      var message = result.Error.GetMessage();
+      var message = result.Error.GetMessageAndRelease();
       throw new InvalidOperationException(
           string.IsNullOrEmpty(message) ? "Failed to create Hermes test runtime." : message
       );

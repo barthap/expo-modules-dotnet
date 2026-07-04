@@ -22,6 +22,7 @@ typedef struct expo_jsi_testhost_counters {
   uint32_t released_values;
   uint32_t released_promises;
   uint32_t released_strings;
+  uint32_t released_errors;
   uint32_t released_task_contexts;
   uint32_t sync_execute_calls;
   uint32_t primitive_value_creates;

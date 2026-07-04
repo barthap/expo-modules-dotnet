@@ -23,7 +23,7 @@ internal readonly unsafe struct JsiContext
 
   public static void ThrowNativeError(ExpoJsiError error, string fallback)
   {
-    var message = error.GetMessage();
+    var message = error.GetMessageAndRelease();
     if (string.IsNullOrEmpty(message))
     {
       message = fallback;

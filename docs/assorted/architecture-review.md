@@ -296,6 +296,11 @@ refinement if structured stack traces become important for tooling integration.
 
 ## Finding 4: `thread_local` Error Message Lifetime
 
+Status: solved by the self-contained ABI errors milestone. `expo_jsi_error`
+messages now carry owned native storage plus a release callback, and managed
+code copies and releases nonzero error messages before throwing. See
+`docs/specs/runtime-and-abi.md` for the accepted contract.
+
 ### Concern
 
 In `ExpoJsiBridge.cpp`, error messages are stored in a `thread_local
@@ -412,4 +417,4 @@ blocking pattern in a real adapter — that would be a mistake.
 | 1 | Handle allocation cost | Open | Medium | Medium | Arena allocator scoped to task boundary |
 | 2 | Module lifecycle / reload teardown | Solved | High | Medium | `DotnetRuntimeContext` + managed teardown callback |
 | 3 | C# stack traces lost across ABI | Solved | Low | Low | `ex.ToString()` forwarded across ABI (43dc2f94) |
-| 4 | `thread_local` error message lifetime | Open | Medium | Low | Copy error into result struct |
+| 4 | `thread_local` error message lifetime | Solved | Medium | Low | Self-contained error result |

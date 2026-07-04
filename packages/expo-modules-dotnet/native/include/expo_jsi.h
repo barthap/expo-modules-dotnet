@@ -58,10 +58,14 @@ typedef enum expo_jsi_promise_settlement {
   EXPO_JSI_PROMISE_REJECT = 1
 } expo_jsi_promise_settlement;
 
+typedef void (*expo_jsi_release_error_fn)(void *release_context);
+
 typedef struct expo_jsi_error {
   int32_t code;
   const char *message;
   int32_t message_len;
+  void *release_context;
+  expo_jsi_release_error_fn release;
 } expo_jsi_error;
 
 typedef struct expo_jsi_value_result {

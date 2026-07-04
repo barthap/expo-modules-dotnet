@@ -52,6 +52,23 @@ public sealed class JavaScriptValueTests
   }
 
   [Fact]
+  public void NativeErrorMessageBufferIsReleasedAfterManagedException()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var value = runtime.CreateNumber(1);
+      var exception = Assert.Throws<InvalidOperationException>(() => value.AsBool());
+
+      Assert.Contains("Value is not a boolean.", exception.Message);
+      Assert.True(fixture.Counters.ReleasedErrors >= 1);
+      return true;
+    });
+  }
+
+  [Fact]
   public void UsingDisposedValueThrowsObjectDisposedException()
   {
     using var fixture = HermesRuntimeFixture.Create();

@@ -177,8 +177,16 @@ namespace {
 
 namespace jsi = facebook::jsi;
 
-constexpr uint32_t kApiVersion = 14;
-thread_local std::string lastErrorMessage;
+constexpr uint32_t kApiVersion = 15;
+
+struct ErrorResultBuffer {
+  explicit ErrorResultBuffer(std::string value)
+    : value(std::move(value))
+  {
+  }
+
+  std::string value;
+};
 
 struct StringResultBuffer {
   explicit StringResultBuffer(std::string value)
@@ -197,17 +205,19 @@ struct PropertyNamesResultBuffer {
 
 expo_jsi_error makeError(int32_t code, const char *message)
 {
-  lastErrorMessage = message == nullptr ? "Unknown native exception." : message;
+  auto *buffer = new ErrorResultBuffer(message == nullptr ? "Unknown native exception." : message);
   return expo_jsi_error{
     code,
-    lastErrorMessage.c_str(),
-    static_cast<int32_t>(lastErrorMessage.size()),
+    buffer->value.c_str(),
+    static_cast<int32_t>(buffer->value.size()),
+    buffer,
+    [](void *release_context) { delete static_cast<ErrorResultBuffer *>(release_context); },
   };
 }
 
 expo_jsi_error makeOk()
 {
-  return expo_jsi_error{0, nullptr, 0};
+  return expo_jsi_error{0, nullptr, 0, nullptr, nullptr};
 }
 
 expo::dotnet::JsiRuntimeTaskPriority toRuntimeTaskPriority(expo_jsi_task_priority priority)
@@ -237,7 +247,7 @@ void writeError(expo_jsi_error *error, int32_t code, const char *message)
 void clearError(expo_jsi_error *error)
 {
   if (error != nullptr) {
-    *error = expo_jsi_error{0, nullptr, 0};
+    *error = makeOk();
   }
 }
 
@@ -365,7 +375,7 @@ expo_jsi_value_result makeValueResult(std::unique_ptr<expo::dotnet::ValueHandle>
   return expo_jsi_value_result{
     1,
     value.release(),
-    expo_jsi_error{0, nullptr, 0},
+    makeOk(),
   };
 }
 
@@ -374,7 +384,7 @@ expo_jsi_value_result makeBorrowedValueResult(expo_jsi_value_handle value)
   return expo_jsi_value_result{
     1,
     value,
-    expo_jsi_error{0, nullptr, 0},
+    makeOk(),
   };
 }
 
@@ -383,7 +393,7 @@ expo_jsi_promise_result makePromiseResult(std::unique_ptr<expo::dotnet::PromiseH
   return expo_jsi_promise_result{
     1,
     promise.release(),
-    expo_jsi_error{0, nullptr, 0},
+    makeOk(),
   };
 }
 
@@ -410,7 +420,7 @@ expo_jsi_string_result makeStringResult(std::string value)
     static_cast<int32_t>(buffer->value.size()),
     buffer,
     [](void *release_context) { delete static_cast<StringResultBuffer *>(release_context); },
-    expo_jsi_error{0, nullptr, 0},
+    makeOk(),
   };
 }
 
@@ -1138,7 +1148,7 @@ expo_jsi_error objectSetProperty(expo_jsi_runtime_handle runtime,
       jsRuntime, reinterpret_cast<const uint8_t *>(name), static_cast<size_t>(name_len));
     auto jsObject = checkedObject(jsRuntime, object);
     jsObject.setProperty(jsRuntime, propertyName, value->value());
-    return expo_jsi_error{0, nullptr, 0};
+    return makeOk();
   } catch (const std::exception &ex) {
     return makeError(25, ex.what());
   } catch (...) {

@@ -54,6 +54,24 @@ frames.
 - **WHEN** an ABI create function returns
 - **THEN** it SHALL return `ok = 0` with `expo_jsi_error` populated
 
+#### Scenario: Native error message is consumed after another ABI call
+- **GIVEN** a native ABI function returns a nonzero `expo_jsi_error`
+- **WHEN** another ABI call is made before managed code reads the first error
+  message
+- **THEN** the first error message SHALL remain valid until managed code copies
+  and releases it
+
+#### Scenario: Managed code consumes a native error
+- **GIVEN** managed code receives a nonzero `expo_jsi_error`
+- **WHEN** it converts the error into a managed exception or message
+- **THEN** it SHALL copy the UTF-8 message
+- **AND** it SHALL invoke the native release callback exactly once when present
+
+#### Scenario: Success error result is returned
+- **GIVEN** an ABI operation succeeds
+- **WHEN** native returns an `expo_jsi_error`
+- **THEN** the error SHALL have code zero and no release callback
+
 #### Scenario: Primitive value creation uses a generic slot
 - **GIVEN** managed code needs a primitive number, boolean, null, or undefined
   value

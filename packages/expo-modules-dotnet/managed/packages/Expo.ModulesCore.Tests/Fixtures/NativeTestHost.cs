@@ -39,6 +39,7 @@ internal static unsafe class NativeTestHost
     public readonly uint ReleasedValues;
     public readonly uint ReleasedPromises;
     public readonly uint ReleasedStrings;
+    public readonly uint ReleasedErrors;
     public readonly uint ReleasedTaskContexts;
     public readonly uint SyncExecuteCalls;
   }
@@ -212,7 +213,7 @@ internal static unsafe class NativeTestHost
 
   private static void ThrowNativeError(ExpoJsiError error, string fallback)
   {
-    var message = error.GetMessage();
+    var message = error.GetMessageAndRelease();
     throw new InvalidOperationException(string.IsNullOrEmpty(message) ? fallback : message);
   }
 }

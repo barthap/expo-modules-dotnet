@@ -24,21 +24,66 @@ namespace {
 
 namespace jsi = facebook::jsi;
 
-thread_local std::string lastErrorMessage;
+struct ErrorResultBuffer {
+  explicit ErrorResultBuffer(std::string value)
+    : value(std::move(value))
+  {
+  }
+
+  std::string value;
+};
 
 expo_jsi_error makeError(int32_t code, const char *message)
 {
-  lastErrorMessage = message == nullptr ? "Unknown native testhost error." : message;
+  auto *buffer =
+    new ErrorResultBuffer(message == nullptr ? "Unknown native testhost error." : message);
   return expo_jsi_error{
     code,
-    lastErrorMessage.c_str(),
-    static_cast<int32_t>(lastErrorMessage.size()),
+    buffer->value.c_str(),
+    static_cast<int32_t>(buffer->value.size()),
+    buffer,
+    [](void *release_context) { delete static_cast<ErrorResultBuffer *>(release_context); },
   };
+}
+
+expo_jsi_error makeOk()
+{
+  return expo_jsi_error{0, nullptr, 0, nullptr, nullptr};
 }
 
 expo_jsi_value_result makeErrorResult(int32_t code, const char *message)
 {
   return expo_jsi_value_result{0, nullptr, makeError(code, message)};
+}
+
+struct CountedErrorReleaseContext {
+  expo_jsi_testhost_runtime_t *testhost;
+  expo_jsi_release_error_fn release;
+  void *releaseContext;
+};
+
+void countedReleaseError(void *releaseContext)
+{
+  auto *context = static_cast<CountedErrorReleaseContext *>(releaseContext);
+  if (context->testhost != nullptr) {
+    context->testhost->counters.released_errors++;
+  }
+  if (context->release != nullptr) {
+    context->release(context->releaseContext);
+  }
+  delete context;
+}
+
+expo_jsi_error countErrorRelease(expo_jsi_testhost_runtime_t *testhost, expo_jsi_error error)
+{
+  if (error.code == 0 || error.release == nullptr) {
+    return error;
+  }
+
+  auto *context = new CountedErrorReleaseContext{testhost, error.release, error.release_context};
+  error.release_context = context;
+  error.release = countedReleaseError;
+  return error;
 }
 
 std::mutex counterRuntimesMutex;
@@ -96,6 +141,22 @@ expo_jsi_value_result countedCreatePrimitiveValue(expo_jsi_runtime_handle runtim
   }
   const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
   return api->create_primitive_value(runtime, kind, value);
+}
+
+uint8_t countedGetBool(expo_jsi_runtime_handle runtime,
+                       expo_jsi_value_handle value,
+                       expo_jsi_error *error)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  expo_jsi_error innerError{};
+  auto result = api->get_bool(runtime, value, &innerError);
+  if (error != nullptr) {
+    *error = countErrorRelease(testhost, innerError);
+  } else if (innerError.release != nullptr) {
+    innerError.release(innerError.release_context);
+  }
+  return result;
 }
 
 void countedReleaseValue(expo_jsi_runtime_handle runtime, expo_jsi_value_handle value)
@@ -232,6 +293,7 @@ const expo_jsi_api *makeCountedApi(expo_jsi_testhost_runtime_t &runtime)
   runtime.countedApi.create_number = countedCreateNumber;
   runtime.countedApi.create_bool = countedCreateBool;
   runtime.countedApi.create_primitive_value = countedCreatePrimitiveValue;
+  runtime.countedApi.get_bool = countedGetBool;
   runtime.countedApi.release_value = countedReleaseValue;
   runtime.countedApi.release_promise = countedReleasePromise;
   runtime.countedApi.get_string = countedGetString;
@@ -292,7 +354,7 @@ extern "C" expo_jsi_testhost_create_result expo_jsi_testhost_create_runtime(void
       makeCountedApi(*testhost),
       testhost->runtime,
       testhost,
-      expo_jsi_error{0, nullptr, 0},
+      makeOk(),
     };
   } catch (const std::exception &error) {
     return expo_jsi_testhost_create_result{
@@ -342,7 +404,7 @@ extern "C" expo_jsi_value_result expo_jsi_testhost_evaluate_script(
       result = expo_jsi_value_result{
         1,
         expo::dotnet::createOwnedValueHandle(std::move(value)),
-        expo_jsi_error{0, nullptr, 0},
+        makeOk(),
       };
     });
     return result;
@@ -373,10 +435,8 @@ extern "C" void expo_jsi_testhost_reset_counters(expo_jsi_testhost_runtime_handl
 extern "C" void expo_jsi_testhost_drain_tasks(expo_jsi_testhost_runtime_handle testhostRuntime)
 {
   auto error = expo_jsi_testhost_wait_until_idle(testhostRuntime);
-  if (error.code != 0) {
-    lastErrorMessage = error.message != nullptr
-                         ? std::string(error.message, static_cast<size_t>(error.message_len))
-                         : "Failed to wait for Hermes runtime idle.";
+  if (error.release != nullptr) {
+    error.release(error.release_context);
   }
 }
 
@@ -389,7 +449,7 @@ extern "C" expo_jsi_error expo_jsi_testhost_wait_until_idle(
   }
   try {
     testhost->connector.waitUntilIdle();
-    return expo_jsi_error{0, nullptr, 0};
+    return makeOk();
   } catch (const std::exception &ex) {
     return makeError(10, ex.what());
   } catch (...) {

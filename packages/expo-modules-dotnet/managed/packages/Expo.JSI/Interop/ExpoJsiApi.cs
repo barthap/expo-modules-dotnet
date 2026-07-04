@@ -455,7 +455,7 @@ internal readonly unsafe struct ExpoJsiApi
 
   private static void ThrowNativeError(ExpoJsiError error, string fallback)
   {
-    var message = error.GetMessage();
+    var message = error.GetMessageAndRelease();
     if (string.IsNullOrEmpty(message))
     {
       message = fallback;
@@ -659,5 +659,5 @@ internal readonly unsafe struct ExpoJsiApi
   }
 
   public static uint ExpectedSize => (uint)sizeof(ExpoJsiApi);
-  public const uint ExpectedVersion = 14;
+  public const uint ExpectedVersion = 15;
 }

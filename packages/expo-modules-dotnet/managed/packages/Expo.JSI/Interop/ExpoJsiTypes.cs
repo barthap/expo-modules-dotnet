@@ -43,15 +43,40 @@ internal readonly unsafe struct ExpoJsiError
   public readonly int Code;
   public readonly byte* Message;
   public readonly int MessageLength;
+  public readonly nint ReleaseContext;
+  public readonly delegate* unmanaged[Cdecl]<nint, void> Release;
 
-  public ExpoJsiError(int code, byte* message, int messageLength)
+  public ExpoJsiError(
+      int code,
+      byte* message,
+      int messageLength,
+      nint releaseContext,
+      delegate* unmanaged[Cdecl]<nint, void> release
+  )
   {
     Code = code;
     Message = message;
     MessageLength = messageLength;
+    ReleaseContext = releaseContext;
+    Release = release;
   }
 
-  public string GetMessage()
+  public string GetMessageAndRelease()
+  {
+    try
+    {
+      return CopyMessage();
+    }
+    finally
+    {
+      if (Release is not null)
+      {
+        Release(ReleaseContext);
+      }
+    }
+  }
+
+  private string CopyMessage()
   {
     if (Message is null || MessageLength <= 0)
     {

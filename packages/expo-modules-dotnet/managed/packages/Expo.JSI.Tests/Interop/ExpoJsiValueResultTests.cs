@@ -1,11 +1,37 @@
 using Expo.JSI.Interop;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using Xunit;
 
 namespace Expo.JSI.Tests.Interop;
 
 public sealed unsafe class ExpoJsiValueResultTests
 {
+  [Fact]
+  public void ErrorMessageIsCopiedAndReleasedWhenConsumed()
+  {
+    var counter = new ReleaseCounter();
+    var handle = GCHandle.Alloc(counter);
+    var messageBytes = Encoding.UTF8.GetBytes("native validation failed");
+
+    fixed (byte* message = messageBytes)
+    {
+      var error = new ExpoJsiError(
+          42,
+          message,
+          messageBytes.Length,
+          GCHandle.ToIntPtr(handle),
+          &ReleaseError
+      );
+
+      var managedMessage = error.GetMessageAndRelease();
+
+      Assert.Equal("native validation failed", managedMessage);
+      Assert.Equal(1, counter.Count);
+    }
+  }
+
   [Fact]
   public void IsOkRequiresNativeSuccessAndValueHandle()
   {
@@ -67,6 +93,20 @@ public sealed unsafe class ExpoJsiValueResultTests
     return MemoryMarshal.Cast<RawStringResult, ExpoJsiStringResult>(
         MemoryMarshal.CreateSpan(ref raw, 1)
     )[0];
+  }
+
+  [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+  private static void ReleaseError(nint context)
+  {
+    var handle = GCHandle.FromIntPtr(context);
+    var counter = Assert.IsType<ReleaseCounter>(handle.Target);
+    counter.Count++;
+    handle.Free();
+  }
+
+  private sealed class ReleaseCounter
+  {
+    public int Count { get; set; }
   }
 
   [StructLayout(LayoutKind.Sequential)]
