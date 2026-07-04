@@ -10,7 +10,8 @@ import { buildDotnetManifest, type DotnetPackageInput } from './resolveDotnetMod
 import type { DotnetLinkingManifest, RawDotnetConfig } from './types';
 
 export function resolveAppRoot(explicit?: string): string {
-  return explicit !== undefined ? path.resolve(explicit) : findProjectRootSync(process.cwd());
+  const root = explicit !== undefined ? path.resolve(explicit) : findProjectRootSync(process.cwd());
+  return path.basename(root) === 'package.json' ? path.dirname(root) : root;
 }
 
 export async function discoverDotnetManifestAsync(
