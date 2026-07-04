@@ -38,6 +38,7 @@ dotnet publish "${project}" \
   -r android-arm64 \
   -p:PublishAot=true \
   -p:PublishAotUsingRuntimePack=true \
+  -p:LegacyMobileEntryPoints=true \
   -p:CppCompilerAndLinker="${android_clang}" \
   -p:StripSymbols=false \
   --self-contained true
@@ -47,6 +48,7 @@ dotnet publish "${project}" \
   -r iossimulator-arm64 \
   -p:PublishAot=true \
   -p:PublishAotUsingRuntimePack=true \
+  -p:LegacyMobileEntryPoints=true \
   --self-contained true
 
 mkdir -p "${android_jni_libs}" "${ios_native_libs}"

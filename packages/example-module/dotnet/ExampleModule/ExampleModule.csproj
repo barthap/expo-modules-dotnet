@@ -25,4 +25,10 @@
   <PropertyGroup Condition="'$(PublishAot)' == 'true'">
     <NativeLib>Shared</NativeLib>
   </PropertyGroup>
+
+  <ItemGroup Condition="'$(LegacyMobileEntryPoints)' != 'true'">
+    <!-- Legacy app-composition entry points, only for the pre-autolinking mobile NativeAOT proof.
+         Superseded by the expo-modules-dotnet-autolinking ExpoDotnetHost aggregator. -->
+    <Compile Remove="EntryPoints.cs" />
+  </ItemGroup>
 </Project>
