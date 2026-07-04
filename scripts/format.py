@@ -11,6 +11,7 @@ from pathlib import Path
 
 
 CXX_EXTENSIONS = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx"}
+CXX_GENERATED_EXCLUDES = {"AutolinkedNativeModules.g.cpp", "AutolinkedNativeModules.g.h"}
 CSHARP_EXTENSIONS = {".csproj"}
 CMAKE_NAMES = {"CMakeLists.txt"}
 CMAKE_EXTENSIONS = {".cmake"}
@@ -153,6 +154,7 @@ def run_cxx_format(root: Path, files: list[str], check: bool) -> None:
         path
         for path in files
         if under_source_root(path) and Path(path).suffix.lower() in CXX_EXTENSIONS
+        and Path(path).name not in CXX_GENERATED_EXCLUDES
     ]
     if not cxx_files:
         return
