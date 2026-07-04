@@ -76,10 +76,12 @@ compares the generated output byte-for-byte.
 
 ## Managed Artifacts
 
-The Windows app builds managed proof artifacts through
-`apps/desktop-app/scripts/build-managed.ps1` and stages them into
-`apps/desktop-app/windows/Managed`. The app project copies that directory next
-to the built executable as `Managed/`.
+Both apps build managed artifacts through the `expo-modules-dotnet-autolinking`
+CLI (`link --platform macos|windows`), which runs automatically as an Xcode
+script phase (macOS) or MSBuild target (Windows) and stages them into
+`apps/desktop-app/macos/Managed` / `apps/desktop-app/windows/Managed`. The
+Windows app project copies that directory next to the built executable as
+`Managed/`.
 
 HostFXR is the default loader. Override with `EXPO_DOTNET_LOADER` or
 `EXPO_JSI_DOTNET_LOADER` when testing another loader.

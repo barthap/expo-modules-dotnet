@@ -28,8 +28,9 @@ std::string pathForBundledResource(NSString *name, NSString *extension)
     url = [[NSBundle mainBundle] URLForResource:name withExtension:extension];
   }
   if (url == nil) {
-    NSLog(@"[ExpoModulesDotnet] Missing managed artifact Managed/%@.%@. Run "
-           "apps/desktop-app/scripts/build-managed.sh before launching the macOS app.",
+    NSLog(@"[ExpoModulesDotnet] Missing managed artifact Managed/%@.%@. Run the "
+           "expo-modules-dotnet-autolinking link command (or a full app build, which runs it as a "
+           "script phase) before launching the macOS app.",
           name,
           extension);
   }
