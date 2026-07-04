@@ -116,8 +116,12 @@ See "Output directory migration" for relocation guidance. Contents:
 - `EntryPoints.g.cs` — `UnmanagedCallersOnly` exports
   `expo_dotnet_create_runtime_context` and
   `expo_dotnet_teardown_runtime_context`, delegating registration to
-  `LinkedExpoModulesProvider.Register`. This replaces and deletes
-  `packages/example-module/dotnet/ExampleModule/EntryPoints.cs`.
+  `LinkedExpoModulesProvider.Register`. This supersedes
+  `packages/example-module/dotnet/ExampleModule/EntryPoints.cs`; that file is
+  excluded from compilation by default (opt-in via a `LegacyMobileEntryPoints`
+  MSBuild property for the not-yet-migrated mobile NativeAOT proof — compiling
+  it into an aggregator-referenced project would duplicate
+  `UnmanagedCallersOnly` symbols) and is deleted when iOS/Android migrate.
 
 NativeAOT constraint: each NativeAOT library carries its own runtime and GC,
 so separate per-module NativeAOT libraries cannot share one

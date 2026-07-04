@@ -128,16 +128,30 @@ export default defineConfig({ test: { include: ['src/**/__tests__/**/*.test.ts']
 build/
 ```
 
-- [ ] **Step 4: Install and verify**
+- [ ] **Step 4: Make the app depend on the CLI (pnpm resolution strategy)**
+
+With pnpm there is no hoisted `node_modules/expo-modules-dotnet-autolinking` at the app root unless
+the app depends on it. Add to `apps/desktop-app/package.json` `devDependencies`:
+
+```json
+"expo-modules-dotnet-autolinking": "workspace:*"
+```
+
+(Do the same for `apps/mobile-app` only when iOS/Android migrate.) All build hooks in later tasks
+resolve the CLI through Node module resolution from the app root — never through a hardcoded
+`node_modules/...` path.
+
+- [ ] **Step 5: Install and verify**
 
 Run: `pnpm install` (workspace root), then
 `pnpm --filter expo-modules-dotnet-autolinking build && node packages/expo-modules-dotnet-autolinking/bin/expo-modules-dotnet-autolinking.js --help`
-Expected: help text prints, exit 0.
+Expected: help text prints, exit 0. Also verify app-root resolution:
+`node --print "require.resolve('expo-modules-dotnet-autolinking', { paths: ['apps/desktop-app'] })"` → resolves.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add packages/expo-modules-dotnet-autolinking pnpm-lock.yaml
+git add packages/expo-modules-dotnet-autolinking apps/desktop-app/package.json pnpm-lock.yaml
 git commit -m "feat(autolinking): scaffold expo-modules-dotnet-autolinking package"
 ```
 
@@ -305,7 +319,11 @@ CLI: `expo-modules-dotnet-autolinking resolve [--project-root <dir>] [--json]` �
 
 ```ts
 // discovery.ts
-import { findModulesAsync, findProjectRootSync } from 'expo-modules-autolinking/exports';
+import {
+  findProjectRootSync,
+  makeCachedDependenciesLinker,
+  scanExpoModuleResolutionsForPlatform,
+} from 'expo-modules-autolinking/exports';
 import { buildDotnetManifest, type DotnetPackageInput } from './resolveDotnetModules';
 import type { DotnetLinkingManifest, RawDotnetConfig } from './types';
 
@@ -314,18 +332,10 @@ export function resolveAppRoot(explicit?: string): string {
 }
 
 export async function discoverDotnetManifestAsync(appRoot: string): Promise<DotnetLinkingManifest> {
-  const searchResults = await findModulesAsync({
-    appRoot,
-    autolinkingOptions: {
-      platform: 'dotnet',
-      searchPaths: [],
-      nativeModulesDir: './modules',
-      exclude: [],
-      include: [],
-      legacy_shallowReactNativeLinking: false,
-    },
-  });
-  const inputs: DotnetPackageInput[] = Object.entries(searchResults).map(([packageName, revision]) => ({
+  const linker = makeCachedDependenciesLinker({ projectRoot: appRoot });
+  // Record<string, PackageRevision>; gated by supportsPlatform('dotnet') exact-match
+  const revisions = await scanExpoModuleResolutionsForPlatform(linker, 'dotnet');
+  const inputs: DotnetPackageInput[] = Object.entries(revisions).map(([packageName, revision]) => ({
     packageName,
     packageRoot: revision.path,
     dotnetConfig: (revision.config?.toJSON() as { dotnet?: RawDotnetConfig } | undefined)?.dotnet,
@@ -334,7 +344,9 @@ export async function discoverDotnetManifestAsync(appRoot: string): Promise<Dotn
 }
 ```
 
-Note: upstream `supportsPlatform('dotnet')` gates on exact `platforms` membership; do NOT call upstream `resolveModulesAsync` (throws for unknown platforms). If the compiled `AutolinkingOptions` type requires more fields, satisfy them with their documented defaults rather than casting to `any`; a cast is the fallback only if the type is not exported.
+Notes:
+- `makeCachedDependenciesLinker` + `scanExpoModuleResolutionsForPlatform` is the non-deprecated exports surface (verified against installed `expo-modules-autolinking@57.0.2`); the exported `findModulesAsync(SearchOptions)` wrapper is `@deprecated` — do not use it. Do NOT call upstream `resolveModulesAsync`/platform dispatch (throws for unknown platforms).
+- After `pnpm install`, re-verify these signatures against the version the new package actually resolves (`node_modules/.pnpm/expo-modules-autolinking@*/`) before implementing.
 
 - [ ] **Step 2: Register command**
 
@@ -798,12 +810,13 @@ git commit -m "feat(example-module): declare dotnet autolinking metadata"
 
 ---
 
-### Task 10: Loader switch to ExpoDotnetHost + delete temporary EntryPoints.cs
+### Task 10: Loader switch to ExpoDotnetHost + gate legacy EntryPoints.cs
 
 **Files:**
 - Modify: `packages/expo-modules-dotnet/macos/ManagedLoader.mm` (constants around lines 14-26 and `loadExampleModuleConfig()` around lines 188-198)
 - Modify: `packages/expo-modules-dotnet/windows/ExpoModulesDotnet/ManagedLoader.cpp` (line 19 constant and `loadExampleModuleConfig()` around lines 275-285)
-- Delete: `packages/example-module/dotnet/ExampleModule/EntryPoints.cs`
+- Modify: `packages/example-module/dotnet/ExampleModule/ExampleModule.csproj` (compile gate)
+- Modify: `packages/example-module/scripts/build-nativeaot.sh` (pass the gate property)
 
 **Interfaces:**
 - Consumes: generated aggregator (Task 4) staged by `link` (Task 8).
@@ -815,12 +828,29 @@ git commit -m "feat(example-module): declare dotnet autolinking metadata"
 
 - [ ] **Step 2: Windows loader** — same renames in `ManagedLoader.cpp` (wide strings: `L"Expo.ModulesCore.Generated.EntryPoints, ExpoDotnetHost"`, `L"ExpoDotnetHost.dll"`, `L"ExpoDotnetHost.runtimeconfig.json"`).
 
-- [ ] **Step 3: Delete `packages/example-module/dotnet/ExampleModule/EntryPoints.cs`.** The aggregator now owns these exports; leaving both would produce duplicate `UnmanagedCallersOnly` symbols in NativeAOT publishes.
+- [ ] **Step 3: Gate `EntryPoints.cs` behind an opt-in MSBuild property.** The aggregator owns these
+exports now; compiling `EntryPoints.cs` into a project referenced by `ExpoDotnetHost` would produce
+duplicate `UnmanagedCallersOnly` symbols in the aggregator's NativeAOT publish. But the not-yet-migrated
+mobile proof (`build-nativeaot.sh`) still publishes `ExampleModule` standalone and needs the legacy
+entry points. So: exclude by default, opt in via property. In `ExampleModule.csproj`:
+
+```xml
+<ItemGroup Condition="'$(LegacyMobileEntryPoints)' != 'true'">
+  <!-- Legacy app-composition entry points, only for the pre-autolinking mobile NativeAOT proof.
+       Superseded by the expo-modules-dotnet-autolinking ExpoDotnetHost aggregator. -->
+  <Compile Remove="EntryPoints.cs" />
+</ItemGroup>
+```
+
+In `packages/example-module/scripts/build-nativeaot.sh`, add `/p:LegacyMobileEntryPoints=true` to the
+`dotnet publish` invocation (around line 34) so the mobile staging path keeps working. Delete
+`EntryPoints.cs` and this gate entirely when iOS/Android migrate to autolinking.
 
 - [ ] **Step 4: Rebuild + restage:** `node packages/expo-modules-dotnet-autolinking/bin/expo-modules-dotnet-autolinking.js link --platform macos --project-root apps/desktop-app`
 Expected: succeeds; `ExampleModule.dll` no longer exports entry points but `ExpoDotnetHost.dll` does.
+Then verify the legacy mobile path still compiles: `dotnet build packages/example-module/dotnet/ExampleModule/ExampleModule.csproj -c Debug /p:LegacyMobileEntryPoints=true` → succeeds.
 
-- [ ] **Step 5: Managed suite still green:** `scripts/test-managed.sh` → PASS (testhost uses its own harness, not these entry points; if it references `EntryPoints`, fix the reference to the testhost-local composition — do not resurrect the file).
+- [ ] **Step 5: Managed suite still green:** `scripts/test-managed.sh` → PASS (testhost uses its own harness, not these entry points; if it references `EntryPoints`, fix the reference to the testhost-local composition — do not weaken the `LegacyMobileEntryPoints` gate).
 
 - [ ] **Step 6: Commit**
 
@@ -856,7 +886,7 @@ def use_expo_modules_dotnet!(options = {})
     script: <<~SCRIPT
       set -euo pipefail
       cd "#{project_root}"
-      node --no-warnings ./node_modules/expo-modules-dotnet-autolinking/bin/expo-modules-dotnet-autolinking.js \
+      node --no-warnings --eval "require('expo-modules-dotnet-autolinking').main(process.argv.slice(1))" \
         link --platform macos --project-root "#{project_root}"
     SCRIPT
   )
@@ -904,14 +934,15 @@ git commit -m "feat(autolinking): macOS Xcode script phase runs dotnet autolinki
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <ExpoDotnetAppRoot Condition="'$(ExpoDotnetAppRoot)' == ''">$(MSBuildProjectDirectory)\..\..</ExpoDotnetAppRoot>
-    <ExpoDotnetAutolinkCli>$(ExpoDotnetAppRoot)\node_modules\expo-modules-dotnet-autolinking\bin\expo-modules-dotnet-autolinking.js</ExpoDotnetAutolinkCli>
+    <!-- Resolve the CLI through Node module resolution (pnpm-safe), not a hardcoded node_modules path. -->
+    <ExpoDotnetAutolinkEval>require('expo-modules-dotnet-autolinking').main(process.argv.slice(1))</ExpoDotnetAutolinkEval>
   </PropertyGroup>
   <Target Name="ExpoDotnetGenerate">
-    <Exec Command="node --no-warnings &quot;$(ExpoDotnetAutolinkCli)&quot; generate --project-root &quot;$(ExpoDotnetAppRoot)&quot;"
+    <Exec Command="node --no-warnings --eval &quot;$(ExpoDotnetAutolinkEval)&quot; generate --project-root &quot;$(ExpoDotnetAppRoot)&quot;"
           WorkingDirectory="$(ExpoDotnetAppRoot)" />
   </Target>
   <Target Name="ExpoDotnetLink" BeforeTargets="ClCompile">
-    <Exec Command="node --no-warnings &quot;$(ExpoDotnetAutolinkCli)&quot; link --platform windows --project-root &quot;$(ExpoDotnetAppRoot)&quot;"
+    <Exec Command="node --no-warnings --eval &quot;$(ExpoDotnetAutolinkEval)&quot; link --platform windows --project-root &quot;$(ExpoDotnetAppRoot)&quot;"
           WorkingDirectory="$(ExpoDotnetAppRoot)" />
   </Target>
 </Project>
@@ -945,9 +976,10 @@ git commit -m "feat(autolinking): Windows MSBuild targets run dotnet autolinking
 - Modify: `docs/specs/modules-core-boundary.md` (requirement "App Aggregation Remains Future Autolinking Work")
 - Modify: `docs/specs/runtime-and-abi.md` (requirement "Managed Runtime Lifecycle Entry Points")
 - Modify: `docs/specs/README.md` (index entry)
+- Modify: `docs/README.md` (fix stale link `docs/modules-core-generator-authoring.md` → `docs/assorted/modules-core-generator-authoring.md`; add dotnet-autolinking spec to the front door)
 - Modify: `docs/assorted/modules-core-generator-authoring.md` (Stage 2 is now implemented; config shape is now parsed)
 - Modify: `docs/roadmap.md` (P1 config metadata + P3 autolinking status)
-- Delete (after merge): `docs/changes/2026-07-04-dotnet-autolinking/plan.md`
+- Delete (after merge): entire `docs/changes/2026-07-04-dotnet-autolinking/` directory (spec.md + plan.md — accepted deltas live in `docs/specs/`; transient artifacts are removed per repo workflow)
 
 - [ ] **Step 1: Write `docs/specs/dotnet-autolinking.md`** — copy the four ADDED requirements + scenarios from `docs/changes/2026-07-04-dotnet-autolinking/spec.md` verbatim into living-spec format (Purpose + Requirements), plus the documented-not-implemented iOS/Android integration and both migration notes (output dir, hybrid hooks) as non-normative sections.
 
@@ -966,18 +998,17 @@ git diff --check
 pnpm --filter expo-modules-dotnet-autolinking test
 pnpm --filter mobile-app typecheck
 rg "Assembly.GetTypes|MethodInfo.Invoke|Delegate.DynamicInvoke|JsonSerializer" packages/expo-modules-dotnet/managed/packages
-rg -n "ExampleModule.EntryPoints" packages apps   # expect no hits
+rg -n "ExampleModule.EntryPoints" packages/expo-modules-dotnet apps   # expect no hits in loaders/apps
+# (packages/example-module still contains the LegacyMobileEntryPoints-gated EntryPoints.cs — expected until mobile migrates)
 ```
 
 Also scan staged content for local absolute paths/usernames before committing.
 
-- [ ] **Step 6: Merge commit for docs, then remove the transient plan**
+- [ ] **Step 6: Merge commit for docs, then remove the transient change directory**
 
 ```bash
 git add docs
 git commit -m "docs: merge dotnet autolinking delta into living specs"
-git rm docs/changes/2026-07-04-dotnet-autolinking/plan.md
-git commit -m "chore: remove transient dotnet autolinking plan"
+git rm -r docs/changes/2026-07-04-dotnet-autolinking
+git commit -m "chore: remove transient dotnet autolinking change artifacts"
 ```
-
-(Keep `spec.md` or archive per user preference at handoff — ask at branch finish.)
