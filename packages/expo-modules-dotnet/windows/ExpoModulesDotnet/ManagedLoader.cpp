@@ -16,7 +16,8 @@ namespace {
 constexpr const wchar_t *kManagedSubdirectory = L"Managed";
 constexpr const char *kCreateRuntimeContextSymbol = "expo_dotnet_create_runtime_context";
 constexpr const char *kTeardownRuntimeContextSymbol = "expo_dotnet_teardown_runtime_context";
-constexpr const wchar_t *kEntryPointType = L"ExampleModule.EntryPoints, ExampleModule";
+constexpr const wchar_t *kEntryPointType =
+  L"Expo.ModulesCore.Generated.EntryPoints, ExpoDotnetHost";
 constexpr const wchar_t *kCreateRuntimeContextMethod = L"CreateRuntimeContext";
 constexpr const wchar_t *kTeardownRuntimeContextMethod = L"TeardownRuntimeContext";
 
@@ -111,7 +112,8 @@ std::wstring pathForManagedArtifact(const wchar_t *name)
     std::wstring message = L"[ExpoModulesDotnet] Missing managed artifact ";
     message += path.wstring();
     message +=
-      L". Run apps/desktop-app/scripts/build-managed.ps1 before launching the Windows app.";
+      L". Run the expo-modules-dotnet-autolinking link command (or a full app build, which runs "
+      L"it as an MSBuild target) before launching the Windows app.";
     logMessage(message.c_str());
   }
   return path.wstring();
@@ -272,17 +274,17 @@ void *resolveHostFxrMethod(const ManagedModuleConfig &config, const wchar_t *met
 
 } // namespace
 
-ManagedModuleConfig loadExampleModuleConfig()
+ManagedModuleConfig loadManagedHostConfig()
 {
   ManagedModuleConfig config;
   config.loaderKind = selectedLoaderKind();
   config.typeName = kEntryPointType;
 
   if (config.loaderKind == ManagedLoaderKind::NativeAot) {
-    config.nativeLibraryPath = pathForManagedArtifact(L"ExampleModule.dll");
+    config.nativeLibraryPath = pathForManagedArtifact(L"ExpoDotnetHost.dll");
   } else {
-    config.assemblyPath = pathForManagedArtifact(L"ExampleModule.dll");
-    config.runtimeConfigPath = pathForManagedArtifact(L"ExampleModule.runtimeconfig.json");
+    config.assemblyPath = pathForManagedArtifact(L"ExpoDotnetHost.dll");
+    config.runtimeConfigPath = pathForManagedArtifact(L"ExpoDotnetHost.runtimeconfig.json");
     config.nethostPath = pathForManagedArtifact(L"nethost.dll");
   }
 

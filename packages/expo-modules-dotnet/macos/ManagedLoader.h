@@ -28,7 +28,7 @@ struct ManagedModuleConfig {
   std::string typeName;
 };
 
-ManagedModuleConfig loadExampleModuleConfig();
+ManagedModuleConfig loadManagedHostConfig();
 const char *managedLoaderKindName(ManagedLoaderKind loaderKind);
 ManagedRuntimeContextEntryPoints resolveRuntimeContextEntryPoints(
   const ManagedModuleConfig &config);

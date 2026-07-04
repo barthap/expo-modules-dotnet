@@ -15,7 +15,7 @@ constexpr const char *kManagedSubdirectory = "Managed";
 NSString *const kLoaderInfoPlistKey = @"ExpoModulesDotnetLoader";
 constexpr const char *kCreateRuntimeContextSymbol = "expo_dotnet_create_runtime_context";
 constexpr const char *kTeardownRuntimeContextSymbol = "expo_dotnet_teardown_runtime_context";
-constexpr const char *kEntryPointType = "ExampleModule.EntryPoints, ExampleModule";
+constexpr const char *kEntryPointType = "Expo.ModulesCore.Generated.EntryPoints, ExpoDotnetHost";
 constexpr const char *kCreateRuntimeContextMethod = "CreateRuntimeContext";
 constexpr const char *kTeardownRuntimeContextMethod = "TeardownRuntimeContext";
 
@@ -28,8 +28,9 @@ std::string pathForBundledResource(NSString *name, NSString *extension)
     url = [[NSBundle mainBundle] URLForResource:name withExtension:extension];
   }
   if (url == nil) {
-    NSLog(@"[ExpoModulesDotnet] Missing managed artifact Managed/%@.%@. Run "
-           "apps/desktop-app/scripts/build-managed.sh before launching the macOS app.",
+    NSLog(@"[ExpoModulesDotnet] Missing managed artifact Managed/%@.%@. Run the "
+           "expo-modules-dotnet-autolinking link command (or a full app build, which runs it as a "
+           "script phase) before launching the macOS app.",
           name,
           extension);
   }
@@ -113,7 +114,7 @@ void *resolveNativeAotSymbol(const ManagedModuleConfig &config, const char *symb
 {
   void *library = openLibrary(config.nativeLibraryPath);
   if (library == nullptr) {
-    NSLog(@"[ExpoModulesDotnet] Failed to load NativeAOT ExampleModule library: %s", dlerror());
+    NSLog(@"[ExpoModulesDotnet] Failed to load NativeAOT ExpoDotnetHost library: %s", dlerror());
     return nullptr;
   }
 
@@ -185,17 +186,17 @@ void *resolveHostFxrMethod(const ManagedModuleConfig &config, const char *method
 
 } // namespace
 
-ManagedModuleConfig loadExampleModuleConfig()
+ManagedModuleConfig loadManagedHostConfig()
 {
   ManagedModuleConfig config;
   config.loaderKind = selectedLoaderKind();
   config.typeName = kEntryPointType;
 
   if (config.loaderKind == ManagedLoaderKind::NativeAot) {
-    config.nativeLibraryPath = pathForBundledResource(@"libExampleModule", @"dylib");
+    config.nativeLibraryPath = pathForBundledResource(@"libExpoDotnetHost", @"dylib");
   } else {
-    config.assemblyPath = pathForBundledResource(@"ExampleModule", @"dll");
-    config.runtimeConfigPath = pathForBundledResource(@"ExampleModule.runtimeconfig", @"json");
+    config.assemblyPath = pathForBundledResource(@"ExpoDotnetHost", @"dll");
+    config.runtimeConfigPath = pathForBundledResource(@"ExpoDotnetHost.runtimeconfig", @"json");
     config.nethostPath = pathForBundledResource(@"libnethost", @"dylib");
   }
 

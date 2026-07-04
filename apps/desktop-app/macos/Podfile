@@ -1,4 +1,5 @@
 require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), "scripts/autolinking")
+require File.join(File.dirname(`node --print "require.resolve('expo-modules-dotnet/package.json')"`), "scripts/autolinking.rb")
 require 'pathname'
 
 ws_dir = Pathname.new(__dir__)
@@ -17,6 +18,7 @@ target 'desktopapp-macOS' do
   platform :macos, '14.0'
 
   use_expo_modules!
+  use_expo_modules_dotnet!(project_root: File.expand_path('..', __dir__))
 
   config_command = [
     'node',

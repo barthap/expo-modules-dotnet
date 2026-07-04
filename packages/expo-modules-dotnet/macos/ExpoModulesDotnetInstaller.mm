@@ -135,7 +135,7 @@ RCT_EXPORT_MODULE()
   auto connector =
     std::make_unique<expo::dotnet::ReactNativeRuntimeConnector>(runtime, callInvoker);
   auto runtimeHandle = expo::dotnet::createReactNativeRuntimeHandle(*connector);
-  auto moduleConfig = expo::modules::dotnet::loadExampleModuleConfig();
+  auto moduleConfig = expo::modules::dotnet::loadManagedHostConfig();
   auto installedRuntime =
     std::make_shared<InstalledRuntime>(std::move(connector), runtimeHandle, std::move(moduleConfig));
 
