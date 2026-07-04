@@ -110,6 +110,15 @@ public readonly ref struct JavaScriptValueRef
   }
 
   /// <summary>
+  /// Converts this value ref to an owned JavaScript function wrapper.
+  /// </summary>
+  /// <remarks>
+  /// The returned <see cref="JavaScriptFunction" /> must be disposed independently and may outlive
+  /// the current scoped ref frame.
+  /// </remarks>
+  public JavaScriptFunction AsFunction() => new(Inner.Context, Inner.AsFunction());
+
+  /// <summary>
   /// Clones this ref into an owned JavaScript value wrapper.
   /// </summary>
   /// <remarks>

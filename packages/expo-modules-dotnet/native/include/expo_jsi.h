@@ -207,6 +207,25 @@ typedef expo_jsi_value_result (*expo_jsi_object_get_property_fn)(expo_jsi_runtim
 typedef expo_jsi_property_names_result (*expo_jsi_object_get_own_property_names_fn)(
   expo_jsi_runtime_handle runtime, expo_jsi_value_handle object);
 
+typedef expo_jsi_value_result (*expo_jsi_function_call_fn)(
+  expo_jsi_runtime_handle runtime,
+  expo_jsi_value_handle function,
+  const expo_jsi_value_handle *arguments,
+  uint32_t argument_count);
+
+typedef expo_jsi_value_result (*expo_jsi_function_call_with_this_fn)(
+  expo_jsi_runtime_handle runtime,
+  expo_jsi_value_handle function,
+  expo_jsi_value_handle this_object,
+  const expo_jsi_value_handle *arguments,
+  uint32_t argument_count);
+
+typedef expo_jsi_value_result (*expo_jsi_function_call_as_constructor_fn)(
+  expo_jsi_runtime_handle runtime,
+  expo_jsi_value_handle function,
+  const expo_jsi_value_handle *arguments,
+  uint32_t argument_count);
+
 typedef expo_jsi_value_result (*expo_jsi_create_host_function_fn)(
   expo_jsi_runtime_handle runtime,
   const char *name,
@@ -278,6 +297,9 @@ typedef struct expo_jsi_api {
   expo_jsi_object_set_property_fn object_set_property;
   expo_jsi_object_get_property_fn object_get_property;
   expo_jsi_object_get_own_property_names_fn object_get_own_property_names;
+  expo_jsi_function_call_fn function_call;
+  expo_jsi_function_call_with_this_fn function_call_with_this;
+  expo_jsi_function_call_as_constructor_fn function_call_as_constructor;
   expo_jsi_create_host_function_fn create_host_function;
   expo_jsi_get_arguments_count_fn get_arguments_count;
   expo_jsi_get_argument_value_fn get_argument_value;

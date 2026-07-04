@@ -79,6 +79,21 @@ internal readonly unsafe struct JavaScriptValueInner
     return result.Value;
   }
 
+  public ExpoJsiValueHandle AsFunction()
+  {
+    var result = Context.Api->RetainValueAs(
+        Context.RuntimeHandle,
+        Handle,
+        ExpoJsiValueExpectation.Function
+    );
+    if (!result.IsOk)
+    {
+      JsiContext.ThrowNativeError(result.Error, "Failed to convert JavaScript value to function.");
+    }
+
+    return result.Value;
+  }
+
   public ExpoJsiValueHandle Retain()
   {
     var result = Context.Api->CloneJavaScriptValue(Context.RuntimeHandle, Handle);

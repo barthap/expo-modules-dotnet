@@ -130,6 +130,25 @@ internal readonly unsafe struct ExpoJsiApi
     ExpoJsiRuntimeHandle,
     ExpoJsiValueHandle,
     ExpoJsiPropertyNamesResult> ObjectGetOwnPropertyNames;
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiValueHandle*,
+    uint,
+    ExpoJsiValueResult> FunctionCall;
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiValueHandle*,
+    uint,
+    ExpoJsiValueResult> FunctionCallWithThis;
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiValueHandle*,
+    uint,
+    ExpoJsiValueResult> FunctionCallAsConstructor;
 
   private readonly delegate* unmanaged[Cdecl]<
     ExpoJsiRuntimeHandle,
@@ -273,6 +292,9 @@ internal readonly unsafe struct ExpoJsiApi
       || this.ObjectSetProperty is null
       || this.ObjectGetProperty is null
       || this.ObjectGetOwnPropertyNames is null
+      || this.FunctionCall is null
+      || this.FunctionCallWithThis is null
+      || this.FunctionCallAsConstructor is null
       || this.CreateHostFunction is null
       || this.GetArgumentsCount is null
       || this.GetArgumentValue is null
@@ -568,6 +590,54 @@ internal readonly unsafe struct ExpoJsiApi
     ExpoJsiValueHandle objectHandle
   ) => ObjectGetOwnPropertyNames(runtimeHandle, objectHandle);
 
+  public ExpoJsiValueResult CallFunction(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueHandle functionHandle,
+    ReadOnlySpan<ExpoJsiValueHandle> arguments
+  )
+  {
+    fixed (ExpoJsiValueHandle* argumentsPtr = arguments)
+    {
+      return FunctionCall(runtimeHandle, functionHandle, argumentsPtr, checked((uint)arguments.Length));
+    }
+  }
+
+  public ExpoJsiValueResult CallFunctionWithThis(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueHandle functionHandle,
+    ExpoJsiValueHandle thisObjectHandle,
+    ReadOnlySpan<ExpoJsiValueHandle> arguments
+  )
+  {
+    fixed (ExpoJsiValueHandle* argumentsPtr = arguments)
+    {
+      return FunctionCallWithThis(
+          runtimeHandle,
+          functionHandle,
+          thisObjectHandle,
+          argumentsPtr,
+          checked((uint)arguments.Length)
+      );
+    }
+  }
+
+  public ExpoJsiValueResult CallFunctionAsConstructor(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueHandle functionHandle,
+    ReadOnlySpan<ExpoJsiValueHandle> arguments
+  )
+  {
+    fixed (ExpoJsiValueHandle* argumentsPtr = arguments)
+    {
+      return FunctionCallAsConstructor(
+          runtimeHandle,
+          functionHandle,
+          argumentsPtr,
+          checked((uint)arguments.Length)
+      );
+    }
+  }
+
   public ExpoJsiValueResult CreateHostFunctionValue(
     ExpoJsiRuntimeHandle runtimeHandle,
     ReadOnlySpan<byte> name,
@@ -659,5 +729,5 @@ internal readonly unsafe struct ExpoJsiApi
   }
 
   public static uint ExpectedSize => (uint)sizeof(ExpoJsiApi);
-  public const uint ExpectedVersion = 15;
+  public const uint ExpectedVersion = 16;
 }

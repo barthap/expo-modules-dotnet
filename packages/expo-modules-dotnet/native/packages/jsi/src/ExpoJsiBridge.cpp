@@ -177,7 +177,7 @@ namespace {
 
 namespace jsi = facebook::jsi;
 
-constexpr uint32_t kApiVersion = 15;
+constexpr uint32_t kApiVersion = 16;
 
 struct ErrorResultBuffer {
   explicit ErrorResultBuffer(std::string value)
@@ -487,6 +487,29 @@ jsi::Function checkedFunction(jsi::Runtime &runtime, expo_jsi_value_handle value
     throw std::invalid_argument("Value is not a function.");
   }
   return object.asFunction(runtime);
+}
+
+std::vector<jsi::Value> copyCallArguments(jsi::Runtime &runtime,
+                                          const expo_jsi_value_handle *arguments,
+                                          uint32_t argumentCount)
+{
+  if (argumentCount == 0) {
+    return {};
+  }
+  if (arguments == nullptr) {
+    throw std::invalid_argument("Function call arguments are null.");
+  }
+
+  std::vector<jsi::Value> copied;
+  copied.reserve(argumentCount);
+  for (uint32_t index = 0; index < argumentCount; index++) {
+    auto *argument = arguments[index];
+    if (argument == nullptr) {
+      throw std::invalid_argument("Function call argument handle is null.");
+    }
+    copied.emplace_back(runtime, argument->value());
+  }
+  return copied;
 }
 
 expo_jsi_value_result createNumber(expo_jsi_runtime_handle runtime, double number)
@@ -1231,6 +1254,83 @@ expo_jsi_property_names_result objectGetOwnPropertyNames(expo_jsi_runtime_handle
   }
 }
 
+expo_jsi_value_result callFunction(expo_jsi_runtime_handle runtime,
+                                   expo_jsi_value_handle function,
+                                   const expo_jsi_value_handle *arguments,
+                                   uint32_t argumentCount)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_value_result{0, nullptr, error};
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto jsFunction = checkedFunction(jsRuntime, function);
+    auto copiedArguments = copyCallArguments(jsRuntime, arguments, argumentCount);
+    const jsi::Value *argumentData = copiedArguments.empty() ? nullptr : copiedArguments.data();
+    auto result = jsFunction.call(jsRuntime, argumentData, copiedArguments.size());
+    return makeValueResult(expo::dotnet::ValueHandle::owned(std::move(result)));
+  } catch (const std::exception &ex) {
+    return makeErrorResult(105, ex.what());
+  } catch (...) {
+    return makeErrorResult(106, "Unknown native exception while calling function.");
+  }
+}
+
+expo_jsi_value_result callFunctionWithThis(expo_jsi_runtime_handle runtime,
+                                           expo_jsi_value_handle function,
+                                           expo_jsi_value_handle thisObject,
+                                           const expo_jsi_value_handle *arguments,
+                                           uint32_t argumentCount)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_value_result{0, nullptr, error};
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto jsFunction = checkedFunction(jsRuntime, function);
+    auto receiver = checkedObject(jsRuntime, thisObject);
+    auto copiedArguments = copyCallArguments(jsRuntime, arguments, argumentCount);
+    const jsi::Value *argumentData = copiedArguments.empty() ? nullptr : copiedArguments.data();
+    auto result = jsFunction.callWithThis(jsRuntime, receiver, argumentData, copiedArguments.size());
+    return makeValueResult(expo::dotnet::ValueHandle::owned(std::move(result)));
+  } catch (const std::exception &ex) {
+    return makeErrorResult(107, ex.what());
+  } catch (...) {
+    return makeErrorResult(108, "Unknown native exception while calling function with this.");
+  }
+}
+
+expo_jsi_value_result callFunctionAsConstructor(expo_jsi_runtime_handle runtime,
+                                                expo_jsi_value_handle function,
+                                                const expo_jsi_value_handle *arguments,
+                                                uint32_t argumentCount)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_value_result{0, nullptr, error};
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto jsFunction = checkedFunction(jsRuntime, function);
+    auto copiedArguments = copyCallArguments(jsRuntime, arguments, argumentCount);
+    const jsi::Value *argumentData = copiedArguments.empty() ? nullptr : copiedArguments.data();
+    auto result = jsFunction.callAsConstructor(jsRuntime, argumentData, copiedArguments.size());
+    return makeValueResult(expo::dotnet::ValueHandle::owned(std::move(result)));
+  } catch (const std::exception &ex) {
+    return makeErrorResult(109, ex.what());
+  } catch (...) {
+    return makeErrorResult(110, "Unknown native exception while calling function as constructor.");
+  }
+}
+
 class HostFunctionContext final {
 public:
   HostFunctionContext(expo_jsi_host_function_callback_fn callback,
@@ -1537,6 +1637,9 @@ const expo_jsi_api kApi{
   objectSetProperty,
   objectGetProperty,
   objectGetOwnPropertyNames,
+  callFunction,
+  callFunctionWithThis,
+  callFunctionAsConstructor,
   createHostFunction,
   getArgumentsCount,
   getArgumentValue,

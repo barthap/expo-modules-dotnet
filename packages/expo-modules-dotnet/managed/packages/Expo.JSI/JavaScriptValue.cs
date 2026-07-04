@@ -8,9 +8,9 @@ namespace Expo.JSI;
 /// </summary>
 /// <remarks>
 /// Dispose this wrapper when the value handle is no longer needed. Conversions such as
-/// <see cref="AsObject" />, <see cref="AsArray" />, and <see cref="AsValue" /> create new owned
-/// wrappers that must be disposed independently. Use <see cref="Ref" /> for scoped temporary
-/// inspection without disposable intermediates.
+  /// <see cref="AsObject" />, <see cref="AsArray" />, <see cref="AsFunction" />, and
+  /// <see cref="AsValue" /> create new owned wrappers that must be disposed independently. Use
+  /// <see cref="Ref" /> for scoped temporary inspection without disposable intermediates.
 /// </remarks>
 public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
 {
@@ -120,6 +120,14 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
   /// array traversal.
   /// </remarks>
   public JavaScriptArray AsArray() => new(context, Inner.AsArray());
+
+  /// <summary>
+  /// Converts this value to an owned JavaScript function wrapper.
+  /// </summary>
+  /// <remarks>
+  /// The returned <see cref="JavaScriptFunction" /> must be disposed independently.
+  /// </remarks>
+  public JavaScriptFunction AsFunction() => new(context, Inner.AsFunction());
 
   /// <summary>
   /// Wraps this value as an owned JavaScript promise value.
