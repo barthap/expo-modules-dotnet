@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+echo "[deprecated] Per-module NativeAOT staging is superseded by expo-modules-dotnet-autolinking." >&2
+echo "[deprecated] iOS/Android app-side staging is documented in docs/specs/dotnet-autolinking.md." >&2
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
