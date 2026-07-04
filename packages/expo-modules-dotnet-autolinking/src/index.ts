@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { registerBuildCommand } from './commands/buildCommand';
 import { registerGenerateCommand } from './commands/generateCommand';
 import { registerResolveCommand } from './commands/resolveCommand';
+import { registerStageCommand } from './commands/stageCommand';
 
 export function createProgram(): Command {
   const program = new Command('expo-modules-dotnet-autolinking');
@@ -10,6 +11,7 @@ export function createProgram(): Command {
   registerBuildCommand(program);
   registerGenerateCommand(program);
   registerResolveCommand(program);
+  registerStageCommand(program);
   return program;
 }
 
