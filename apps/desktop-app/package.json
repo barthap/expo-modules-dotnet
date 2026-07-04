@@ -34,6 +34,7 @@
     "@react-native/metro-config": "catalog:react-native-81",
     "@rnx-kit/metro-config": "^2.2.4",
     "@types/react": "catalog:react-native-81",
+    "expo-modules-dotnet-autolinking": "workspace:*",
     "typescript": "^5.9.2"
   },
   "react-native-windows": {
