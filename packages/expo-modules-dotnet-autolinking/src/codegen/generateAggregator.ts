@@ -88,11 +88,18 @@ ${projectReferences}
 `;
 }
 
+// Mirrors SanitizeIdentifier in Expo.ModulesCore.Generator/ExpoModulesGenerator.cs —
+// the Roslyn generator derives the provider type name from the assembly name the same way.
+function sanitizeIdentifier(value: string): string {
+  const sanitized = value.replace(/[^\p{L}\p{Nd}]/gu, '_');
+  return sanitized.length === 0 ? 'ExpoModules' : sanitized;
+}
+
 function generateLinkedProvider(projects: DotnetProjectRef[]): string {
   const registrations = projects
     .map(
       (project) =>
-        `        Expo.ModulesCore.Generated.ExpoModulesProvider_${project.assemblyName}.Register(context);`
+        `        Expo.ModulesCore.Generated.ExpoModulesProvider_${sanitizeIdentifier(project.assemblyName)}.Register(context);`
     )
     .join('\n');
   const body = registrations.length > 0 ? `${registrations}\n` : '';

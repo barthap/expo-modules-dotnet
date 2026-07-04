@@ -16,12 +16,15 @@ def use_expo_modules_dotnet!(options = {})
       set -euo pipefail
       app_root="${SRCROOT}/#{relative_root}"
       cd "$app_root"
-      mode_args=()
+      extra_args=()
       if [ -n "${EXPO_DOTNET_LOADER:-}" ]; then
-        mode_args+=(--mode "$EXPO_DOTNET_LOADER")
+        extra_args+=(--mode "$EXPO_DOTNET_LOADER")
+      fi
+      if [ -n "${CONFIGURATION:-}" ]; then
+        extra_args+=(--configuration "$CONFIGURATION")
       fi
       node --no-warnings --eval "require('expo-modules-dotnet-autolinking').main(process.argv.slice(1))" \
-        link --platform macos --project-root "$app_root" ${mode_args[@]+"${mode_args[@]}"}
+        link --platform macos --project-root "$app_root" ${extra_args[@]+"${extra_args[@]}"}
     SCRIPT
   )
 end

@@ -95,6 +95,19 @@ describe('generateAggregator', () => {
     expect(aIndex).toBeLessThan(bIndex);
   });
 
+  it('sanitizes provider identifiers like the Roslyn generator', () => {
+    const { adapterPackageRoot, manifest, outputDir } = makeFixture();
+    manifest.modules[0].projects[0].assemblyName = 'Expo.Test-Modules';
+
+    generateAggregator(manifest, { outputDir, adapterPackageRoot });
+
+    const provider = readGenerated(outputDir, 'LinkedExpoModulesProvider.g.cs');
+    expect(provider).toContain(
+      'Expo.ModulesCore.Generated.ExpoModulesProvider_Expo_Test_Modules.Register(context);'
+    );
+    expect(provider).not.toContain('ExpoModulesProvider_Expo.Test-Modules');
+  });
+
   it('references managed core and module projects with relative forward-slash paths', () => {
     const { adapterPackageRoot, manifest, outputDir } = makeFixture();
 

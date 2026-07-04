@@ -359,7 +359,7 @@
 			name = "[CP-User] Link Expo .NET Modules";
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\napp_root=\"${SRCROOT}/..\"\ncd \"$app_root\"\nmode_args=()\nif [ -n \"${EXPO_DOTNET_LOADER:-}\" ]; then\n  mode_args+=(--mode \"$EXPO_DOTNET_LOADER\")\nfi\nnode --no-warnings --eval \"require('expo-modules-dotnet-autolinking').main(process.argv.slice(1))\"   link --platform macos --project-root \"$app_root\" ${mode_args[@]+\"${mode_args[@]}\"}\n";
+			shellScript = "set -euo pipefail\napp_root=\"${SRCROOT}/..\"\ncd \"$app_root\"\nextra_args=()\nif [ -n \"${EXPO_DOTNET_LOADER:-}\" ]; then\n  extra_args+=(--mode \"$EXPO_DOTNET_LOADER\")\nfi\nif [ -n \"${CONFIGURATION:-}\" ]; then\n  extra_args+=(--configuration \"$CONFIGURATION\")\nfi\nnode --no-warnings --eval \"require('expo-modules-dotnet-autolinking').main(process.argv.slice(1))\"   link --platform macos --project-root \"$app_root\" ${extra_args[@]+\"${extra_args[@]}\"}\n";
 		};
 		F16C76AD38D65A22C2CB4B58 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -369,10 +369,12 @@
 			inputPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-desktopapp-macOS/Pods-desktopapp-macOS-frameworks.sh",
 				"${PODS_ROOT}/hermes-engine/destroot/Library/Frameworks/macosx/hermes.framework",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/ExpoModulesJSI/ExpoModulesJSI.framework/ExpoModulesJSI",
 			);
 			name = "[CP] Embed Pods Frameworks";
 			outputPaths = (
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/ExpoModulesJSI.framework",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;

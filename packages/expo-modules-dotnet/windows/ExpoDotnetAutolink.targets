@@ -5,6 +5,7 @@
     <!-- Resolve the CLI through Node module resolution (pnpm-safe), not a hardcoded node_modules path. -->
     <ExpoDotnetAutolinkEval>require('expo-modules-dotnet-autolinking').main(process.argv.slice(1))</ExpoDotnetAutolinkEval>
     <ExpoDotnetModeArgs Condition="'$(ExpoDotnetLoader)' != ''">--mode $(ExpoDotnetLoader)</ExpoDotnetModeArgs>
+    <ExpoDotnetConfigArgs Condition="'$(Configuration)' != ''">--configuration $(Configuration)</ExpoDotnetConfigArgs>
   </PropertyGroup>
   <!-- Standalone codegen entry point for the future hybrid install-time-generation migration. -->
   <Target Name="ExpoDotnetGenerate">
@@ -12,7 +13,7 @@
           WorkingDirectory="$(ExpoDotnetAppRoot)" />
   </Target>
   <Target Name="ExpoDotnetLink" BeforeTargets="ClCompile">
-    <Exec Command="node --no-warnings --eval &quot;$(ExpoDotnetAutolinkEval)&quot; link --platform windows --project-root &quot;$(ExpoDotnetAppRoot)&quot; $(ExpoDotnetModeArgs)"
+    <Exec Command="node --no-warnings --eval &quot;$(ExpoDotnetAutolinkEval)&quot; link --platform windows --project-root &quot;$(ExpoDotnetAppRoot)&quot; $(ExpoDotnetModeArgs) $(ExpoDotnetConfigArgs)"
           WorkingDirectory="$(ExpoDotnetAppRoot)" />
   </Target>
 </Project>
