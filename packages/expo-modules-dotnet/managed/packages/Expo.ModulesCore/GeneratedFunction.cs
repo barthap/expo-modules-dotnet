@@ -29,6 +29,31 @@ public static class GeneratedFunction
     module.SetProperty(name, functionValue);
   }
 
+  public static void DefineAsync(
+      DotnetRuntimeContext runtimeContext,
+      JavaScriptObject module,
+      string name,
+      uint parameterCount,
+      JavaScriptHostFunction callback,
+      object context)
+  {
+    ArgumentNullException.ThrowIfNull(runtimeContext);
+    ArgumentNullException.ThrowIfNull(module);
+    ArgumentException.ThrowIfNullOrWhiteSpace(name);
+    ArgumentNullException.ThrowIfNull(callback);
+    ArgumentNullException.ThrowIfNull(context);
+
+    var registration = runtimeContext.RegisterHostFunction(callback, context);
+    using var function = runtimeContext.Runtime.CreateHostFunction(
+        name,
+        parameterCount,
+        InvokeGeneratedHostFunction,
+        registration
+    );
+    using var functionValue = function.AsValue();
+    module.SetProperty(name, functionValue);
+  }
+
   public static void DefineSync(
       JavaScriptRuntime runtime,
       JavaScriptObject module,
@@ -46,6 +71,23 @@ public static class GeneratedFunction
     using var function = runtime.CreateHostFunction(name, parameterCount, callback, context);
     using var functionValue = function.AsValue();
     module.SetProperty(name, functionValue);
+  }
+
+  public static JavaScriptValue CreateRejectedPromise(JavaScriptRuntime runtime, Exception exception)
+  {
+    ArgumentNullException.ThrowIfNull(runtime);
+    ArgumentNullException.ThrowIfNull(exception);
+
+    using var promiseValue = runtime.CreatePromise(
+        _ => global::System.Threading.Tasks.Task.FromResult(
+            JavaScriptPromiseResult.Reject(jsRuntime =>
+            {
+              using var error = jsRuntime.CreateErrorObject(exception.Message);
+              return error.AsValue();
+            })
+        )
+    );
+    return promiseValue.AsValue();
   }
 
   private static JavaScriptValue InvokeGeneratedHostFunction(

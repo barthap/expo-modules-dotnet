@@ -157,8 +157,37 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       }
 
       // Validate the generated return path before collecting parameters.
-      var returnsVoid = member.ReturnsVoid || member.ReturnType.SpecialType == SpecialType.System_Void;
-      var returnCodec = returnsVoid
+      var isAsync = TryGetTaskResultType(member.ReturnType, out var asyncResultType);
+      var asyncReturnsVoid = isAsync && asyncResultType is null;
+      var asyncResultTypeName = asyncResultType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? string.Empty;
+      var asyncResultCodec = asyncResultType is null
+          ? string.Empty
+          : GetCodecExpression(
+              asyncResultType,
+              diagnostics,
+              recordCodecs,
+              member.GetReturnTypeAttributes()
+          );
+
+      if (isAsync && !asyncReturnsVoid && asyncResultCodec is null)
+      {
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.UnsupportedReturnType.Id,
+            asyncResultType?.Locations.FirstOrDefault() ?? member.ReturnType.Locations.FirstOrDefault(),
+            new EquatableArray<string>(
+                new[]
+                {
+                    member.Name,
+                    asyncResultType is null ? GetDiagnosticTypeName(member.ReturnType) : GetDiagnosticTypeName(asyncResultType),
+                }
+            )
+        ));
+        continue;
+      }
+
+      var returnsVoid = !isAsync &&
+          (member.ReturnsVoid || member.ReturnType.SpecialType == SpecialType.System_Void);
+      var returnCodec = returnsVoid || isAsync
           ? string.Empty
           : GetCodecExpression(
               member.ReturnType,
@@ -166,7 +195,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
               recordCodecs,
               member.GetReturnTypeAttributes()
           );
-      if (!returnsVoid && returnCodec is null)
+      if (!isAsync && !returnsVoid && returnCodec is null)
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedReturnType.Id,
@@ -232,6 +261,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
           member.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
           returnCodec ?? string.Empty,
           returnsVoid,
+          isAsync,
+          asyncReturnsVoid,
+          asyncResultTypeName,
+          asyncResultCodec ?? string.Empty,
           new EquatableArray<ExpoParameterModel>(parameters)
       ));
     }
@@ -347,7 +380,9 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       builder.AppendLine($"    var {moduleInstanceVariable} = context.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", static () => new {module.FullyQualifiedTypeName}());");
       foreach (var function in module.Functions.Values)
       {
-        builder.AppendLine("    GeneratedFunction.DefineSync(");
+        builder.AppendLine(function.IsAsync
+            ? "    GeneratedFunction.DefineAsync("
+            : "    GeneratedFunction.DefineSync(");
         builder.AppendLine("        context,");
         builder.AppendLine($"        {moduleVariable},");
         builder.AppendLine($"        \"{EscapeString(function.JavaScriptName)}\",");
@@ -393,23 +428,65 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
   {
     builder.AppendLine();
     builder.AppendLine($"  private static global::Expo.JSI.JavaScriptValue {GetHostFunctionName(module, function)}(");
-    builder.AppendLine("      global::Expo.JSI.JavaScriptRuntime runtime,");
+    var runtimeParameterName = function.IsAsync ? "jsRuntime" : "runtime";
+    builder.AppendLine($"      global::Expo.JSI.JavaScriptRuntime {runtimeParameterName},");
     builder.AppendLine("      global::Expo.JSI.JavaScriptValueRef thisValue,");
     builder.AppendLine("      global::Expo.JSI.JavaScriptArguments arguments,");
     builder.AppendLine("      object context)");
     builder.AppendLine("  {");
-    builder.AppendLine($"    GeneratedFunction.RequireArgumentCount(\"{EscapeString(module.ModuleName)}.{EscapeString(function.JavaScriptName)}\", arguments, {GetRequiredParameterCount(function)}, {function.Parameters.Values.Count});");
-    builder.AppendLine();
-    builder.AppendLine($"    var module = ({module.FullyQualifiedTypeName})context;");
+    if (function.IsAsync)
+    {
+      builder.AppendLine("    try");
+      builder.AppendLine("    {");
+      builder.AppendLine($"      GeneratedFunction.RequireArgumentCount(\"{EscapeString(module.ModuleName)}.{EscapeString(function.JavaScriptName)}\", arguments, {GetRequiredParameterCount(function)}, {function.Parameters.Values.Count});");
+      builder.AppendLine($"      var module = ({module.FullyQualifiedTypeName})context;");
+    }
+    else
+    {
+      builder.AppendLine($"    GeneratedFunction.RequireArgumentCount(\"{EscapeString(module.ModuleName)}.{EscapeString(function.JavaScriptName)}\", arguments, {GetRequiredParameterCount(function)}, {function.Parameters.Values.Count});");
+      builder.AppendLine();
+      builder.AppendLine($"    var module = ({module.FullyQualifiedTypeName})context;");
+    }
 
     for (var index = 0; index < function.Parameters.Values.Count; index++)
     {
       var parameter = function.Parameters.Values[index];
-      builder.AppendLine($"    var {parameter.Name} = {GetParameterExpression(parameter, index)};");
+      var parameterLocalName = GetParameterLocalName(index);
+      builder.AppendLine(function.IsAsync
+          ? $"      var {parameterLocalName} = {GetParameterExpression(parameter, index, runtimeParameterName)};"
+          : $"    var {parameterLocalName} = {GetParameterExpression(parameter, index, runtimeParameterName)};");
     }
 
-    var argumentList = string.Join(", ", function.Parameters.Values.Select(parameter => parameter.Name));
-    if (function.ReturnsVoid)
+    var argumentList = string.Join(
+        ", ",
+        function.Parameters.Values.Select((_, index) => GetParameterLocalName(index))
+    );
+    if (function.IsAsync)
+    {
+      builder.AppendLine($"      var __expoTask = module.{function.MethodName}({argumentList});");
+      builder.AppendLine($"      using var __expoPromiseValue = {runtimeParameterName}.CreatePromise(");
+      builder.AppendLine("          async _ =>");
+      builder.AppendLine("          {");
+      if (function.AsyncReturnsVoid)
+      {
+        builder.AppendLine("            await __expoTask.ConfigureAwait(false);");
+        builder.AppendLine("            return global::Expo.JSI.JavaScriptPromiseResult.Resolve(static runtime => runtime.CreateUndefined());");
+      }
+      else
+      {
+        builder.AppendLine("            var __expoResult = await __expoTask.ConfigureAwait(false);");
+        builder.AppendLine($"            return global::Expo.JSI.JavaScriptPromiseResult.Resolve(runtime => {function.AsyncResultCodecExpression}.Encode(__expoResult, runtime));");
+      }
+      builder.AppendLine("          }");
+      builder.AppendLine("      );");
+      builder.AppendLine("      return __expoPromiseValue.AsValue();");
+      builder.AppendLine("    }");
+      builder.AppendLine("    catch (global::System.Exception exception)");
+      builder.AppendLine("    {");
+      builder.AppendLine($"      return GeneratedFunction.CreateRejectedPromise({runtimeParameterName}, exception);");
+      builder.AppendLine("    }");
+    }
+    else if (function.ReturnsVoid)
     {
       builder.AppendLine($"    module.{function.MethodName}({argumentList});");
       builder.AppendLine("    return runtime.CreateUndefined();");
@@ -476,9 +553,15 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
   private static int GetRequiredParameterCount(ExpoFunctionModel function) =>
       function.Parameters.Values.Count(parameter => !parameter.HasDefaultValue);
 
-  private static string GetParameterExpression(ExpoParameterModel parameter, int index)
+  private static string GetParameterLocalName(int index) =>
+      $"__expoArg{index.ToString(CultureInfo.InvariantCulture)}";
+
+  private static string GetParameterExpression(
+      ExpoParameterModel parameter,
+      int index,
+      string runtimeParameterName)
   {
-    var decodeExpression = GetDecodeExpression(parameter.CodecExpression, index);
+    var decodeExpression = GetDecodeExpression(parameter.CodecExpression, index, runtimeParameterName);
     if (!parameter.HasDefaultValue)
     {
       return decodeExpression;
@@ -487,7 +570,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     return $"arguments.Count <= {index} || arguments.GetValue({index}).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? {parameter.DefaultValueExpression} : {decodeExpression}";
   }
 
-  private static string GetDecodeExpression(string codecExpression, int index)
+  private static string GetDecodeExpression(
+      string codecExpression,
+      int index,
+      string runtimeParameterName)
   {
     var methodName = "Decode";
     if (codecExpression.StartsWith("JavaScriptArrayCodec<", StringComparison.Ordinal))
@@ -499,7 +585,34 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       methodName = "DecodeToDictionary";
     }
 
-    return $"{codecExpression}.{methodName}(arguments.GetValue({index}), runtime)";
+    return $"{codecExpression}.{methodName}(arguments.GetValue({index}), {runtimeParameterName})";
+  }
+
+  private static bool TryGetTaskResultType(
+      ITypeSymbol typeSymbol,
+      out ITypeSymbol? resultType)
+  {
+    resultType = null;
+    if (typeSymbol is not INamedTypeSymbol namedType)
+    {
+      return false;
+    }
+
+    var originalDefinition = namedType.OriginalDefinition.ToDisplayString(
+        SymbolDisplayFormat.FullyQualifiedFormat
+    );
+    if (originalDefinition == "global::System.Threading.Tasks.Task")
+    {
+      return true;
+    }
+
+    if (originalDefinition == "global::System.Threading.Tasks.Task<TResult>")
+    {
+      resultType = namedType.TypeArguments.Single();
+      return true;
+    }
+
+    return false;
   }
 
   private static string? GetCodecExpression(

@@ -73,8 +73,8 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Contains("module_Math", source);
     Assert.Contains("\"Add\"", source);
     Assert.Contains("\"addOne\"", source);
-    Assert.Contains("module.Add(a, b)", source);
-    Assert.Contains("module.Increment(value)", source);
+    Assert.Contains("module.Add(__expoArg0, __expoArg1)", source);
+    Assert.Contains("module.Increment(__expoArg0)", source);
   }
 
   [Fact]
@@ -101,15 +101,64 @@ public sealed class ExpoModulesGeneratorTests
     Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
     var source = Assert.Single(result.GeneratedSources).Text;
     Assert.Contains("NumberCodec<int>.Decode(arguments.GetValue(0), runtime)", source);
-    Assert.Contains("NumberCodec<int>.Encode(module.RoundTripInt(value), runtime)", source);
+    Assert.Contains("NumberCodec<int>.Encode(module.RoundTripInt(__expoArg0), runtime)", source);
     Assert.Contains(
         "NullableCodec<int, NumberCodec<int>>.Decode(arguments.GetValue(0), runtime)",
         source
     );
     Assert.Contains(
-        "NullableCodec<int, NumberCodec<int>>.Encode(module.RoundTripNullableInt(value), runtime)",
+        "NullableCodec<int, NumberCodec<int>>.Encode(module.RoundTripNullableInt(__expoArg0), runtime)",
         source
     );
+  }
+
+  [Fact]
+  public void GeneratorEmitsAsyncFunctionSourceShape()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+        using System.Threading.Tasks;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Async")]
+        public sealed partial class AsyncModule
+        {
+          [JS]
+          public async Task CompleteAsync(int promiseValue)
+          {
+            await Task.Yield();
+          }
+
+          [JS]
+          public async Task<int> GetValueAsync(int result)
+          {
+            await Task.Yield();
+            return result;
+          }
+        }
+        """
+    );
+
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains("GeneratedFunction.DefineAsync(", source);
+    Assert.Contains("Async_CompleteAsync_HostFunction", source);
+    Assert.Contains("Async_GetValueAsync_HostFunction", source);
+    Assert.Contains("JavaScriptPromiseResult.Resolve", source);
+    Assert.Contains("runtime.CreateUndefined()", source);
+    Assert.Contains("NumberCodec<int>.Encode", source);
+    Assert.Contains("var __expoArg0 = NumberCodec<int>.Decode(arguments.GetValue(0), jsRuntime);", source);
+    Assert.Contains("using var __expoPromiseValue = jsRuntime.CreatePromise(", source);
+    Assert.Contains("var __expoTask = module.CompleteAsync(__expoArg0);", source);
+    Assert.Contains("var __expoTask = module.GetValueAsync(__expoArg0);", source);
+    Assert.Contains("await __expoTask.ConfigureAwait(false)", source);
+    Assert.Contains("var __expoResult = await __expoTask.ConfigureAwait(false)", source);
+    Assert.Contains("return GeneratedFunction.CreateRejectedPromise(jsRuntime, exception);", source);
+    Assert.Contains("NumberCodec<int>.Encode(__expoResult, runtime)", source);
+    Assert.DoesNotContain("var promiseValue =", source);
+    Assert.DoesNotContain("using var promiseValue =", source);
+    Assert.DoesNotContain("var result =", source);
   }
 
   [Fact]
@@ -155,6 +204,30 @@ public sealed class ExpoModulesGeneratorTests
 
     var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI002");
     Assert.Contains("Bad", diagnostic.GetMessage());
+    Assert.Contains("System.Decimal", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorReportsUnsupportedAsyncReturnType()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+        using System.Threading.Tasks;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class BadModule
+        {
+          [JS]
+          public Task<decimal> BadAsync() => Task.FromResult(1m);
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI002");
+    Assert.Contains("BadAsync", diagnostic.GetMessage());
     Assert.Contains("System.Decimal", diagnostic.GetMessage());
   }
 
@@ -319,7 +392,7 @@ public sealed class ExpoModulesGeneratorTests
     Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
     var source = Assert.Single(result.GeneratedSources).Text;
     Assert.Contains("StringEnumCodec<global::Expo.TestModules.Mode>.Decode(arguments.GetValue(0), runtime)", source);
-    Assert.Contains("StringEnumCodec<global::Expo.TestModules.Mode>.Encode(module.RoundTripMode(mode), runtime)", source);
+    Assert.Contains("StringEnumCodec<global::Expo.TestModules.Mode>.Encode(module.RoundTripMode(__expoArg0), runtime)", source);
     Assert.Contains("JavaScriptDictionaryCodec<double, NumberCodec<double>>.DecodeToDictionary(arguments.GetValue(0), runtime)", source);
     Assert.Contains("JavaScriptDictionaryCodec<string, StringCodec>.Encode(module.Labels(), runtime)", source);
   }
@@ -387,9 +460,9 @@ public sealed class ExpoModulesGeneratorTests
     Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
     var source = Assert.Single(result.GeneratedSources).Text;
     Assert.Contains("NumberEnumCodec<global::Expo.TestModules.ParameterMode>.Decode(arguments.GetValue(0), runtime)", source);
-    Assert.Contains("NumberEnumCodec<global::Expo.TestModules.ParameterMode>.Encode(module.RoundTrip(mode), runtime)", source);
+    Assert.Contains("NumberEnumCodec<global::Expo.TestModules.ParameterMode>.Encode(module.RoundTrip(__expoArg0), runtime)", source);
     Assert.Contains("NumberEnumCodec<global::Expo.TestModules.TypeMode>.Decode(arguments.GetValue(0), runtime)", source);
-    Assert.Contains("NumberEnumCodec<global::Expo.TestModules.TypeMode>.Encode(module.RoundTripTypeMode(mode), runtime)", source);
+    Assert.Contains("NumberEnumCodec<global::Expo.TestModules.TypeMode>.Encode(module.RoundTripTypeMode(__expoArg0), runtime)", source);
   }
 
   [Fact]

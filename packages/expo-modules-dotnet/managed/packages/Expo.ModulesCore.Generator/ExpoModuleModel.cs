@@ -18,6 +18,10 @@ internal sealed record ExpoFunctionModel(
     string ReturnType,
     string ReturnCodecExpression,
     bool ReturnsVoid,
+    bool IsAsync,
+    bool AsyncReturnsVoid,
+    string AsyncResultType,
+    string AsyncResultCodecExpression,
     EquatableArray<ExpoParameterModel> Parameters);
 
 internal sealed record ExpoParameterModel(

@@ -168,6 +168,86 @@ directly, and encode return values through typed helpers.
   of replacing the `expo.modules` property
 - **AND** generated `[JS]` functions SHALL be defined on that existing object
 
+### Requirement: Async Function Generation Returns Promises
+
+Generated async function glue SHALL expose authored `[JS]` methods returning
+`Task` or `Task<T>` as JavaScript functions that return Promises.
+`Task<T>` result types SHALL use the same generated return-codec support as
+synchronous return values.
+
+#### Scenario: Task async function resolves undefined
+- **GIVEN** a generated provider registers a module with an authored `[JS]`
+  method returning `Task`
+- **WHEN** JavaScript calls the generated function and the task completes
+  successfully
+- **THEN** the function SHALL return a JavaScript Promise
+- **AND** the Promise SHALL resolve with JavaScript `undefined`
+
+#### Scenario: Task of T async function resolves encoded value
+- **GIVEN** a generated provider registers a module with an authored `[JS]`
+  method returning `Task<T>`
+- **AND** `T` has a supported generated return codec
+- **WHEN** JavaScript calls the generated function and the task completes with a
+  result
+- **THEN** the function SHALL return a JavaScript Promise
+- **AND** the Promise SHALL resolve with the result encoded through the
+  generated codec for `T`
+
+#### Scenario: Unsupported Task of T result type is reported
+- **GIVEN** an authored `[JS]` method returns `Task<T>`
+- **AND** `T` does not have a supported generated return codec
+- **WHEN** the generator analyzes the method
+- **THEN** it SHALL report the same unsupported-return diagnostic shape used for
+  unsupported synchronous return types
+
+### Requirement: Async Function Arguments Are Captured Before Await
+
+Generated async function glue SHALL decode JavaScript arguments before the
+host-function callback returns and SHALL NOT capture scoped JavaScript argument
+or `this` refs across asynchronous continuations.
+
+#### Scenario: Async function receives supported arguments
+- **GIVEN** a generated async function has supported authored parameters
+- **WHEN** JavaScript calls the generated function
+- **THEN** generated dispatch SHALL validate the argument count during the
+  host-function callback
+- **AND** decode each argument through the generated parameter codec during the
+  host-function callback
+- **AND** pass only decoded managed values into the authored async method
+
+### Requirement: Async Function Failures Reject Promises
+
+Generated async function glue SHALL reject the returned Promise for generated
+dispatch failures, authored-method failures, faulted tasks, and canceled tasks.
+
+#### Scenario: Argument validation fails
+- **GIVEN** JavaScript calls a generated async function with an unsupported
+  argument count or value
+- **WHEN** generated dispatch validates or decodes the arguments
+- **THEN** the generated function SHALL return a JavaScript Promise
+- **AND** the Promise SHALL reject with a JavaScript `Error`
+- **AND** the validation or codec failure SHALL NOT escape as a synchronous
+  JavaScript throw
+
+#### Scenario: Authored async method throws before returning a task
+- **GIVEN** JavaScript calls a generated async function
+- **WHEN** the authored method throws before returning its task
+- **THEN** the generated function SHALL return a JavaScript Promise
+- **AND** the Promise SHALL reject with a JavaScript `Error`
+
+#### Scenario: Authored async task fails
+- **GIVEN** JavaScript calls a generated async function
+- **WHEN** the authored task faults or is canceled
+- **THEN** the generated function SHALL return a JavaScript Promise
+- **AND** the Promise SHALL reject with a JavaScript `Error`
+
+#### Scenario: Sync function does not use async promise dispatch
+- **GIVEN** a generated provider registers a module with a non-`Task` `[JS]`
+  method
+- **WHEN** JavaScript calls the generated function
+- **THEN** the function SHALL keep the existing synchronous direct-call behavior
+- **AND** generated dispatch SHALL NOT wrap the result in a JavaScript Promise
+
 ### Requirement: Unsupported Signatures Are Build Diagnostics
 
 Unsupported generated function signatures SHALL fail at build time with

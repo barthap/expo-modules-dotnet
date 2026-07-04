@@ -100,7 +100,7 @@ Completed scope:
     - Add `call_function` / `call_as_constructor` support for retained JS
       callbacks and later event delivery.
 
-2. **Async module methods / promises**
+2. **Async module methods / promises** (complete)
     - Generate promise-returning bindings for `Task` / `Task<T>` methods after
       cross-host scheduler semantics are known.
 
