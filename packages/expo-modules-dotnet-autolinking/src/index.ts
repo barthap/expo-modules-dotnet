@@ -1,11 +1,13 @@
 import { Command } from 'commander';
 
+import { registerBuildCommand } from './commands/buildCommand';
 import { registerGenerateCommand } from './commands/generateCommand';
 import { registerResolveCommand } from './commands/resolveCommand';
 
 export function createProgram(): Command {
   const program = new Command('expo-modules-dotnet-autolinking');
   program.description('Autolinking tool for .NET-backed Expo modules');
+  registerBuildCommand(program);
   registerGenerateCommand(program);
   registerResolveCommand(program);
   return program;
