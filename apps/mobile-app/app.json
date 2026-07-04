@@ -6,9 +6,13 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "plugins": [
+      "expo-modules-dotnet"
+    ],
     "ios": {
       "bundleIdentifier": "dev.expo.csharpv2proof",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "appleTeamId": "9Q2UN35N62"
     },
     "android": {
       "package": "dev.expo.csharpv2proof",

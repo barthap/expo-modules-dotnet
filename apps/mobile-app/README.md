@@ -3,54 +3,55 @@
 This Expo app exercises an authored .NET module inside real React Native Hermes
 on iOS Simulator and Android emulator.
 
-The app lives under `apps/mobile-app` and consumes two workspace packages:
+The app lives under `apps/mobile-app` and consumes these workspace packages:
 
 - `packages/expo-modules-dotnet`: the public Expo adapter package. It owns the
-  autolinkable TurboModule installer, JavaScript API, Android/iOS glue, and
-  reusable C++ JSI bridge.
-- `packages/example-module`: an authored .NET Expo module package. It owns the
-  C# module code and NativeAOT publish output used by this app.
+  autolinkable TurboModule installer, JavaScript API, Android/iOS glue, the
+  reusable C++ JSI bridge, and the Expo config plugin that wires the iOS build
+  hook.
+- `packages/expo-modules-dotnet-autolinking`: the CLI that resolves .NET-backed
+  modules, generates the `ExpoDotnetHost` aggregator, publishes it with
+  NativeAOT, and stages the native library into this app.
+- `packages/example-module`: an authored .NET Expo module package owning the
+  C# module code.
 
-This slice still uses manual NativeAOT artifact staging. That staging is a
-temporary substitute for future .NET module autolinking.
+## Managed Artifacts
 
-## Build The NativeAOT Module
+The native build hooks run `expo-modules-dotnet-autolinking link` automatically:
 
-Install the mobile .NET workloads once:
+- iOS: the Expo config plugin (listed in `app.json` `plugins`) injects
+  `use_expo_modules_dotnet!(platform: :ios, ...)` into the generated Podfile at
+  prebuild; pod install adds a `[CP-User] Link Expo .NET Modules` script phase
+  that publishes for `iossimulator-arm64` (or `ios-arm64` for device builds),
+  stages `ios/Managed/libExpoDotnetHost.dylib`, and copies it into the app
+  bundle `Frameworks/` directory.
+- Android: the adapter's Gradle project registers `expoDotnetLink`, which runs
+  before `:app:preBuild`, publishes for `android-arm64`, and stages
+  `android/app/src/main/jniLibs/arm64-v8a/libExpoDotnetHost.so`.
+
+Prerequisites (once):
 
 ```bash
 dotnet workload install android ios
 ```
 
-Then publish and stage the example module NativeAOT libraries:
+Android additionally requires `ANDROID_HOME` or `ANDROID_SDK_ROOT`;
+`ANDROID_NDK_HOME` is optional if the SDK has an installed NDK under
+`$ANDROID_HOME/ndk`.
 
-```bash
-pnpm --filter example-module build:nativeaot
-```
+## How The Native Library Is Loaded
 
-The script publishes `packages/example-module/dotnet/ExampleModule` and stages:
+Android loads two shared libraries:
 
-- `android-arm64` to
-  `packages/expo-modules-dotnet/android/src/main/jniLibs/arm64-v8a/libExampleModule.so`
-- `iossimulator-arm64` to
-  `packages/expo-modules-dotnet/ios/NativeLibs/libExampleModule.dylib`
-
-Android requires `ANDROID_HOME` or `ANDROID_SDK_ROOT`; `ANDROID_NDK_HOME` is
-optional if the SDK has an installed NDK under `$ANDROID_HOME/ndk`.
-
-## How The Native Library Is Linked
-
-Android links two shared libraries:
-
-- `libExampleModule.so`, the staged NativeAOT C# library.
+- `libExpoDotnetHost.so`, the staged NativeAOT aggregator containing all
+  linked .NET modules.
 - `libexpo-modules-dotnet.so`, the C++/JNI adapter library built by Gradle from
   `packages/expo-modules-dotnet/android/src/main/cpp`.
 
-iOS links `libExampleModule.dylib` through
-`packages/expo-modules-dotnet/ExpoModulesDotnet.podspec`. The Objective-C++
-TurboModule installer receives the borrowed `facebook::jsi::Runtime` and React
-Native `CallInvoker`, creates the shared JSI runtime handle, and calls the
-NativeAOT registration export.
+iOS dlopens `libExpoDotnetHost.dylib` from the app bundle `Frameworks/`
+directory. The Objective-C++ TurboModule installer receives the borrowed
+`facebook::jsi::Runtime` and React Native `CallInvoker`, creates the shared JSI
+runtime handle, and calls the NativeAOT registration export.
 
 ## Refresh Native Projects
 

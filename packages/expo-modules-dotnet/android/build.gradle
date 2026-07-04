@@ -7,6 +7,45 @@ plugins {
 group = 'expo.modules.dotnet'
 version = '0.1.0'
 
+def appRoot = rootProject.projectDir.parentFile
+
+tasks.register('expoDotnetLink', Exec) {
+  workingDir appRoot
+
+  def linkArgs = [
+    'node',
+    '--no-warnings',
+    '--eval',
+    "require('expo-modules-dotnet-autolinking').main(process.argv.slice(1))",
+    'link',
+    '--platform',
+    'android',
+    '--project-root',
+    appRoot.absolutePath
+  ]
+  def loader = project.findProperty('expoDotnetLoader') ?: System.getenv('EXPO_DOTNET_LOADER')
+  if (loader) {
+    linkArgs += ['--mode', loader.toString()]
+  }
+
+  commandLine linkArgs
+  outputs.upToDateWhen { false }
+}
+
+def expoDotnetLinkTask = tasks.named('expoDotnetLink')
+def appProject = rootProject.findProject(':app')
+if (appProject != null) {
+  gradle.projectsEvaluated {
+    appProject.tasks.matching { it.name == 'preBuild' }.configureEach {
+      dependsOn expoDotnetLinkTask
+    }
+  }
+} else {
+  tasks.matching { it.name == 'preBuild' }.configureEach {
+    dependsOn expoDotnetLinkTask
+  }
+}
+
 android {
   namespace "expo.modules.dotnet"
   defaultConfig {
@@ -28,11 +67,6 @@ android {
   externalNativeBuild {
     cmake {
       path "src/main/cpp/CMakeLists.txt"
-    }
-  }
-  sourceSets {
-    main {
-      jniLibs.srcDirs = ["src/main/jniLibs"]
     }
   }
   lintOptions {

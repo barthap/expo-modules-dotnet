@@ -36,7 +36,7 @@ class ExpoModulesDotnetTurboModule(reactContext: ReactApplicationContext) :
     const val NAME = "ExpoModulesDotnetInstaller"
 
     init {
-      SoLoader.loadLibrary("ExampleModule")
+      SoLoader.loadLibrary("ExpoDotnetHost")
       SoLoader.loadLibrary("expo-modules-dotnet")
     }
   }

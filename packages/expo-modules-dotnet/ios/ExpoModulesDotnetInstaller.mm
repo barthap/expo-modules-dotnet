@@ -17,15 +17,41 @@ namespace {
 using CreateRuntimeContextFn = void *(*)(const expo_jsi_api *, expo_jsi_runtime_handle);
 using TeardownRuntimeContextFn = void (*)(void *);
 
+void *loadAggregatorLibrary()
+{
+  NSString *frameworksPath = [[NSBundle mainBundle] privateFrameworksPath];
+  NSString *libraryPath = [frameworksPath stringByAppendingPathComponent:@"libExpoDotnetHost.dylib"];
+  void *handle = dlopen(libraryPath.fileSystemRepresentation, RTLD_NOW | RTLD_GLOBAL);
+  if (handle == nullptr) {
+    NSLog(@"[ExpoModulesDotnet] dlopen(%@) failed: %s. Run the expo-modules-dotnet-autolinking link step (the pod install script phase stages the library).",
+          libraryPath,
+          dlerror());
+  }
+  return handle;
+}
+
+void *resolveAggregatorSymbol(const char *symbolName)
+{
+  static void *aggregatorHandle = loadAggregatorLibrary();
+  void *symbol = nullptr;
+  if (aggregatorHandle != nullptr) {
+    symbol = dlsym(aggregatorHandle, symbolName);
+  }
+  if (symbol == nullptr) {
+    symbol = dlsym(RTLD_DEFAULT, symbolName);
+  }
+  return symbol;
+}
+
 CreateRuntimeContextFn resolveCreateRuntimeContext()
 {
-  auto *symbol = dlsym(RTLD_DEFAULT, "expo_dotnet_create_runtime_context");
+  auto *symbol = resolveAggregatorSymbol("expo_dotnet_create_runtime_context");
   return reinterpret_cast<CreateRuntimeContextFn>(symbol);
 }
 
 TeardownRuntimeContextFn resolveTeardownRuntimeContext()
 {
-  auto *symbol = dlsym(RTLD_DEFAULT, "expo_dotnet_teardown_runtime_context");
+  auto *symbol = resolveAggregatorSymbol("expo_dotnet_teardown_runtime_context");
   return reinterpret_cast<TeardownRuntimeContextFn>(symbol);
 }
 
@@ -61,7 +87,7 @@ public:
     auto createRuntimeContext = resolveCreateRuntimeContext();
     auto teardownRuntimeContext = resolveTeardownRuntimeContext();
     if (createRuntimeContext == nullptr || teardownRuntimeContext == nullptr) {
-      NSLog(@"[ExpoModulesDotnet] Failed to resolve create/teardown runtime context entry points.");
+      NSLog(@"[ExpoModulesDotnet] Failed to resolve create/teardown runtime context entry points. Run the expo-modules-dotnet-autolinking link command (or a full app build, which runs it as a script phase) before launching the iOS app.");
       return false;
     }
 

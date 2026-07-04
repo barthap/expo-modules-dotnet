@@ -51,7 +51,7 @@ void *resolveDotnetAppSymbol(const char *symbolName)
   auto *symbol = dlsym(RTLD_DEFAULT, symbolName);
   if (symbol == nullptr) {
     dlerror();
-    auto *library = dlopen("libExampleModule.so", RTLD_NOW | RTLD_GLOBAL);
+    auto *library = dlopen("libExpoDotnetHost.so", RTLD_NOW | RTLD_GLOBAL);
     if (library != nullptr) {
       symbol = dlsym(library, symbolName);
     }
@@ -80,8 +80,11 @@ bool registerDotnetModules(InstalledRuntime &installedRuntime)
   auto createRuntimeContext = resolveCreateRuntimeContext();
   auto teardownRuntimeContext = resolveTeardownRuntimeContext();
   if (createRuntimeContext == nullptr || teardownRuntimeContext == nullptr) {
-    __android_log_print(
-      ANDROID_LOG_ERROR, kLogTag, "Failed to resolve expo_dotnet_create/teardown_runtime_context.");
+    __android_log_print(ANDROID_LOG_ERROR,
+                        kLogTag,
+                        "Failed to resolve expo_dotnet_create/teardown_runtime_context. Run the "
+                        "expo-modules-dotnet-autolinking link command (or a full app build, which "
+                        "runs it as a Gradle task) before launching the Android app.");
     return false;
   }
 
@@ -95,7 +98,8 @@ bool registerDotnetModules(InstalledRuntime &installedRuntime)
   }
 
   installedRuntime.registered = true;
-  __android_log_print(ANDROID_LOG_INFO, kLogTag, "NativeAOT ExampleModule.add module registered.");
+  __android_log_print(
+    ANDROID_LOG_INFO, kLogTag, "NativeAOT ExpoDotnetHost managed modules registered.");
   return true;
 }
 

@@ -14,8 +14,6 @@ Pod::Spec.new do |s|
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
-  s.ios.vendored_libraries = 'ios/NativeLibs/libExampleModule.dylib'
-  s.tvos.vendored_libraries = 'ios/NativeLibs/libExampleModule.dylib'
   install_modules_dependencies(s)
 
   s.pod_target_xcconfig = {

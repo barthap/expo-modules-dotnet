@@ -6,6 +6,7 @@
     "example-module": "workspace:*",
     "expo": "catalog:react-native-86",
     "expo-modules-dotnet": "workspace:*",
+    "expo-modules-dotnet-autolinking": "workspace:*",
     "expo-status-bar": "catalog:react-native-86",
     "react": "catalog:react-native-86",
     "react-native": "catalog:react-native-86"
