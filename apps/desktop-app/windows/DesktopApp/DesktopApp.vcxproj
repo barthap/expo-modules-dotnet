@@ -142,9 +142,7 @@
     <Error Condition="!Exists('$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.Composition.CppApp.props')" Text="$([System.String]::Format('$(ErrorText)', '$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.Composition.CppApp.props'))" />
     <Error Condition="!Exists('$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.Composition.CppApp.targets')" Text="$([System.String]::Format('$(ErrorText)', '$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.Composition.CppApp.targets'))" />
   </Target>
-  <Target Name="BuildExpoDotnetManagedArtifacts" BeforeTargets="PrepareForBuild">
-    <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\..\scripts\build-managed.ps1&quot;" EnvironmentVariables="EXPO_DOTNET_LOADER=$(ExpoDotnetLoader);CONFIGURATION=$(Configuration)" />
-  </Target>
+  <Import Project="$(MSBuildThisFileDirectory)..\..\node_modules\expo-modules-dotnet\windows\ExpoDotnetAutolink.targets" Condition="Exists('$(MSBuildThisFileDirectory)..\..\node_modules\expo-modules-dotnet\windows\ExpoDotnetAutolink.targets')" />
   <Target Name="CopyExpoDotnetManagedArtifacts" AfterTargets="Build">
     <ItemGroup>
       <ExpoDotnetManagedArtifacts Include="$(ExpoDotnetManagedDir)**\*.*" />

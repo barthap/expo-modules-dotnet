@@ -112,7 +112,8 @@ std::wstring pathForManagedArtifact(const wchar_t *name)
     std::wstring message = L"[ExpoModulesDotnet] Missing managed artifact ";
     message += path.wstring();
     message +=
-      L". Run apps/desktop-app/scripts/build-managed.ps1 before launching the Windows app.";
+      L". Run the expo-modules-dotnet-autolinking link command (or a full app build, which runs "
+      L"it as an MSBuild target) before launching the Windows app.";
     logMessage(message.c_str());
   }
   return path.wstring();
