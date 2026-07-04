@@ -1,5 +1,6 @@
 using Expo.JSI;
 using Expo.ModulesCore.Codecs;
+using Expo.ModulesCore.Generated;
 using Expo.ModulesCore.Tests.Fixtures;
 using Xunit;
 
@@ -7,6 +8,57 @@ namespace Expo.ModulesCore.Tests.Generated;
 
 public sealed class GeneratedCallbackModuleTests
 {
+  [Fact]
+  public void GeneratedModuleInvokesCallbackParameter()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var result = fixture.Evaluate(
+          "globalThis._expoDotnet.modules.GeneratedCallbacks.callNow('JS', name => `Hello ${name}`)",
+          "generated-callback-call-now.js"
+      );
+
+      Assert.Equal("Hello JS", result.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
+  public async Task GeneratedModuleInvokesRetainedCallbackLater()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    using var context = new DotnetRuntimeContext(fixture.Runtime);
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var _ = fixture.Evaluate(
+          """
+          globalThis.__callbackResult = null;
+          globalThis._expoDotnet.modules.GeneratedCallbacks.store(name => `Stored ${name}`);
+          globalThis._expoDotnet.modules.GeneratedCallbacks.callStored('JS').then(
+            value => { globalThis.__callbackResult = value; },
+            error => { globalThis.__callbackResult = String(error && error.message || error); }
+          );
+          true;
+          """,
+          "generated-callback-stored.js"
+      );
+      return true;
+    });
+
+    var result = await WaitForGlobalStringAsync(fixture, "__callbackResult");
+    Assert.Equal("Stored JS", result);
+  }
+
   [Fact]
   public void RetainedCallbackInvokesImmediately()
   {
@@ -27,6 +79,30 @@ public sealed class GeneratedCallbackModuleTests
       Assert.Equal("Hello JS", callback.Invoke("JS"));
       return true;
     });
+  }
+
+  private static async Task<string?> WaitForGlobalStringAsync(
+      HermesRuntimeFixture fixture,
+      string globalName)
+  {
+    var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+    while (DateTime.UtcNow < deadline)
+    {
+      fixture.DrainTasks();
+      var value = fixture.Runtime.Execute(_ =>
+      {
+        using var result = fixture.Evaluate($"globalThis.{globalName}", "callback-global-read.js");
+        return result.IsNullish ? null : result.AsString();
+      });
+      if (value is not null)
+      {
+        return value;
+      }
+
+      await Task.Delay(10, TestContext.Current.CancellationToken);
+    }
+
+    return null;
   }
 
   [Fact]
@@ -95,7 +171,7 @@ public sealed class GeneratedCallbackModuleTests
       });
     }
 
-    Assert.Throws<ObjectDisposedException>(() => callback.Invoke("JS"));
+    Assert.Throws<InvalidOperationException>(() => callback.Invoke("JS"));
   }
 
   private static async Task WaitForTaskAsync<TResult>(

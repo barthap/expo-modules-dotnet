@@ -4,6 +4,21 @@ namespace Expo.ModulesCore;
 
 public static class GeneratedFunction
 {
+  [ThreadStatic]
+  private static DotnetRuntimeContext? currentRuntimeContext;
+
+  public static DotnetRuntimeContext CurrentRuntimeContext =>
+      currentRuntimeContext ?? throw new InvalidOperationException(
+          "No generated function runtime context is active."
+      );
+
+  internal static DotnetRuntimeContext? SetCurrentRuntimeContext(DotnetRuntimeContext? runtimeContext)
+  {
+    var previous = currentRuntimeContext;
+    currentRuntimeContext = runtimeContext;
+    return previous;
+  }
+
   public static void DefineSync(
       DotnetRuntimeContext runtimeContext,
       JavaScriptObject module,

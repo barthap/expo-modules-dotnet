@@ -28,6 +28,7 @@ internal sealed record ExpoParameterModel(
     string Name,
     string TypeName,
     string CodecExpression,
+    bool RequiresRuntimeContext,
     bool HasDefaultValue,
     string DefaultValueExpression);
 

@@ -80,6 +80,30 @@ public sealed partial class GeneratedArrayModule
   public IReadOnlyList<string> Labels() => ["one", "two"];
 }
 
+[ExpoModule("GeneratedCallbacks")]
+public sealed partial class GeneratedCallbacksModule
+{
+  private JavaScriptCallback<string, string>? stored;
+
+  [JS("callNow")]
+  public string CallNow(string value, JavaScriptCallback<string, string> callback) =>
+      callback.Invoke(value);
+
+  [JS("store")]
+  public void Store(JavaScriptCallback<string, string> callback) => stored = callback;
+
+  [JS("callStored")]
+  public Task<string> CallStored(string value)
+  {
+    if (stored is null)
+    {
+      throw new InvalidOperationException("Callback has not been stored.");
+    }
+
+    return stored.InvokeAsync(value);
+  }
+}
+
 public record CodecUser(string Name, int Age);
 
 public record class CodecUserClass(string Name, int Age);

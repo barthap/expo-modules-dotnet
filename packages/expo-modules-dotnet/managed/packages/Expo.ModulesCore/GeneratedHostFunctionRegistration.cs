@@ -9,14 +9,24 @@ public sealed class GeneratedHostFunctionRegistration : IDisposable
   private object? callbackState;
   private bool disposed;
 
-  internal GeneratedHostFunctionRegistration(JavaScriptHostFunction callback, object callbackState)
+  internal GeneratedHostFunctionRegistration(
+      DotnetRuntimeContext runtimeContext,
+      JavaScriptHostFunction callback,
+      object callbackState)
   {
+    ArgumentNullException.ThrowIfNull(runtimeContext);
     ArgumentNullException.ThrowIfNull(callback);
     ArgumentNullException.ThrowIfNull(callbackState);
 
+    RuntimeContext = runtimeContext;
     this.callback = callback;
     this.callbackState = callbackState;
   }
+
+  public DotnetRuntimeContext RuntimeContext { get; }
+
+  public object CallbackState =>
+      callbackState ?? throw new ObjectDisposedException(typeof(DotnetRuntimeContext).FullName);
 
   internal JavaScriptValue Invoke(
       JavaScriptRuntime runtime,
@@ -26,7 +36,6 @@ public sealed class GeneratedHostFunctionRegistration : IDisposable
   {
     JavaScriptHostFunction callbackSnapshot;
     object callbackStateSnapshot;
-
     lock (gate)
     {
       ObjectDisposedException.ThrowIf(disposed, typeof(DotnetRuntimeContext));
@@ -34,7 +43,15 @@ public sealed class GeneratedHostFunctionRegistration : IDisposable
       callbackStateSnapshot = callbackState!;
     }
 
-    return callbackSnapshot(runtime, thisValue, arguments, callbackStateSnapshot);
+    var previousContext = GeneratedFunction.SetCurrentRuntimeContext(RuntimeContext);
+    try
+    {
+      return callbackSnapshot(runtime, thisValue, arguments, callbackStateSnapshot);
+    }
+    finally
+    {
+      GeneratedFunction.SetCurrentRuntimeContext(previousContext);
+    }
   }
 
   public void Dispose()

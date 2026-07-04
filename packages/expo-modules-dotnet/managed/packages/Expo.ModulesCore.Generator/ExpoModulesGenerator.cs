@@ -242,6 +242,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
             parameter.Name,
             parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             parameterCodec,
+            IsJavaScriptCallbackType(parameter.Type),
             parameter.HasExplicitDefaultValue,
             parameter.HasExplicitDefaultValue
                 ? GetDefaultValueExpression(parameter.Type, parameter.ExplicitDefaultValue)
@@ -561,7 +562,12 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       int index,
       string runtimeParameterName)
   {
-    var decodeExpression = GetDecodeExpression(parameter.CodecExpression, index, runtimeParameterName);
+    var decodeExpression = GetDecodeExpression(
+        parameter.CodecExpression,
+        index,
+        runtimeParameterName,
+        parameter.RequiresRuntimeContext
+    );
     if (!parameter.HasDefaultValue)
     {
       return decodeExpression;
@@ -573,7 +579,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
   private static string GetDecodeExpression(
       string codecExpression,
       int index,
-      string runtimeParameterName)
+      string runtimeParameterName,
+      bool requiresRuntimeContext)
   {
     var methodName = "Decode";
     if (codecExpression.StartsWith("JavaScriptArrayCodec<", StringComparison.Ordinal))
@@ -585,7 +592,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       methodName = "DecodeToDictionary";
     }
 
-    return $"{codecExpression}.{methodName}(arguments.GetValue({index}), {runtimeParameterName})";
+    var contextArgument = requiresRuntimeContext ? ", GeneratedFunction.CurrentRuntimeContext" : string.Empty;
+    return $"{codecExpression}.{methodName}(arguments.GetValue({index}), {runtimeParameterName}{contextArgument})";
   }
 
   private static bool TryGetTaskResultType(
@@ -621,6 +629,11 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       List<ExpoGeneratedRecordCodecModel> recordCodecs,
       IEnumerable<AttributeData>? usageAttributes = null)
   {
+    if (TryGetJavaScriptCallbackCodec(typeSymbol, diagnostics, recordCodecs) is { } callbackCodec)
+    {
+      return callbackCodec;
+    }
+
     if (TryGetNullableCodec(typeSymbol, diagnostics, recordCodecs) is { } nullableCodec)
     {
       return nullableCodec;
@@ -660,6 +673,46 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       _ => TryGetReadOnlyListCodec(typeSymbol, diagnostics, recordCodecs) ??
           TryGetDictionaryCodec(typeSymbol, diagnostics, recordCodecs),
     };
+  }
+
+  private static bool IsJavaScriptCallbackType(ITypeSymbol typeSymbol)
+  {
+    if (typeSymbol is not INamedTypeSymbol namedType)
+    {
+      return false;
+    }
+
+    return namedType.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+        is "global::Expo.ModulesCore.JavaScriptCallback<TResult>"
+        or "global::Expo.ModulesCore.JavaScriptCallback<T1, TResult>"
+        or "global::Expo.ModulesCore.JavaScriptCallback<T1, T2, TResult>";
+  }
+
+  private static string? TryGetJavaScriptCallbackCodec(
+      ITypeSymbol typeSymbol,
+      List<ExpoDiagnosticModel> diagnostics,
+      List<ExpoGeneratedRecordCodecModel> recordCodecs)
+  {
+    if (typeSymbol is not INamedTypeSymbol namedType || !IsJavaScriptCallbackType(namedType))
+    {
+      return null;
+    }
+
+    var typeArguments = namedType.TypeArguments;
+    var codecParts = new List<string>();
+    foreach (var typeArgument in typeArguments)
+    {
+      var codec = GetCodecExpression(typeArgument, diagnostics, recordCodecs);
+      if (codec is null)
+      {
+        return null;
+      }
+
+      codecParts.Add(typeArgument.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+      codecParts.Add(codec);
+    }
+
+    return $"JavaScriptCallbackCodec<{string.Join(", ", codecParts)}>";
   }
 
   private static string GetDefaultValueExpression(ITypeSymbol typeSymbol, object? value)

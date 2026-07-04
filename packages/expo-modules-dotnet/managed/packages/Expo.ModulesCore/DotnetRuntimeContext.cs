@@ -81,7 +81,7 @@ public sealed class DotnetRuntimeContext : IDisposable
       object callbackState
   )
   {
-    var registration = new GeneratedHostFunctionRegistration(callback, callbackState);
+    var registration = new GeneratedHostFunctionRegistration(this, callback, callbackState);
 
     lock (gate)
     {
@@ -150,7 +150,14 @@ public sealed class DotnetRuntimeContext : IDisposable
 
     foreach (var callback in callbacks)
     {
-      callback.Dispose();
+      if (callback is IRuntimeContextRetainedCallback retainedCallback)
+      {
+        retainedCallback.DisposeFromRuntimeContext();
+      }
+      else
+      {
+        callback.Dispose();
+      }
     }
 
     foreach (var module in disposableModules)

@@ -1297,7 +1297,8 @@ expo_jsi_value_result callFunctionWithThis(expo_jsi_runtime_handle runtime,
     auto receiver = checkedObject(jsRuntime, thisObject);
     auto copiedArguments = copyCallArguments(jsRuntime, arguments, argumentCount);
     const jsi::Value *argumentData = copiedArguments.empty() ? nullptr : copiedArguments.data();
-    auto result = jsFunction.callWithThis(jsRuntime, receiver, argumentData, copiedArguments.size());
+    auto result =
+      jsFunction.callWithThis(jsRuntime, receiver, argumentData, copiedArguments.size());
     return makeValueResult(expo::dotnet::ValueHandle::owned(std::move(result)));
   } catch (const std::exception &ex) {
     return makeErrorResult(107, ex.what());

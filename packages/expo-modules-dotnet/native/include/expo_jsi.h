@@ -207,11 +207,10 @@ typedef expo_jsi_value_result (*expo_jsi_object_get_property_fn)(expo_jsi_runtim
 typedef expo_jsi_property_names_result (*expo_jsi_object_get_own_property_names_fn)(
   expo_jsi_runtime_handle runtime, expo_jsi_value_handle object);
 
-typedef expo_jsi_value_result (*expo_jsi_function_call_fn)(
-  expo_jsi_runtime_handle runtime,
-  expo_jsi_value_handle function,
-  const expo_jsi_value_handle *arguments,
-  uint32_t argument_count);
+typedef expo_jsi_value_result (*expo_jsi_function_call_fn)(expo_jsi_runtime_handle runtime,
+                                                           expo_jsi_value_handle function,
+                                                           const expo_jsi_value_handle *arguments,
+                                                           uint32_t argument_count);
 
 typedef expo_jsi_value_result (*expo_jsi_function_call_with_this_fn)(
   expo_jsi_runtime_handle runtime,

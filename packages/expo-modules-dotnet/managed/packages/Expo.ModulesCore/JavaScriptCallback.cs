@@ -2,12 +2,18 @@ using Expo.JSI;
 
 namespace Expo.ModulesCore;
 
-public sealed class JavaScriptCallback<TResult> : IDisposable
+internal interface IRuntimeContextRetainedCallback
+{
+  void DisposeFromRuntimeContext();
+}
+
+public sealed class JavaScriptCallback<TResult> : IDisposable, IRuntimeContextRetainedCallback
 {
   private readonly DotnetRuntimeContext context;
   private readonly JavaScriptFunction function;
   private readonly Func<JavaScriptValue, JavaScriptRuntime, TResult> decodeResult;
   private bool disposed;
+  private bool runtimeContextDisposed;
 
   private JavaScriptCallback(
       DotnetRuntimeContext context,
@@ -87,19 +93,37 @@ public sealed class JavaScriptCallback<TResult> : IDisposable
     function.Dispose();
   }
 
+  void IRuntimeContextRetainedCallback.DisposeFromRuntimeContext()
+  {
+    if (disposed)
+    {
+      return;
+    }
+
+    runtimeContextDisposed = true;
+    disposed = true;
+    function.Dispose();
+  }
+
   private void ThrowIfDisposed()
   {
+    if (runtimeContextDisposed)
+    {
+      throw new InvalidOperationException("The JavaScript runtime context has been disposed.");
+    }
+
     ObjectDisposedException.ThrowIf(disposed, this);
   }
 }
 
-public sealed class JavaScriptCallback<T1, TResult> : IDisposable
+public sealed class JavaScriptCallback<T1, TResult> : IDisposable, IRuntimeContextRetainedCallback
 {
   private readonly DotnetRuntimeContext context;
   private readonly JavaScriptFunction function;
   private readonly Func<T1, JavaScriptRuntime, JavaScriptValue> encodeArg1;
   private readonly Func<JavaScriptValue, JavaScriptRuntime, TResult> decodeResult;
   private bool disposed;
+  private bool runtimeContextDisposed;
 
   private JavaScriptCallback(
       DotnetRuntimeContext context,
@@ -175,6 +199,18 @@ public sealed class JavaScriptCallback<T1, TResult> : IDisposable
     function.Dispose();
   }
 
+  void IRuntimeContextRetainedCallback.DisposeFromRuntimeContext()
+  {
+    if (disposed)
+    {
+      return;
+    }
+
+    runtimeContextDisposed = true;
+    disposed = true;
+    function.Dispose();
+  }
+
   private TResult InvokeCore(T1 arg1, JavaScriptRuntime runtime)
   {
     ThrowIfDisposed();
@@ -185,11 +221,16 @@ public sealed class JavaScriptCallback<T1, TResult> : IDisposable
 
   private void ThrowIfDisposed()
   {
+    if (runtimeContextDisposed)
+    {
+      throw new InvalidOperationException("The JavaScript runtime context has been disposed.");
+    }
+
     ObjectDisposedException.ThrowIf(disposed, this);
   }
 }
 
-public sealed class JavaScriptCallback<T1, T2, TResult> : IDisposable
+public sealed class JavaScriptCallback<T1, T2, TResult> : IDisposable, IRuntimeContextRetainedCallback
 {
   private readonly DotnetRuntimeContext context;
   private readonly JavaScriptFunction function;
@@ -197,6 +238,7 @@ public sealed class JavaScriptCallback<T1, T2, TResult> : IDisposable
   private readonly Func<T2, JavaScriptRuntime, JavaScriptValue> encodeArg2;
   private readonly Func<JavaScriptValue, JavaScriptRuntime, TResult> decodeResult;
   private bool disposed;
+  private bool runtimeContextDisposed;
 
   private JavaScriptCallback(
       DotnetRuntimeContext context,
@@ -281,6 +323,18 @@ public sealed class JavaScriptCallback<T1, T2, TResult> : IDisposable
     function.Dispose();
   }
 
+  void IRuntimeContextRetainedCallback.DisposeFromRuntimeContext()
+  {
+    if (disposed)
+    {
+      return;
+    }
+
+    runtimeContextDisposed = true;
+    disposed = true;
+    function.Dispose();
+  }
+
   private TResult InvokeCore(T1 arg1, T2 arg2, JavaScriptRuntime runtime)
   {
     ThrowIfDisposed();
@@ -292,6 +346,11 @@ public sealed class JavaScriptCallback<T1, T2, TResult> : IDisposable
 
   private void ThrowIfDisposed()
   {
+    if (runtimeContextDisposed)
+    {
+      throw new InvalidOperationException("The JavaScript runtime context has been disposed.");
+    }
+
     ObjectDisposedException.ThrowIf(disposed, this);
   }
 }
