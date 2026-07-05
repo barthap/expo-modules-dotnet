@@ -30,6 +30,48 @@ public sealed class GeneratedCallbackModuleTests
   }
 
   [Fact]
+  public void GeneratedModuleInvokesZeroArgumentCallbackParameter()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var result = fixture.Evaluate(
+          "globalThis._expoDotnet.modules.GeneratedCallbacks.callNoArgs(() => 'No args')",
+          "generated-callback-call-no-args.js"
+      );
+
+      Assert.Equal("No args", result.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void GeneratedModuleInvokesExplicitValueTupleCallbackParameter()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var result = fixture.Evaluate(
+          "globalThis._expoDotnet.modules.GeneratedCallbacks.callExplicitTuple('A', 'B', (first, second) => first + second)",
+          "generated-callback-explicit-tuple.js"
+      );
+
+      Assert.Equal("AB", result.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
   public async Task GeneratedModuleInvokesRetainedCallbackLater()
   {
     using var fixture = HermesRuntimeFixture.Create();
@@ -69,14 +111,14 @@ public sealed class GeneratedCallbackModuleTests
       using var context = new DotnetRuntimeContext(runtime);
       using var functionValue = fixture.Evaluate("(name) => `Hello ${name}`", "callback-now.js");
       using var function = functionValue.AsFunction();
-      using var callback = JavaScriptCallback<string, string>.FromFunction(
+      using var callback = JavaScriptCallback<ValueTuple<string>, string>.FromFunction(
           context,
           function,
-          static (value, jsRuntime) => StringCodec.Encode(value, jsRuntime),
+          static (args, jsRuntime) => [StringCodec.Encode(args.Item1, jsRuntime)],
           static (value, jsRuntime) => StringCodec.Decode(value, jsRuntime)
       );
 
-      Assert.Equal("Hello JS", callback.Invoke("JS"));
+      Assert.Equal("Hello JS", callback.Invoke(ValueTuple.Create("JS")));
       return true;
     });
   }
@@ -110,19 +152,19 @@ public sealed class GeneratedCallbackModuleTests
   {
     using var fixture = HermesRuntimeFixture.Create();
     using var context = new DotnetRuntimeContext(fixture.Runtime);
-    JavaScriptCallback<string, string> callback = fixture.Runtime.Execute(runtime =>
+    JavaScriptCallback<ValueTuple<string>, string> callback = fixture.Runtime.Execute(runtime =>
     {
       using var functionValue = fixture.Evaluate("(name) => `Later ${name}`", "callback-later.js");
       using var function = functionValue.AsFunction();
-      return JavaScriptCallback<string, string>.FromFunction(
+      return JavaScriptCallback<ValueTuple<string>, string>.FromFunction(
           context,
           function,
-          static (value, jsRuntime) => StringCodec.Encode(value, jsRuntime),
+          static (args, jsRuntime) => [StringCodec.Encode(args.Item1, jsRuntime)],
           static (value, jsRuntime) => StringCodec.Decode(value, jsRuntime)
       );
     });
 
-    var task = callback.InvokeAsync("JS", TestContext.Current.CancellationToken);
+    var task = callback.InvokeAsync(ValueTuple.Create("JS"), TestContext.Current.CancellationToken);
     await WaitForTaskAsync(fixture, task);
 
     Assert.Equal("Later JS", await task);
@@ -138,15 +180,18 @@ public sealed class GeneratedCallbackModuleTests
       using var context = new DotnetRuntimeContext(runtime);
       using var functionValue = fixture.Evaluate("(first, second) => first + second", "callback-two.js");
       using var function = functionValue.AsFunction();
-      using var callback = JavaScriptCallback<string, string, string>.FromFunction(
+      using var callback = JavaScriptCallback<(string, string), string>.FromFunction(
           context,
           function,
-          static (value, jsRuntime) => StringCodec.Encode(value, jsRuntime),
-          static (value, jsRuntime) => StringCodec.Encode(value, jsRuntime),
+          static (args, jsRuntime) =>
+              [
+                StringCodec.Encode(args.Item1, jsRuntime),
+                StringCodec.Encode(args.Item2, jsRuntime),
+              ],
           static (value, jsRuntime) => StringCodec.Decode(value, jsRuntime)
       );
 
-      Assert.Equal("AB", callback.Invoke("A", "B"));
+      Assert.Equal("AB", callback.Invoke(("A", "B")));
       return true;
     });
   }
@@ -155,23 +200,23 @@ public sealed class GeneratedCallbackModuleTests
   public void RuntimeContextDisposeReleasesRetainedCallback()
   {
     using var fixture = HermesRuntimeFixture.Create();
-    JavaScriptCallback<string, string> callback;
+    JavaScriptCallback<ValueTuple<string>, string> callback;
     using (var context = new DotnetRuntimeContext(fixture.Runtime))
     {
       callback = fixture.Runtime.Execute(runtime =>
       {
         using var functionValue = fixture.Evaluate("(name) => name", "callback-dispose.js");
         using var function = functionValue.AsFunction();
-        return JavaScriptCallback<string, string>.FromFunction(
+        return JavaScriptCallback<ValueTuple<string>, string>.FromFunction(
             context,
             function,
-            static (value, jsRuntime) => StringCodec.Encode(value, jsRuntime),
+            static (args, jsRuntime) => [StringCodec.Encode(args.Item1, jsRuntime)],
             static (value, jsRuntime) => StringCodec.Decode(value, jsRuntime)
         );
       });
     }
 
-    Assert.Throws<InvalidOperationException>(() => callback.Invoke("JS"));
+    Assert.Throws<InvalidOperationException>(() => callback.Invoke(ValueTuple.Create("JS")));
   }
 
   private static async Task WaitForTaskAsync<TResult>(

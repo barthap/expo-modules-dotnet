@@ -43,6 +43,34 @@ separate as `expo_jsi_promise_handle`.
 - **THEN** native receives an `expo_jsi_promise_handle` plus an
   `expo_jsi_value_handle` settlement value
 
+### Requirement: Function Call ABI
+
+The ABI SHALL expose JavaScript function invocation through opaque handles.
+Managed code SHALL NOT observe `facebook::jsi::Function`, `jsi::Value`, or
+`jsi::Object` layouts when calling JavaScript functions.
+
+#### Scenario: Function is called with undefined this
+- **GIVEN** managed code owns a JavaScript function value handle
+- **WHEN** it calls the ABI function-call entry with zero or more value handles
+- **THEN** native SHALL call the underlying JSI function with JavaScript
+  `undefined` as `this`
+- **AND** return the JavaScript result as an owned value handle
+
+#### Scenario: Function is called with explicit this
+- **GIVEN** managed code owns a JavaScript function value handle
+- **AND** managed code owns an object value handle to use as `this`
+- **WHEN** it calls the ABI function-call-with-this entry
+- **THEN** native SHALL call the underlying JSI function with that object as
+  `this`
+- **AND** return the JavaScript result as an owned value handle
+
+#### Scenario: Function is called as constructor
+- **GIVEN** managed code owns a JavaScript function value handle
+- **WHEN** it calls the ABI constructor-call entry with zero or more value
+  handles
+- **THEN** native SHALL call the underlying JSI function as a constructor
+- **AND** return the constructed JavaScript object as an owned value handle
+
 ### Requirement: ABI Results Are Structured
 
 The ABI SHALL report fallible operations through explicit result structs or

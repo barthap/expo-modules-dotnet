@@ -66,4 +66,13 @@ internal static class ExpoModulesDiagnostics
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true
   );
+
+  public static readonly DiagnosticDescriptor UnsupportedCallbackCodec = new(
+      id: "EXPOJSI008",
+      title: "Unsupported JavaScript callback codec",
+      messageFormat: "Callback parameter '{0}' on '{1}' uses unsupported callback type '{2}'. Callback argument and result type codecs are required, and callback arguments must use ValueTuple shapes.",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
 }

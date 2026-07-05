@@ -185,6 +185,107 @@ public sealed class ExpoModulesGeneratorTests
   }
 
   [Fact]
+  public void GeneratorReportsUnsupportedCallbackArgumentCodec()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class BadModule
+        {
+          [JS]
+          public double Bad(JavaScriptCallback<ValueTuple<decimal>, string> callback) => 0.0;
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI008");
+    Assert.Contains("callback", diagnostic.GetMessage());
+    Assert.Contains("callback argument", diagnostic.GetMessage());
+    Assert.Contains("decimal", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorReportsUnsupportedCallbackResultCodec()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class BadModule
+        {
+          [JS]
+          public double Bad(JavaScriptCallback<ValueTuple<string>, decimal> callback) => 0.0;
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI008");
+    Assert.Contains("callback", diagnostic.GetMessage());
+    Assert.Contains("callback argument", diagnostic.GetMessage());
+    Assert.Contains("result type", diagnostic.GetMessage());
+    Assert.Contains("decimal", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorReportsUnsupportedZeroArgumentCallbackResultCodec()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class BadModule
+        {
+          [JS]
+          public double Bad(JavaScriptCallback<decimal> callback) => 0.0;
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI008");
+    Assert.Contains("callback", diagnostic.GetMessage());
+    Assert.Contains("result type", diagnostic.GetMessage());
+    Assert.Contains("decimal", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorEmitsExplicitNestedEightArgumentValueTupleCallbackCodec()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class CallbackModule
+        {
+          [JS]
+          public string Use(
+              JavaScriptCallback<ValueTuple<string, string, string, string, string, string, string, ValueTuple<string>>, string> callback) => "";
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains("JavaScriptCallbackCodec<", source);
+    Assert.Contains("ValueTupleCodec<", source);
+  }
+
+  [Fact]
   public void GeneratorReportsUnsupportedReturnType()
   {
     var result = GeneratorTestHost.Run(

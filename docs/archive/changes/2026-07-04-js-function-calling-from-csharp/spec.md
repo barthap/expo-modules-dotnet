@@ -45,8 +45,11 @@ scheduled later invocation:
   runtime and is the path intended for later event-style use.
 
 The source generator MAY support `Func<>` syntax in a later ergonomics pass,
-but this slice SHALL use explicit `JavaScriptCallback` types as the runtime
-contract.
+but this slice SHALL use explicit `JavaScriptCallback<TArgs, TResult>` types as
+the runtime contract. `TArgs` SHALL be `System.ValueTuple` for zero arguments or
+tuple syntax / `System.ValueTuple<...>` for one or more arguments. For eight
+arguments, explicit `System.ValueTuple` spelling uses C#'s nested rest shape:
+`System.ValueTuple<T1, T2, T3, T4, T5, T6, T7, System.ValueTuple<T8>>`.
 
 ## Delta Requirements
 
@@ -129,11 +132,12 @@ after native returns.
 
 ### ADDED: Retained Callback Wrappers
 
-`Expo.ModulesCore` SHALL expose explicit retained callback wrapper types for
-module parameters. The initial supported forms SHALL be
-`JavaScriptCallback<TResult>`, `JavaScriptCallback<T1, TResult>`, and
-`JavaScriptCallback<T1, T2, TResult>`. They SHALL be implemented without
-runtime reflection or dynamic invocation on the generated hot path.
+`Expo.ModulesCore` SHALL expose one explicit retained callback wrapper type for
+module parameters: `JavaScriptCallback<TArgs, TResult>`. `TArgs` SHALL encode
+callback arguments as a value tuple. `ValueTuple` represents zero arguments.
+Tuple element types SHALL remain statically known and codec-backed. The
+implementation SHALL support up to eight callback arguments in this slice
+without runtime reflection or dynamic invocation on the generated hot path.
 
 #### Scenario: Callback parameter is decoded
 
@@ -148,16 +152,16 @@ runtime reflection or dynamic invocation on the generated hot path.
 
 - **GIVEN** a retained callback wrapper
 - **AND** managed code is already executing on the owning JavaScript runtime
-- **WHEN** managed code calls `Invoke`
-- **THEN** the wrapper SHALL encode each managed argument with its configured
-  codec
+- **WHEN** managed code calls `Invoke` with a `TArgs` tuple
+- **THEN** the wrapper SHALL encode each tuple element with its configured
+  tuple argument codec
 - **AND** call the retained JavaScript function
 - **AND** decode the returned JavaScript value with the configured return codec
 
 #### Scenario: Callback is invoked later
 
 - **GIVEN** a retained callback wrapper
-- **WHEN** managed code calls `InvokeAsync`
+- **WHEN** managed code calls `InvokeAsync` with a `TArgs` tuple
 - **THEN** invocation SHALL be scheduled onto the owning JavaScript runtime
 - **AND** the returned managed task SHALL complete with the decoded return value
   or fail with the callback invocation error
@@ -172,16 +176,36 @@ runtime reflection or dynamic invocation on the generated hot path.
 
 ### MODIFIED: Source Generator Supported Types
 
-The source generator SHALL treat explicit `JavaScriptCallback` parameter types
-as supported module function parameters when their argument and return types
-have codecs.
+The source generator SHALL treat explicit `JavaScriptCallback<TArgs, TResult>`
+parameter types as supported module function parameters when `TArgs` is a
+supported value tuple shape and all tuple element and return types have codecs.
 
 #### Scenario: Callback type has unsupported codec
 
 - **GIVEN** a generated module method uses a `JavaScriptCallback` parameter
-- **AND** a callback argument or return type does not have a supported codec
+- **AND** `TArgs` is not a supported tuple shape or a tuple element or return
+  type does not have a supported codec
 - **WHEN** the project is compiled
 - **THEN** the generator SHALL report a diagnostic naming the unsupported type
+
+### ADDED: Value Tuple Argument Codecs
+
+`Expo.ModulesCore` SHALL provide value-tuple argument codecs for retained
+callbacks. These codecs SHALL encode tuple elements into JavaScript argument
+values positionally.
+
+#### Scenario: Zero callback arguments are encoded
+
+- **GIVEN** a callback uses `JavaScriptCallback<ValueTuple, TResult>`
+- **WHEN** managed code invokes the callback
+- **THEN** the tuple argument codec SHALL produce zero JavaScript arguments
+
+#### Scenario: Tuple callback arguments are encoded
+
+- **GIVEN** a callback uses `JavaScriptCallback<(string name, int count), TResult>`
+- **WHEN** managed code invokes the callback with `("expo", 3)`
+- **THEN** the tuple argument codec SHALL encode `"expo"` as the first argument
+- **AND** encode `3` as the second argument
 
 ## Verification Requirements
 

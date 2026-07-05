@@ -96,9 +96,13 @@ Completed scope:
 
 ### P2: Interactive Module Capabilities
 
-1. **Function calling from C#**
-    - Add `call_function` / `call_as_constructor` support for retained JS
-      callbacks and later event delivery.
+1. **Function calling from C#** (complete)
+    - `JavaScriptFunction` exposes `Call`, `CallWithThis`, and
+      `CallAsConstructor` over native function-call ABI entries.
+    - `Expo.ModulesCore` supports retained `JavaScriptCallback<TResult>` and
+      `JavaScriptCallback<TArgs, TResult>` parameters for generated modules,
+      with value-tuple argument codecs and callback-specific generator
+      diagnostics.
 
 2. **Async module methods / promises** (complete)
     - Generate promise-returning bindings for `Task` / `Task<T>` methods after
@@ -142,9 +146,9 @@ These are planned ABI additions required for real module support. Each requires
 coordinated native C++ implementation, C ABI function-pointer additions, and
 managed wrapper surface.
 
-- **P2 — Function calling from C#**: `call_function`, `call_as_constructor` —
-  needed for retained JS callbacks, later event emission, SharedObject
-  lifecycle, and calling JS callbacks from managed code.
+- **P2 — Function calling from C#**: complete. `call_function`,
+  `call_with_this`, and `call_as_constructor` now back managed
+  `JavaScriptFunction` calls and retained generated-module callbacks.
 - **P3 — Script evaluation**: `evaluate_javascript` — needed for dev tooling and
   dynamic code paths.
 - **P2/P3 — ArrayBuffer**: Wrapper and ABI for binary data transfer — needed by

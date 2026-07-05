@@ -223,8 +223,11 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         );
         if (parameterCodec is null)
         {
+          var descriptor = IsJavaScriptCallbackType(parameter.Type)
+              ? ExpoModulesDiagnostics.UnsupportedCallbackCodec
+              : ExpoModulesDiagnostics.UnsupportedParameterType;
           diagnostics.Add(new ExpoDiagnosticModel(
-              ExpoModulesDiagnostics.UnsupportedParameterType.Id,
+              descriptor.Id,
               parameter.Locations.FirstOrDefault(),
               new EquatableArray<string>(
                   new[]
@@ -417,6 +420,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       "EXPOJSI005" => ExpoModulesDiagnostics.DuplicateJavaScriptFunctionName,
       "EXPOJSI006" => ExpoModulesDiagnostics.DuplicateModuleName,
       "EXPOJSI007" => ExpoModulesDiagnostics.UnsupportedRecordField,
+      "EXPOJSI008" => ExpoModulesDiagnostics.UnsupportedCallbackCodec,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());
@@ -684,8 +688,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 
     return namedType.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
         is "global::Expo.ModulesCore.JavaScriptCallback<TResult>"
-        or "global::Expo.ModulesCore.JavaScriptCallback<T1, TResult>"
-        or "global::Expo.ModulesCore.JavaScriptCallback<T1, T2, TResult>";
+        or "global::Expo.ModulesCore.JavaScriptCallback<TArgs, TResult>";
   }
 
   private static string? TryGetJavaScriptCallbackCodec(
@@ -698,21 +701,103 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       return null;
     }
 
-    var typeArguments = namedType.TypeArguments;
-    var codecParts = new List<string>();
-    foreach (var typeArgument in typeArguments)
+    if (namedType.TypeArguments.Length == 1)
     {
-      var codec = GetCodecExpression(typeArgument, diagnostics, recordCodecs);
+      var zeroArgResultType = namedType.TypeArguments[0];
+      var zeroArgResultCodec = GetCodecExpression(zeroArgResultType, diagnostics, recordCodecs);
+      if (zeroArgResultCodec is null)
+      {
+        return null;
+      }
+
+      return $"JavaScriptCallbackCodec<{zeroArgResultType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}, {zeroArgResultCodec}>";
+    }
+
+    var argsType = namedType.TypeArguments[0];
+    var resultType = namedType.TypeArguments[1];
+    var argsCodec = TryGetValueTupleArgsCodec(argsType, diagnostics, recordCodecs);
+    var resultCodec = GetCodecExpression(resultType, diagnostics, recordCodecs);
+    if (argsCodec is null || resultCodec is null)
+    {
+      return null;
+    }
+
+    return $"JavaScriptCallbackCodec<{argsType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}, {argsCodec}, {resultType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}, {resultCodec}>";
+  }
+
+  private static string? TryGetValueTupleArgsCodec(
+      ITypeSymbol typeSymbol,
+      List<ExpoDiagnosticModel> diagnostics,
+      List<ExpoGeneratedRecordCodecModel> recordCodecs)
+  {
+    var elements = GetValueTupleElements(typeSymbol);
+    if (elements is null || elements.Count > 8)
+    {
+      return null;
+    }
+
+    if (elements.Count == 0)
+    {
+      return "ValueTupleCodec";
+    }
+
+    var codecParts = new List<string>();
+    foreach (var element in elements)
+    {
+      var codec = GetCodecExpression(element, diagnostics, recordCodecs);
       if (codec is null)
       {
         return null;
       }
 
-      codecParts.Add(typeArgument.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+      codecParts.Add(element.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
       codecParts.Add(codec);
     }
 
-    return $"JavaScriptCallbackCodec<{string.Join(", ", codecParts)}>";
+    return $"ValueTupleCodec<{string.Join(", ", codecParts)}>";
+  }
+
+  private static IReadOnlyList<ITypeSymbol>? GetValueTupleElements(ITypeSymbol typeSymbol)
+  {
+    if (typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "global::System.ValueTuple")
+    {
+      return Array.Empty<ITypeSymbol>();
+    }
+
+    if (typeSymbol is not INamedTypeSymbol namedType)
+    {
+      return null;
+    }
+
+    if (namedType.IsTupleType)
+    {
+      return namedType.TupleElements.Select(element => element.Type).ToArray();
+    }
+
+    var definition = namedType.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    if (definition is "global::System.ValueTuple<T1>"
+        or "global::System.ValueTuple<T1, T2>"
+        or "global::System.ValueTuple<T1, T2, T3>"
+        or "global::System.ValueTuple<T1, T2, T3, T4>"
+        or "global::System.ValueTuple<T1, T2, T3, T4, T5>"
+        or "global::System.ValueTuple<T1, T2, T3, T4, T5, T6>"
+        or "global::System.ValueTuple<T1, T2, T3, T4, T5, T6, T7>")
+    {
+      return namedType.TypeArguments.ToArray();
+    }
+
+    if (definition == "global::System.ValueTuple<T1, T2, T3, T4, T5, T6, T7, TRest>")
+    {
+      var restElements = GetValueTupleElements(namedType.TypeArguments[7]);
+      if (restElements is not { Count: 1 })
+      {
+        return null;
+      }
+
+      return namedType.TypeArguments.Take(7).Concat(restElements).ToArray();
+    }
+
+    return null;
   }
 
   private static string GetDefaultValueExpression(ITypeSymbol typeSymbol, object? value)

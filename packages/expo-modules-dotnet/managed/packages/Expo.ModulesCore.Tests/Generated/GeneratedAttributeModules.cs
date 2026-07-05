@@ -83,14 +83,25 @@ public sealed partial class GeneratedArrayModule
 [ExpoModule("GeneratedCallbacks")]
 public sealed partial class GeneratedCallbacksModule
 {
-  private JavaScriptCallback<string, string>? stored;
+  private JavaScriptCallback<ValueTuple<string>, string>? stored;
 
   [JS("callNow")]
-  public string CallNow(string value, JavaScriptCallback<string, string> callback) =>
-      callback.Invoke(value);
+  public string CallNow(string value, JavaScriptCallback<ValueTuple<string>, string> callback) =>
+      callback.Invoke(ValueTuple.Create(value));
+
+  [JS("callExplicitTuple")]
+  public string CallExplicitTuple(
+      string first,
+      string second,
+      JavaScriptCallback<ValueTuple<string, string>, string> callback) =>
+      callback.Invoke(ValueTuple.Create(first, second));
+
+  [JS("callNoArgs")]
+  public string CallNoArgs(JavaScriptCallback<string> callback) =>
+      callback.Invoke();
 
   [JS("store")]
-  public void Store(JavaScriptCallback<string, string> callback) => stored = callback;
+  public void Store(JavaScriptCallback<ValueTuple<string>, string> callback) => stored = callback;
 
   [JS("callStored")]
   public Task<string> CallStored(string value)
@@ -100,7 +111,7 @@ public sealed partial class GeneratedCallbacksModule
       throw new InvalidOperationException("Callback has not been stored.");
     }
 
-    return stored.InvokeAsync(value);
+    return stored.InvokeAsync(ValueTuple.Create(value));
   }
 }
 

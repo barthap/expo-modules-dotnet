@@ -153,6 +153,30 @@ directly, and encode return values through typed helpers.
 - **AND** construct records through direct constructor calls
 - **AND** simple nested records SHALL compose through generated field codecs
 
+#### Scenario: JavaScript callbacks use generated codecs
+- **GIVEN** a generated sync or async function accepts
+  `JavaScriptCallback<TResult>` or `JavaScriptCallback<TArgs, TResult>`
+- **WHEN** JavaScript passes a function value
+- **THEN** generated dispatch SHALL decode it as a retained callback owned by
+  the current `DotnetRuntimeContext`
+- **AND** `JavaScriptCallback<TResult>` SHALL represent zero callback arguments
+- **AND** `JavaScriptCallback<TArgs, TResult>` SHALL use `ValueTuple` argument
+  codecs for one through eight callback arguments
+- **AND** callback argument and result values SHALL use generated
+  `Expo.ModulesCore` codecs without runtime reflection or dynamic invocation
+
+#### Scenario: Retained callback is invoked from C#
+- **GIVEN** managed module code holds a retained `JavaScriptCallback`
+- **WHEN** it calls `Invoke` while already executing on the owning JavaScript
+  runtime
+- **THEN** the callback SHALL invoke the retained JavaScript function
+  synchronously and decode the JavaScript result through the configured result
+  codec
+- **AND** `InvokeAsync` SHALL schedule invocation through the owning runtime for
+  later event-style use
+- **AND** callback invocation after runtime-context teardown SHALL fail loudly
+  instead of touching released native state
+
 #### Scenario: String-key dictionaries use JavaScript objects
 - **GIVEN** a generated sync function accepts or returns
   `Dictionary<string, T>` or `IReadOnlyDictionary<string, T>`
@@ -259,6 +283,14 @@ instead of silently skipping affected modules or emitting invalid generated C#.
 - **WHEN** the project is compiled
 - **THEN** the generator SHALL report a diagnostic naming the unsupported type
 - **AND** generated runtime glue SHALL NOT attempt dynamic invocation
+
+#### Scenario: Unsupported callback codec type is used
+- **GIVEN** a `[JS]` method has a `JavaScriptCallback` parameter whose argument
+  or result type lacks an `Expo.ModulesCore` codec
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report a callback-specific diagnostic naming the
+  unsupported callback type
+- **AND** generated runtime glue SHALL NOT emit a dynamic callback fallback
 
 #### Scenario: Unsupported return type is used
 - **GIVEN** a `[JS]` method has an unsupported return type

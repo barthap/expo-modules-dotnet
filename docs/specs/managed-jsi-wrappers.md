@@ -51,6 +51,30 @@ functions, promises, promise values, and error objects.
 - **THEN** the wrapper SHALL call the array ABI functions and preserve owned
   wrapper disposal rules
 
+### Requirement: Function Wrapper Invocation
+
+`JavaScriptFunction` SHALL expose managed function invocation over the native
+function-call ABI.
+
+#### Scenario: Function is called
+- **GIVEN** managed code owns a `JavaScriptFunction`
+- **WHEN** it calls `Call` with zero or more representable JavaScript values
+- **THEN** the wrapper SHALL call the ABI function-call entry
+- **AND** return the JavaScript result as an owned `JavaScriptValue`
+
+#### Scenario: Function is called with explicit this
+- **GIVEN** managed code owns a `JavaScriptFunction`
+- **AND** managed code owns a `JavaScriptObject` to use as `this`
+- **WHEN** it calls `CallWithThis`
+- **THEN** the wrapper SHALL call the ABI function-call-with-this entry
+- **AND** return the JavaScript result as an owned `JavaScriptValue`
+
+#### Scenario: Function is called as constructor
+- **GIVEN** managed code owns a `JavaScriptFunction`
+- **WHEN** it calls `CallAsConstructor`
+- **THEN** the wrapper SHALL call the ABI constructor-call entry
+- **AND** return the constructed object as an owned `JavaScriptObject`
+
 ### Requirement: Explicit Value Conversions
 
 Owned wrapper conversions SHALL be explicit and SHALL return independently
@@ -67,6 +91,13 @@ owned wrappers when they cross from one owned type to another.
 - **WHEN** managed code calls `AsValue`
 - **THEN** the returned `JavaScriptValue` SHALL own a retained handle and must
   be disposed independently
+
+#### Scenario: Value converts to function
+- **GIVEN** a `JavaScriptValue` or scoped `JavaScriptValueRef` containing a
+  JavaScript function
+- **WHEN** managed code calls `AsFunction`
+- **THEN** the returned `JavaScriptFunction` SHALL own a retained handle and
+  must be disposed independently
 
 ### Requirement: Low-Level Package Boundary
 

@@ -4,7 +4,7 @@
 
 **Goal:** Implement C#-initiated JavaScript function calls and retained generated-module callbacks.
 
-**Architecture:** Add function-call slots to the native ABI, expose them through `JavaScriptFunction`, then build `Expo.ModulesCore` callback wrappers that retain JS functions and invoke them through existing codecs. Generator support should lower explicit `JavaScriptCallback` parameter types into codec expressions without reflection, JSON, `object?[]`, or dynamic invocation on the hot path.
+**Architecture:** Add function-call slots to the native ABI, expose them through `JavaScriptFunction`, then build one `Expo.ModulesCore` callback wrapper that retains JS functions and invokes them through value-tuple argument codecs plus existing result codecs. Generator support should lower explicit `JavaScriptCallback<TArgs, TResult>` parameter types into codec expressions without reflection, JSON, `object?[]`, or dynamic invocation on the hot path.
 
 **Tech Stack:** C++ JSI bridge, C ABI function table, C# unsafe interop, `Expo.JSI`, `Expo.ModulesCore`, Roslyn incremental generator, xUnit, Hermes testhost.
 
@@ -19,7 +19,8 @@
 - `packages/expo-modules-dotnet/managed/packages/Expo.JSI/JavaScriptValue.cs`: Add `AsFunction`.
 - `packages/expo-modules-dotnet/managed/packages/Expo.JSI/JavaScriptValueRef.cs`: Add `AsFunction`.
 - `packages/expo-modules-dotnet/managed/packages/Expo.JSI.Tests/Runtime/JavaScriptFunctionTests.cs`: Add low-level function-call tests.
-- `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/JavaScriptCallback.cs`: Add retained callback wrapper types.
+- `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/JavaScriptCallback.cs`: Add retained tuple-argument callback wrapper type.
+- `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/Codecs/ValueTupleCodec.cs`: Add value-tuple argument codecs up to eight callback arguments.
 - `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/Codecs/JavaScriptCallbackCodec.cs`: Add callback codecs.
 - `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/DotnetRuntimeContext.cs`: Track retained callback disposables with runtime-context teardown.
 - `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/ExpoModulesGenerator.cs`: Recognize supported `JavaScriptCallback` generic forms and emit callback codec expressions.
@@ -197,44 +198,32 @@ git commit -m "feat: call JavaScript functions from managed JSI"
 
 - [ ] **Step 1: Write failing callback wrapper tests**
 
-Add tests that manually construct `JavaScriptCallback<string>`,
-`JavaScriptCallback<string, string>`, and
-`JavaScriptCallback<string, string, string>` from JS functions and verify:
+Add tests that manually construct `JavaScriptCallback<ValueTuple, string>`,
+`JavaScriptCallback<ValueTuple<string>, string>`, and
+`JavaScriptCallback<(string first, string second), string>` from JS functions
+and verify:
 
 ```csharp
-var callback = JavaScriptCallback<string, string>.FromFunction(
+var callback = JavaScriptCallback<ValueTuple<string>, string>.FromFunction(
     context,
     function,
-    static (value, runtime) => StringCodec.Decode(value, runtime),
-    static (value, runtime) => StringCodec.Encode(value, runtime));
-Assert.Equal("Hello JS", callback.Invoke("JS"));
+    static (args, runtime) => ValueTupleCodec<string, StringCodec>.Encode(args, runtime),
+    static (value, runtime) => StringCodec.Decode(value, runtime));
+Assert.Equal("Hello JS", callback.Invoke(ValueTuple.Create("JS")));
 ```
 
 The test should fail at compile time until callback types exist.
 
 - [ ] **Step 2: Implement retained callback types**
 
-Create callback types with these public shapes:
+Create one callback type with this public shape:
 
 ```csharp
-public sealed class JavaScriptCallback<TResult> : IDisposable
+public sealed class JavaScriptCallback<TArgs, TResult> : IDisposable
+    where TArgs : struct
 {
-  public TResult Invoke();
-  public Task<TResult> InvokeAsync(CancellationToken cancellationToken = default);
-  public void Dispose();
-}
-
-public sealed class JavaScriptCallback<T1, TResult> : IDisposable
-{
-  public TResult Invoke(T1 arg1);
-  public Task<TResult> InvokeAsync(T1 arg1, CancellationToken cancellationToken = default);
-  public void Dispose();
-}
-
-public sealed class JavaScriptCallback<T1, T2, TResult> : IDisposable
-{
-  public TResult Invoke(T1 arg1, T2 arg2);
-  public Task<TResult> InvokeAsync(T1 arg1, T2 arg2, CancellationToken cancellationToken = default);
+  public TResult Invoke(TArgs args);
+  public Task<TResult> InvokeAsync(TArgs args, CancellationToken cancellationToken = default);
   public void Dispose();
 }
 ```
@@ -248,33 +237,31 @@ Back them with an internal generic implementation that owns one retained
 
 - [ ] **Step 3: Add callback codecs**
 
-Add context-aware callback codec helpers for each supported callback arity:
+Add one context-aware callback codec helper:
 
 ```csharp
-public static class JavaScriptCallbackCodec<TResult, TResultCodec>
+public static class JavaScriptCallbackCodec<TArgs, TArgsCodec, TResult, TResultCodec>
+    where TArgs : struct
+    where TArgsCodec : IJavaScriptArgsCodec<TArgs>
     where TResultCodec : IJavaScriptCodec<TResult>
 {
-  public static JavaScriptCallback<TResult> Decode(
-      JavaScriptValueRef value,
-      JavaScriptRuntime runtime,
-      DotnetRuntimeContext context);
-}
-
-public static class JavaScriptCallbackCodec<T1, T1Codec, TResult, TResultCodec>
-    where T1Codec : IJavaScriptCodec<T1>
-    where TResultCodec : IJavaScriptCodec<TResult>
-{
-  public static JavaScriptCallback<T1, TResult> Decode(
+  public static JavaScriptCallback<TArgs, TResult> Decode(
       JavaScriptValueRef value,
       JavaScriptRuntime runtime,
       DotnetRuntimeContext context);
 }
 ```
 
-Add the two-argument form with `T1Codec`, `T2Codec`, and `TResultCodec`.
 Decode by validating `JavaScriptValueRef.AsFunction()`, retaining the function,
 and registering the callback as context-owned disposable state. Do not implement
 callback encoding in this slice.
+
+Add `IJavaScriptArgsCodec<TArgs>` and `ValueTupleCodec` forms for `ValueTuple`
+and one through eight tuple elements. Support tuple syntax for two through eight
+arguments, `ValueTuple<T>` for one argument, flat explicit `ValueTuple` forms
+through seven arguments, and C#'s nested-rest `ValueTuple<T1, ..., T7,
+ValueTuple<T8>>` shape for explicit eight-argument spelling. Tuple codecs SHALL
+dispose already-encoded argument values if a later argument codec throws.
 
 - [ ] **Step 4: Track callback disposables in runtime context**
 
@@ -322,8 +309,8 @@ Add a generator snapshot/assertion test that verifies a method like:
 
 ```csharp
 [JS]
-public string UseCallback(string value, JavaScriptCallback<string, string> callback) =>
-    callback.Invoke(value);
+public string UseCallback(string value, JavaScriptCallback<ValueTuple<string>, string> callback) =>
+    callback.Invoke(ValueTuple.Create(value));
 ```
 
 generates a callback codec expression with concrete argument and result codecs.
@@ -381,11 +368,11 @@ Add a fixture module with synchronous and retained callback usage:
 public sealed partial class GeneratedCallbacksModule
 {
   [JS("callNow")]
-  public string CallNow(string value, JavaScriptCallback<string, string> callback) =>
-      callback.Invoke(value);
+  public string CallNow(string value, JavaScriptCallback<ValueTuple<string>, string> callback) =>
+      callback.Invoke(ValueTuple.Create(value));
 
   [JS("store")]
-  public void Store(JavaScriptCallback<string, string> callback) => stored = callback;
+  public void Store(JavaScriptCallback<ValueTuple<string>, string> callback) => stored = callback;
 
   [JS("callStored")]
   public Task<string> CallStored(string value) =>
