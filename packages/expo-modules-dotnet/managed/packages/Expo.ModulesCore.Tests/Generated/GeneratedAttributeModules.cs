@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+using Expo.JSI;
 
 namespace Expo.ModulesCore.Tests.Generated;
 
@@ -68,6 +70,47 @@ public sealed partial class GeneratedTextModule
 
   [JS]
   public TimeSpan RoundTripTimeSpan(TimeSpan value) => value;
+}
+
+[ExpoModule("GeneratedValues")]
+public sealed partial class GeneratedValuesModule : Module
+{
+  private JavaScriptValue? storedValue;
+
+  public GeneratedValuesModule(DotnetRuntimeContext context)
+      : base(context)
+  {
+  }
+
+  [JS]
+  public string ReadKind(JavaScriptValue value) => value.Kind.ToString();
+
+  [JS]
+  public async Task<string> ReadKindAsync(JavaScriptValue value)
+  {
+    await Task.Yield();
+    return await RuntimeContext.Runtime.ExecuteAsync(_ => value.Kind.ToString());
+  }
+
+  [JS]
+  public JavaScriptValue CreateString()
+  {
+    return RuntimeContext.Runtime.CreateString("created");
+  }
+
+  [JS]
+  public void StoreString()
+  {
+    storedValue?.Dispose();
+    storedValue = RuntimeContext.Runtime.CreateString("stored");
+  }
+
+  [JS]
+  public JavaScriptValue ReadStoredString()
+  {
+    return storedValue?.Retain() ??
+        throw new InvalidOperationException("No stored value.");
+  }
 }
 
 [ExpoModule("GeneratedArray")]

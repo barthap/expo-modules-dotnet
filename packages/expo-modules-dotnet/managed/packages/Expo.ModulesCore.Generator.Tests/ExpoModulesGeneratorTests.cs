@@ -495,6 +495,45 @@ public sealed class ExpoModulesGeneratorTests
   }
 
   [Fact]
+  public void GeneratorSupportsJavaScriptValueArgumentsAndReturns()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System.Threading.Tasks;
+        using Expo.JSI;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class ValuesModule
+        {
+          [JS]
+          public JavaScriptValue Echo(JavaScriptValue value) => value.Retain();
+
+          [JS]
+          public async Task<JavaScriptValue> EchoAsync(JavaScriptValue value)
+          {
+            await Task.Yield();
+            return value.Retain();
+          }
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains("using var __expoArg0 = JavaScriptValueCodec.Decode(arguments.GetValue(0), runtime);", source);
+    Assert.Contains("using var __expoResult = module.Echo(__expoArg0);", source);
+    Assert.Contains("return JavaScriptValueCodec.Encode(__expoResult, runtime);", source);
+    Assert.Contains("global::Expo.JSI.JavaScriptValue? __expoArg0 = null;", source);
+    Assert.Contains("__expoArg0 = JavaScriptValueCodec.Decode(arguments.GetValue(0), jsRuntime);", source);
+    Assert.Contains("var __expoTask = module.EchoAsync(__expoArg0!);", source);
+    Assert.Contains("__expoResult.Dispose();", source);
+    Assert.Contains("__expoArg0?.Dispose();", source);
+  }
+
+  [Fact]
   public void GeneratorReportsDuplicateModuleName()
   {
     var result = GeneratorTestHost.Run(

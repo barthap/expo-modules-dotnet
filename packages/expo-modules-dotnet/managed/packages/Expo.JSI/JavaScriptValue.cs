@@ -11,6 +11,16 @@ namespace Expo.JSI;
 /// <see cref="AsObject" />, <see cref="AsArray" />, <see cref="AsFunction" />, and
 /// <see cref="AsValue" /> create new owned wrappers that must be disposed independently. Use
 /// <see cref="Ref" /> for scoped temporary inspection without disposable intermediates.
+///
+/// When generated module glue passes a <see cref="JavaScriptValue" /> as an authored module
+/// argument, the generated glue owns that wrapper for the invocation lifetime. Authored module code
+/// may inspect it during that invocation, including across awaits inside the authored method, but
+/// must not dispose it or store it in module state. To keep a value beyond the invocation, retain an
+/// explicit owned copy.
+///
+/// When authored module code returns a <see cref="JavaScriptValue" />, ownership of the returned
+/// wrapper transfers to generated glue. Return <see cref="Retain" /> when the module must keep or
+/// dispose an original wrapper separately.
 /// </remarks>
 public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
 {

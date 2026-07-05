@@ -1,3 +1,5 @@
+using System;
+using System.Threading.Tasks;
 using Expo.JSI;
 using Expo.ModulesCore;
 using Expo.ModulesCore.Generated;
@@ -246,6 +248,111 @@ public sealed class GeneratedAttributeModuleTests
   }
 
   [Fact]
+  public void GeneratedProviderPassesJavaScriptValueArgumentForInvocationLifetime()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var result = fixture.Evaluate(
+          "globalThis._expoDotnet.modules.GeneratedValues.ReadKind('hello')",
+          "generated-attribute-javascript-value-argument.js"
+      );
+
+      Assert.Equal(JavaScriptValueKind.String, result.Kind);
+      Assert.Equal("String", result.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
+  public async Task GeneratedProviderKeepsJavaScriptValueArgumentUntilAsyncSettles()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var setup = fixture.Evaluate(
+          """
+          globalThis.__generatedValueOutcome = 'pending';
+          globalThis._expoDotnet.modules.GeneratedValues.ReadKindAsync('hello').then(
+            value => { globalThis.__generatedValueOutcome = value; },
+            error => { globalThis.__generatedValueOutcome = error && error.message ? error.message : String(error); }
+          );
+          true;
+          """,
+          "generated-attribute-javascript-value-async-argument.js"
+      );
+      return true;
+    });
+
+    await WaitForGeneratedValueOutcomeAsync(fixture);
+
+    fixture.Runtime.Execute(_ =>
+    {
+      using var result = fixture.Evaluate(
+          "globalThis.__generatedValueOutcome",
+          "generated-attribute-javascript-value-async-argument-result.js"
+      );
+      Assert.Equal(JavaScriptValueKind.String, result.Kind);
+      Assert.Equal("String", result.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void GeneratedProviderReturnsCreatedJavaScriptValue()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var result = fixture.Evaluate(
+          "globalThis._expoDotnet.modules.GeneratedValues.CreateString()",
+          "generated-attribute-javascript-value-return-created.js"
+      );
+
+      Assert.Equal(JavaScriptValueKind.String, result.Kind);
+      Assert.Equal("created", result.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void GeneratedProviderReturnsRetainedStoredJavaScriptValue()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var result = fixture.Evaluate(
+          "const values = globalThis._expoDotnet.modules.GeneratedValues; " +
+          "values.StoreString(); values.ReadStoredString()",
+          "generated-attribute-javascript-value-return-stored.js"
+      );
+
+      Assert.Equal(JavaScriptValueKind.String, result.Kind);
+      Assert.Equal("stored", result.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
   public void GeneratedProviderReportsInvalidConvertiblePrimitiveAsJavaScriptError()
   {
     using var fixture = HermesRuntimeFixture.Create();
@@ -291,5 +398,31 @@ public sealed class GeneratedAttributeModuleTests
       Assert.Equal("6.5:one,two", result.AsString());
       return true;
     });
+  }
+
+  private static async Task WaitForGeneratedValueOutcomeAsync(HermesRuntimeFixture fixture)
+  {
+    var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+    while (DateTime.UtcNow < deadline)
+    {
+      fixture.DrainTasks();
+      var settled = fixture.Runtime.Execute(_ =>
+      {
+        using var value = fixture.Evaluate(
+            "globalThis.__generatedValueOutcome !== 'pending'",
+            "generated-attribute-javascript-value-outcome-settled.js"
+        );
+        return value.AsBool();
+      });
+
+      if (settled)
+      {
+        return;
+      }
+
+      await Task.Delay(10, TestContext.Current.CancellationToken);
+    }
+
+    Assert.Fail("Timed out waiting for generated JavaScriptValue Promise outcome.");
   }
 }

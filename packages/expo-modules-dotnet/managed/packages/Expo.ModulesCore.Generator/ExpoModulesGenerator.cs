@@ -13,6 +13,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
   private const string JSEnumAttributeMetadataName = "Expo.ModulesCore.JSEnumAttribute";
   private const string JSAttributeMetadataName = "Expo.ModulesCore.JSAttribute";
   private const string DotnetRuntimeContextMetadataName = "Expo.ModulesCore.DotnetRuntimeContext";
+  private const string JavaScriptValueMetadataName = "Expo.JSI.JavaScriptValue";
 
   public void Initialize(IncrementalGeneratorInitializationContext context)
   {
@@ -270,6 +271,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
             parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             parameterCodec,
             IsJavaScriptCallbackType(parameter.Type),
+            parameterCodec == "JavaScriptValueCodec",
             parameter.HasExplicitDefaultValue,
             parameter.HasExplicitDefaultValue
                 ? GetDefaultValueExpression(parameter.Type, parameter.ExplicitDefaultValue)
@@ -470,6 +472,17 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine("  {");
     if (function.IsAsync)
     {
+      for (var index = 0; index < function.Parameters.Values.Count; index++)
+      {
+        if (function.Parameters.Values[index].OwnsDecodedValue)
+        {
+          builder.AppendLine($"    global::Expo.JSI.JavaScriptValue? {GetParameterLocalName(index)} = null;");
+        }
+      }
+    }
+
+    if (function.IsAsync)
+    {
       builder.AppendLine("    try");
       builder.AppendLine("    {");
       builder.AppendLine($"      GeneratedFunction.RequireArgumentCount(\"{EscapeString(module.ModuleName)}.{EscapeString(function.JavaScriptName)}\", arguments, {GetRequiredParameterCount(function)}, {function.Parameters.Values.Count});");
@@ -486,30 +499,73 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     {
       var parameter = function.Parameters.Values[index];
       var parameterLocalName = GetParameterLocalName(index);
-      builder.AppendLine(function.IsAsync
-          ? $"      var {parameterLocalName} = {GetParameterExpression(parameter, index, runtimeParameterName)};"
-          : $"    var {parameterLocalName} = {GetParameterExpression(parameter, index, runtimeParameterName)};");
+      if (function.IsAsync && parameter.OwnsDecodedValue)
+      {
+        builder.AppendLine($"      {parameterLocalName} = {GetParameterExpression(parameter, index, runtimeParameterName)};");
+      }
+      else
+      {
+        var declaration = parameter.OwnsDecodedValue ? "using var" : "var";
+        builder.AppendLine(function.IsAsync
+            ? $"      {declaration} {parameterLocalName} = {GetParameterExpression(parameter, index, runtimeParameterName)};"
+            : $"    {declaration} {parameterLocalName} = {GetParameterExpression(parameter, index, runtimeParameterName)};");
+      }
     }
 
     var argumentList = string.Join(
         ", ",
-        function.Parameters.Values.Select((_, index) => GetParameterLocalName(index))
+        function.Parameters.Values.Select((parameter, index) =>
+            function.IsAsync && parameter.OwnsDecodedValue
+                ? $"{GetParameterLocalName(index)}!"
+                : GetParameterLocalName(index))
     );
+    var disposeAsyncDecodedValues = function.Parameters.Values.Any(parameter => parameter.OwnsDecodedValue);
     if (function.IsAsync)
     {
       builder.AppendLine($"      var __expoTask = module.{function.MethodName}({argumentList});");
       builder.AppendLine($"      using var __expoPromiseValue = {runtimeParameterName}.CreatePromise(");
       builder.AppendLine("          async _ =>");
       builder.AppendLine("          {");
+      if (disposeAsyncDecodedValues)
+      {
+        builder.AppendLine("            try");
+        builder.AppendLine("            {");
+      }
+
+      var asyncIndent = disposeAsyncDecodedValues ? "              " : "            ";
       if (function.AsyncReturnsVoid)
       {
-        builder.AppendLine("            await __expoTask.ConfigureAwait(false);");
-        builder.AppendLine("            return global::Expo.JSI.JavaScriptPromiseResult.Resolve(static runtime => runtime.CreateUndefined());");
+        builder.AppendLine($"{asyncIndent}await __expoTask.ConfigureAwait(false);");
+        builder.AppendLine($"{asyncIndent}return global::Expo.JSI.JavaScriptPromiseResult.Resolve(static runtime => runtime.CreateUndefined());");
+      }
+      else if (function.AsyncResultCodecExpression == "JavaScriptValueCodec")
+      {
+        builder.AppendLine($"{asyncIndent}var __expoResult = await __expoTask.ConfigureAwait(false);");
+        builder.AppendLine($"{asyncIndent}return global::Expo.JSI.JavaScriptPromiseResult.Resolve(runtime =>");
+        builder.AppendLine($"{asyncIndent}{{");
+        builder.AppendLine($"{asyncIndent}  try");
+        builder.AppendLine($"{asyncIndent}  {{");
+        builder.AppendLine($"{asyncIndent}    return JavaScriptValueCodec.Encode(__expoResult, runtime);");
+        builder.AppendLine($"{asyncIndent}  }}");
+        builder.AppendLine($"{asyncIndent}  finally");
+        builder.AppendLine($"{asyncIndent}  {{");
+        builder.AppendLine($"{asyncIndent}    __expoResult.Dispose();");
+        builder.AppendLine($"{asyncIndent}  }}");
+        builder.AppendLine($"{asyncIndent}}});");
       }
       else
       {
-        builder.AppendLine("            var __expoResult = await __expoTask.ConfigureAwait(false);");
-        builder.AppendLine($"            return global::Expo.JSI.JavaScriptPromiseResult.Resolve(runtime => {function.AsyncResultCodecExpression}.Encode(__expoResult, runtime));");
+        builder.AppendLine($"{asyncIndent}var __expoResult = await __expoTask.ConfigureAwait(false);");
+        builder.AppendLine($"{asyncIndent}return global::Expo.JSI.JavaScriptPromiseResult.Resolve(runtime => {function.AsyncResultCodecExpression}.Encode(__expoResult, runtime));");
+      }
+
+      if (disposeAsyncDecodedValues)
+      {
+        builder.AppendLine("            }");
+        builder.AppendLine("            finally");
+        builder.AppendLine("            {");
+        EmitDisposeDecodedValues(builder, function, "              ");
+        builder.AppendLine("            }");
       }
       builder.AppendLine("          }");
       builder.AppendLine("      );");
@@ -517,6 +573,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       builder.AppendLine("    }");
       builder.AppendLine("    catch (global::System.Exception exception)");
       builder.AppendLine("    {");
+      if (disposeAsyncDecodedValues)
+      {
+        EmitDisposeDecodedValues(builder, function, "      ");
+      }
       builder.AppendLine($"      return GeneratedFunction.CreateRejectedPromise({runtimeParameterName}, exception);");
       builder.AppendLine("    }");
     }
@@ -527,9 +587,31 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     }
     else
     {
-      builder.AppendLine($"    return {function.ReturnCodecExpression}.Encode(module.{function.MethodName}({argumentList}), runtime);");
+      if (function.ReturnCodecExpression == "JavaScriptValueCodec")
+      {
+        builder.AppendLine($"    using var __expoResult = module.{function.MethodName}({argumentList});");
+        builder.AppendLine("    return JavaScriptValueCodec.Encode(__expoResult, runtime);");
+      }
+      else
+      {
+        builder.AppendLine($"    return {function.ReturnCodecExpression}.Encode(module.{function.MethodName}({argumentList}), runtime);");
+      }
     }
     builder.AppendLine("  }");
+  }
+
+  private static void EmitDisposeDecodedValues(
+      StringBuilder builder,
+      ExpoFunctionModel function,
+      string indent)
+  {
+    for (var index = 0; index < function.Parameters.Values.Count; index++)
+    {
+      if (function.Parameters.Values[index].OwnsDecodedValue)
+      {
+        builder.AppendLine($"{indent}{GetParameterLocalName(index)}?.Dispose();");
+      }
+    }
   }
 
   private static void EmitRecordCodec(StringBuilder builder, ExpoGeneratedRecordCodecModel codec)
@@ -665,6 +747,11 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     if (TryGetJavaScriptCallbackCodec(typeSymbol, diagnostics, recordCodecs) is { } callbackCodec)
     {
       return callbackCodec;
+    }
+
+    if (typeSymbol.ToDisplayString() == JavaScriptValueMetadataName)
+    {
+      return "JavaScriptValueCodec";
     }
 
     if (TryGetNullableCodec(typeSymbol, diagnostics, recordCodecs) is { } nullableCodec)
