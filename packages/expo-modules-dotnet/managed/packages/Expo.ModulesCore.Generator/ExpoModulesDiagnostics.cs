@@ -25,7 +25,7 @@ internal static class ExpoModulesDiagnostics
   public static readonly DiagnosticDescriptor UnsupportedModuleConstructor = new(
       id: "EXPOJSI003",
       title: "Unsupported Expo module constructor",
-      messageFormat: "Module '{0}' must have a public or internal parameterless constructor",
+      messageFormat: "Module '{0}' must have a public or internal parameterless constructor or a constructor accepting DotnetRuntimeContext",
       category: "Expo.ModulesCore",
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true

@@ -430,6 +430,71 @@ public sealed class ExpoModulesGeneratorTests
   }
 
   [Fact]
+  public void GeneratorUsesContextConstructorWhenParameterlessConstructorIsUnavailable()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class RuntimeAwareModule
+        {
+          public RuntimeAwareModule(DotnetRuntimeContext context)
+          {
+          }
+
+          [JS]
+          public double Value() => 1.0;
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains(
+        "context.GetOrCreateModule(\"RuntimeAware\", () => new global::Expo.TestModules.RuntimeAwareModule(context))",
+        source
+    );
+  }
+
+  [Fact]
+  public void GeneratorPrefersContextConstructorWhenBothSupportedConstructorsExist()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class DualConstructorModule
+        {
+          public DualConstructorModule()
+          {
+          }
+
+          public DualConstructorModule(DotnetRuntimeContext context)
+          {
+          }
+
+          [JS]
+          public double Value() => 1.0;
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains(
+        "context.GetOrCreateModule(\"DualConstructor\", () => new global::Expo.TestModules.DualConstructorModule(context))",
+        source
+    );
+    Assert.DoesNotContain("new global::Expo.TestModules.DualConstructorModule())", source);
+  }
+
+  [Fact]
   public void GeneratorReportsDuplicateModuleName()
   {
     var result = GeneratorTestHost.Run(

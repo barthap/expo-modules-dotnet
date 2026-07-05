@@ -6,10 +6,17 @@ internal sealed record ExpoModuleModel(
     string FullyQualifiedTypeName,
     string ModuleName,
     Location? Location,
-    bool CanConstruct,
+    ExpoModuleConstructorStrategy ConstructorStrategy,
     EquatableArray<ExpoFunctionModel> Functions,
     EquatableArray<ExpoGeneratedRecordCodecModel> RecordCodecs,
     EquatableArray<ExpoDiagnosticModel> Diagnostics);
+
+internal enum ExpoModuleConstructorStrategy
+{
+  Unsupported,
+  Parameterless,
+  RuntimeContext,
+}
 
 internal sealed record ExpoFunctionModel(
     string MethodName,

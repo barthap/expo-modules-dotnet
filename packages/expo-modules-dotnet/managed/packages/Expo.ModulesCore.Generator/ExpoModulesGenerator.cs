@@ -12,6 +12,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
   private const string ExpoModuleAttributeMetadataName = "Expo.ModulesCore.ExpoModuleAttribute";
   private const string JSEnumAttributeMetadataName = "Expo.ModulesCore.JSEnumAttribute";
   private const string JSAttributeMetadataName = "Expo.ModulesCore.JSAttribute";
+  private const string DotnetRuntimeContextMetadataName = "Expo.ModulesCore.DotnetRuntimeContext";
 
   public void Initialize(IncrementalGeneratorInitializationContext context)
   {
@@ -63,8 +64,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     }
 
     var diagnostics = new List<ExpoDiagnosticModel>();
-    var canConstruct = HasUsableConstructor(typeSymbol);
-    if (!canConstruct)
+    var constructorStrategy = GetConstructorStrategy(typeSymbol);
+    if (constructorStrategy == ExpoModuleConstructorStrategy.Unsupported)
     {
       diagnostics.Add(new ExpoDiagnosticModel(
           ExpoModulesDiagnostics.UnsupportedModuleConstructor.Id,
@@ -80,21 +81,44 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
         moduleName,
         typeSymbol.Locations.FirstOrDefault(),
-        canConstruct,
+        constructorStrategy,
         new EquatableArray<ExpoFunctionModel>(functions),
         new EquatableArray<ExpoGeneratedRecordCodecModel>(recordCodecs),
         new EquatableArray<ExpoDiagnosticModel>(diagnostics)
     );
   }
 
-  private static bool HasUsableConstructor(INamedTypeSymbol typeSymbol)
+  private static ExpoModuleConstructorStrategy GetConstructorStrategy(INamedTypeSymbol typeSymbol)
   {
-    return typeSymbol.InstanceConstructors.Any(constructor =>
-        constructor.Parameters.Length == 0 &&
-        (constructor.DeclaredAccessibility == Accessibility.Public ||
-            constructor.DeclaredAccessibility == Accessibility.Internal)
-    );
+    var hasParameterlessConstructor = false;
+
+    foreach (var constructor in typeSymbol.InstanceConstructors)
+    {
+      if (!IsSupportedConstructorAccessibility(constructor))
+      {
+        continue;
+      }
+
+      if (constructor.Parameters.Length == 1 &&
+          constructor.Parameters[0].Type.ToDisplayString() == DotnetRuntimeContextMetadataName)
+      {
+        return ExpoModuleConstructorStrategy.RuntimeContext;
+      }
+
+      if (constructor.Parameters.Length == 0)
+      {
+        hasParameterlessConstructor = true;
+      }
+    }
+
+    return hasParameterlessConstructor
+        ? ExpoModuleConstructorStrategy.Parameterless
+        : ExpoModuleConstructorStrategy.Unsupported;
   }
+
+  private static bool IsSupportedConstructorAccessibility(IMethodSymbol constructor) =>
+      constructor.DeclaredAccessibility == Accessibility.Public ||
+      constructor.DeclaredAccessibility == Accessibility.Internal;
 
   private static IEnumerable<ExpoFunctionModel> GetFunctions(
       INamedTypeSymbol typeSymbol,
@@ -346,7 +370,9 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     }
 
     moduleModels = moduleModels
-        .Where(module => module.CanConstruct && !duplicateModuleNames.Contains(module.ModuleName))
+        .Where(module =>
+            module.ConstructorStrategy != ExpoModuleConstructorStrategy.Unsupported &&
+            !duplicateModuleNames.Contains(module.ModuleName))
         .ToArray();
 
     var providerTypeName = $"ExpoModulesProvider_{SanitizeIdentifier(assemblyName)}";
@@ -380,8 +406,11 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     {
       var moduleVariable = $"module_{SanitizeIdentifier(module.ModuleName)}";
       var moduleInstanceVariable = $"instance_{SanitizeIdentifier(module.ModuleName)}";
+      var factoryExpression = module.ConstructorStrategy == ExpoModuleConstructorStrategy.RuntimeContext
+          ? $"() => new {module.FullyQualifiedTypeName}(context)"
+          : $"static () => new {module.FullyQualifiedTypeName}()";
       builder.AppendLine($"    using var {moduleVariable} = ModuleRegistry.DefineModule(context.Runtime, modules, \"{EscapeString(module.ModuleName)}\");");
-      builder.AppendLine($"    var {moduleInstanceVariable} = context.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", static () => new {module.FullyQualifiedTypeName}());");
+      builder.AppendLine($"    var {moduleInstanceVariable} = context.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", {factoryExpression});");
       foreach (var function in module.Functions.Values)
       {
         builder.AppendLine(function.IsAsync
