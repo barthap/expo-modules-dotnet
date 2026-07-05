@@ -37,11 +37,11 @@ public sealed class ExpoModulesGeneratorTests
     );
     Assert.DoesNotContain("public static void Register(global::Expo.JSI.JavaScriptRuntime runtime", source);
     Assert.Contains("global::System.ArgumentNullException.ThrowIfNull(context);", source);
-    Assert.Contains("using var modules = context.GetOrCreateDotnetModulesObject();", source);
+    Assert.Contains("using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();", source);
     Assert.Contains("Register(context, modules);", source);
     Assert.Contains("global::System.ArgumentNullException.ThrowIfNull(modules);", source);
-    Assert.Contains("ModuleRegistry.DefineModule(context.Runtime, modules, \"Math\")", source);
-    Assert.Contains("context.GetOrCreateModule(\"Math\", static () => new global::Expo.TestModules.MathModule())", source);
+    Assert.Contains("context.ModuleRegistry.DefineModule(modules, \"Math\")", source);
+    Assert.Contains("context.ModuleRegistry.GetOrCreateModule(\"Math\", static () => new global::Expo.TestModules.MathModule())", source);
   }
 
   [Fact]
@@ -67,8 +67,8 @@ public sealed class ExpoModulesGeneratorTests
 
     Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
     var source = Assert.Single(result.GeneratedSources).Text;
-    Assert.Contains("ModuleRegistry.DefineModule(context.Runtime, modules, \"Math\")", source);
-    Assert.Contains("context.GetOrCreateModule(\"Math\", static () => new global::Expo.TestModules.InternalMathModule())", source);
+    Assert.Contains("context.ModuleRegistry.DefineModule(modules, \"Math\")", source);
+    Assert.Contains("context.ModuleRegistry.GetOrCreateModule(\"Math\", static () => new global::Expo.TestModules.InternalMathModule())", source);
     Assert.Contains("GeneratedFunction.DefineSync(", source);
     Assert.Contains("module_Math", source);
     Assert.Contains("\"Add\"", source);
@@ -454,7 +454,7 @@ public sealed class ExpoModulesGeneratorTests
     Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
     var source = Assert.Single(result.GeneratedSources).Text;
     Assert.Contains(
-        "context.GetOrCreateModule(\"RuntimeAware\", () => new global::Expo.TestModules.RuntimeAwareModule(context))",
+        "context.ModuleRegistry.GetOrCreateModule(\"RuntimeAware\", () => new global::Expo.TestModules.RuntimeAwareModule(context))",
         source
     );
   }
@@ -488,7 +488,7 @@ public sealed class ExpoModulesGeneratorTests
     Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
     var source = Assert.Single(result.GeneratedSources).Text;
     Assert.Contains(
-        "context.GetOrCreateModule(\"DualConstructor\", () => new global::Expo.TestModules.DualConstructorModule(context))",
+        "context.ModuleRegistry.GetOrCreateModule(\"DualConstructor\", () => new global::Expo.TestModules.DualConstructorModule(context))",
         source
     );
     Assert.DoesNotContain("new global::Expo.TestModules.DualConstructorModule())", source);
@@ -524,12 +524,12 @@ public sealed class ExpoModulesGeneratorTests
     Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
     var source = Assert.Single(result.GeneratedSources).Text;
     Assert.Contains("using var __expoArg0 = JavaScriptValueCodec.Decode(arguments.GetValue(0), runtime);", source);
-    Assert.Contains("using var __expoResult = module.Echo(__expoArg0);", source);
-    Assert.Contains("return JavaScriptValueCodec.Encode(__expoResult, runtime);", source);
+    Assert.Contains("return JavaScriptValueCodec.Encode(module.Echo(__expoArg0), runtime);", source);
+    Assert.DoesNotContain("using var __expoResult = module.Echo(__expoArg0);", source);
     Assert.Contains("global::Expo.JSI.JavaScriptValue? __expoArg0 = null;", source);
     Assert.Contains("__expoArg0 = JavaScriptValueCodec.Decode(arguments.GetValue(0), jsRuntime);", source);
     Assert.Contains("var __expoTask = module.EchoAsync(__expoArg0!);", source);
-    Assert.Contains("__expoResult.Dispose();", source);
+    Assert.DoesNotContain("__expoResult.Dispose();", source);
     Assert.Contains("__expoArg0?.Dispose();", source);
   }
 

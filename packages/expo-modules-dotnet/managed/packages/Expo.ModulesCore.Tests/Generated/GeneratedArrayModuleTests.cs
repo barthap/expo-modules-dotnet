@@ -17,8 +17,9 @@ public sealed class GeneratedArrayModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
-      GeneratedArrayModuleProvider.Register(runtime, modules);
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      GeneratedArrayModuleProvider.Register(context, modules);
 
       using var result = fixture.Evaluate(
           "globalThis._expoDotnet.modules.Array.sum([1, 2, 3.5])",
@@ -38,8 +39,9 @@ public sealed class GeneratedArrayModuleTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
-      GeneratedArrayModuleProvider.Register(runtime, modules);
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      GeneratedArrayModuleProvider.Register(context, modules);
 
       using var result = fixture.Evaluate(
           "const labels = globalThis._expoDotnet.modules.Array.labels(); Array.isArray(labels) && labels.join(',')",
@@ -61,12 +63,12 @@ public sealed class GeneratedArrayModuleTests
 
   private static class GeneratedArrayModuleProvider
   {
-    public static void Register(JavaScriptRuntime runtime, JavaScriptObject modules)
+    public static void Register(DotnetRuntimeContext context, JavaScriptObject modules)
     {
-      using var array = ModuleRegistry.DefineModule(runtime, modules, "Array");
+      using var array = context.ModuleRegistry.DefineModule(modules, "Array");
 
       GeneratedFunction.DefineSync(
-          runtime,
+          context,
           array,
           "sum",
           1,
@@ -74,7 +76,7 @@ public sealed class GeneratedArrayModuleTests
           new ArrayModule()
       );
       GeneratedFunction.DefineSync(
-          runtime,
+          context,
           array,
           "labels",
           0,

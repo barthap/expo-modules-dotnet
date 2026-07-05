@@ -18,7 +18,7 @@ public sealed class GeneratedAttributeModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -40,7 +40,7 @@ public sealed class GeneratedAttributeModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -62,7 +62,7 @@ public sealed class GeneratedAttributeModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -85,7 +85,7 @@ public sealed class GeneratedAttributeModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -111,7 +111,7 @@ public sealed class GeneratedAttributeModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -134,7 +134,7 @@ public sealed class GeneratedAttributeModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -156,7 +156,7 @@ public sealed class GeneratedAttributeModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -179,7 +179,7 @@ public sealed class GeneratedAttributeModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -203,7 +203,7 @@ public sealed class GeneratedAttributeModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -225,7 +225,7 @@ public sealed class GeneratedAttributeModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -255,7 +255,7 @@ public sealed class GeneratedAttributeModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -276,7 +276,7 @@ public sealed class GeneratedAttributeModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var setup = fixture.Evaluate(
@@ -315,7 +315,7 @@ public sealed class GeneratedAttributeModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -337,7 +337,7 @@ public sealed class GeneratedAttributeModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -360,7 +360,7 @@ public sealed class GeneratedAttributeModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -385,7 +385,7 @@ public sealed class GeneratedAttributeModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(

@@ -121,7 +121,7 @@ public static class EntryPoints
     var context = new DotnetRuntimeContext(runtime);
     try
     {
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       GeneratedModuleProvider.Register(context, modules);
       ExpoModulesProvider_HermesConsoleApp.Register(context, modules);
       return GCHandle.ToIntPtr(GCHandle.Alloc(context));

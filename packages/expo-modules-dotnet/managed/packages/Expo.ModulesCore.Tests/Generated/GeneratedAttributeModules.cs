@@ -73,7 +73,7 @@ public sealed partial class GeneratedTextModule
 }
 
 [ExpoModule("GeneratedValues")]
-public sealed partial class GeneratedValuesModule : Module
+public sealed partial class GeneratedValuesModule : Module, IDisposable
 {
   private JavaScriptValue? storedValue;
 
@@ -110,6 +110,12 @@ public sealed partial class GeneratedValuesModule : Module
   {
     return storedValue?.Retain() ??
         throw new InvalidOperationException("No stored value.");
+  }
+
+  public void Dispose()
+  {
+    storedValue?.Dispose();
+    storedValue = null;
   }
 }
 

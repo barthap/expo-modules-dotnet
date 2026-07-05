@@ -92,6 +92,12 @@ owned wrappers when they cross from one owned type to another.
 - **THEN** the returned `JavaScriptValue` SHALL own a retained handle and must
   be disposed independently
 
+#### Scenario: Value converts to retained value
+- **GIVEN** a `JavaScriptValue`
+- **WHEN** managed code calls `Retain` or `AsValue`
+- **THEN** the returned `JavaScriptValue` SHALL own a retained handle and must
+  be disposed independently
+
 #### Scenario: Value converts to function
 - **GIVEN** a `JavaScriptValue` or scoped `JavaScriptValueRef` containing a
   JavaScript function
@@ -110,3 +116,25 @@ owned wrappers when they cross from one owned type to another.
 - **THEN** `Expo.JSI.Tests` SHALL remain focused on low-level wrapper, ABI,
   runtime, value, ownership, host-function, scheduler, and promise behavior
   instead of owning module-layer architecture
+
+### Requirement: Generated Module Value Ownership
+
+`JavaScriptValue` SHALL document the ownership conventions used when generated
+module glue passes or receives owned value wrappers.
+
+#### Scenario: Generated module receives JavaScriptValue argument
+- **GIVEN** generated module glue passes a `JavaScriptValue` argument to
+  authored module code
+- **WHEN** authored module code receives that wrapper
+- **THEN** generated glue SHALL own the wrapper for the invocation lifetime
+- **AND** authored module code SHALL NOT dispose it
+- **AND** authored module code SHALL NOT store it beyond the invocation unless
+  it first retains an explicit owned copy
+
+#### Scenario: Authored module returns JavaScriptValue
+- **GIVEN** authored module code returns a `JavaScriptValue`
+- **WHEN** generated module glue receives that wrapper
+- **THEN** ownership of the returned wrapper SHALL transfer to generated glue
+- **AND** authored module code SHALL NOT dispose the wrapper after returning it
+- **AND** authored module code that needs to keep an original wrapper SHALL
+  return a retained copy instead

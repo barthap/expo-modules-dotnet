@@ -162,7 +162,7 @@
 - [ ] **Step 4: Implement `JavaScriptValueCodec`**
   - `Decode(JavaScriptValueRef, runtime)` retains to an owned `JavaScriptValue` for generated glue.
   - `Decode(JavaScriptValue, runtime)` returns an owned wrapper according to current wrapper semantics.
-  - `Encode(JavaScriptValue, runtime)` consumes the returned wrapper on behalf of generated glue.
+  - `Encode(JavaScriptValue, runtime)` returns the authored wrapper so generated glue can hand it to the host-function bridge or Promise scheduler.
   - Returning a retained copy leaves the original wrapper owned by authored module code.
 
 - [ ] **Step 5: Implement generated cleanup**

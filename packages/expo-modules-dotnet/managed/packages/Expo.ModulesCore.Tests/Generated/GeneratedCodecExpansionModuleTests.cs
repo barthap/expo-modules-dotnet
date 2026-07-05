@@ -16,8 +16,9 @@ public sealed class GeneratedCodecExpansionModuleTests
     using var fixture = HermesRuntimeFixture.Create();
     fixture.Runtime.Execute(runtime =>
     {
-      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
-      GeneratedCodecExpansionModuleProvider.Register(runtime, modules);
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      GeneratedCodecExpansionModuleProvider.Register(context, modules);
       using var result = fixture.Evaluate(
           "globalThis._expoDotnet.modules.CodecExpansion.total({ first: 2, second: 3.5 })",
           "dictionary-total.js"
@@ -34,8 +35,9 @@ public sealed class GeneratedCodecExpansionModuleTests
     using var fixture = HermesRuntimeFixture.Create();
     fixture.Runtime.Execute(runtime =>
     {
-      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
-      GeneratedCodecExpansionModuleProvider.Register(runtime, modules);
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      GeneratedCodecExpansionModuleProvider.Register(context, modules);
       using var result = fixture.Evaluate(
           "const value = globalThis._expoDotnet.modules.CodecExpansion.labels(); value.one + ',' + value.two",
           "dictionary-labels.js"
@@ -52,8 +54,9 @@ public sealed class GeneratedCodecExpansionModuleTests
     using var fixture = HermesRuntimeFixture.Create();
     fixture.Runtime.Execute(runtime =>
     {
-      using var modules = ModuleRegistry.GetOrCreateDotnetModulesObject(runtime);
-      GeneratedCodecExpansionModuleProvider.Register(runtime, modules);
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      GeneratedCodecExpansionModuleProvider.Register(context, modules);
       using var result = fixture.Evaluate(
           "globalThis._expoDotnet.modules.CodecExpansion.describeMode('Fast')",
           "enum-mode.js"
@@ -71,7 +74,7 @@ public sealed class GeneratedCodecExpansionModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
       using var result = fixture.Evaluate(
           "globalThis._expoDotnet.modules.GeneratedRecords.rename({ Name: 'Ada', Age: 37 }).Name",
@@ -90,7 +93,7 @@ public sealed class GeneratedCodecExpansionModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
       using var classResult = fixture.Evaluate(
           "globalThis._expoDotnet.modules.GeneratedRecords.renameClass({ Name: 'Grace', Age: 40 }).Name",
@@ -114,7 +117,7 @@ public sealed class GeneratedCodecExpansionModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
       using var result = fixture.Evaluate(
           "const user = globalThis._expoDotnet.modules.GeneratedRecords.moveNested({ Name: 'Ada', Address: { City: 'London' }, Status: 'Draft' }); user.Address.City + ':' + user.Status",
@@ -148,13 +151,13 @@ public sealed class GeneratedCodecExpansionModuleTests
 
   private static class GeneratedCodecExpansionModuleProvider
   {
-    public static void Register(JavaScriptRuntime runtime, JavaScriptObject modules)
+    public static void Register(DotnetRuntimeContext context, JavaScriptObject modules)
     {
-      using var module = ModuleRegistry.DefineModule(runtime, modules, "CodecExpansion");
+      using var module = context.ModuleRegistry.DefineModule(modules, "CodecExpansion");
       var instance = new CodecExpansionModule();
-      GeneratedFunction.DefineSync(runtime, module, "total", 1, TotalHostFunction, instance);
-      GeneratedFunction.DefineSync(runtime, module, "labels", 0, LabelsHostFunction, instance);
-      GeneratedFunction.DefineSync(runtime, module, "describeMode", 1, DescribeModeHostFunction, instance);
+      GeneratedFunction.DefineSync(context, module, "total", 1, TotalHostFunction, instance);
+      GeneratedFunction.DefineSync(context, module, "labels", 0, LabelsHostFunction, instance);
+      GeneratedFunction.DefineSync(context, module, "describeMode", 1, DescribeModeHostFunction, instance);
     }
 
     private static JavaScriptValue TotalHostFunction(

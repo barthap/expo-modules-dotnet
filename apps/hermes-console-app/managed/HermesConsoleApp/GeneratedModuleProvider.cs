@@ -12,8 +12,8 @@ internal static class GeneratedModuleProvider
     using var math = runtime.CreateObject();
     using var text = runtime.CreateObject();
 
-    var mathModule = context.GetOrCreateModule("HermesConsoleApp.Math", static () => new MathModule());
-    var textModule = context.GetOrCreateModule("HermesConsoleApp.Text", static () => new TextModule());
+    var mathModule = context.ModuleRegistry.GetOrCreateModule("HermesConsoleApp.Math", static () => new MathModule());
+    var textModule = context.ModuleRegistry.GetOrCreateModule("HermesConsoleApp.Text", static () => new TextModule());
 
     using var globalValue = global.AsValue();
     global.SetProperty("global", globalValue);

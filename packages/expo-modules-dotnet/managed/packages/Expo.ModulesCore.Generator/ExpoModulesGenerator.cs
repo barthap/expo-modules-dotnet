@@ -396,7 +396,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine("  public static void Register(global::Expo.ModulesCore.DotnetRuntimeContext context)");
     builder.AppendLine("  {");
     builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(context);");
-    builder.AppendLine("    using var modules = context.GetOrCreateDotnetModulesObject();");
+    builder.AppendLine("    using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();");
     builder.AppendLine("    Register(context, modules);");
     builder.AppendLine("  }");
     builder.AppendLine();
@@ -411,8 +411,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       var factoryExpression = module.ConstructorStrategy == ExpoModuleConstructorStrategy.RuntimeContext
           ? $"() => new {module.FullyQualifiedTypeName}(context)"
           : $"static () => new {module.FullyQualifiedTypeName}()";
-      builder.AppendLine($"    using var {moduleVariable} = ModuleRegistry.DefineModule(context.Runtime, modules, \"{EscapeString(module.ModuleName)}\");");
-      builder.AppendLine($"    var {moduleInstanceVariable} = context.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", {factoryExpression});");
+      builder.AppendLine($"    using var {moduleVariable} = context.ModuleRegistry.DefineModule(modules, \"{EscapeString(module.ModuleName)}\");");
+      builder.AppendLine($"    var {moduleInstanceVariable} = context.ModuleRegistry.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", {factoryExpression});");
       foreach (var function in module.Functions.Values)
       {
         builder.AppendLine(function.IsAsync
@@ -543,14 +543,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         builder.AppendLine($"{asyncIndent}var __expoResult = await __expoTask.ConfigureAwait(false);");
         builder.AppendLine($"{asyncIndent}return global::Expo.JSI.JavaScriptPromiseResult.Resolve(runtime =>");
         builder.AppendLine($"{asyncIndent}{{");
-        builder.AppendLine($"{asyncIndent}  try");
-        builder.AppendLine($"{asyncIndent}  {{");
         builder.AppendLine($"{asyncIndent}    return JavaScriptValueCodec.Encode(__expoResult, runtime);");
-        builder.AppendLine($"{asyncIndent}  }}");
-        builder.AppendLine($"{asyncIndent}  finally");
-        builder.AppendLine($"{asyncIndent}  {{");
-        builder.AppendLine($"{asyncIndent}    __expoResult.Dispose();");
-        builder.AppendLine($"{asyncIndent}  }}");
         builder.AppendLine($"{asyncIndent}}});");
       }
       else
@@ -589,8 +582,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     {
       if (function.ReturnCodecExpression == "JavaScriptValueCodec")
       {
-        builder.AppendLine($"    using var __expoResult = module.{function.MethodName}({argumentList});");
-        builder.AppendLine("    return JavaScriptValueCodec.Encode(__expoResult, runtime);");
+        builder.AppendLine($"    return JavaScriptValueCodec.Encode(module.{function.MethodName}({argumentList}), runtime);");
       }
       else
       {

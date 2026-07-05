@@ -15,7 +15,7 @@ public sealed class DotnetRuntimeContextTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       RegisterLifecycleModule(context, modules, out _);
 
       using var beforeTeardown = fixture.Evaluate(
@@ -46,7 +46,7 @@ public sealed class DotnetRuntimeContextTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       RegisterLifecycleModule(context, modules, out moduleReference);
 
       Assert.True(moduleReference.IsAlive);
@@ -58,13 +58,105 @@ public sealed class DotnetRuntimeContextTests
     Assert.False(moduleReference.IsAlive);
   }
 
+  [Fact]
+  public void ContextOwnedModuleRegistryReusesModuleInstance()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      var createCount = 0;
+
+      var first = context.ModuleRegistry.GetOrCreateModule(
+          "Reusable",
+          () =>
+          {
+            createCount++;
+            return new LifecycleModule();
+          }
+      );
+      var second = context.ModuleRegistry.GetOrCreateModule(
+          "Reusable",
+          () =>
+          {
+            createCount++;
+            return new LifecycleModule();
+          }
+      );
+
+      Assert.Same(first, second);
+      Assert.Equal(1, createCount);
+      return true;
+    });
+  }
+
+  [Fact]
+  public void ContextOwnedModuleRegistryDoesNotShareInstancesAcrossContexts()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var firstContext = new DotnetRuntimeContext(runtime);
+      using var secondContext = new DotnetRuntimeContext(runtime);
+
+      var first = firstContext.ModuleRegistry.GetOrCreateModule(
+          "Scoped",
+          static () => new LifecycleModule()
+      );
+      var second = secondContext.ModuleRegistry.GetOrCreateModule(
+          "Scoped",
+          static () => new LifecycleModule()
+      );
+
+      Assert.NotSame(first, second);
+      return true;
+    });
+  }
+
+  [Fact]
+  public void ModuleBaseStoresRuntimeContext()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      var module = context.ModuleRegistry.GetOrCreateModule(
+          "RuntimeAware",
+          () => new RuntimeAwareModule(context)
+      );
+
+      Assert.Same(context, module.Context);
+      return true;
+    });
+  }
+
+  [Fact]
+  public void CachedModuleRegistryFailsAfterContextTeardown()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      var registry = context.ModuleRegistry;
+
+      context.Dispose();
+
+      Assert.Throws<ObjectDisposedException>(() => registry.GetOrCreateDotnetModulesObject());
+      return true;
+    });
+  }
+
   private static void RegisterLifecycleModule(
       DotnetRuntimeContext context,
       JavaScriptObject modules,
       out WeakReference moduleReference
   )
   {
-    using var module = ModuleRegistry.DefineModule(context.Runtime, modules, "Lifecycle");
+    using var module = context.ModuleRegistry.DefineModule(modules, "Lifecycle");
     var lifecycleModule = new LifecycleModule();
     moduleReference = new WeakReference(lifecycleModule);
     GeneratedFunction.DefineSync(
@@ -99,5 +191,15 @@ public sealed class DotnetRuntimeContextTests
   private sealed class LifecycleModule
   {
     public double Value() => 42.0;
+  }
+
+  private sealed class RuntimeAwareModule : Module
+  {
+    public RuntimeAwareModule(DotnetRuntimeContext context)
+        : base(context)
+    {
+    }
+
+    public DotnetRuntimeContext Context => RuntimeContext;
   }
 }

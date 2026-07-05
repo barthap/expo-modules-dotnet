@@ -16,7 +16,7 @@ public sealed class GeneratedMathAndTextModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       GeneratedMathAndTextModuleProvider.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -43,7 +43,7 @@ public sealed class GeneratedMathAndTextModuleTests
       );
 
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateExpoModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateExpoModulesObject();
       GeneratedMathAndTextModuleProvider.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -65,7 +65,7 @@ public sealed class GeneratedMathAndTextModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       GeneratedMathAndTextModuleProvider.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -87,7 +87,7 @@ public sealed class GeneratedMathAndTextModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       GeneratedMathAndTextModuleProvider.Register(context, modules);
 
       using var result = fixture.Evaluate(
@@ -116,10 +116,10 @@ public sealed class GeneratedMathAndTextModuleTests
   {
     public static void Register(DotnetRuntimeContext context, JavaScriptObject modules)
     {
-      using var math = ModuleRegistry.DefineModule(context.Runtime, modules, "Math");
-      using var text = ModuleRegistry.DefineModule(context.Runtime, modules, "Text");
-      var mathModule = context.GetOrCreateModule("Math", static () => new MathModule());
-      var textModule = context.GetOrCreateModule("Text", static () => new TextModule());
+      using var math = context.ModuleRegistry.DefineModule(modules, "Math");
+      using var text = context.ModuleRegistry.DefineModule(modules, "Text");
+      var mathModule = context.ModuleRegistry.GetOrCreateModule("Math", static () => new MathModule());
+      var textModule = context.ModuleRegistry.GetOrCreateModule("Text", static () => new TextModule());
 
       GeneratedFunction.DefineSync(
           context,

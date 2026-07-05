@@ -216,8 +216,8 @@ only when the codec can preserve explicit owned-wrapper semantics.
 - **WHEN** generated dispatch encodes that value through the `JavaScriptValue`
   codec
 - **THEN** generated glue SHALL take ownership of the returned wrapper
-- **AND** generated glue SHALL dispose the returned wrapper after producing the
-  JavaScript return value or after the asynchronous invocation settles
+- **AND** generated glue SHALL pass the encoded wrapper to the host-function
+  bridge or Promise scheduler without retaining or disposing it again
 - **AND** authored module code SHALL NOT dispose a wrapper after returning it to
   generated glue
 

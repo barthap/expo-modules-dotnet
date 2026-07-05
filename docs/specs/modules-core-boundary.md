@@ -10,7 +10,8 @@ Define the boundary between low-level `Expo.JSI` wrappers and the
 ### Requirement: ModulesCore Owns Generated-Binding Helpers
 
 `Expo.ModulesCore` SHALL own module registration helpers, generated dispatch
-helpers, and typed conversion helpers above `Expo.JSI`. It lives under
+helpers, typed conversion helpers, and runtime-scoped authored module instance
+helpers above `Expo.JSI`. It lives under
 `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore` as part of the
 public Expo adapter package's managed core.
 
@@ -122,6 +123,55 @@ current compilation.
   instances
 - **AND** generated registration SHALL NOT require runtime reflection
 
+#### Scenario: Context-backed module is constructed
+- **GIVEN** an authored module declares a public or internal constructor
+  accepting `DotnetRuntimeContext`
+- **WHEN** generated registration instantiates that module
+- **THEN** it SHALL pass the current context to the constructor
+- **AND** it SHALL use the resulting instance for generated function bindings
+
+#### Scenario: Simple module is constructed
+- **GIVEN** an authored module declares a public or internal parameterless
+  constructor
+- **WHEN** generated registration instantiates that module
+- **THEN** it SHALL construct the module without requiring context access
+
+#### Scenario: Module supports both constructors
+- **GIVEN** an authored module declares both a supported parameterless
+  constructor and a supported constructor accepting `DotnetRuntimeContext`
+- **WHEN** generated registration instantiates that module
+- **THEN** it SHALL prefer the `DotnetRuntimeContext` constructor
+
+### Requirement: Runtime Context Owns Module Instances
+
+`DotnetRuntimeContext` SHALL own runtime-scoped authored module instances
+through a context-owned `ModuleRegistry`.
+
+#### Scenario: Module instance is reused within one runtime context
+- **GIVEN** generated registration asks the context-owned registry for an
+  authored module instance
+- **WHEN** that instance already exists for the current `DotnetRuntimeContext`
+- **THEN** the registry SHALL return the existing instance
+
+#### Scenario: Module instance does not cross runtime contexts
+- **GIVEN** two JavaScript runtimes have separate `DotnetRuntimeContext`
+  instances
+- **WHEN** generated registration asks each context for the same authored module
+  type
+- **THEN** each context SHALL receive its own authored module instance
+
+#### Scenario: Module inherits the convenience base class
+- **GIVEN** an authored module inherits from `Expo.ModulesCore.Module`
+- **WHEN** generated registration constructs the module with
+  `DotnetRuntimeContext`
+- **THEN** the base class SHALL store the context for derived classes
+
+#### Scenario: Module does not inherit the convenience base class
+- **GIVEN** an authored module does not inherit from `Expo.ModulesCore.Module`
+- **AND** it declares a supported constructor
+- **WHEN** generated registration constructs the module
+- **THEN** generated registration SHALL NOT require inheritance
+
 ### Requirement: Sync Function Generation Uses Direct Calls
 
 Generated sync function glue SHALL decode arguments, call authored methods
@@ -135,6 +185,31 @@ directly, and encode return values through typed helpers.
   codecs
 - **AND** call the authored method directly
 - **AND** return the encoded result through `Expo.JSI`
+
+#### Scenario: Generated sync function accepts JavaScriptValue
+- **GIVEN** a generated sync function accepts `JavaScriptValue`
+- **WHEN** JavaScript calls that function
+- **THEN** generated dispatch SHALL retain the scoped argument into an owned
+  wrapper for the invocation
+- **AND** generated dispatch SHALL dispose the argument wrapper after the
+  authored method returns or throws
+- **AND** authored module code SHALL NOT dispose or store the argument wrapper
+
+#### Scenario: Generated sync function returns JavaScriptValue
+- **GIVEN** a generated sync function returns `JavaScriptValue`
+- **WHEN** JavaScript calls that function
+- **THEN** ownership of the returned wrapper SHALL transfer to generated glue
+- **AND** generated glue SHALL encode the returned wrapper through
+  `JavaScriptValueCodec`
+- **AND** generated glue SHALL return the encoded wrapper to the host-function
+  bridge without retaining or disposing it again
+
+#### Scenario: Module author returns a retained JavaScriptValue copy
+- **GIVEN** authored module code owns a `JavaScriptValue`
+- **WHEN** it needs to keep that original wrapper or dispose it locally
+- **THEN** it SHALL return an explicit retained copy
+- **AND** ownership of the retained copy SHALL transfer to generated glue
+- **AND** ownership of the original wrapper SHALL remain with the module author
 
 #### Scenario: Enum values use generated codecs
 - **GIVEN** a generated sync function accepts or returns a C# enum
@@ -216,6 +291,16 @@ synchronous return values.
 - **THEN** the function SHALL return a JavaScript Promise
 - **AND** the Promise SHALL resolve with the result encoded through the
   generated codec for `T`
+
+#### Scenario: Task of JavaScriptValue resolves encoded value
+- **GIVEN** a generated provider registers a module with an authored `[JS]`
+  method returning `Task<JavaScriptValue>`
+- **WHEN** the task completes with a JavaScript value wrapper
+- **THEN** ownership of the returned wrapper SHALL transfer to generated glue
+- **AND** generated glue SHALL keep the returned wrapper alive until the Promise
+  settlement value is created
+- **AND** generated glue SHALL pass the encoded wrapper to the Promise
+  scheduler without retaining or disposing it again
 
 #### Scenario: Unsupported Task of T result type is reported
 - **GIVEN** an authored `[JS]` method returns `Task<T>`

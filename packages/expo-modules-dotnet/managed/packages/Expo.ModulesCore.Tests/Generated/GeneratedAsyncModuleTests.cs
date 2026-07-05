@@ -99,7 +99,7 @@ public sealed class GeneratedAsyncModuleTests
     fixture.Runtime.Execute(runtime =>
     {
       using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.GetOrCreateDotnetModulesObject();
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       GeneratedAsyncModuleProvider.Register(context, modules);
 
       using var setup = fixture.Evaluate(
@@ -259,8 +259,8 @@ public sealed class GeneratedAsyncModuleTests
   {
     public static void Register(DotnetRuntimeContext context, JavaScriptObject modules)
     {
-      using var asyncModule = ModuleRegistry.DefineModule(context.Runtime, modules, "Async");
-      var module = context.GetOrCreateModule("Async", static () => new AsyncModule());
+      using var asyncModule = context.ModuleRegistry.DefineModule(modules, "Async");
+      var module = context.ModuleRegistry.GetOrCreateModule("Async", static () => new AsyncModule());
 
       GeneratedFunction.DefineAsync(
           context,

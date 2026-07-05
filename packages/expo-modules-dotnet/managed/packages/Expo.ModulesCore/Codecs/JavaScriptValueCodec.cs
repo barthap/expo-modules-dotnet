@@ -21,6 +21,6 @@ public readonly struct JavaScriptValueCodec : IJavaScriptCodec<JavaScriptValue>
   {
     ArgumentNullException.ThrowIfNull(value);
     ArgumentNullException.ThrowIfNull(runtime);
-    return value.Retain();
+    return value;
   }
 }

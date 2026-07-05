@@ -31,48 +31,33 @@ public sealed class DotnetRuntimeContext : IDisposable
   private readonly object gate = new();
   private readonly List<GeneratedHostFunctionRegistration> hostFunctionRegistrations = [];
   private readonly List<IDisposable> retainedCallbacks = [];
-  private readonly Dictionary<string, object> moduleInstances = new(StringComparer.Ordinal);
+  private readonly ModuleRegistry moduleRegistry;
   private bool disposed;
 
   public DotnetRuntimeContext(JavaScriptRuntime runtime)
   {
     Runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
+    moduleRegistry = new ModuleRegistry(Runtime);
   }
 
+  /// <summary>
+  /// Gets the low-level JavaScript runtime wrapper for advanced module code.
+  /// </summary>
+  /// <remarks>
+  /// This accessor does not marshal work onto the JavaScript runtime thread and does not make JSI
+  /// access thread-safe. Callers must already be running during valid runtime access or schedule work
+  /// through the runtime scheduling APIs when needed. Values, objects, functions, and other owned
+  /// wrappers created from this runtime must be disposed according to their ownership contracts and
+  /// must not be used after this context is disposed or the host tears the runtime down.
+  /// </remarks>
   public JavaScriptRuntime Runtime { get; }
 
-  public JavaScriptObject GetOrCreateExpoModulesObject()
+  public ModuleRegistry ModuleRegistry
   {
-    ThrowIfDisposed();
-    return ModuleRegistry.GetOrCreateExpoModulesObject(Runtime);
-  }
-
-  public JavaScriptObject GetOrCreateDotnetModulesObject()
-  {
-    ThrowIfDisposed();
-    return ModuleRegistry.GetOrCreateDotnetModulesObject(Runtime);
-  }
-
-  public T GetOrCreateModule<T>(string moduleName, Func<T> factory)
-      where T : class
-  {
-    ArgumentException.ThrowIfNullOrWhiteSpace(moduleName);
-    ArgumentNullException.ThrowIfNull(factory);
-
-    lock (gate)
+    get
     {
-      ThrowIfDisposedLocked();
-
-      if (moduleInstances.TryGetValue(moduleName, out var existing))
-      {
-        return (T)existing;
-      }
-
-      var created = factory() ?? throw new InvalidOperationException(
-          $"Module factory for '{moduleName}' returned null."
-      );
-      moduleInstances.Add(moduleName, created);
-      return created;
+      ThrowIfDisposed();
+      return moduleRegistry;
     }
   }
 
@@ -125,7 +110,6 @@ public sealed class DotnetRuntimeContext : IDisposable
   {
     List<GeneratedHostFunctionRegistration> registrations;
     List<IDisposable> callbacks;
-    List<IDisposable> disposableModules;
 
     lock (gate)
     {
@@ -139,8 +123,6 @@ public sealed class DotnetRuntimeContext : IDisposable
       hostFunctionRegistrations.Clear();
       callbacks = [.. retainedCallbacks];
       retainedCallbacks.Clear();
-      disposableModules = moduleInstances.Values.OfType<IDisposable>().ToList();
-      moduleInstances.Clear();
     }
 
     foreach (var registration in registrations)
@@ -160,10 +142,7 @@ public sealed class DotnetRuntimeContext : IDisposable
       }
     }
 
-    foreach (var module in disposableModules)
-    {
-      module.Dispose();
-    }
+    moduleRegistry.Dispose();
   }
 
   private void ThrowIfDisposed()
