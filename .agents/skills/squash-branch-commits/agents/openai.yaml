@@ -1,0 +1,4 @@
+interface:
+  display_name: "Squash Branch Commits"
+  short_description: "Curate branch history into coherent commits"
+  default_prompt: "Use $squash-branch-commits to condense this branch into reviewable commits while preserving unrelated outliers."
