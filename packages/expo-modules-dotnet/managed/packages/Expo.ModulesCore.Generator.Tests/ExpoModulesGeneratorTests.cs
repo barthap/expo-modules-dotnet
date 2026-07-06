@@ -771,4 +771,154 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Contains("Value", diagnostic.GetMessage());
     Assert.Contains("System.Decimal", diagnostic.GetMessage());
   }
+
+  [Fact]
+  public void GeneratorEmitsNativeModuleRegistrationForEventModule()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Device")]
+        [Events("onChange", "onReady")]
+        public sealed partial class DeviceModule
+        {
+          public DeviceModule(DotnetRuntimeContext context)
+          {
+          }
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains("context.ModuleRegistry.DefineNativeModule(modules, \"Device\")", source);
+    Assert.Contains("context.Events.Attach(", source);
+    Assert.Contains("instance_Device", source);
+    Assert.Contains("module_Device", source);
+    Assert.Contains("new[] { \"onChange\", \"onReady\" }", source);
+  }
+
+  [Fact]
+  public void GeneratorReportsInvalidEventNames()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Device")]
+        [Events("onChange", "", "onChange")]
+        public sealed partial class DeviceModule
+        {
+        }
+        """
+    );
+
+    var diagnostics = result.Diagnostics.Where(item => item.Id == "EXPOJSI009").ToArray();
+    Assert.Equal(2, diagnostics.Length);
+    Assert.Contains(diagnostics, diagnostic => diagnostic.GetMessage().Contains("empty"));
+    Assert.Contains(diagnostics, diagnostic => diagnostic.GetMessage().Contains("duplicate"));
+  }
+
+  [Fact]
+  public void GeneratorReportsEmptyEventsAttribute()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Device")]
+        [Events]
+        public sealed partial class DeviceModule
+        {
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI009");
+    Assert.Contains("empty", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorEmitsObservingHooksForEventModule()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Device")]
+        [Events("onChange")]
+        public sealed partial class DeviceModule
+        {
+          [OnStartObserving]
+          public void Start(string eventName) {}
+
+          [OnStopObserving("onChange")]
+          public void Stop() {}
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains("\"startObserving\"", source);
+    Assert.Contains("\"stopObserving\"", source);
+    Assert.Contains("Device_startObserving_HostFunction", source);
+    Assert.Contains("Device_stopObserving_HostFunction", source);
+    Assert.Contains("module.Start(__expoEventName);", source);
+    Assert.Contains("module.Stop();", source);
+  }
+
+  [Fact]
+  public void GeneratorReportsInvalidObservingHook()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Device")]
+        public sealed partial class DeviceModule
+        {
+          [OnStartObserving]
+          public void Start(string eventName) {}
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI010");
+    Assert.Contains("require an [Events] declaration", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorRejectsReservedObservingFunctionNamesOnEventModules()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Device")]
+        [Events("onChange")]
+        public sealed partial class DeviceModule
+        {
+          [JS("startObserving")]
+          public void Start() {}
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI004");
+    Assert.Contains("reserved observing hook name", diagnostic.GetMessage());
+  }
 }

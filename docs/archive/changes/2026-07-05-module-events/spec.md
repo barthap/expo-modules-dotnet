@@ -13,8 +13,8 @@ future `SharedObject` and `SharedRef` support can reuse.
 
 ## Assumptions
 
-- Event-capable generated modules are constructed as `expo.NativeModule`
-  instances, whose prototype inherits from `expo.EventEmitter.prototype`.
+- Event-capable generated modules are constructed as `_expoDotnet.NativeModule`
+  instances, whose prototype inherits from `_expoDotnet.EventEmitter.prototype`.
 - Plain generated modules MAY continue to use plain JavaScript objects unless
   implementation evidence shows that normalizing all generated modules to
   `NativeModule` is simpler and compatible.
@@ -40,7 +40,7 @@ future `SharedObject` and `SharedRef` support can reuse.
   Expo base classes exist for a JavaScript runtime and creates class-backed
   objects through named constructors.
 - `Expo.ModulesCore` module registry support for defining a generated module as
-  an `expo.NativeModule` instance.
+  an `_expoDotnet.NativeModule` instance.
 - Event declaration syntax consumed by the generator, such as an `[Events]`
   attribute.
 - Generated provider output that chooses native-module-backed JavaScript
@@ -74,10 +74,10 @@ The native bridge SHALL install Expo-style base classes into each JavaScript
 runtime through reusable class/prototype machinery:
 
 ```text
-globalThis.expo.EventEmitter
-globalThis.expo.NativeModule extends expo.EventEmitter
-future: globalThis.expo.SharedObject extends expo.EventEmitter
-future: globalThis.expo.SharedRef extends expo.SharedObject
+globalThis._expoDotnet.EventEmitter
+globalThis._expoDotnet.NativeModule extends _expoDotnet.EventEmitter
+future: globalThis._expoDotnet.SharedObject extends _expoDotnet.EventEmitter
+future: globalThis._expoDotnet.SharedRef extends _expoDotnet.SharedObject
 ```
 
 The ABI SHALL expose the underlying reusable primitives for class creation,
@@ -104,8 +104,8 @@ moduleObject
     generated constants/properties when supported
     __expo_module_name__
 
-  [[Prototype]] -> expo.NativeModule.prototype
-    [[Prototype]] -> expo.EventEmitter.prototype
+  [[Prototype]] -> _expoDotnet.NativeModule.prototype
+    [[Prototype]] -> _expoDotnet.EventEmitter.prototype
       addListener()
       removeListener()
       removeAllListeners()
@@ -208,10 +208,10 @@ generated module objects exist for its JavaScript runtime.
 #### Scenario: Runtime context is created
 - **GIVEN** managed code creates a `DotnetRuntimeContext`
 - **WHEN** the context initializes runtime-scoped services
-- **THEN** it SHALL ensure `globalThis.expo.EventEmitter` exists
-- **AND** it SHALL ensure `globalThis.expo.NativeModule` exists
-- **AND** `expo.NativeModule.prototype` SHALL inherit from
-  `expo.EventEmitter.prototype`
+- **THEN** it SHALL ensure `globalThis._expoDotnet.EventEmitter` exists
+- **AND** it SHALL ensure `globalThis._expoDotnet.NativeModule` exists
+- **AND** `_expoDotnet.NativeModule.prototype` SHALL inherit from
+  `_expoDotnet.EventEmitter.prototype`
 
 #### Scenario: Base classes are already installed
 - **GIVEN** the host or an earlier context initialization already installed
@@ -229,13 +229,13 @@ generated module objects exist for its JavaScript runtime.
 ### ADDED Requirement: Modules Can Be NativeModule Instances
 
 `ModuleRegistry` SHALL support defining generated module JavaScript objects as
-`expo.NativeModule` instances.
+`_expoDotnet.NativeModule` instances.
 
 #### Scenario: Event-capable module is defined
 - **GIVEN** generated provider code registers a module that declares events
 - **WHEN** it asks the registry to define that module
 - **THEN** the registry SHALL create the JavaScript module object through the
-  runtime object factory as an `expo.NativeModule` instance
+  runtime object factory as an `_expoDotnet.NativeModule` instance
 - **AND** it SHALL install the object under the supplied modules object
 - **AND** generated functions SHALL be attached as own properties of that
   module object

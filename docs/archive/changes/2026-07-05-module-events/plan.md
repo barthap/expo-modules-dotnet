@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build production module events by making event-capable generated modules `expo.NativeModule` instances and emitting from C# through runtime-scoped services.
+**Goal:** Build production module events by making event-capable generated modules `_expoDotnet.NativeModule` instances and emitting from C# through runtime-scoped services.
 
 **Architecture:** Native C++ owns JavaScript class/prototype mechanics and `EventEmitter` listener state behind opaque ABI handles. `Expo.JSI` exposes reusable class/object wrappers; `Expo.ModulesCore` owns the runtime object factory, module registry integration, event target mapping, and generated event dispatch. Generated providers declare event-capable modules, create native-module-backed JS objects, and attach direct-call functions as own properties.
 
@@ -101,8 +101,8 @@ public void EnsureExpoBaseClassesInstallsNativeModuleAsEventEmitterSubclass()
     runtime.EnsureExpoBaseClasses();
 
     using var result = fixture.Evaluate(
-        "const module = new globalThis.expo.NativeModule();" +
-        "module instanceof globalThis.expo.EventEmitter && " +
+        "const module = new globalThis._expoDotnet.NativeModule();" +
+        "module instanceof globalThis._expoDotnet.EventEmitter && " +
         "typeof module.addListener === 'function' && " +
         "typeof module.emit === 'function'",
         "expo-base-classes.js"
@@ -149,7 +149,7 @@ jsi::Function createInheritingClass(jsi::Runtime &runtime, const char *name, jsi
 jsi::Object createObjectWithPrototype(jsi::Runtime &runtime, jsi::Object &prototype);
 ```
 
-Use those helpers to install `globalThis.expo.EventEmitter` and `globalThis.expo.NativeModule`. The `EventEmitter` implementation owns listener lists in native state and provides prototype methods matching upstream names: `addListener`, `removeListener`, `removeAllListeners`, `emit`, `listenerCount`, and `removeSubscription`.
+Use those helpers to install `globalThis._expoDotnet.EventEmitter` and `globalThis._expoDotnet.NativeModule`. The `EventEmitter` implementation owns listener lists in native state and provides prototype methods matching upstream names: `addListener`, `removeListener`, `removeAllListeners`, `emit`, `listenerCount`, and `removeSubscription`.
 
 - [ ] **Step 5: Add managed interop wrappers**
 
@@ -219,8 +219,8 @@ public void DefineNativeModuleCreatesNativeModuleInstance()
 
     using var result = fixture.Evaluate(
         "const module = globalThis._expoDotnet.modules.Events;" +
-        "module instanceof globalThis.expo.NativeModule && " +
-        "module instanceof globalThis.expo.EventEmitter && " +
+        "module instanceof globalThis._expoDotnet.NativeModule && " +
+        "module instanceof globalThis._expoDotnet.EventEmitter && " +
         "typeof module.addListener === 'function'",
         "native-module-registry.js"
     );
@@ -262,7 +262,7 @@ public sealed class JavaScriptObjectFactory
 }
 ```
 
-`GetExpoClass` reads `globalThis.expo[className]` and retains it as a function. `CreateExpoClassInstance` calls that function as a constructor and returns the object result.
+`GetExpoClass` reads `globalThis._expoDotnet[className]` and retains it as a function. `CreateExpoClassInstance` calls that function as a constructor and returns the object result.
 
 - [ ] **Step 4: Wire context and registry**
 

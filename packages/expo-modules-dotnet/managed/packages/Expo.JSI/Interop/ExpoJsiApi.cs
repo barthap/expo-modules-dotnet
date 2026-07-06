@@ -253,6 +253,15 @@ internal readonly unsafe struct ExpoJsiApi
     ulong,
     ExpoJsiValueResult> CreatePrimitiveValue;
 
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiValueResult> CreateObjectWithPrototype;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiError> EnsureExpoBaseClassesPointer;
+
   private static readonly UTF8Encoding StrictUtf8 = new(
     encoderShouldEmitUTF8Identifier: false,
     throwOnInvalidBytes: true
@@ -311,6 +320,8 @@ internal readonly unsafe struct ExpoJsiApi
       || this.IsError is null
       || this.CoerceToString is null
       || this.CreatePrimitiveValue is null
+      || this.CreateObjectWithPrototype is null
+      || this.EnsureExpoBaseClassesPointer is null
     )
     {
       throw new InvalidOperationException("Expo JSI API table is missing required functions.");
@@ -493,6 +504,19 @@ internal readonly unsafe struct ExpoJsiApi
   public ExpoJsiValueResult CreateObjectValue(ExpoJsiRuntimeHandle runtimeHandle)
   {
     return CreateObject(runtimeHandle);
+  }
+
+  public ExpoJsiValueResult CreateObjectWithPrototypeValue(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueHandle prototypeHandle
+  )
+  {
+    return CreateObjectWithPrototype(runtimeHandle, prototypeHandle);
+  }
+
+  public ExpoJsiError EnsureExpoBaseClasses(ExpoJsiRuntimeHandle runtimeHandle)
+  {
+    return EnsureExpoBaseClassesPointer(runtimeHandle);
   }
 
   public ExpoJsiValueResult RetainValueAs(
@@ -729,5 +753,5 @@ internal readonly unsafe struct ExpoJsiApi
   }
 
   public static uint ExpectedSize => (uint)sizeof(ExpoJsiApi);
-  public const uint ExpectedVersion = 16;
+  public const uint ExpectedVersion = 17;
 }

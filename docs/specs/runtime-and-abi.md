@@ -71,6 +71,53 @@ Managed code SHALL NOT observe `facebook::jsi::Function`, `jsi::Value`, or
 - **THEN** native SHALL call the underlying JSI function as a constructor
 - **AND** return the constructed JavaScript object as an owned value handle
 
+### Requirement: JavaScript Class And Prototype ABI
+
+The ABI SHALL expose reusable JavaScript class, subclass, object-with-prototype,
+constructor-call, and bridge-owned base-class installation primitives through
+opaque handles. These primitives SHALL support module event objects and future
+shared object hierarchies without exposing raw JSI layouts to managed code.
+
+#### Scenario: Object is created with a prototype
+- **GIVEN** managed code owns a JavaScript object wrapper to use as a prototype
+- **WHEN** it creates an object with that prototype
+- **THEN** native SHALL return an owned object handle whose `[[Prototype]]` is
+  the supplied prototype
+- **AND** inherited properties SHALL be visible through normal JavaScript
+  lookup
+
+#### Scenario: Bridge-owned base classes are installed
+- **GIVEN** managed runtime-context initialization needs class-backed module
+  objects
+- **WHEN** managed code asks the ABI to ensure base classes
+- **THEN** native SHALL install `globalThis._expoDotnet.EventEmitter`
+- **AND** native SHALL install `globalThis._expoDotnet.NativeModule`
+- **AND** `_expoDotnet.NativeModule.prototype` SHALL inherit from
+  `_expoDotnet.EventEmitter.prototype`
+- **AND** native SHALL NOT create or mutate `globalThis.expo`
+
+#### Scenario: Compatible base classes already exist
+- **GIVEN** a previous context initialized compatible bridge-owned base classes
+- **WHEN** managed code asks the ABI to ensure base classes again
+- **THEN** native SHALL preserve the compatible constructors and prototypes
+- **AND** initialization SHALL be idempotent
+
+#### Scenario: Incompatible base classes exist
+- **GIVEN** `globalThis._expoDotnet.EventEmitter` or
+  `globalThis._expoDotnet.NativeModule` exists but was not installed by this
+  bridge
+- **WHEN** managed code asks the ABI to ensure base classes
+- **THEN** native SHALL replace the incompatible constructor with a compatible
+  bridge-owned class
+
+#### Scenario: EventEmitter native state remains encapsulated
+- **GIVEN** JavaScript uses inherited event listener APIs on a generated module
+  object
+- **WHEN** listener state is created, updated, or released
+- **THEN** native SHALL own that listener state inside the installed
+  `EventEmitter` implementation
+- **AND** C# SHALL NOT observe native-state pointers or raw JSI layouts
+
 ### Requirement: ABI Results Are Structured
 
 The ABI SHALL report fallible operations through explicit result structs or

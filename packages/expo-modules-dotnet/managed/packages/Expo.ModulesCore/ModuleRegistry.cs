@@ -6,12 +6,14 @@ public sealed class ModuleRegistry
 {
   private readonly object gate = new();
   private readonly JavaScriptRuntime runtime;
+  private readonly JavaScriptObjectFactory? objectFactory;
   private readonly Dictionary<string, object> moduleInstances = new(StringComparer.Ordinal);
   private bool disposed;
 
-  internal ModuleRegistry(JavaScriptRuntime runtime)
+  internal ModuleRegistry(JavaScriptRuntime runtime, JavaScriptObjectFactory objectFactory)
   {
     this.runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
+    this.objectFactory = objectFactory ?? throw new ArgumentNullException(nameof(objectFactory));
   }
 
   public T GetOrCreateModule<T>(string moduleName, Func<T> factory)
@@ -39,6 +41,18 @@ public sealed class ModuleRegistry
 
   public JavaScriptObject DefineModule(JavaScriptObject modules, string moduleName) =>
       WithLiveRegistry(() => DefineModule(runtime, modules, moduleName));
+
+  public JavaScriptObject DefineNativeModule(JavaScriptObject modules, string moduleName) =>
+      WithLiveRegistry(() =>
+      {
+        if (objectFactory is null)
+        {
+          throw new InvalidOperationException(
+              "Native module creation requires a runtime object factory."
+          );
+        }
+        return DefineNativeModule(objectFactory, modules, moduleName);
+      });
 
   public JavaScriptObject GetOrCreateExpoModulesObject() =>
       WithLiveRegistry(() => GetOrCreateExpoModulesObject(runtime));
@@ -83,6 +97,27 @@ public sealed class ModuleRegistry
     }
 
     var module = runtime.CreateObject();
+    using var moduleValue = module.AsValue();
+    modules.SetProperty(moduleName, moduleValue);
+    return module;
+  }
+
+  public static JavaScriptObject DefineNativeModule(
+      JavaScriptObjectFactory objectFactory,
+      JavaScriptObject modules,
+      string moduleName)
+  {
+    ArgumentNullException.ThrowIfNull(objectFactory);
+    ArgumentNullException.ThrowIfNull(modules);
+    ArgumentException.ThrowIfNullOrWhiteSpace(moduleName);
+
+    using var existingModuleValue = modules.GetProperty(moduleName);
+    if (existingModuleValue.IsObject)
+    {
+      return existingModuleValue.AsObject();
+    }
+
+    var module = objectFactory.CreateExpoClassInstance("NativeModule");
     using var moduleValue = module.AsValue();
     modules.SetProperty(moduleName, moduleValue);
     return module;

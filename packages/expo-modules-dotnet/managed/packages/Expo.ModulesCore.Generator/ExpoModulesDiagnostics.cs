@@ -75,4 +75,22 @@ internal static class ExpoModulesDiagnostics
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true
   );
+
+  public static readonly DiagnosticDescriptor InvalidEventName = new(
+      id: "EXPOJSI009",
+      title: "Invalid Expo module event name",
+      messageFormat: "Module '{0}' declares {1} event name '{2}'",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor InvalidObservingHook = new(
+      id: "EXPOJSI010",
+      title: "Invalid Expo module observing hook",
+      messageFormat: "Module '{0}' has invalid {1} observing hook '{2}': {3}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
 }

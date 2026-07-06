@@ -75,10 +75,11 @@ public sealed class GeneratedCallbackModuleTests
   public async Task GeneratedModuleInvokesRetainedCallbackLater()
   {
     using var fixture = HermesRuntimeFixture.Create();
-    using var context = new DotnetRuntimeContext(fixture.Runtime);
+    DotnetRuntimeContext? context = null;
 
     fixture.Runtime.Execute(runtime =>
     {
+      context = new DotnetRuntimeContext(runtime);
       using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
@@ -97,8 +98,19 @@ public sealed class GeneratedCallbackModuleTests
       return true;
     });
 
-    var result = await WaitForGlobalStringAsync(fixture, "__callbackResult");
-    Assert.Equal("Stored JS", result);
+    try
+    {
+      var result = await WaitForGlobalStringAsync(fixture, "__callbackResult");
+      Assert.Equal("Stored JS", result);
+    }
+    finally
+    {
+      fixture.Runtime.Execute(_ =>
+      {
+        context?.Dispose();
+        return true;
+      });
+    }
   }
 
   [Fact]
@@ -151,9 +163,10 @@ public sealed class GeneratedCallbackModuleTests
   public async Task RetainedCallbackInvokesLaterOnRuntime()
   {
     using var fixture = HermesRuntimeFixture.Create();
-    using var context = new DotnetRuntimeContext(fixture.Runtime);
+    DotnetRuntimeContext? context = null;
     JavaScriptCallback<ValueTuple<string>, string> callback = fixture.Runtime.Execute(runtime =>
     {
+      context = new DotnetRuntimeContext(runtime);
       using var functionValue = fixture.Evaluate("(name) => `Later ${name}`", "callback-later.js");
       using var function = functionValue.AsFunction();
       return JavaScriptCallback<ValueTuple<string>, string>.FromFunction(
@@ -167,7 +180,18 @@ public sealed class GeneratedCallbackModuleTests
     var task = callback.InvokeAsync(ValueTuple.Create("JS"), TestContext.Current.CancellationToken);
     await WaitForTaskAsync(fixture, task);
 
-    Assert.Equal("Later JS", await task);
+    try
+    {
+      Assert.Equal("Later JS", await task);
+    }
+    finally
+    {
+      fixture.Runtime.Execute(_ =>
+      {
+        context?.Dispose();
+        return true;
+      });
+    }
   }
 
   [Fact]
@@ -200,22 +224,28 @@ public sealed class GeneratedCallbackModuleTests
   public void RuntimeContextDisposeReleasesRetainedCallback()
   {
     using var fixture = HermesRuntimeFixture.Create();
-    JavaScriptCallback<ValueTuple<string>, string> callback;
-    using (var context = new DotnetRuntimeContext(fixture.Runtime))
+    JavaScriptCallback<ValueTuple<string>, string>? callback = null;
+    var context = fixture.Runtime.Execute(runtime =>
     {
-      callback = fixture.Runtime.Execute(runtime =>
-      {
-        using var functionValue = fixture.Evaluate("(name) => name", "callback-dispose.js");
-        using var function = functionValue.AsFunction();
-        return JavaScriptCallback<ValueTuple<string>, string>.FromFunction(
-            context,
-            function,
-            static (args, jsRuntime) => [StringCodec.Encode(args.Item1, jsRuntime)],
-            static (value, jsRuntime) => StringCodec.Decode(value, jsRuntime)
-        );
-      });
-    }
+      var createdContext = new DotnetRuntimeContext(runtime);
+      using var functionValue = fixture.Evaluate("(name) => name", "callback-dispose.js");
+      using var function = functionValue.AsFunction();
+      callback = JavaScriptCallback<ValueTuple<string>, string>.FromFunction(
+          createdContext,
+          function,
+          static (args, jsRuntime) => [StringCodec.Encode(args.Item1, jsRuntime)],
+          static (value, jsRuntime) => StringCodec.Decode(value, jsRuntime)
+      );
+      return createdContext;
+    });
 
+    fixture.Runtime.Execute(_ =>
+    {
+      context.Dispose();
+      return true;
+    });
+
+    Assert.NotNull(callback);
     Assert.Throws<InvalidOperationException>(() => callback.Invoke(ValueTuple.Create("JS")));
   }
 

@@ -10,6 +10,9 @@ namespace Expo.ModulesCore.Generator;
 public sealed class ExpoModulesGenerator : IIncrementalGenerator
 {
   private const string ExpoModuleAttributeMetadataName = "Expo.ModulesCore.ExpoModuleAttribute";
+  private const string EventsAttributeMetadataName = "Expo.ModulesCore.EventsAttribute";
+  private const string OnStartObservingAttributeMetadataName = "Expo.ModulesCore.OnStartObservingAttribute";
+  private const string OnStopObservingAttributeMetadataName = "Expo.ModulesCore.OnStopObservingAttribute";
   private const string JSEnumAttributeMetadataName = "Expo.ModulesCore.JSEnumAttribute";
   private const string JSAttributeMetadataName = "Expo.ModulesCore.JSAttribute";
   private const string DotnetRuntimeContextMetadataName = "Expo.ModulesCore.DotnetRuntimeContext";
@@ -76,18 +79,221 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     }
 
     var recordCodecs = new List<ExpoGeneratedRecordCodecModel>();
-    var functions = GetFunctions(typeSymbol, diagnostics, recordCodecs);
+    var eventNames = GetEventNames(typeSymbol, moduleName, diagnostics);
+    var eventNameSet = new HashSet<string>(eventNames, StringComparer.Ordinal);
+    var startObservingHooks = GetObservingHooks(
+        typeSymbol,
+        moduleName,
+        "start",
+        OnStartObservingAttributeMetadataName,
+        eventNameSet,
+        diagnostics
+    );
+    var stopObservingHooks = GetObservingHooks(
+        typeSymbol,
+        moduleName,
+        "stop",
+        OnStopObservingAttributeMetadataName,
+        eventNameSet,
+        diagnostics
+    );
+    HashSet<string> reservedJavaScriptNames = eventNameSet.Count == 0
+        ? []
+        : new HashSet<string>(["startObserving", "stopObserving"], StringComparer.Ordinal);
+    var functions = GetFunctions(typeSymbol, diagnostics, recordCodecs, reservedJavaScriptNames);
 
     return new ExpoModuleModel(
         typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
         moduleName,
         typeSymbol.Locations.FirstOrDefault(),
         constructorStrategy,
+        new EquatableArray<string>(eventNames),
+        new EquatableArray<ExpoObservingHookModel>(startObservingHooks),
+        new EquatableArray<ExpoObservingHookModel>(stopObservingHooks),
         new EquatableArray<ExpoFunctionModel>(functions),
         new EquatableArray<ExpoGeneratedRecordCodecModel>(recordCodecs),
         new EquatableArray<ExpoDiagnosticModel>(diagnostics)
     );
   }
+
+  private static IEnumerable<string> GetEventNames(
+      INamedTypeSymbol typeSymbol,
+      string moduleName,
+      List<ExpoDiagnosticModel> diagnostics)
+  {
+    var eventAttribute = typeSymbol.GetAttributes().FirstOrDefault(attribute =>
+        attribute.AttributeClass?.ToDisplayString() == EventsAttributeMetadataName);
+    if (eventAttribute is null)
+    {
+      return [];
+    }
+
+    var eventNames = new List<string>();
+    var seen = new HashSet<string>(StringComparer.Ordinal);
+    foreach (var argument in eventAttribute.ConstructorArguments)
+    {
+      foreach (var value in GetEventNameValues(argument))
+      {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+          diagnostics.Add(new ExpoDiagnosticModel(
+              ExpoModulesDiagnostics.InvalidEventName.Id,
+              typeSymbol.Locations.FirstOrDefault(),
+              new EquatableArray<string>(new[] { moduleName, "empty", value ?? string.Empty })
+          ));
+          continue;
+        }
+
+        var eventName = value!;
+        if (!seen.Add(eventName))
+        {
+          diagnostics.Add(new ExpoDiagnosticModel(
+              ExpoModulesDiagnostics.InvalidEventName.Id,
+              typeSymbol.Locations.FirstOrDefault(),
+              new EquatableArray<string>(new[] { moduleName, "duplicate", eventName })
+          ));
+          continue;
+        }
+
+        eventNames.Add(eventName);
+      }
+    }
+    if (eventNames.Count == 0)
+    {
+      diagnostics.Add(new ExpoDiagnosticModel(
+          ExpoModulesDiagnostics.InvalidEventName.Id,
+          typeSymbol.Locations.FirstOrDefault(),
+          new EquatableArray<string>(new[] { moduleName, "empty", string.Empty })
+      ));
+    }
+
+    return eventNames;
+  }
+
+  private static IEnumerable<string?> GetEventNameValues(TypedConstant argument)
+  {
+    if (argument.Kind == TypedConstantKind.Array)
+    {
+      return argument.Values.Select(value => value.Value as string);
+    }
+
+    return new[] { argument.Value as string };
+  }
+
+  private static IEnumerable<ExpoObservingHookModel> GetObservingHooks(
+      INamedTypeSymbol typeSymbol,
+      string moduleName,
+      string hookKind,
+      string attributeMetadataName,
+      HashSet<string> eventNames,
+      List<ExpoDiagnosticModel> diagnostics)
+  {
+    var hooks = new List<ExpoObservingHookModel>();
+    foreach (var member in typeSymbol.GetMembers().OfType<IMethodSymbol>())
+    {
+      if (member.MethodKind != MethodKind.Ordinary)
+      {
+        continue;
+      }
+
+      var attribute = member.GetAttributes().FirstOrDefault(item =>
+          item.AttributeClass?.ToDisplayString() == attributeMetadataName);
+      if (attribute is null)
+      {
+        continue;
+      }
+
+      if (eventNames.Count == 0)
+      {
+        diagnostics.Add(CreateInvalidObservingHook(
+            moduleName,
+            hookKind,
+            member,
+            "observing hooks require an [Events] declaration"
+        ));
+        continue;
+      }
+
+      if (member.IsStatic)
+      {
+        diagnostics.Add(CreateInvalidObservingHook(moduleName, hookKind, member, "method is static"));
+        continue;
+      }
+
+      if (member.IsGenericMethod)
+      {
+        diagnostics.Add(CreateInvalidObservingHook(moduleName, hookKind, member, "method is generic"));
+        continue;
+      }
+
+      if (!member.ReturnsVoid &&
+          member.ReturnType.SpecialType != SpecialType.System_Void)
+      {
+        diagnostics.Add(CreateInvalidObservingHook(moduleName, hookKind, member, "method must return void"));
+        continue;
+      }
+
+      var eventName = attribute.ConstructorArguments.Length == 1
+          ? attribute.ConstructorArguments[0].Value as string
+          : null;
+      if (eventName is not null && !eventNames.Contains(eventName))
+      {
+        diagnostics.Add(CreateInvalidObservingHook(
+            moduleName,
+            hookKind,
+            member,
+            $"event '{eventName}' is not declared"
+        ));
+        continue;
+      }
+
+      var passesEventName = eventName is null;
+      if (passesEventName)
+      {
+        if (member.Parameters.Length != 1 ||
+            member.Parameters[0].Type.SpecialType != SpecialType.System_String)
+        {
+          diagnostics.Add(CreateInvalidObservingHook(
+              moduleName,
+              hookKind,
+              member,
+              "method must accept one string eventName parameter"
+          ));
+          continue;
+        }
+      }
+      else if (member.Parameters.Length != 0)
+      {
+        diagnostics.Add(CreateInvalidObservingHook(
+            moduleName,
+            hookKind,
+            member,
+            "event-specific method must not accept parameters"
+        ));
+        continue;
+      }
+
+      hooks.Add(new ExpoObservingHookModel(
+          member.Name,
+          eventName,
+          passesEventName,
+          member.Locations.FirstOrDefault()
+      ));
+    }
+
+    return hooks;
+  }
+
+  private static ExpoDiagnosticModel CreateInvalidObservingHook(
+      string moduleName,
+      string hookKind,
+      IMethodSymbol member,
+      string reason) =>
+      new(
+          ExpoModulesDiagnostics.InvalidObservingHook.Id,
+          member.Locations.FirstOrDefault(),
+          new EquatableArray<string>(new[] { moduleName, hookKind, member.Name, reason })
+      );
 
   private static ExpoModuleConstructorStrategy GetConstructorStrategy(INamedTypeSymbol typeSymbol)
   {
@@ -124,7 +330,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
   private static IEnumerable<ExpoFunctionModel> GetFunctions(
       INamedTypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs)
+      List<ExpoGeneratedRecordCodecModel> recordCodecs,
+      HashSet<string> reservedJavaScriptNames)
   {
     var functions = new List<ExpoFunctionModel>();
 
@@ -179,6 +386,15 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
           jsAttribute.ConstructorArguments[0].Value is string explicitName)
       {
         javaScriptName = explicitName;
+      }
+      if (reservedJavaScriptNames.Contains(javaScriptName))
+      {
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.UnsupportedJSMethodShape.Id,
+            member.Locations.FirstOrDefault(),
+            new EquatableArray<string>(new[] { member.Name, "reserved observing hook name" })
+        ));
+        continue;
       }
 
       // Validate the generated return path before collecting parameters.
@@ -408,11 +624,28 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     {
       var moduleVariable = $"module_{SanitizeIdentifier(module.ModuleName)}";
       var moduleInstanceVariable = $"instance_{SanitizeIdentifier(module.ModuleName)}";
+      var hasEvents = module.EventNames.Values.Count > 0;
       var factoryExpression = module.ConstructorStrategy == ExpoModuleConstructorStrategy.RuntimeContext
           ? $"() => new {module.FullyQualifiedTypeName}(context)"
           : $"static () => new {module.FullyQualifiedTypeName}()";
-      builder.AppendLine($"    using var {moduleVariable} = context.ModuleRegistry.DefineModule(modules, \"{EscapeString(module.ModuleName)}\");");
+      builder.AppendLine(hasEvents
+          ? $"    using var {moduleVariable} = context.ModuleRegistry.DefineNativeModule(modules, \"{EscapeString(module.ModuleName)}\");"
+          : $"    using var {moduleVariable} = context.ModuleRegistry.DefineModule(modules, \"{EscapeString(module.ModuleName)}\");");
       builder.AppendLine($"    var {moduleInstanceVariable} = context.ModuleRegistry.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", {factoryExpression});");
+      if (hasEvents)
+      {
+        builder.AppendLine(
+            $"    context.Events.Attach({moduleInstanceVariable}, {moduleVariable}, \"{EscapeString(module.ModuleName)}\", new[] {{ {string.Join(", ", module.EventNames.Values.Select(name => $"\"{EscapeString(name)}\""))} }});"
+        );
+      }
+      if (module.StartObservingHooks.Values.Count > 0)
+      {
+        EmitObservingHookRegistration(builder, module, moduleVariable, moduleInstanceVariable, "startObserving");
+      }
+      if (module.StopObservingHooks.Values.Count > 0)
+      {
+        EmitObservingHookRegistration(builder, module, moduleVariable, moduleInstanceVariable, "stopObserving");
+      }
       foreach (var function in module.Functions.Values)
       {
         builder.AppendLine(function.IsAsync
@@ -434,6 +667,14 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       {
         EmitHostFunction(builder, module, function);
       }
+      if (module.StartObservingHooks.Values.Count > 0)
+      {
+        EmitObservingHookFunction(builder, module, "startObserving", module.StartObservingHooks.Values);
+      }
+      if (module.StopObservingHooks.Values.Count > 0)
+      {
+        EmitObservingHookFunction(builder, module, "stopObserving", module.StopObservingHooks.Values);
+      }
     }
     builder.AppendLine("}");
 
@@ -452,9 +693,28 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       "EXPOJSI006" => ExpoModulesDiagnostics.DuplicateModuleName,
       "EXPOJSI007" => ExpoModulesDiagnostics.UnsupportedRecordField,
       "EXPOJSI008" => ExpoModulesDiagnostics.UnsupportedCallbackCodec,
+      "EXPOJSI009" => ExpoModulesDiagnostics.InvalidEventName,
+      "EXPOJSI010" => ExpoModulesDiagnostics.InvalidObservingHook,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());
+  }
+
+  private static void EmitObservingHookRegistration(
+      StringBuilder builder,
+      ExpoModuleModel module,
+      string moduleVariable,
+      string moduleInstanceVariable,
+      string javaScriptName)
+  {
+    builder.AppendLine("    GeneratedFunction.DefineSync(");
+    builder.AppendLine("        context,");
+    builder.AppendLine($"        {moduleVariable},");
+    builder.AppendLine($"        \"{javaScriptName}\",");
+    builder.AppendLine("        1,");
+    builder.AppendLine($"        {GetObservingHookFunctionName(module, javaScriptName)},");
+    builder.AppendLine($"        {moduleInstanceVariable}");
+    builder.AppendLine("    );");
   }
 
   private static void EmitHostFunction(
@@ -592,6 +852,41 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine("  }");
   }
 
+  private static void EmitObservingHookFunction(
+      StringBuilder builder,
+      ExpoModuleModel module,
+      string javaScriptName,
+      IReadOnlyList<ExpoObservingHookModel> hooks)
+  {
+    builder.AppendLine();
+    builder.AppendLine($"  private static global::Expo.JSI.JavaScriptValue {GetObservingHookFunctionName(module, javaScriptName)}(");
+    builder.AppendLine("      global::Expo.JSI.JavaScriptRuntime runtime,");
+    builder.AppendLine("      global::Expo.JSI.JavaScriptValueRef thisValue,");
+    builder.AppendLine("      global::Expo.JSI.JavaScriptArguments arguments,");
+    builder.AppendLine("      object context)");
+    builder.AppendLine("  {");
+    builder.AppendLine($"    GeneratedFunction.RequireArgumentCount(\"{EscapeString(module.ModuleName)}.{javaScriptName}\", arguments, 1);");
+    builder.AppendLine();
+    builder.AppendLine($"    var module = ({module.FullyQualifiedTypeName})context;");
+    builder.AppendLine("    var __expoEventName = StringCodec.Decode(arguments.GetValue(0), runtime);");
+    foreach (var hook in hooks)
+    {
+      if (hook.EventName is not null)
+      {
+        builder.AppendLine($"    if (__expoEventName == \"{EscapeString(hook.EventName)}\")");
+        builder.AppendLine("    {");
+        builder.AppendLine($"      module.{hook.MethodName}();");
+        builder.AppendLine("    }");
+      }
+      else
+      {
+        builder.AppendLine($"    module.{hook.MethodName}(__expoEventName);");
+      }
+    }
+    builder.AppendLine("    return runtime.CreateUndefined();");
+    builder.AppendLine("  }");
+  }
+
   private static void EmitDisposeDecodedValues(
       StringBuilder builder,
       ExpoFunctionModel function,
@@ -657,6 +952,9 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 
   private static string GetHostFunctionName(ExpoModuleModel module, ExpoFunctionModel function) =>
       $"{SanitizeIdentifier(module.ModuleName)}_{SanitizeIdentifier(function.JavaScriptName)}_HostFunction";
+
+  private static string GetObservingHookFunctionName(ExpoModuleModel module, string javaScriptName) =>
+      $"{SanitizeIdentifier(module.ModuleName)}_{SanitizeIdentifier(javaScriptName)}_HostFunction";
 
   private static int GetRequiredParameterCount(ExpoFunctionModel function) =>
       function.Parameters.Values.Count(parameter => !parameter.HasDefaultValue);

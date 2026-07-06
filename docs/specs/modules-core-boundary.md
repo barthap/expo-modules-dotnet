@@ -267,6 +267,96 @@ directly, and encode return values through typed helpers.
   of replacing the `expo.modules` property
 - **AND** generated `[JS]` functions SHALL be defined on that existing object
 
+### Requirement: Event Modules Use NativeModule Objects
+
+`Expo.ModulesCore` SHALL expose event declaration syntax through generated
+bindings. Modules that declare events SHALL be registered as
+`_expoDotnet.NativeModule` instances so listener behavior comes from the
+JavaScript prototype chain rather than from C# listener storage. The
+bridge-owned class hierarchy SHALL live under `globalThis._expoDotnet` to avoid
+conflicts with upstream Expo classes under `globalThis.expo`.
+
+#### Scenario: Event module is registered
+- **GIVEN** an authored module declares `[Events]` with one or more event names
+- **WHEN** generated registration installs the module
+- **THEN** `ModuleRegistry` SHALL define the JavaScript module object as an
+  `_expoDotnet.NativeModule` instance
+- **AND** generated `[JS]` functions SHALL be attached as own properties
+- **AND** inherited `EventEmitter` methods SHALL remain available through the
+  prototype chain
+- **AND** generated registration SHALL NOT create or mutate `globalThis.expo`
+
+#### Scenario: Event syntax is non-inert
+- **GIVEN** an authored module declares `[Events]`
+- **WHEN** the event-name list is empty, blank, or contains duplicates
+- **THEN** the generator SHALL report a diagnostic
+- **AND** generated registration SHALL NOT silently create a plain module for
+  inert event syntax
+
+#### Scenario: Module emits an event
+- **GIVEN** generated registration attached an authored module instance to its
+  JavaScript event target
+- **WHEN** authored C# code emits a declared event through
+  `DotnetRuntimeContext.Events` or the `Module` base-class convenience helper
+- **THEN** the event service SHALL call the target object's inherited `emit`
+  function with the module object as `this`
+- **AND** payload values SHALL be encoded through generated
+  `IJavaScriptCodec<T>` support
+
+#### Scenario: Undeclared event is emitted
+- **GIVEN** an authored module declares a finite event-name list
+- **WHEN** authored C# code emits an event name outside that list
+- **THEN** emission SHALL fail loudly
+- **AND** async generated `[JS]` callers SHALL observe a rejected JavaScript
+  Promise
+
+#### Scenario: Runtime context is disposed
+- **GIVEN** a runtime context owns attached module event targets
+- **WHEN** the context is disposed
+- **THEN** the event service SHALL release retained JavaScript target handles
+- **AND** later event emission SHALL fail instead of touching released runtime
+  state
+
+### Requirement: Event Observing Hooks Use Module Object Functions
+
+Generated observing hooks SHALL be ordinary JavaScript functions on the module
+object. The inherited native `EventEmitter` implementation SHALL call those
+functions when listener counts transition for an event.
+
+#### Scenario: First listener starts observing
+- **GIVEN** an authored event module declares a start-observing hook
+- **WHEN** JavaScript adds the first listener for a matching event
+- **THEN** `EventEmitter` SHALL call the module object's
+  `startObserving(eventName)` function
+- **AND** generated glue SHALL invoke the authored C# hook
+
+#### Scenario: Last listener stops observing
+- **GIVEN** an authored event module declares a stop-observing hook
+- **WHEN** JavaScript removes the last listener for a matching event
+- **THEN** `EventEmitter` SHALL call the module object's
+  `stopObserving(eventName)` function
+- **AND** generated glue SHALL invoke the authored C# hook
+
+#### Scenario: Event-specific hook is declared
+- **GIVEN** an authored observing hook names a specific declared event
+- **WHEN** listener counts change for another event
+- **THEN** generated glue SHALL ignore that transition for the event-specific
+  hook
+
+#### Scenario: Observing hook shape is invalid
+- **GIVEN** an authored observing hook is static, generic, returns a value, uses
+  unsupported parameters, names an undeclared event, or appears on a module
+  without `[Events]`
+- **WHEN** the generator analyzes the module
+- **THEN** it SHALL report an observing-hook diagnostic
+
+#### Scenario: Generated module uses reserved observing names
+- **GIVEN** an event-capable module exports a `[JS]` function named
+  `startObserving` or `stopObserving`
+- **WHEN** the generator analyzes the module
+- **THEN** it SHALL reject the function name because those names are reserved
+  for inherited `EventEmitter` callbacks
+
 ### Requirement: Async Function Generation Returns Promises
 
 Generated async function glue SHALL expose authored `[JS]` methods returning

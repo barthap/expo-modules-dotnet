@@ -7,6 +7,9 @@ internal sealed record ExpoModuleModel(
     string ModuleName,
     Location? Location,
     ExpoModuleConstructorStrategy ConstructorStrategy,
+    EquatableArray<string> EventNames,
+    EquatableArray<ExpoObservingHookModel> StartObservingHooks,
+    EquatableArray<ExpoObservingHookModel> StopObservingHooks,
     EquatableArray<ExpoFunctionModel> Functions,
     EquatableArray<ExpoGeneratedRecordCodecModel> RecordCodecs,
     EquatableArray<ExpoDiagnosticModel> Diagnostics);
@@ -30,6 +33,12 @@ internal sealed record ExpoFunctionModel(
     string AsyncResultType,
     string AsyncResultCodecExpression,
     EquatableArray<ExpoParameterModel> Parameters);
+
+internal sealed record ExpoObservingHookModel(
+    string MethodName,
+    string? EventName,
+    bool PassesEventName,
+    Location? Location);
 
 internal sealed record ExpoParameterModel(
     string Name,

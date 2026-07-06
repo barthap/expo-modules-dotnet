@@ -274,6 +274,11 @@ typedef uint8_t (*expo_jsi_is_error_fn)(expo_jsi_runtime_handle runtime,
 typedef expo_jsi_string_result (*expo_jsi_coerce_to_string_fn)(expo_jsi_runtime_handle runtime,
                                                                expo_jsi_value_handle value);
 
+typedef expo_jsi_value_result (*expo_jsi_create_object_with_prototype_fn)(
+  expo_jsi_runtime_handle runtime, expo_jsi_value_handle prototype);
+
+typedef expo_jsi_error (*expo_jsi_ensure_expo_base_classes_fn)(expo_jsi_runtime_handle runtime);
+
 typedef struct expo_jsi_api {
   uint32_t size;
   uint32_t version;
@@ -315,6 +320,8 @@ typedef struct expo_jsi_api {
   expo_jsi_is_error_fn is_error;
   expo_jsi_coerce_to_string_fn coerce_to_string;
   expo_jsi_create_primitive_value_fn create_primitive_value;
+  expo_jsi_create_object_with_prototype_fn create_object_with_prototype;
+  expo_jsi_ensure_expo_base_classes_fn ensure_expo_base_classes;
 } expo_jsi_api;
 
 #ifdef __cplusplus

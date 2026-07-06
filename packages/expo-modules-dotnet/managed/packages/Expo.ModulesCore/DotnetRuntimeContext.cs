@@ -32,12 +32,16 @@ public sealed class DotnetRuntimeContext : IDisposable
   private readonly List<GeneratedHostFunctionRegistration> hostFunctionRegistrations = [];
   private readonly List<IDisposable> retainedCallbacks = [];
   private readonly ModuleRegistry moduleRegistry;
+  private readonly JavaScriptObjectFactory objects;
+  private readonly ModuleEventEmitter events;
   private bool disposed;
 
   public DotnetRuntimeContext(JavaScriptRuntime runtime)
   {
     Runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
-    moduleRegistry = new ModuleRegistry(Runtime);
+    objects = new JavaScriptObjectFactory(Runtime);
+    events = new ModuleEventEmitter(this);
+    moduleRegistry = new ModuleRegistry(Runtime, objects);
   }
 
   /// <summary>
@@ -52,12 +56,30 @@ public sealed class DotnetRuntimeContext : IDisposable
   /// </remarks>
   public JavaScriptRuntime Runtime { get; }
 
+  public JavaScriptObjectFactory Objects
+  {
+    get
+    {
+      ThrowIfDisposed();
+      return objects;
+    }
+  }
+
   public ModuleRegistry ModuleRegistry
   {
     get
     {
       ThrowIfDisposed();
       return moduleRegistry;
+    }
+  }
+
+  public ModuleEventEmitter Events
+  {
+    get
+    {
+      ThrowIfDisposed();
+      return events;
     }
   }
 
@@ -143,6 +165,7 @@ public sealed class DotnetRuntimeContext : IDisposable
     }
 
     moduleRegistry.Dispose();
+    events.Dispose();
   }
 
   private void ThrowIfDisposed()

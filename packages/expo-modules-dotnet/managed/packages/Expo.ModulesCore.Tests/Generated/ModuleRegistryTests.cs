@@ -55,4 +55,55 @@ public sealed class ModuleRegistryTests
       return true;
     });
   }
+
+  [Fact]
+  public void DefineNativeModuleCreatesNativeModuleInstance()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      using var module = context.ModuleRegistry.DefineNativeModule(modules, "Events");
+
+      using var result = fixture.Evaluate(
+          "const module = globalThis._expoDotnet.modules.Events;" +
+          "module instanceof globalThis._expoDotnet.NativeModule && " +
+          "module instanceof globalThis._expoDotnet.EventEmitter && " +
+          "typeof globalThis.expo === 'undefined' && " +
+          "typeof module.addListener === 'function' && " +
+          "typeof module.emit === 'function'",
+          "native-module-registry.js"
+      );
+
+      Assert.True(result.AsBool());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void DefineNativeModuleReusesExistingObject()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      fixture.Evaluate(
+          "globalThis._expoDotnet.modules.Events = { existing: 42 }; true",
+          "native-module-existing-setup.js"
+      ).Dispose();
+
+      using var module = context.ModuleRegistry.DefineNativeModule(modules, "Events");
+      using var result = fixture.Evaluate(
+          "globalThis._expoDotnet.modules.Events.existing",
+          "native-module-existing-value.js"
+      );
+
+      Assert.Equal(42.0, result.AsDouble());
+      return true;
+    });
+  }
 }

@@ -1,3 +1,5 @@
+using Expo.ModulesCore.Codecs;
+
 namespace Expo.ModulesCore;
 
 /// <summary>
@@ -23,4 +25,20 @@ public abstract class Module
   /// Gets the runtime-scoped context that owns this module instance.
   /// </summary>
   protected DotnetRuntimeContext RuntimeContext { get; }
+
+  /// <summary>
+  /// Emits a declared module event without payload.
+  /// </summary>
+  protected Task SendEventAsync(string eventName, CancellationToken cancellationToken = default) =>
+      RuntimeContext.Events.EmitAsync(this, eventName, cancellationToken);
+
+  /// <summary>
+  /// Emits a declared module event with one encoded payload value.
+  /// </summary>
+  protected Task SendEventAsync<TCodec, T>(
+      string eventName,
+      T payload,
+      CancellationToken cancellationToken = default)
+      where TCodec : struct, IJavaScriptCodec<T> =>
+      RuntimeContext.Events.EmitAsync<TCodec, T>(this, eventName, payload, cancellationToken);
 }

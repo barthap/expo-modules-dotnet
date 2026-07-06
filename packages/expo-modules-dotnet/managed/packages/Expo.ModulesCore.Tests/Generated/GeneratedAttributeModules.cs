@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Expo.JSI;
+using Expo.ModulesCore.Codecs;
 
 namespace Expo.ModulesCore.Tests.Generated;
 
@@ -200,4 +201,47 @@ public sealed partial class GeneratedRecordsModule
         Address = user.Address with { City = user.Address.City + "!" },
         Status = CodecRecordStatus.Published,
       };
+}
+
+[ExpoModule("GeneratedEvents")]
+[Events("onChange", "onReady")]
+public sealed partial class GeneratedEventsModule : Module
+{
+  private string started = string.Empty;
+  private string stopped = string.Empty;
+
+  public GeneratedEventsModule(DotnetRuntimeContext context)
+      : base(context)
+  {
+  }
+
+  [OnStartObserving]
+  public void Start(string eventName)
+  {
+    started = eventName;
+  }
+
+  [OnStopObserving("onChange")]
+  public void Stop()
+  {
+    stopped = "onChange";
+  }
+
+  [JS]
+  public Task EmitChangeAsync(string value) =>
+      RuntimeContext.Events.EmitAsync<StringCodec, string>(this, "onChange", value);
+
+  [JS]
+  public Task EmitReadyAsync() =>
+      RuntimeContext.Events.EmitAsync(this, "onReady");
+
+  [JS]
+  public Task EmitUndeclaredAsync() =>
+      RuntimeContext.Events.EmitAsync(this, "missing");
+
+  [JS]
+  public string ReadStarted() => started;
+
+  [JS]
+  public string ReadStopped() => stopped;
 }

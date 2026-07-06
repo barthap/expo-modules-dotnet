@@ -220,6 +220,41 @@ public sealed unsafe class JavaScriptRuntime
   }
 
   /// <summary>
+  /// Creates an owned JavaScript object whose prototype is the supplied object.
+  /// </summary>
+  /// <remarks>
+  /// The returned <see cref="JavaScriptObject" /> must be disposed by the caller. The
+  /// <paramref name="prototype" /> wrapper is borrowed for the duration of the call.
+  /// </remarks>
+  public JavaScriptObject CreateObjectWithPrototype(JavaScriptObject prototype)
+  {
+    ArgumentNullException.ThrowIfNull(prototype);
+
+    using var prototypeValue = prototype.AsValue();
+    var result = context.Api->CreateObjectWithPrototypeValue(
+        context.RuntimeHandle,
+        prototypeValue.Handle
+    );
+    if (!result.IsOk)
+    {
+      JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript object with prototype.");
+    }
+    return new JavaScriptObject(context, result.Value);
+  }
+
+  /// <summary>
+  /// Ensures Expo base JavaScript classes required by generated modules exist in this runtime.
+  /// </summary>
+  public void EnsureExpoBaseClasses()
+  {
+    var error = context.Api->EnsureExpoBaseClasses(context.RuntimeHandle);
+    if (error.Code != 0)
+    {
+      JsiContext.ThrowNativeError(error, "Failed to ensure Expo base classes.");
+    }
+  }
+
+  /// <summary>
   /// Creates an owned JavaScript array.
   /// </summary>
   /// <remarks>
