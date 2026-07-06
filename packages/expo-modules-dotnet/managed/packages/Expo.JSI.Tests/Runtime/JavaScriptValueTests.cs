@@ -83,6 +83,23 @@ public sealed class JavaScriptValueTests
     });
   }
 
+  [Fact]
+  public void StrictEqualsUsesJavaScriptIdentity()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var left = fixture.Evaluate("globalThis.__same = {}; globalThis.__same", "strict-equals-left.js");
+      using var same = fixture.Evaluate("globalThis.__same", "strict-equals-same.js");
+      using var different = fixture.Evaluate("({})", "strict-equals-different.js");
+
+      Assert.True(runtime.StrictEquals(left, same));
+      Assert.False(runtime.StrictEquals(left, different));
+      return true;
+    });
+  }
+
   private static void ReadWithConversion(JavaScriptValue value, string conversion)
   {
     switch (conversion)

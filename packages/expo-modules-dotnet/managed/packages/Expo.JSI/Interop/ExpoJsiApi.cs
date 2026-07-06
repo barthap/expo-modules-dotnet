@@ -260,7 +260,23 @@ internal readonly unsafe struct ExpoJsiApi
 
   private readonly delegate* unmanaged[Cdecl]<
     ExpoJsiRuntimeHandle,
-    ExpoJsiError> EnsureExpoBaseClassesPointer;
+    byte*,
+    int,
+    ExpoJsiValueResult> CreateClass;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    byte*,
+    int,
+    ExpoJsiValueHandle,
+    ExpoJsiValueResult> CreateClassWithSuperclass;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiError*,
+    byte> StrictEquals;
 
   private static readonly UTF8Encoding StrictUtf8 = new(
     encoderShouldEmitUTF8Identifier: false,
@@ -321,7 +337,9 @@ internal readonly unsafe struct ExpoJsiApi
       || this.CoerceToString is null
       || this.CreatePrimitiveValue is null
       || this.CreateObjectWithPrototype is null
-      || this.EnsureExpoBaseClassesPointer is null
+      || this.CreateClass is null
+      || this.CreateClassWithSuperclass is null
+      || this.StrictEquals is null
     )
     {
       throw new InvalidOperationException("Expo JSI API table is missing required functions.");
@@ -514,9 +532,36 @@ internal readonly unsafe struct ExpoJsiApi
     return CreateObjectWithPrototype(runtimeHandle, prototypeHandle);
   }
 
-  public ExpoJsiError EnsureExpoBaseClasses(ExpoJsiRuntimeHandle runtimeHandle)
+  public ExpoJsiValueResult CreateClassValue(ExpoJsiRuntimeHandle runtimeHandle, string name)
   {
-    return EnsureExpoBaseClassesPointer(runtimeHandle);
+    var bytes = StrictUtf8.GetBytes(name);
+    fixed (byte* bytesPtr = bytes)
+    {
+      return CreateClass(runtimeHandle, bytesPtr, bytes.Length);
+    }
+  }
+
+  public ExpoJsiValueResult CreateClassWithSuperclassValue(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    string name,
+    ExpoJsiValueHandle superclassHandle
+  )
+  {
+    var bytes = StrictUtf8.GetBytes(name);
+    fixed (byte* bytesPtr = bytes)
+    {
+      return CreateClassWithSuperclass(runtimeHandle, bytesPtr, bytes.Length, superclassHandle);
+    }
+  }
+
+  public byte StrictEqualsValues(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueHandle leftHandle,
+    ExpoJsiValueHandle rightHandle,
+    ExpoJsiError* error
+  )
+  {
+    return StrictEquals(runtimeHandle, leftHandle, rightHandle, error);
   }
 
   public ExpoJsiValueResult RetainValueAs(
@@ -753,5 +798,5 @@ internal readonly unsafe struct ExpoJsiApi
   }
 
   public static uint ExpectedSize => (uint)sizeof(ExpoJsiApi);
-  public const uint ExpectedVersion = 17;
+  public const uint ExpectedVersion = 19;
 }

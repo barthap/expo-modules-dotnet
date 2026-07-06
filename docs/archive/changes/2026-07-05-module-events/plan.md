@@ -4,7 +4,9 @@
 
 **Goal:** Build production module events by making event-capable generated modules `_expoDotnet.NativeModule` instances and emitting from C# through runtime-scoped services.
 
-**Architecture:** Native C++ owns JavaScript class/prototype mechanics and `EventEmitter` listener state behind opaque ABI handles. `Expo.JSI` exposes reusable class/object wrappers; `Expo.ModulesCore` owns the runtime object factory, module registry integration, event target mapping, and generated event dispatch. Generated providers declare event-capable modules, create native-module-backed JS objects, and attach direct-call functions as own properties.
+**Architecture:** Native C++ owns generic JavaScript class/prototype mechanics behind opaque ABI handles. `Expo.JSI` exposes reusable class/object wrappers. `Expo.ModulesCore` owns the `_expoDotnet.EventEmitter` / `_expoDotnet.NativeModule` installation, managed listener state behind inherited event methods, runtime object factory, module registry integration, event target mapping, and generated event dispatch. Generated providers declare event-capable modules, create native-module-backed JS objects, and attach direct-call functions as own properties.
+
+**Correction note:** Earlier drafts of this plan placed `EventEmitter` listener state and `_expoDotnet` base-class installation in the native `Expo.JSI` bridge. The accepted production boundary keeps those ModulesCore-specific responsibilities in `Expo.ModulesCore`; the ABI exposes only generic class/prototype primitives.
 
 **Tech Stack:** C++ JSI bridge, C ABI, C#/.NET, Roslyn incremental generator, Hermes-backed managed tests, xUnit.
 
@@ -13,9 +15,9 @@
 ## File Structure
 
 - Modify: `packages/expo-modules-dotnet/native/include/expo_jsi.h`
-  - Add ABI entries for reusable class/prototype operations and Expo base-class installation.
+  - Add ABI entries for reusable class/prototype operations.
 - Modify: `packages/expo-modules-dotnet/native/packages/jsi/src/ExpoJsiBridge.cpp`
-  - Implement reusable `createClass`, `createInheritingClass`, `createObjectWithPrototype`, and Expo `EventEmitter`/`NativeModule` base-class installation.
+  - Implement reusable `createClass`, `createInheritingClass`, and `createObjectWithPrototype`.
 - Modify: `packages/expo-modules-dotnet/managed/packages/Expo.JSI/Interop/ExpoJsiApi.cs`
   - Add function pointers, validation, wrappers, and bump expected ABI version.
 - Modify: `packages/expo-modules-dotnet/managed/packages/Expo.JSI/JavaScriptRuntime.cs`
@@ -23,9 +25,9 @@
 - Modify: `packages/expo-modules-dotnet/managed/packages/Expo.JSI/JavaScriptValue.cs`
   - Ensure constructor-call results can be retained as objects through existing `AsObject` behavior.
 - Create: `packages/expo-modules-dotnet/managed/packages/Expo.JSI.Tests/Runtime/JavaScriptClassTests.cs`
-  - Cover class creation, subclass prototype inheritance, object-with-prototype, and Expo base classes.
+  - Cover class creation, subclass prototype inheritance, and object-with-prototype.
 - Create: `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/JavaScriptObjectFactory.cs`
-  - Runtime-scoped helper that ensures Expo base classes and constructs named Expo class instances.
+  - Runtime-scoped helper that installs ModulesCore base classes, owns listener state, and constructs named Expo class instances.
 - Modify: `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/DotnetRuntimeContext.cs`
   - Own `JavaScriptObjectFactory` and `ModuleEventEmitter`.
 - Modify: `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/ModuleRegistry.cs`
@@ -92,20 +94,27 @@ public void CreateObjectWithPrototypeUsesPrototypeMethods()
 }
 
 [Fact]
-public void EnsureExpoBaseClassesInstallsNativeModuleAsEventEmitterSubclass()
+public void CreateClassWithSuperclassLinksPrototypeChain()
 {
   using var fixture = HermesRuntimeFixture.Create();
 
   fixture.Runtime.Execute(runtime =>
   {
-    runtime.EnsureExpoBaseClasses();
+    using var baseClass = runtime.CreateClass("BridgeBase");
+    using var subclass = runtime.CreateClass("BridgeSubclass", baseClass);
+    using var global = runtime.Global();
+    using var baseValue = baseClass.AsValue();
+    using var subclassValue = subclass.AsValue();
+    global.SetProperty("__BridgeBase", baseValue);
+    global.SetProperty("__BridgeSubclass", subclassValue);
 
     using var result = fixture.Evaluate(
-        "const module = new globalThis._expoDotnet.NativeModule();" +
-        "module instanceof globalThis._expoDotnet.EventEmitter && " +
-        "typeof module.addListener === 'function' && " +
-        "typeof module.emit === 'function'",
-        "expo-base-classes.js"
+        "const instance = new globalThis.__BridgeSubclass();" +
+        "instance instanceof globalThis.__BridgeSubclass && " +
+        "instance instanceof globalThis.__BridgeBase && " +
+        "Object.getPrototypeOf(globalThis.__BridgeSubclass) === globalThis.__BridgeBase && " +
+        "Object.getPrototypeOf(globalThis.__BridgeSubclass.prototype) === globalThis.__BridgeBase.prototype",
+        "create-subclass-check.js"
     );
 
     Assert.True(result.AsBool());
@@ -122,7 +131,7 @@ Run:
 dotnet test packages/expo-modules-dotnet/managed/packages/Expo.JSI.Tests/Expo.JSI.Tests.csproj --filter JavaScriptClassTests
 ```
 
-Expected: fails because `CreateObjectWithPrototype` and `EnsureExpoBaseClasses` do not exist.
+Expected: fails because `CreateObjectWithPrototype` and `CreateClass` do not exist.
 
 - [ ] **Step 3: Add ABI declarations**
 
@@ -133,8 +142,14 @@ typedef expo_jsi_value_result (*expo_jsi_create_object_with_prototype_fn)(
   expo_jsi_runtime_handle runtime,
   expo_jsi_value_handle prototype);
 
-typedef expo_jsi_error (*expo_jsi_ensure_expo_base_classes_fn)(
-  expo_jsi_runtime_handle runtime);
+typedef expo_jsi_value_result (*expo_jsi_create_class_fn)(
+  expo_jsi_runtime_handle runtime, const char *name, int32_t name_len);
+
+typedef expo_jsi_value_result (*expo_jsi_create_class_with_superclass_fn)(
+  expo_jsi_runtime_handle runtime,
+  const char *name,
+  int32_t name_len,
+  expo_jsi_value_handle superclass);
 ```
 
 Bump the native and managed ABI version from `16` to `17`.
@@ -149,7 +164,7 @@ jsi::Function createInheritingClass(jsi::Runtime &runtime, const char *name, jsi
 jsi::Object createObjectWithPrototype(jsi::Runtime &runtime, jsi::Object &prototype);
 ```
 
-Use those helpers to install `globalThis._expoDotnet.EventEmitter` and `globalThis._expoDotnet.NativeModule`. The `EventEmitter` implementation owns listener lists in native state and provides prototype methods matching upstream names: `addListener`, `removeListener`, `removeAllListeners`, `emit`, `listenerCount`, and `removeSubscription`.
+Expose those helpers through the ABI only as generic class/prototype primitives. Do not install `globalThis._expoDotnet.EventEmitter`, `globalThis._expoDotnet.NativeModule`, or event listener state in `ExpoJsiBridge.cpp`; ModulesCore owns those classes.
 
 - [ ] **Step 5: Add managed interop wrappers**
 
@@ -160,7 +175,12 @@ public ExpoJsiValueResult CreateObjectWithPrototypeValue(
     ExpoJsiRuntimeHandle runtimeHandle,
     ExpoJsiValueHandle prototypeHandle);
 
-public ExpoJsiError EnsureExpoBaseClasses(ExpoJsiRuntimeHandle runtimeHandle);
+public ExpoJsiValueResult CreateClassValue(ExpoJsiRuntimeHandle runtimeHandle, string name);
+
+public ExpoJsiValueResult CreateClassWithSuperclassValue(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    string name,
+    ExpoJsiValueHandle superclassHandle);
 ```
 
 In `JavaScriptRuntime.cs`, add:
@@ -168,7 +188,9 @@ In `JavaScriptRuntime.cs`, add:
 ```csharp
 public JavaScriptObject CreateObjectWithPrototype(JavaScriptObject prototype);
 
-public void EnsureExpoBaseClasses();
+public JavaScriptFunction CreateClass(string name);
+
+public JavaScriptFunction CreateClass(string name, JavaScriptFunction superclass);
 ```
 
 - [ ] **Step 6: Run focused low-level tests**
@@ -253,7 +275,7 @@ public sealed class JavaScriptObjectFactory
   internal JavaScriptObjectFactory(JavaScriptRuntime runtime)
   {
     this.runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
-    runtime.EnsureExpoBaseClasses();
+    EnsureBaseClasses();
   }
 
   public JavaScriptFunction GetExpoClass(string className);
@@ -601,7 +623,7 @@ git commit -m "Add module event observing hooks"
 
 - [ ] **Step 1: Merge accepted ABI behavior into `runtime-and-abi.md`**
 
-Add requirements for class/subclass/object-with-prototype ABI, Expo base-class installation, and opaque ownership boundaries.
+Add requirements for class/subclass/object-with-prototype ABI and opaque ownership boundaries.
 
 - [ ] **Step 2: Merge accepted module behavior into `modules-core-boundary.md`**
 

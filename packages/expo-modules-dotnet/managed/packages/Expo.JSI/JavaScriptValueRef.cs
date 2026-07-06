@@ -84,6 +84,11 @@ public readonly ref struct JavaScriptValueRef
   public bool IsObject => Kind == JavaScriptValueKind.Object;
 
   /// <summary>
+  /// Gets whether this value is a JavaScript function.
+  /// </summary>
+  public bool IsFunction => Kind == JavaScriptValueKind.Function;
+
+  /// <summary>
   /// Converts this value ref to a scoped object ref.
   /// </summary>
   /// <remarks>

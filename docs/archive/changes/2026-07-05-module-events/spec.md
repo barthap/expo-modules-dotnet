@@ -18,8 +18,9 @@ future `SharedObject` and `SharedRef` support can reuse.
 - Plain generated modules MAY continue to use plain JavaScript objects unless
   implementation evidence shows that normalizing all generated modules to
   `NativeModule` is simpler and compatible.
-- Event listener storage belongs to the JavaScript object/native JSI event
-  emitter state, not to C# module instances.
+- Event listener storage belongs to the ModulesCore-installed
+  `EventEmitter` class state, not to C# module instances and not to low-level
+  `Expo.JSI` native bridge code.
 - C# generated code MAY keep a runtime-scoped association from an authored
   module instance to its JavaScript event target object so authored module code
   can emit events later.
@@ -60,18 +61,18 @@ future `SharedObject` and `SharedRef` support can reuse.
 - `SharedObject` and `SharedRef` managed APIs.
 - View events.
 - React Native adapter-specific event buses.
-- JavaScript listener management in C# as the primary implementation strategy.
+- JavaScript listener management on authored C# module instances.
 - Event-only ABI entries that bypass the general class/prototype model.
-- Managed native-state attachment APIs for `SharedObject`; native listener
-  state used by the installed `EventEmitter` class remains encapsulated in the
-  native event emitter implementation.
+- Managed native-state attachment APIs for `SharedObject`; listener state used
+  by the installed `EventEmitter` class remains encapsulated in
+  `Expo.ModulesCore`.
 - Runtime hot-path reflection, dynamic invocation, JSON payload conversion, or
   `object?[]` event payload dispatch.
 
 ## Accepted Design
 
-The native bridge SHALL install Expo-style base classes into each JavaScript
-runtime through reusable class/prototype machinery:
+`Expo.ModulesCore` SHALL install Expo-style base classes into each JavaScript
+runtime through reusable `Expo.JSI` class/prototype machinery:
 
 ```text
 globalThis._expoDotnet.EventEmitter
@@ -80,18 +81,22 @@ future: globalThis._expoDotnet.SharedObject extends _expoDotnet.EventEmitter
 future: globalThis._expoDotnet.SharedRef extends _expoDotnet.SharedObject
 ```
 
-The ABI SHALL expose the underlying reusable primitives for class creation,
-subclass creation, object creation with a prototype, and constructor calls.
-`Expo.JSI` SHALL expose low-level managed wrappers for those ABI operations.
-`Expo.ModulesCore` SHALL provide a runtime-scoped `JavaScriptObjectFactory`
-that uses those wrappers to create or retrieve Expo class constructors and
-construct class-backed objects. The factory SHALL NOT encode authored module
-semantics.
+The ABI SHALL expose only the underlying reusable primitives for class
+creation, subclass creation, object creation with a prototype, and constructor
+calls. `Expo.JSI` SHALL expose low-level managed wrappers for those ABI
+operations. `Expo.ModulesCore` SHALL provide a runtime-scoped
+`JavaScriptObjectFactory` that uses those wrappers to create or retrieve Expo
+class constructors, construct class-backed objects, and own the listener
+storage behind inherited event methods. The low-level native bridge SHALL NOT
+know `_expoDotnet`, module objects, observing hooks, or event listener state.
+Each runtime context owns the class functions it installs; a later context in
+the same JavaScript runtime replaces disposed-context class functions rather
+than reusing listener state from a disposed object factory.
 
 `DotnetRuntimeContext` owns this object factory together with `ModuleRegistry`
 and the module event service. Runtime-context construction SHALL ensure the
-base Expo classes required by generated modules are installed exactly once for
-that runtime. Generated providers SHALL NOT install base classes individually.
+base Expo classes required by generated modules are installed for that context.
+Generated providers SHALL NOT install base classes individually.
 
 For modules that declare events, generated provider code SHALL ask
 `ModuleRegistry` for a native-module-backed JavaScript object. The resulting
@@ -154,12 +159,12 @@ the C# module instance, schedule onto the JavaScript runtime path, encode the
 payload through generated `IJavaScriptCodec<T>` support, and call the target
 object's inherited `emit` function with the module object as `this`.
 
-Observing hooks SHALL integrate with the same inherited event emitter
-semantics. When a module declares start or stop observing hooks, generated
-registration SHALL define `startObserving(eventName)` and
+Observing hooks SHALL integrate with the same inherited ModulesCore event
+emitter semantics. When a module declares start or stop observing hooks,
+generated registration SHALL define `startObserving(eventName)` and
 `stopObserving(eventName)` functions on the module object. The inherited
-`EventEmitter` implementation calls those functions when listener counts
-transition for an event.
+`EventEmitter` methods call those functions when listener counts transition for
+an event.
 
 ## Delta Requirements
 
@@ -192,13 +197,14 @@ layouts to managed code.
 - **THEN** native SHALL return an owned JavaScript object handle whose
   `[[Prototype]]` is the supplied prototype
 
-#### Scenario: EventEmitter native state remains encapsulated
+#### Scenario: EventEmitter listener state remains encapsulated
 - **GIVEN** JavaScript uses the inherited `EventEmitter` listener API on a
   generated module object
 - **WHEN** listener state is created or released
-- **THEN** native SHALL manage that state inside the installed event emitter
-  implementation
-- **AND** C# SHALL NOT receive raw native-state pointers or JSI layouts
+- **THEN** ModulesCore SHALL manage that state inside the installed event
+  emitter implementation
+- **AND** low-level `Expo.JSI` SHALL NOT receive event-specific listener
+  contracts or expose raw JSI layouts
 
 ### ADDED Requirement: Runtime Context Installs Expo Base Classes
 

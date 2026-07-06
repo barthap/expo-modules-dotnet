@@ -272,9 +272,13 @@ directly, and encode return values through typed helpers.
 `Expo.ModulesCore` SHALL expose event declaration syntax through generated
 bindings. Modules that declare events SHALL be registered as
 `_expoDotnet.NativeModule` instances so listener behavior comes from the
-JavaScript prototype chain rather than from C# listener storage. The
-bridge-owned class hierarchy SHALL live under `globalThis._expoDotnet` to avoid
-conflicts with upstream Expo classes under `globalThis.expo`.
+JavaScript prototype chain. `JavaScriptObjectFactory` SHALL install
+`globalThis._expoDotnet.EventEmitter` and
+`globalThis._expoDotnet.NativeModule` through generic `Expo.JSI` class and
+prototype primitives, and SHALL own the managed listener storage behind the
+inherited event methods. The ModulesCore-owned class hierarchy SHALL live under
+`globalThis._expoDotnet` to avoid conflicts with upstream Expo classes under
+`globalThis.expo`.
 
 #### Scenario: Event module is registered
 - **GIVEN** an authored module declares `[Events]` with one or more event names
@@ -303,6 +307,19 @@ conflicts with upstream Expo classes under `globalThis.expo`.
 - **AND** payload values SHALL be encoded through generated
   `IJavaScriptCodec<T>` support
 
+#### Scenario: Listener identity is internal
+- **GIVEN** JavaScript adds an event listener function
+- **WHEN** ModulesCore stores listener state or removes listeners
+- **THEN** it SHALL retain listener values internally and compare them by
+  JavaScript strict equality
+- **AND** it SHALL NOT mutate the user-provided listener function object
+
+#### Scenario: Listener throws during emit
+- **GIVEN** a module object has multiple listeners for an event
+- **WHEN** one listener throws while `emit` dispatches the event
+- **THEN** later listeners SHALL still be called
+- **AND** the thrown listener error SHALL NOT propagate out of `emit`
+
 #### Scenario: Undeclared event is emitted
 - **GIVEN** an authored module declares a finite event-name list
 - **WHEN** authored C# code emits an event name outside that list
@@ -316,24 +333,35 @@ conflicts with upstream Expo classes under `globalThis.expo`.
 - **THEN** the event service SHALL release retained JavaScript target handles
 - **AND** later event emission SHALL fail instead of touching released runtime
   state
+- **AND** inherited `EventEmitter` prototype methods retained in JavaScript
+  SHALL fail loudly instead of recreating listener state
+
+#### Scenario: New runtime context follows disposed context
+- **GIVEN** a runtime context installed `_expoDotnet.EventEmitter` and
+  `_expoDotnet.NativeModule` and was then disposed
+- **WHEN** a new runtime context initializes in the same JavaScript runtime
+- **THEN** `JavaScriptObjectFactory` SHALL install class constructors backed by
+  the new context's listener state
+- **AND** new module objects SHALL NOT call prototype functions retained from
+  the disposed context
 
 ### Requirement: Event Observing Hooks Use Module Object Functions
 
 Generated observing hooks SHALL be ordinary JavaScript functions on the module
-object. The inherited native `EventEmitter` implementation SHALL call those
-functions when listener counts transition for an event.
+object. The inherited ModulesCore `EventEmitter` implementation SHALL call
+those functions when listener counts transition for an event.
 
 #### Scenario: First listener starts observing
 - **GIVEN** an authored event module declares a start-observing hook
 - **WHEN** JavaScript adds the first listener for a matching event
-- **THEN** `EventEmitter` SHALL call the module object's
+- **THEN** ModulesCore's `EventEmitter` methods SHALL call the module object's
   `startObserving(eventName)` function
 - **AND** generated glue SHALL invoke the authored C# hook
 
 #### Scenario: Last listener stops observing
 - **GIVEN** an authored event module declares a stop-observing hook
 - **WHEN** JavaScript removes the last listener for a matching event
-- **THEN** `EventEmitter` SHALL call the module object's
+- **THEN** ModulesCore's `EventEmitter` methods SHALL call the module object's
   `stopObserving(eventName)` function
 - **AND** generated glue SHALL invoke the authored C# hook
 

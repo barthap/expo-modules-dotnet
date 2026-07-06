@@ -1,5 +1,6 @@
 #include "ExpoJsiBridge.h"
 
+#include <algorithm>
 #include <bit>
 #include <cstring>
 #include <exception>
@@ -9,6 +10,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -180,10 +182,7 @@ namespace {
 
 namespace jsi = facebook::jsi;
 
-constexpr uint32_t kApiVersion = 17;
-
-using ClassConstructor =
-  std::function<jsi::Value(jsi::Runtime &, const jsi::Value &, const jsi::Value *, size_t)>;
+constexpr uint32_t kApiVersion = 19;
 
 struct ErrorResultBuffer {
   explicit ErrorResultBuffer(std::string value)
@@ -207,68 +206,6 @@ struct PropertyNamesResultBuffer {
   // Property names point into these owned strings until C# copies them.
   std::vector<std::string> strings;
   std::vector<expo_jsi_property_name> names;
-};
-
-class EventEmitterState final : public jsi::NativeState {
-public:
-  using ListenerList = std::list<jsi::Value>;
-
-  void add(jsi::Runtime &runtime, const std::string &eventName, const jsi::Function &listener)
-  {
-    listeners_[eventName].emplace_back(runtime, listener);
-  }
-
-  void remove(jsi::Runtime &runtime, const std::string &eventName, const jsi::Function &listener)
-  {
-    auto it = listeners_.find(eventName);
-    if (it == listeners_.end()) {
-      return;
-    }
-
-    auto listenerValue = jsi::Value(runtime, listener);
-    it->second.remove_if([&](const jsi::Value &candidate) {
-      return jsi::Value::strictEquals(runtime, listenerValue, candidate);
-    });
-  }
-
-  void removeAll(const std::string &eventName)
-  {
-    auto it = listeners_.find(eventName);
-    if (it != listeners_.end()) {
-      it->second.clear();
-    }
-  }
-
-  size_t count(const std::string &eventName) const
-  {
-    auto it = listeners_.find(eventName);
-    return it == listeners_.end() ? 0 : it->second.size();
-  }
-
-  void emit(jsi::Runtime &runtime,
-            const std::string &eventName,
-            const jsi::Object &thisObject,
-            const jsi::Value *arguments,
-            size_t argumentCount)
-  {
-    auto it = listeners_.find(eventName);
-    if (it == listeners_.end() || it->second.empty()) {
-      return;
-    }
-
-    std::vector<jsi::Function> callbacks;
-    callbacks.reserve(it->second.size());
-    for (const auto &listener : it->second) {
-      callbacks.push_back(listener.asObject(runtime).asFunction(runtime));
-    }
-
-    for (const auto &callback : callbacks) {
-      callback.callWithThis(runtime, thisObject, arguments, argumentCount);
-    }
-  }
-
-private:
-  std::unordered_map<std::string, ListenerList> listeners_;
 };
 
 expo_jsi_error makeError(int32_t code, const char *message)
@@ -319,70 +256,6 @@ void clearError(expo_jsi_error *error)
   }
 }
 
-jsi::Object getOrCreateExpoDotnetObject(jsi::Runtime &runtime)
-{
-  auto global = runtime.global();
-  auto expoDotnetValue = global.getProperty(runtime, "_expoDotnet");
-  if (expoDotnetValue.isObject()) {
-    return expoDotnetValue.asObject(runtime);
-  }
-
-  jsi::Object expoDotnet(runtime);
-  global.setProperty(runtime, "_expoDotnet", expoDotnet);
-  return expoDotnet;
-}
-
-jsi::Function createClass(jsi::Runtime &runtime,
-                          const char *name,
-                          ClassConstructor constructor = nullptr)
-{
-  std::string nativeConstructorKey("__native_constructor__");
-  std::string source = std::string("(function ") + name + "(...args) { return this." +
-                       nativeConstructorKey + "(...args); })";
-  auto sourceBuffer = std::make_shared<jsi::StringBuffer>(source);
-  auto klass = runtime.evaluateJavaScript(sourceBuffer, "").asObject(runtime);
-  auto prototype = klass.getPropertyAsObject(runtime, "prototype");
-  auto nativeConstructorPropId = jsi::PropNameID::forAscii(runtime, nativeConstructorKey);
-  auto nativeConstructor = jsi::Function::createFromHostFunction(
-    runtime,
-    nativeConstructorPropId,
-    0,
-    [constructor = std::move(constructor)](jsi::Runtime &runtime,
-                                           const jsi::Value &thisValue,
-                                           const jsi::Value *arguments,
-                                           size_t count) -> jsi::Value {
-      if (constructor) {
-        return constructor(runtime, thisValue, arguments, count);
-      }
-      return jsi::Value(runtime, thisValue);
-    });
-
-  jsi::Object descriptor(runtime);
-  descriptor.setProperty(runtime, "value", jsi::Value(runtime, nativeConstructor));
-  auto objectClass = runtime.global().getPropertyAsObject(runtime, "Object");
-  auto defineProperty = objectClass.getPropertyAsFunction(runtime, "defineProperty");
-  defineProperty.callWithThis(
-    runtime,
-    objectClass,
-    {jsi::Value(runtime, prototype),
-     jsi::Value(runtime, jsi::String::createFromUtf8(runtime, nativeConstructorKey)),
-     jsi::Value(runtime, descriptor)});
-
-  return klass.asFunction(runtime);
-}
-
-jsi::Function createInheritingClass(jsi::Runtime &runtime,
-                                    const char *name,
-                                    jsi::Function &baseClass,
-                                    ClassConstructor constructor = nullptr)
-{
-  auto basePrototype = baseClass.getPropertyAsObject(runtime, "prototype");
-  auto klass = createClass(runtime, name, std::move(constructor));
-  auto prototype = klass.getPropertyAsObject(runtime, "prototype");
-  prototype.setProperty(runtime, "__proto__", basePrototype);
-  return klass;
-}
-
 jsi::Object createObjectWithPrototype(jsi::Runtime &runtime, jsi::Object &prototype)
 {
   auto objectClass = runtime.global().getPropertyAsObject(runtime, "Object");
@@ -391,235 +264,50 @@ jsi::Object createObjectWithPrototype(jsi::Runtime &runtime, jsi::Object &protot
     .asObject(runtime);
 }
 
-std::shared_ptr<EventEmitterState> getEventEmitterState(jsi::Runtime &runtime,
-                                                        const jsi::Object &object,
-                                                        bool createIfMissing)
+bool isValidAsciiIdentifier(std::string_view value)
 {
-  if (object.hasNativeState<EventEmitterState>(runtime)) {
-    return object.getNativeState<EventEmitterState>(runtime);
-  }
-  if (!createIfMissing) {
-    return nullptr;
+  if (value.empty()) {
+    return false;
   }
 
-  auto state = std::make_shared<EventEmitterState>();
-  object.setNativeState(runtime, state);
-  return state;
+  auto isStart = [](char ch) {
+    return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch == '_' || ch == '$';
+  };
+  auto isPart = [isStart](char ch) { return isStart(ch) || (ch >= '0' && ch <= '9'); };
+
+  if (!isStart(value.front())) {
+    return false;
+  }
+  return std::all_of(value.begin() + 1, value.end(), isPart);
 }
 
-void callObservingFunction(jsi::Runtime &runtime,
-                           const jsi::Object &object,
-                           const char *functionName,
-                           const std::string &eventName)
+jsi::Function createClass(jsi::Runtime &runtime, std::string_view name)
 {
-  auto fnValue = object.getProperty(runtime, functionName);
-  if (!fnValue.isObject() || !fnValue.asObject(runtime).isFunction(runtime)) {
-    return;
+  if (!isValidAsciiIdentifier(name)) {
+    throw std::invalid_argument("Class name must be a non-empty ASCII JavaScript identifier.");
   }
 
-  auto fn = fnValue.asObject(runtime).asFunction(runtime);
-  fn.callWithThis(
-    runtime, object, {jsi::Value(runtime, jsi::String::createFromUtf8(runtime, eventName))});
+  std::string source = std::string("(function ") + std::string(name) + "(...args) {})";
+  auto sourceBuffer = std::make_shared<jsi::StringBuffer>(source);
+  return runtime.evaluateJavaScript(sourceBuffer, "expo-jsi-create-class.js")
+    .asObject(runtime)
+    .asFunction(runtime);
 }
 
-void installEventEmitterClass(jsi::Runtime &runtime, jsi::Object &expo)
+jsi::Function createClassWithSuperclass(jsi::Runtime &runtime,
+                                        std::string_view name,
+                                        jsi::Function &superclass)
 {
-  auto existing = expo.getProperty(runtime, "EventEmitter");
-  if (existing.isObject() && existing.asObject(runtime).isFunction(runtime)) {
-    auto existingClass = existing.asObject(runtime).asFunction(runtime);
-    auto marker = existingClass.getProperty(runtime, "__expo_dotnet_event_emitter__");
-    if (marker.isBool() && marker.getBool()) {
-      return;
-    }
-  }
+  auto superclassPrototype = superclass.getPropertyAsObject(runtime, "prototype");
+  auto klass = createClass(runtime, name);
+  auto prototype = klass.getPropertyAsObject(runtime, "prototype");
+  prototype.setProperty(runtime, "__proto__", superclassPrototype);
 
-  auto eventEmitterClass = createClass(runtime, "EventEmitter");
-  auto prototype = eventEmitterClass.getPropertyAsObject(runtime, "prototype");
-  eventEmitterClass.setProperty(runtime, "__expo_dotnet_event_emitter__", true);
-
-  auto addListenerProp = jsi::PropNameID::forAscii(runtime, "addListener");
-  auto addListener = jsi::Function::createFromHostFunction(
-    runtime,
-    addListenerProp,
-    2,
-    [](jsi::Runtime &runtime,
-       const jsi::Value &thisValue,
-       const jsi::Value *arguments,
-       size_t count) -> jsi::Value {
-      if (count < 2) {
-        throw jsi::JSError(runtime, "addListener expects an event name and listener.");
-      }
-      auto eventName = arguments[0].asString(runtime).utf8(runtime);
-      auto listener = arguments[1].asObject(runtime).asFunction(runtime);
-      auto emitter = thisValue.asObject(runtime);
-      auto state = getEventEmitterState(runtime, emitter, true);
-      state->add(runtime, eventName, listener);
-      if (state->count(eventName) == 1) {
-        callObservingFunction(runtime, emitter, "__expo_onStartListeningToEvent", eventName);
-        callObservingFunction(runtime, emitter, "startObserving", eventName);
-      }
-
-      jsi::Object subscription(runtime);
-      auto emitterValue = std::make_shared<jsi::Value>(runtime, emitter);
-      auto listenerValue = std::make_shared<jsi::Value>(runtime, listener);
-      auto removeProp = jsi::PropNameID::forAscii(runtime, "remove");
-      auto remove = jsi::Function::createFromHostFunction(
-        runtime,
-        removeProp,
-        0,
-        [eventName, emitterValue, listenerValue](
-          jsi::Runtime &runtime, const jsi::Value &, const jsi::Value *, size_t) -> jsi::Value {
-          auto emitter = emitterValue->asObject(runtime);
-          auto listener = listenerValue->asObject(runtime).asFunction(runtime);
-          auto state = getEventEmitterState(runtime, emitter, false);
-          if (state != nullptr) {
-            auto before = state->count(eventName);
-            state->remove(runtime, eventName, listener);
-            if (before > 0 && state->count(eventName) == 0) {
-              callObservingFunction(runtime, emitter, "__expo_onStopListeningToEvent", eventName);
-              callObservingFunction(runtime, emitter, "stopObserving", eventName);
-            }
-          }
-          return jsi::Value::undefined();
-        });
-      subscription.setProperty(runtime, removeProp, remove);
-      return jsi::Value(runtime, subscription);
-    });
-
-  auto removeListenerProp = jsi::PropNameID::forAscii(runtime, "removeListener");
-  auto removeListener = jsi::Function::createFromHostFunction(
-    runtime,
-    removeListenerProp,
-    2,
-    [](jsi::Runtime &runtime,
-       const jsi::Value &thisValue,
-       const jsi::Value *arguments,
-       size_t count) -> jsi::Value {
-      if (count < 2) {
-        throw jsi::JSError(runtime, "removeListener expects an event name and listener.");
-      }
-      auto eventName = arguments[0].asString(runtime).utf8(runtime);
-      auto listener = arguments[1].asObject(runtime).asFunction(runtime);
-      auto emitter = thisValue.asObject(runtime);
-      auto state = getEventEmitterState(runtime, emitter, false);
-      if (state != nullptr) {
-        auto before = state->count(eventName);
-        state->remove(runtime, eventName, listener);
-        if (before > 0 && state->count(eventName) == 0) {
-          callObservingFunction(runtime, emitter, "__expo_onStopListeningToEvent", eventName);
-          callObservingFunction(runtime, emitter, "stopObserving", eventName);
-        }
-      }
-      return jsi::Value::undefined();
-    });
-
-  auto removeAllListenersProp = jsi::PropNameID::forAscii(runtime, "removeAllListeners");
-  auto removeAllListeners = jsi::Function::createFromHostFunction(
-    runtime,
-    removeAllListenersProp,
-    1,
-    [](jsi::Runtime &runtime,
-       const jsi::Value &thisValue,
-       const jsi::Value *arguments,
-       size_t count) -> jsi::Value {
-      if (count < 1) {
-        throw jsi::JSError(runtime, "removeAllListeners expects an event name.");
-      }
-      auto eventName = arguments[0].asString(runtime).utf8(runtime);
-      auto emitter = thisValue.asObject(runtime);
-      auto state = getEventEmitterState(runtime, emitter, false);
-      if (state != nullptr) {
-        auto before = state->count(eventName);
-        state->removeAll(eventName);
-        if (before > 0) {
-          callObservingFunction(runtime, emitter, "__expo_onStopListeningToEvent", eventName);
-          callObservingFunction(runtime, emitter, "stopObserving", eventName);
-        }
-      }
-      return jsi::Value::undefined();
-    });
-
-  auto emitProp = jsi::PropNameID::forAscii(runtime, "emit");
-  auto emit = jsi::Function::createFromHostFunction(
-    runtime,
-    emitProp,
-    1,
-    [](jsi::Runtime &runtime,
-       const jsi::Value &thisValue,
-       const jsi::Value *arguments,
-       size_t count) -> jsi::Value {
-      if (count < 1) {
-        throw jsi::JSError(runtime, "emit expects an event name.");
-      }
-      auto eventName = arguments[0].asString(runtime).utf8(runtime);
-      auto emitter = thisValue.asObject(runtime);
-      auto state = getEventEmitterState(runtime, emitter, false);
-      if (state != nullptr) {
-        const auto *eventArguments = count > 1 ? &arguments[1] : nullptr;
-        state->emit(runtime, eventName, emitter, eventArguments, count > 0 ? count - 1 : 0);
-      }
-      return jsi::Value::undefined();
-    });
-
-  auto listenerCountProp = jsi::PropNameID::forAscii(runtime, "listenerCount");
-  auto listenerCount = jsi::Function::createFromHostFunction(
-    runtime,
-    listenerCountProp,
-    1,
-    [](jsi::Runtime &runtime,
-       const jsi::Value &thisValue,
-       const jsi::Value *arguments,
-       size_t count) -> jsi::Value {
-      if (count < 1) {
-        throw jsi::JSError(runtime, "listenerCount expects an event name.");
-      }
-      auto eventName = arguments[0].asString(runtime).utf8(runtime);
-      auto emitter = thisValue.asObject(runtime);
-      auto state = getEventEmitterState(runtime, emitter, false);
-      return jsi::Value(static_cast<double>(state == nullptr ? 0 : state->count(eventName)));
-    });
-
-  auto removeSubscriptionProp = jsi::PropNameID::forAscii(runtime, "removeSubscription");
-  auto removeSubscription = jsi::Function::createFromHostFunction(
-    runtime,
-    removeSubscriptionProp,
-    1,
-    [](jsi::Runtime &runtime, const jsi::Value &, const jsi::Value *arguments, size_t count)
-      -> jsi::Value {
-      if (count < 1) {
-        throw jsi::JSError(runtime, "removeSubscription expects a subscription.");
-      }
-      auto subscription = arguments[0].asObject(runtime);
-      auto remove = subscription.getPropertyAsFunction(runtime, "remove");
-      remove.callWithThis(runtime, subscription, {});
-      return jsi::Value::undefined();
-    });
-
-  prototype.setProperty(runtime, addListenerProp, addListener);
-  prototype.setProperty(runtime, removeListenerProp, removeListener);
-  prototype.setProperty(runtime, removeAllListenersProp, removeAllListeners);
-  prototype.setProperty(runtime, emitProp, emit);
-  prototype.setProperty(runtime, listenerCountProp, listenerCount);
-  prototype.setProperty(runtime, removeSubscriptionProp, removeSubscription);
-  expo.setProperty(runtime, "EventEmitter", eventEmitterClass);
-}
-
-void installNativeModuleClass(jsi::Runtime &runtime, jsi::Object &expo)
-{
-  auto existing = expo.getProperty(runtime, "NativeModule");
-  if (existing.isObject() && existing.asObject(runtime).isFunction(runtime)) {
-    auto existingClass = existing.asObject(runtime).asFunction(runtime);
-    auto marker = existingClass.getProperty(runtime, "__expo_dotnet_native_module__");
-    if (marker.isBool() && marker.getBool()) {
-      return;
-    }
-  }
-
-  auto eventEmitterValue = expo.getProperty(runtime, "EventEmitter");
-  auto eventEmitterClass = eventEmitterValue.asObject(runtime).asFunction(runtime);
-  auto nativeModuleClass = createInheritingClass(runtime, "NativeModule", eventEmitterClass);
-  nativeModuleClass.setProperty(runtime, "__expo_dotnet_native_module__", true);
-  expo.setProperty(runtime, "NativeModule", nativeModuleClass);
+  auto objectClass = runtime.global().getPropertyAsObject(runtime, "Object");
+  auto setPrototypeOf = objectClass.getPropertyAsFunction(runtime, "setPrototypeOf");
+  setPrototypeOf.callWithThis(
+    runtime, objectClass, {jsi::Value(runtime, klass), jsi::Value(runtime, superclass)});
+  return klass;
 }
 
 bool isUtf8Continuation(uint8_t value)
@@ -1241,23 +929,87 @@ expo_jsi_value_result createObjectWithPrototypeValue(expo_jsi_runtime_handle run
   }
 }
 
-expo_jsi_error ensureExpoBaseClasses(expo_jsi_runtime_handle runtime)
+expo_jsi_value_result createClassValue(expo_jsi_runtime_handle runtime,
+                                       const char *name,
+                                       int32_t name_len)
 {
-  auto *runtimeHandle = tryRuntimeHandle(runtime, nullptr);
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
   if (runtimeHandle == nullptr) {
-    return makeError(122, "Runtime handle is invalid.");
+    return expo_jsi_value_result{0, nullptr, error};
+  }
+  if (name == nullptr || name_len < 0) {
+    return makeErrorResult(122, "Class name is invalid.");
   }
 
   try {
     auto &jsRuntime = runtimeHandle->runtime();
-    auto expoDotnet = getOrCreateExpoDotnetObject(jsRuntime);
-    installEventEmitterClass(jsRuntime, expoDotnet);
-    installNativeModuleClass(jsRuntime, expoDotnet);
-    return makeOk();
+    auto className = std::string(name, static_cast<size_t>(name_len));
+    auto klass = createClass(jsRuntime, className);
+    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, klass)));
   } catch (const std::exception &ex) {
-    return makeError(123, ex.what());
+    return makeErrorResult(123, ex.what());
   } catch (...) {
-    return makeError(124, "Unknown native exception while ensuring Expo base classes.");
+    return makeErrorResult(124, "Unknown native exception while creating class.");
+  }
+}
+
+expo_jsi_value_result createClassWithSuperclassValue(expo_jsi_runtime_handle runtime,
+                                                     const char *name,
+                                                     int32_t name_len,
+                                                     expo_jsi_value_handle superclass)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_value_result{0, nullptr, error};
+  }
+  if (name == nullptr || name_len < 0) {
+    return makeErrorResult(125, "Class name is invalid.");
+  }
+  if (superclass == nullptr) {
+    return makeErrorResult(126, "Superclass value handle is null.");
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto className = std::string(name, static_cast<size_t>(name_len));
+    auto jsSuperclass = checkedFunction(jsRuntime, superclass);
+    auto klass = createClassWithSuperclass(jsRuntime, className, jsSuperclass);
+    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, klass)));
+  } catch (const std::exception &ex) {
+    return makeErrorResult(127, ex.what());
+  } catch (...) {
+    return makeErrorResult(128, "Unknown native exception while creating class with superclass.");
+  }
+}
+
+uint8_t strictEquals(expo_jsi_runtime_handle runtime,
+                     expo_jsi_value_handle left,
+                     expo_jsi_value_handle right,
+                     expo_jsi_error *error)
+{
+  auto *runtimeHandle = tryRuntimeHandle(runtime, error);
+  if (runtimeHandle == nullptr) {
+    return 0;
+  }
+  if (left == nullptr || right == nullptr) {
+    writeError(error, 129, "Value handle is null.");
+    return 0;
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    const auto &leftValue = left->value();
+    const auto &rightValue = right->value();
+    clearError(error);
+    return jsi::Value::strictEquals(jsRuntime, leftValue, rightValue) ? 1 : 0;
+  } catch (const std::exception &ex) {
+    writeError(error, 130, ex.what());
+    return 0;
+  } catch (...) {
+    writeError(error, 131, "Unknown native exception while comparing values.");
+    return 0;
   }
 }
 
@@ -2073,7 +1825,9 @@ const expo_jsi_api kApi{
   coerceToString,
   createPrimitiveValue,
   createObjectWithPrototypeValue,
-  ensureExpoBaseClasses,
+  createClassValue,
+  createClassWithSuperclassValue,
+  strictEquals,
 };
 
 } // namespace

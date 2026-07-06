@@ -277,7 +277,20 @@ typedef expo_jsi_string_result (*expo_jsi_coerce_to_string_fn)(expo_jsi_runtime_
 typedef expo_jsi_value_result (*expo_jsi_create_object_with_prototype_fn)(
   expo_jsi_runtime_handle runtime, expo_jsi_value_handle prototype);
 
-typedef expo_jsi_error (*expo_jsi_ensure_expo_base_classes_fn)(expo_jsi_runtime_handle runtime);
+typedef expo_jsi_value_result (*expo_jsi_create_class_fn)(expo_jsi_runtime_handle runtime,
+                                                          const char *name,
+                                                          int32_t name_len);
+
+typedef expo_jsi_value_result (*expo_jsi_create_class_with_superclass_fn)(
+  expo_jsi_runtime_handle runtime,
+  const char *name,
+  int32_t name_len,
+  expo_jsi_value_handle superclass);
+
+typedef uint8_t (*expo_jsi_strict_equals_fn)(expo_jsi_runtime_handle runtime,
+                                             expo_jsi_value_handle left,
+                                             expo_jsi_value_handle right,
+                                             expo_jsi_error *error);
 
 typedef struct expo_jsi_api {
   uint32_t size;
@@ -321,7 +334,9 @@ typedef struct expo_jsi_api {
   expo_jsi_coerce_to_string_fn coerce_to_string;
   expo_jsi_create_primitive_value_fn create_primitive_value;
   expo_jsi_create_object_with_prototype_fn create_object_with_prototype;
-  expo_jsi_ensure_expo_base_classes_fn ensure_expo_base_classes;
+  expo_jsi_create_class_fn create_class;
+  expo_jsi_create_class_with_superclass_fn create_class_with_superclass;
+  expo_jsi_strict_equals_fn strict_equals;
 } expo_jsi_api;
 
 #ifdef __cplusplus

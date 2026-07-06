@@ -243,15 +243,61 @@ public sealed unsafe class JavaScriptRuntime
   }
 
   /// <summary>
-  /// Ensures Expo base JavaScript classes required by generated modules exist in this runtime.
+  /// Creates an owned JavaScript class constructor with a default prototype.
   /// </summary>
-  public void EnsureExpoBaseClasses()
+  public JavaScriptFunction CreateClass(string name)
   {
-    var error = context.Api->EnsureExpoBaseClasses(context.RuntimeHandle);
+    ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+    var result = context.Api->CreateClassValue(context.RuntimeHandle, name);
+    if (!result.IsOk)
+    {
+      JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript class.");
+    }
+    return new JavaScriptFunction(context, result.Value);
+  }
+
+  /// <summary>
+  /// Creates an owned JavaScript class constructor whose prototype inherits from a superclass.
+  /// </summary>
+  public JavaScriptFunction CreateClass(string name, JavaScriptFunction superclass)
+  {
+    ArgumentException.ThrowIfNullOrWhiteSpace(name);
+    ArgumentNullException.ThrowIfNull(superclass);
+
+    using var superclassValue = superclass.AsValue();
+    var result = context.Api->CreateClassWithSuperclassValue(
+        context.RuntimeHandle,
+        name,
+        superclassValue.Handle
+    );
+    if (!result.IsOk)
+    {
+      JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript subclass.");
+    }
+    return new JavaScriptFunction(context, result.Value);
+  }
+
+  /// <summary>
+  /// Compares two JavaScript values using JavaScript strict equality.
+  /// </summary>
+  public bool StrictEquals(JavaScriptValue left, JavaScriptValue right)
+  {
+    ArgumentNullException.ThrowIfNull(left);
+    ArgumentNullException.ThrowIfNull(right);
+
+    Expo.JSI.Interop.ExpoJsiError error = default;
+    var result = context.Api->StrictEqualsValues(
+        context.RuntimeHandle,
+        left.Handle,
+        right.Handle,
+        &error
+    );
     if (error.Code != 0)
     {
-      JsiContext.ThrowNativeError(error, "Failed to ensure Expo base classes.");
+      JsiContext.ThrowNativeError(error, "Failed to compare JavaScript values.");
     }
+    return result != 0;
   }
 
   /// <summary>

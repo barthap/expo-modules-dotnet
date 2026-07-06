@@ -36,24 +36,22 @@ public sealed class JavaScriptClassTests
   }
 
   [Fact]
-  public void EnsureExpoBaseClassesInstallsNativeModuleAsEventEmitterSubclass()
+  public void CreateClassCreatesConstructableFunctionWithPrototype()
   {
     using var fixture = HermesRuntimeFixture.Create();
 
     fixture.Runtime.Execute(runtime =>
     {
-      runtime.EnsureExpoBaseClasses();
+      using var constructor = runtime.CreateClass("BridgeClass");
+      using var global = runtime.Global();
+      using var constructorValue = constructor.AsValue();
+      global.SetProperty("__BridgeClass", constructorValue);
 
       using var result = fixture.Evaluate(
-          "const module = new globalThis._expoDotnet.NativeModule();" +
-          "module instanceof globalThis._expoDotnet.NativeModule && " +
-          "module instanceof globalThis._expoDotnet.EventEmitter && " +
-          "typeof module.addListener === 'function' && " +
-          "typeof module.removeListener === 'function' && " +
-          "typeof module.removeAllListeners === 'function' && " +
-          "typeof module.emit === 'function' && " +
-          "typeof module.listenerCount === 'function'",
-          "expo-base-classes.js"
+          "const instance = new globalThis.__BridgeClass();" +
+          "instance instanceof globalThis.__BridgeClass && " +
+          "Object.getPrototypeOf(instance) === globalThis.__BridgeClass.prototype",
+          "create-class-check.js"
       );
 
       Assert.True(result.AsBool());
@@ -62,56 +60,27 @@ public sealed class JavaScriptClassTests
   }
 
   [Fact]
-  public void EnsureExpoBaseClassesReplacesIncompatibleExistingDotnetClasses()
+  public void CreateClassWithSuperclassLinksPrototypeChain()
   {
     using var fixture = HermesRuntimeFixture.Create();
 
     fixture.Runtime.Execute(runtime =>
     {
-      fixture.Evaluate(
-          "globalThis._expoDotnet = { " +
-          "EventEmitter: function EventEmitter() {}, " +
-          "NativeModule: function NativeModule() {} " +
-          "}; true",
-          "incompatible-expo-dotnet-classes-setup.js"
-      ).Dispose();
-
-      runtime.EnsureExpoBaseClasses();
+      using var baseClass = runtime.CreateClass("BridgeBase");
+      using var subclass = runtime.CreateClass("BridgeSubclass", baseClass);
+      using var global = runtime.Global();
+      using var baseValue = baseClass.AsValue();
+      using var subclassValue = subclass.AsValue();
+      global.SetProperty("__BridgeBase", baseValue);
+      global.SetProperty("__BridgeSubclass", subclassValue);
 
       using var result = fixture.Evaluate(
-          "const module = new globalThis._expoDotnet.NativeModule();" +
-          "module instanceof globalThis._expoDotnet.EventEmitter && " +
-          "typeof module.addListener === 'function' && " +
-          "typeof module.emit === 'function'",
-          "incompatible-expo-dotnet-classes-replaced.js"
-      );
-
-      Assert.True(result.AsBool());
-      return true;
-    });
-  }
-
-  [Fact]
-  public void EnsureExpoBaseClassesDoesNotMutateExpoGlobal()
-  {
-    using var fixture = HermesRuntimeFixture.Create();
-
-    fixture.Runtime.Execute(runtime =>
-    {
-      fixture.Evaluate(
-          "globalThis.expo = { modules: { upstream: true } }; true",
-          "expo-global-setup.js"
-      ).Dispose();
-
-      runtime.EnsureExpoBaseClasses();
-
-      using var result = fixture.Evaluate(
-          "globalThis.expo.modules.upstream === true && " +
-          "typeof globalThis.expo.NativeModule === 'undefined' && " +
-          "typeof globalThis.expo.EventEmitter === 'undefined' && " +
-          "typeof globalThis._expoDotnet.NativeModule === 'function' && " +
-          "typeof globalThis._expoDotnet.EventEmitter === 'function'",
-          "expo-global-not-mutated.js"
+          "const instance = new globalThis.__BridgeSubclass();" +
+          "instance instanceof globalThis.__BridgeSubclass && " +
+          "instance instanceof globalThis.__BridgeBase && " +
+          "Object.getPrototypeOf(globalThis.__BridgeSubclass) === globalThis.__BridgeBase && " +
+          "Object.getPrototypeOf(globalThis.__BridgeSubclass.prototype) === globalThis.__BridgeBase.prototype",
+          "create-subclass-check.js"
       );
 
       Assert.True(result.AsBool());

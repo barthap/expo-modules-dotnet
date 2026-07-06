@@ -73,10 +73,11 @@ Managed code SHALL NOT observe `facebook::jsi::Function`, `jsi::Value`, or
 
 ### Requirement: JavaScript Class And Prototype ABI
 
-The ABI SHALL expose reusable JavaScript class, subclass, object-with-prototype,
-constructor-call, and bridge-owned base-class installation primitives through
-opaque handles. These primitives SHALL support module event objects and future
-shared object hierarchies without exposing raw JSI layouts to managed code.
+The ABI SHALL expose reusable JavaScript class, subclass,
+object-with-prototype, and constructor-call primitives through opaque handles.
+These primitives SHALL support module event objects and future shared object
+hierarchies without exposing raw JSI layouts to managed code. The ABI SHALL NOT
+install Expo ModulesCore-specific classes or own module event listener state.
 
 #### Scenario: Object is created with a prototype
 - **GIVEN** managed code owns a JavaScript object wrapper to use as a prototype
@@ -86,37 +87,42 @@ shared object hierarchies without exposing raw JSI layouts to managed code.
 - **AND** inherited properties SHALL be visible through normal JavaScript
   lookup
 
-#### Scenario: Bridge-owned base classes are installed
-- **GIVEN** managed runtime-context initialization needs class-backed module
-  objects
-- **WHEN** managed code asks the ABI to ensure base classes
-- **THEN** native SHALL install `globalThis._expoDotnet.EventEmitter`
-- **AND** native SHALL install `globalThis._expoDotnet.NativeModule`
-- **AND** `_expoDotnet.NativeModule.prototype` SHALL inherit from
-  `_expoDotnet.EventEmitter.prototype`
-- **AND** native SHALL NOT create or mutate `globalThis.expo`
+#### Scenario: Class constructor is created
+- **GIVEN** managed code needs a JavaScript constructor function with a named
+  prototype
+- **WHEN** it asks the ABI to create a class
+- **THEN** native SHALL return an owned function handle that can be used with
+  JavaScript `new`
+- **AND** instances SHALL inherit from that function's `prototype`
 
-#### Scenario: Compatible base classes already exist
-- **GIVEN** a previous context initialized compatible bridge-owned base classes
-- **WHEN** managed code asks the ABI to ensure base classes again
-- **THEN** native SHALL preserve the compatible constructors and prototypes
-- **AND** initialization SHALL be idempotent
+#### Scenario: Subclass constructor is created
+- **GIVEN** managed code owns a JavaScript function wrapper to use as a
+  superclass
+- **WHEN** it asks the ABI to create a class with that superclass
+- **THEN** native SHALL return an owned function handle that can be used with
+  JavaScript `new`
+- **AND** the subclass prototype SHALL inherit from the superclass prototype
+- **AND** the subclass constructor SHALL inherit from the superclass
+  constructor
+- **AND** constructed instances SHALL satisfy `instanceof` checks for both the
+  subclass and superclass
 
-#### Scenario: Incompatible base classes exist
-- **GIVEN** `globalThis._expoDotnet.EventEmitter` or
-  `globalThis._expoDotnet.NativeModule` exists but was not installed by this
-  bridge
-- **WHEN** managed code asks the ABI to ensure base classes
-- **THEN** native SHALL replace the incompatible constructor with a compatible
-  bridge-owned class
+#### Scenario: Expo-specific classes stay above the ABI
+- **GIVEN** `Expo.ModulesCore` needs `EventEmitter`, `NativeModule`, shared
+  object, or future Expo-specific class hierarchies
+- **WHEN** it initializes those classes
+- **THEN** it SHALL compose them from generic ABI class and prototype
+  primitives
+- **AND** native `Expo.JSI` code SHALL NOT know `_expoDotnet`, event listener
+  names, module objects, observing hooks, or Expo ModulesCore listener state
 
-#### Scenario: EventEmitter native state remains encapsulated
-- **GIVEN** JavaScript uses inherited event listener APIs on a generated module
-  object
-- **WHEN** listener state is created, updated, or released
-- **THEN** native SHALL own that listener state inside the installed
-  `EventEmitter` implementation
-- **AND** C# SHALL NOT observe native-state pointers or raw JSI layouts
+#### Scenario: JavaScript values are compared by strict equality
+- **GIVEN** managed code owns two JavaScript value wrappers
+- **WHEN** it asks the ABI to compare them
+- **THEN** native SHALL compare the underlying values with JavaScript strict
+  equality
+- **AND** the operation SHALL NOT expose raw `jsi::Value` layout to managed
+  code
 
 ### Requirement: ABI Results Are Structured
 

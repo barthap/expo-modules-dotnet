@@ -112,6 +112,11 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
   public bool IsObject => Kind == JavaScriptValueKind.Object;
 
   /// <summary>
+  /// Gets whether this value is a JavaScript function.
+  /// </summary>
+  public bool IsFunction => Kind == JavaScriptValueKind.Function;
+
+  /// <summary>
   /// Converts this value to an owned JavaScript object wrapper.
   /// </summary>
   /// <remarks>

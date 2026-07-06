@@ -166,6 +166,7 @@ public sealed class DotnetRuntimeContext : IDisposable
 
     moduleRegistry.Dispose();
     events.Dispose();
+    objects.Dispose();
   }
 
   private void ThrowIfDisposed()
