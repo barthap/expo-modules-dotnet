@@ -1,21 +1,15 @@
 using Expo.ModulesCore;
 using Expo.ModulesCore.Codecs;
 
-namespace ExampleModule;
+namespace HermesConsoleApp;
 
-[ExpoModule("ExampleModule")]
+[ExpoModule("Showcase")]
 [Events("onStatus")]
-public sealed partial class ExampleMathModule : Module
+internal sealed partial class ShowcaseModule : Module
 {
-  public ExampleMathModule(DotnetRuntimeContext context)
+  public ShowcaseModule(DotnetRuntimeContext context)
       : base(context)
   {
-  }
-
-  [JS("add")]
-  public double Add(double a, double b)
-  {
-    return a + b;
   }
 
   [JS("getMessageAsync")]
@@ -26,9 +20,9 @@ public sealed partial class ExampleMathModule : Module
   }
 
   [JS("describeUser")]
-  public ExampleUserSummary DescribeUser(ExampleUser user)
+  public ConsoleUserSummary DescribeUser(ConsoleUser user)
   {
-    return new ExampleUserSummary(user.Name, user.Age, $"{user.Name} is {user.Age}");
+    return new ConsoleUserSummary(user.Name, user.Age, $"{user.Name} is {user.Age}");
   }
 
   [JS("transformWithCallback")]
@@ -46,6 +40,6 @@ public sealed partial class ExampleMathModule : Module
   }
 }
 
-public readonly record struct ExampleUser(string Name, int Age);
+internal readonly record struct ConsoleUser(string Name, int Age);
 
-public readonly record struct ExampleUserSummary(string Name, int Age, string Summary);
+internal readonly record struct ConsoleUserSummary(string Name, int Age, string Summary);

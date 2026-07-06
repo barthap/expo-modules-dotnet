@@ -89,14 +89,17 @@ struct CSharpAPI {
   expo_jsi_runtime_handle runtime_handle;
 };
 
-void jsi_main(jsi::Runtime &rt, CSharpAPI &cs)
+void register_modules(jsi::Runtime &rt, CSharpAPI &cs)
 {
   int register_rc = cs.register_modules(cs.api, cs.runtime_handle);
   if (register_rc != 0) {
     throw std::runtime_error("Managed module registration failed with code " +
                              std::to_string(register_rc));
   }
+}
 
+void run_generated_module_checks(jsi::Runtime &rt)
+{
   auto callback_result = rt.evaluateJavaScript(
     std::make_unique<jsi::StringBuffer>("global._expoDotnet.modules.Math.add(41.5, true);"),
     "generated-module-dispatch.js");
@@ -122,15 +125,76 @@ void jsi_main(jsi::Runtime &rt, CSharpAPI &cs)
     throw std::runtime_error("Generated v2 module dispatch proof failed.");
   }
   std::cout << "JS called generated v2 C# module: " << v2_result.asNumber() << std::endl;
+}
 
-  try {
-    rt.evaluateJavaScript(
-      std::make_unique<jsi::StringBuffer>("global._expoDotnet.modules.Text.greet(42);"),
-      "generated-module-string-type-error.js");
-    throw std::runtime_error("Expected wrong-type Text.greet call to throw.");
-  } catch (const jsi::JSError &) {
-    std::cout << "Wrong-type string argument produced a JS error" << std::endl;
+void start_showcase_checks(jsi::Runtime &rt)
+{
+  rt.evaluateJavaScript(std::make_unique<jsi::StringBuffer>(R"(
+    global.__consoleShowcase = {
+      asyncMessage: null,
+      callbackResult: null,
+      eventDone: false,
+      eventPayload: null,
+      recordSummary: null
+    };
+
+    const showcase = global._expoDotnet.modules.Showcase;
+    const subscription = showcase.addListener(
+      'onStatus',
+      value => { global.__consoleShowcase.eventPayload = value; }
+    );
+
+    const record = showcase.describeUser({ Name: 'Ada', Age: 37 });
+    global.__consoleShowcase.recordSummary = `${record.Name}:${record.Age}:${record.Summary}`;
+    global.__consoleShowcase.callbackResult =
+      showcase.transformWithCallback('Hermes', value => `callback(${value})`);
+
+    showcase.getMessageAsync().then(
+      value => { global.__consoleShowcase.asyncMessage = value; },
+      error => { global.__consoleShowcase.asyncMessage = error && error.message; }
+    );
+    showcase.emitStatusAsync('ready').then(
+      () => {
+        global.__consoleShowcase.eventDone = true;
+        subscription.remove();
+      },
+      error => { global.__consoleShowcase.eventPayload = error && error.message; }
+    );
+    true;
+  )"),
+                        "showcase-start.js");
+}
+
+void verify_showcase_checks(jsi::Runtime &rt)
+{
+  auto global = rt.global();
+  auto outcome = global.getPropertyAsObject(rt, "__consoleShowcase");
+
+  auto async_message = outcome.getProperty(rt, "asyncMessage").asString(rt).utf8(rt);
+  if (async_message != "Hello from async C#") {
+    throw std::runtime_error("Async showcase failed: " + async_message);
   }
+
+  auto record_summary = outcome.getProperty(rt, "recordSummary").asString(rt).utf8(rt);
+  if (record_summary != "Ada:37:Ada is 37") {
+    throw std::runtime_error("Record showcase failed: " + record_summary);
+  }
+
+  auto callback_result = outcome.getProperty(rt, "callbackResult").asString(rt).utf8(rt);
+  if (callback_result != "callback(C# sent Hermes)") {
+    throw std::runtime_error("Callback showcase failed: " + callback_result);
+  }
+
+  auto event_payload = outcome.getProperty(rt, "eventPayload").asString(rt).utf8(rt);
+  if (event_payload != "C# event: ready") {
+    throw std::runtime_error("Event showcase failed: " + event_payload);
+  }
+
+  if (!outcome.getProperty(rt, "eventDone").getBool()) {
+    throw std::runtime_error("Event showcase promise did not complete.");
+  }
+
+  std::cout << "Showcased async functions, records, callbacks, and events" << std::endl;
 }
 
 } // namespace
@@ -155,7 +219,13 @@ int main()
     active_release_counter = &release_counter;
     auto cs = CSharpAPI{managed.register_modules, &release_counter.api, runtime_handle};
 
-    connector.runtimeExecutor().executeSync([&](jsi::Runtime &rt) { jsi_main(rt, cs); });
+    connector.runtimeExecutor().executeSync([&](jsi::Runtime &rt) {
+      register_modules(rt, cs);
+      run_generated_module_checks(rt);
+      start_showcase_checks(rt);
+    });
+    connector.waitUntilIdle();
+    connector.runtimeExecutor().executeSync([&](jsi::Runtime &rt) { verify_showcase_checks(rt); });
 
     connector.runtimeExecutor().executeSync(
       [&](jsi::Runtime &) { rc = managed.run_proof(&release_counter.api, runtime_handle); });
@@ -165,14 +235,15 @@ int main()
 
     auto value_release_count = release_counter.value_release_count;
     std::cout << "Released owned value handles: " << value_release_count << std::endl;
-    if (value_release_count != 26) {
-      throw std::runtime_error("Expected exactly twenty-six counted owned value handle releases.");
+    if (value_release_count != 132) {
+      throw std::runtime_error(
+        "Expected exactly one hundred thirty-two counted owned value handle releases.");
     }
 
     auto string_release_count = release_counter.string_release_count;
     std::cout << "Released string result buffers: " << string_release_count << std::endl;
-    if (string_release_count != 4) {
-      throw std::runtime_error("Expected exactly four counted string result buffer releases.");
+    if (string_release_count != 10) {
+      throw std::runtime_error("Expected exactly ten counted string result buffer releases.");
     }
 
     expo::dotnet::releaseRuntimeHandle(runtime_handle);

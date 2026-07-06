@@ -14,6 +14,9 @@ through HostFXR or NativeAOT, and verifies bridge paths without P/Invoke:
   `globalThis._expoDotnet.modules.V2Math.add`. The module lives in the same
   `HermesConsoleApp.csproj`, uses `[ExpoModule]` / `[JS]` authored syntax, and
   is registered through the Roslyn-generated provider.
+- JavaScript calls the generated `Showcase` module to verify async functions,
+  record codecs, JavaScript callbacks, and module events in the headless Hermes
+  app.
 - managed code can create and read JavaScript strings as strict UTF-8 text,
   including non-ASCII data and embedded NUL bytes;
 - JavaScript installs and calls `globalThis._expoDotnet.modules.Text.greet`,
@@ -40,13 +43,13 @@ CMake defaults to that `destroot`. To use a different local prebuilt, pass
 Run the default HostFXR path:
 
 ```sh
-scripts/run-hermes-experiment.sh
+scripts/run-hermes-console-app.sh
 ```
 
 Run the NativeAOT path:
 
 ```sh
-EXPO_JSI_DOTNET_LOADER=nativeaot scripts/run-hermes-experiment.sh
+EXPO_JSI_DOTNET_LOADER=nativeaot scripts/run-hermes-console-app.sh
 ```
 
 `EXPO_JSI_DOTNET_LOADER` accepts `hostfxr` or `nativeaot`. HostFXR remains the
@@ -60,9 +63,9 @@ points from the published shared library. The native CMake flag
 - Hypothesis: the Hermes console proof can keep the same opaque C ABI and JSI
   proof logic while swapping the managed loader from HostFXR to NativeAOT.
 - Commands run:
-  - `EXPO_JSI_DOTNET_LOADER=nativeaot scripts/run-hermes-experiment.sh --no-run`
-  - `EXPO_JSI_DOTNET_LOADER=nativeaot scripts/run-hermes-experiment.sh`
-  - `scripts/run-hermes-experiment.sh`
+  - `EXPO_JSI_DOTNET_LOADER=nativeaot scripts/run-hermes-console-app.sh --no-run`
+  - `EXPO_JSI_DOTNET_LOADER=nativeaot scripts/run-hermes-console-app.sh`
+  - `scripts/run-hermes-console-app.sh`
 - Expected result: NativeAOT publishes `HermesConsoleApp` as a shared library,
   the native app resolves `hermes_console_app_run` and
   `hermes_console_app_register_modules`, and the existing Hermes proof prints
