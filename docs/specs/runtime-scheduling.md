@@ -49,9 +49,10 @@ borrowed `facebook::jsi::Runtime` together with a React Native `CallInvoker`
 inside an explicit runtime-state holder. The raw runtime pointer SHALL be
 non-owning; the holder and its invalidation state SHALL be the lifetime
 primitive used by connector executors or longer-lived native values.
-The current implementation evidence is the `apps/mobile-app` proof and the
-`apps/desktop-app` React Native macOS and Windows proofs. They route through
-React Native call-invoker primitives, which do not expose task priorities.
+The current implementation evidence is the `apps/mobile-app` example app and
+the `apps/desktop-app` React Native macOS and Windows example apps. They route
+through React Native call-invoker primitives, which do not expose task
+priorities.
 
 #### Scenario: React Native connector schedules work
 - **GIVEN** native platform glue has a borrowed React Native Hermes runtime and

@@ -199,14 +199,14 @@ The managed interop layer SHALL validate the native API table before using it.
 
 ### Requirement: Loader Choice Preserves ABI Shape
 
-The Hermes console proof and desktop React Native macOS/Windows proofs MAY load
-managed module logic through HostFXR or a NativeAOT shared library, but the
-loader choice SHALL NOT change the C ABI shape passed into managed code.
+The Hermes console app and desktop React Native macOS/Windows example apps MAY
+load managed module logic through HostFXR or a NativeAOT shared library, but
+the loader choice SHALL NOT change the C ABI shape passed into managed code.
 
-#### Scenario: NativeAOT proof runs against the same ABI
-- **GIVEN** the Hermes console proof is built with `EXPO_JSI_DOTNET_LOADER=nativeaot`
+#### Scenario: NativeAOT example app runs against the same ABI
+- **GIVEN** the Hermes console app is built with `EXPO_JSI_DOTNET_LOADER=nativeaot`
 - **WHEN** native code resolves the NativeAOT managed exports and invokes the
-  proof
+  app
 - **THEN** managed code SHALL receive the same `expo_jsi_api` table and opaque
   runtime handle shape used by the HostFXR path
 
@@ -257,9 +257,9 @@ runtime connector that adapts an already-created Hermes
 JSI layouts to managed code. The connector MAY store the borrowed runtime as a
 raw pointer, but it SHALL keep that pointer inside an owned holder that models
 invalidation separately from React Native runtime ownership. The current
-implementation evidence is the `apps/mobile-app` proof and the
-`apps/desktop-app` React Native macOS and Windows proofs; this requirement does
-not by itself define a production adapter lifecycle.
+implementation evidence is the `apps/mobile-app` example app and the
+`apps/desktop-app` React Native macOS and Windows example apps; this
+requirement does not by itself define a production adapter lifecycle.
 
 #### Scenario: React Native connector creates managed runtime handle
 - **GIVEN** React Native provides an active Hermes runtime and `CallInvoker`

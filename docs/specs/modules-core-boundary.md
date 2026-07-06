@@ -23,8 +23,9 @@ public Expo adapter package's managed core.
   module-layer abstractions in `Expo.JSI`
 - **AND** it SHALL NOT hardcode `globalThis.expo.modules`
 
-#### Scenario: Managed proof uses default dotnet namespace
-- **GIVEN** managed proof or test code needs a default modules object
+#### Scenario: Managed test code uses default dotnet namespace
+- **GIVEN** managed test or generated-looking provider code needs a default
+  modules object
 - **WHEN** it asks `Expo.ModulesCore` for the default dotnet modules object
 - **THEN** the helper SHALL create or return `globalThis._expoDotnet.modules`
 - **AND** it SHALL NOT create or mutate `globalThis.expo`
@@ -571,7 +572,7 @@ aggregation and staging instead of legacy per-module adapter-owned staging.
 - **AND** it SHALL throw a plain JavaScript `Error` when the module is missing
 
 #### Scenario: Desktop app stages HostFXR artifacts through the CLI
-- **GIVEN** the React Native macOS or Windows proof app uses the `hostfxr`
+- **GIVEN** the React Native macOS or Windows example app uses the `hostfxr`
   loader
 - **WHEN** the dotnet autolinking CLI stages the generated aggregator
 - **THEN** it SHALL stage the managed assembly, runtime config, dependency
@@ -580,7 +581,7 @@ aggregation and staging instead of legacy per-module adapter-owned staging.
 - **AND** manual app-local HostFXR staging scripts SHALL NOT be required
 
 #### Scenario: Mobile app stages NativeAOT artifacts through the CLI
-- **GIVEN** the React Native iOS or Android proof app uses the `nativeaot`
+- **GIVEN** the React Native iOS or Android example app uses the `nativeaot`
   loader
 - **WHEN** the dotnet autolinking CLI stages the generated aggregator
 - **THEN** it SHALL stage the single `ExpoDotnetHost` native library into the

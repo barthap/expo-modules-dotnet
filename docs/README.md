@@ -50,15 +50,15 @@ exception rules.
 - `packages/example-module/` is an authored .NET Expo module package used by
   example apps. It owns the example C# module source, JavaScript facade, and
   dotnet autolinking metadata.
-- `apps/mobile-app/` is the NativeAOT React Native integration proof app. It
+- `apps/mobile-app/` is the NativeAOT React Native integration example app. It
   consumes `expo-modules-dotnet` and `example-module` as workspace
   dependencies.
 - `apps/desktop-app/` is the Expo Desktop / React Native macOS integration
-  proof app. It consumes the same workspace packages on the React Native 0.81
-  lane and runs the dotnet autolinking CLI for HostFXR-managed artifact
+  example app. It consumes the same workspace packages on the React Native
+  0.81 lane and runs the dotnet autolinking CLI for HostFXR-managed artifact
   staging.
-- `apps/hermes-console-app/` is the reusable headless Hermes integration app
-  proof and can run through HostFXR or NativeAOT.
+- `apps/hermes-console-app/` is the reusable headless Hermes integration
+  example app and can run through HostFXR or NativeAOT.
 - `experiments/hostfxr-smoke/` and `experiments/nativeaot-smoke/` preserve
   narrow loader smoke proofs.
 - `docs/specs/` contains the living spec baseline.
@@ -87,15 +87,9 @@ For current implementation work:
 6. `docs/roadmap.md` for forward direction
 7. `docs/archive/` only when historical rationale or proof evidence is needed
 
-For background learning material:
-
-1. `docs/learning-guide/01-dotnet-interop-basics.md`
-2. `docs/learning-guide/02-jsi-wrapper-model.md`
-3. `docs/learning-guide/03-source-generators-and-v2-api.md`
-4. `docs/learning-guide/04-platform-adapters-and-views.md`
-
-The learning guides are educational. When they conflict with current code,
-tests, or `docs/specs/`, the current implementation and living specs win.
+`docs/archive/learning-guide/` holds educational walkthroughs written before
+this repo's code existed. They are historical background only; current
+implementation, tests, and `docs/specs/` always win where they conflict.
 
 ## Spec Workflow
 

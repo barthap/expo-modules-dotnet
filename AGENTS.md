@@ -63,18 +63,19 @@ contain machine-specific paths or local workflow notes. Do not commit it.
   - `packages/expo-modules-dotnet` owns the public Expo adapter, TurboModule
     installer, reusable JSI bridge, managed core packages, and testhost.
   - Authored .NET modules such as `packages/example-module` own module C# code,
-    JS facade code, and temporary NativeAOT staging, but not React Native
-    installer glue.
-  - `apps/*` are runnable apps/proofs; `experiments/*` are narrow smoke proofs.
+    JS facade code, and `expo-module.config.json` autolinking metadata, but not
+    React Native installer glue or NativeAOT artifact staging.
+  - `apps/*` are runnable example apps; `experiments/*` are narrow smoke proofs.
 - Do not introduce RNW, WinUI, AppKit, or host packaging dependencies into the
   managed core or reusable native bridge unless that work is explicitly scoped
-  to a platform adapter proof.
+  to platform adapter work.
 - Do not expose raw `jsi::Runtime`, `jsi::Value`, or `jsi::Object` layouts to C#.
 - Do not use runtime hot-path reflection for v2 generated bindings.
-- Treat HostFXR as a development/proof loader; keep ABI and generated bindings
+- Treat HostFXR as a development loader; keep ABI and generated bindings
   NativeAOT-compatible.
-- Treat manual NativeAOT artifact staging as temporary proof infrastructure, not
-  the final .NET module autolinking architecture.
+- NativeAOT artifact staging SHALL go through
+  `packages/expo-modules-dotnet-autolinking`; do not add manual per-app staging
+  scripts outside that CLI.
 - Do not create GitHub PRs, publish packages, or post comments without explicit user approval.
 - Do not commit local absolute paths, usernames, machine names, private hostnames,
   concrete local repo paths, or machine-specific install paths. Use repo-relative

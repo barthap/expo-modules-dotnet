@@ -109,7 +109,7 @@ owned wrappers when they cross from one owned type to another.
 
 `Expo.JSI` SHALL remain below the module DSL layer.
 
-#### Scenario: Generated-looking module proof exists
+#### Scenario: Generated-looking module coverage lives in ModulesCore.Tests
 - **GIVEN** generated-looking module behavior is covered by
   `Expo.ModulesCore.Tests`
 - **WHEN** `Expo.JSI.Tests` changes

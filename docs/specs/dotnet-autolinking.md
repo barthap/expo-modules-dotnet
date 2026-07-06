@@ -179,7 +179,7 @@ fallback SHALL `dlopen` `libExpoDotnetHost.so`. Mobile loaders SHALL resolve
 the generated `expo_dotnet_create_runtime_context` and
 `expo_dotnet_teardown_runtime_context` symbols from the generated aggregator.
 
-#### Scenario: Mobile runtime proof
+#### Scenario: Mobile example app runtime
 - **GIVEN** the iOS and Android app builds run through their autolinking hooks
 - **WHEN** JavaScript calls the example module
 - **THEN** Metro SHALL log `[ExampleModule] C# add(20, 22) returned 42`

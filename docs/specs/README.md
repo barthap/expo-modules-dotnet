@@ -32,8 +32,8 @@ Source priority when specs and other materials disagree:
 The public Expo adapter package currently lives at
 `packages/expo-modules-dotnet`. It owns the autolinkable React Native package
 surface, reusable native bridge code, managed core packages, and testhost used
-by these specs. Runnable proofs live under `apps/`; `experiments/` is reserved
-for narrow smoke proofs.
+by these specs. Runnable example apps live under `apps/`; `experiments/` is
+reserved for narrow smoke proofs.
 
 ## Change Workflow
 

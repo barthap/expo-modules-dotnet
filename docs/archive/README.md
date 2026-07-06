@@ -11,6 +11,8 @@ tests, or `docs/specs/`.
 - `spike-results/`: completed proof notes and command evidence.
 - `superpowers/specs/`: one-slice Superpowers design specs.
 - `superpowers/plans/`: detailed execution plans produced for past work.
+- `learning-guide/`: educational walkthroughs written before this repo's code
+  existed; superseded by `docs/specs/` and current code.
 
 ## Reading Rule
 

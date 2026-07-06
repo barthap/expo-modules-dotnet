@@ -1,8 +1,8 @@
-# Library Authoring And Future Autolinking
+# Library Authoring And Autolinking
 
-This note records the authoring and autolinking shape for the first
-`Expo.ModulesCore` Roslyn generator milestone. The current autolinking
-contract is specified in `docs/specs/dotnet-autolinking.md`.
+This note records the authoring shape for the `Expo.ModulesCore` Roslyn
+generator. The current autolinking contract is specified in
+`docs/specs/dotnet-autolinking.md`.
 
 ## Intended Library Author Experience
 
@@ -74,10 +74,11 @@ intermediate directory:
 obj/Debug/<target-framework>/generated/
 ```
 
-For example, a HostFXR proof build may emit a generated provider under:
+For example, the Hermes console app's HostFXR build (`apps/hermes-console-app`,
+assembly name `HermesConsoleApp`) may emit a generated provider under:
 
 ```text
-obj/Debug/net10.0/generated/Expo.ModulesCore.Generator/Expo.ModulesCore.Generator.ExpoModulesGenerator/ExpoModulesProvider_HostFxrJSIProof.g.cs
+obj/Debug/net10.0/generated/Expo.ModulesCore.Generator/Expo.ModulesCore.Generator.ExpoModulesGenerator/ExpoModulesProvider_HermesConsoleApp.g.cs
 ```
 
 This opt-in is useful for debugging generator output. It should not be required
@@ -86,7 +87,7 @@ artifacts.
 
 ## Authored Module Syntax
 
-The first generator milestone supports synchronous functions only:
+Synchronous `[JS]` functions are the baseline authoring shape:
 
 ```csharp
 using Expo.ModulesCore;
@@ -112,8 +113,8 @@ public sealed partial class InternalMathModule
 }
 ```
 
-The first slice excludes records, async functions, properties, events, shared
-objects, optional/default arguments, and platform adapters.
+See `docs/roadmap.md` for the current authoring scope and what remains in the
+backlog; that list is maintained there rather than duplicated here.
 
 ## Library-Local Generated Provider
 
@@ -142,10 +143,10 @@ public static class ExpoModulesProvider_ExpoExample
 }
 ```
 
-The generated provider should be deterministic so an app-level generated file
-can call it later. The first implementation may refine the exact namespace,
-type-name sanitization rule, and visibility, but the provider must be suitable
-for cross-assembly use.
+The generated provider is deterministic so an app-level generated file can call
+it later; the `ExpoModulesProvider_{assemblyName}` naming contract is defined
+below in Dotnet Config Shape, and the provider must remain suitable for
+cross-assembly use.
 
 ## Two-Stage Generation Model
 
@@ -209,11 +210,13 @@ The config should not list individual module classes. The `[ExpoModule]`
 attributes are the source of truth for module class discovery inside the
 library project.
 
-## Non-Goals For The First Generator Milestone
+## Generator Non-Goals
 
-The first generator milestone does not:
+The generator does not:
 
-- package analyzer assets for external NuGet consumption;
+- package analyzer assets for external NuGet consumption (see Manual
+  Development Wiring above);
 - scan runtime assemblies for module types;
-- inspect referenced assemblies for module classes;
-- support records, async functions, properties, events, or shared objects.
+- inspect referenced assemblies for module classes.
+
+For authoring surfaces still outstanding, see `docs/roadmap.md`.

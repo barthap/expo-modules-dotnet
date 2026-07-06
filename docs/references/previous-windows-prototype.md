@@ -52,8 +52,8 @@ In particular, do not copy forward:
 For new work, read this repo’s docs instead:
 
 - `docs/README.md`
-- `docs/agent-plan/`
-- `docs/learning-guide/`
+- `docs/specs/`
+- `docs/roadmap.md`
 
 The old Windows prototype should answer “how did we get here?”  
 This repo should answer “what are we building now?”
