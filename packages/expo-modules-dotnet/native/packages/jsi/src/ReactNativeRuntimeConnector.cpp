@@ -72,6 +72,10 @@ void ReactNativeRuntimeExecutor::executeAsync(
 
 bool ReactNativeRuntimeExecutor::canExecuteSync() const noexcept
 {
+  // This is an external-entry capability: native/managed code that is not already running inside a
+  // JS callback may ask React Native to synchronously execute work on the JS runtime. It must stay
+  // separate from managed reentrancy checks. The managed layer tracks active runtime access frames
+  // and should run inline when it already owns the runtime.
   return state_ != nullptr && state_->isRuntimeValid() && state_->callInvoker() != nullptr;
 }
 
@@ -86,6 +90,11 @@ void ReactNativeRuntimeExecutor::executeSync(std::function<void(facebook::jsi::R
     throw std::runtime_error("React Native runtime does not support synchronous dispatch.");
   }
 
+  // On modern React Native, this commonly reaches RuntimeSchedulerCallInvoker::invokeSync(), which
+  // routes through RuntimeScheduler::executeNowOnTheSameThread(). That path is valid for external
+  // synchronous entry, but dangerous for JS->managed->JS reentrancy: the scheduler may block while
+  // waiting for the same JS runtime/queue that is currently executing the managed callback. Managed
+  // code must check its active access scope before it reaches this method.
   std::weak_ptr<ReactNativeRuntimeState> weakState = state_;
   callInvoker->invokeSync(
     [weakState, work = std::move(work)](facebook::jsi::Runtime &runtime) mutable {

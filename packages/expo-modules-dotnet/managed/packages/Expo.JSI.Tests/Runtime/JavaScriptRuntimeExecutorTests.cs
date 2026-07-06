@@ -272,6 +272,54 @@ public sealed class JavaScriptRuntimeExecutorTests
   }
 
   [Fact]
+  public void ExecuteInsideCurrentRuntimeAccessRunsInlineWhenSyncUnsupported()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      using var function = runtime.CreateHostFunction(
+          "__nestedExecute",
+          0,
+          static (js, _, _, _) =>
+          {
+            var result = js.Execute(inner =>
+            {
+              Assert.True(inner.HasExclusiveRuntimeAccess);
+              using var value = inner.CreateString("inline");
+              return value.AsString();
+            });
+            return js.CreateString(result);
+          },
+          new object()
+      );
+      using var functionValue = function.AsValue();
+      global.SetProperty("__nestedExecute", functionValue);
+      return true;
+    });
+
+    fixture.ResetCounters();
+    fixture.DisableSyncExecutionForTesting();
+    var callResult = fixture.Evaluate(
+        "globalThis.__nestedExecute()",
+        "nested-execute-sync-unsupported.js"
+    );
+    Assert.Equal(0u, fixture.Counters.SyncExecuteCalls);
+
+    fixture.SetSyncExecutionSupportedForTesting(true);
+    var result = fixture.Runtime.Execute(_ =>
+    {
+      using (callResult)
+      {
+        return callResult.AsString();
+      }
+    });
+
+    Assert.Equal("inline", result);
+  }
+
+  [Fact]
   public async Task ScheduledTaskContextIsReleasedExactlyOnce()
   {
     using var fixture = HermesRuntimeFixture.Create();

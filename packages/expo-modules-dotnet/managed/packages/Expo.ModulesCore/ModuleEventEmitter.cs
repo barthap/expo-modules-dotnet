@@ -167,6 +167,17 @@ public sealed class ModuleEventEmitter : IDisposable
       Func<JavaScriptRuntime, bool> emit,
       CancellationToken cancellationToken)
   {
+    if (context.Runtime.HasExclusiveRuntimeAccess)
+    {
+      // Event emission from an async module may resume later and need scheduling. Event emission
+      // from a synchronous generated function is different: the current call already owns runtime
+      // access, so dispatch the inherited JS `emit` method directly instead of re-entering the host
+      // sync scheduler.
+      cancellationToken.ThrowIfCancellationRequested();
+      emit(context.Runtime);
+      return Task.CompletedTask;
+    }
+
     if (context.Runtime.CanExecuteSync)
     {
       cancellationToken.ThrowIfCancellationRequested();

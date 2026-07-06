@@ -248,6 +248,8 @@ directly, and encode return values through typed helpers.
 - **THEN** the callback SHALL invoke the retained JavaScript function
   synchronously and decode the JavaScript result through the configured result
   codec
+- **AND** this current-runtime invocation SHALL NOT require generic synchronous
+  runtime execution support from the host scheduler
 - **AND** `InvokeAsync` SHALL schedule invocation through the owning runtime for
   later event-style use
 - **AND** callback invocation after runtime-context teardown SHALL fail loudly
@@ -307,6 +309,9 @@ inherited event methods. The ModulesCore-owned class hierarchy SHALL live under
   function with the module object as `this`
 - **AND** payload values SHALL be encoded through generated
   `IJavaScriptCodec<T>` support
+- **AND** event emission while already executing on the owning JavaScript
+  runtime SHALL dispatch directly without requiring generic synchronous runtime
+  execution support from the host scheduler
 
 #### Scenario: Listener identity is internal
 - **GIVEN** JavaScript adds an event listener function

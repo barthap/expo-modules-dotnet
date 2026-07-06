@@ -12,6 +12,13 @@ namespace Expo.JSI.Internal;
 /// callback. Scoped refs use the current scope as their lifetime marker.
 /// </para>
 /// <para>
+/// The active scope is also the managed bridge's reentrancy marker. If code calls back into
+/// <see cref="JavaScriptRuntime.Execute{T}" /> while this scope is active for the same runtime, it
+/// already has exclusive access to that runtime and must run inline instead of asking the host
+/// scheduler to synchronously re-enter JavaScript. React Native's synchronous scheduler path can
+/// block waiting for the same runtime/queue that is currently executing the managed callback.
+/// </para>
+/// <para>
 /// The scope does not own the root handle behind an existing owned wrapper or host-function
 /// argument. It only tracks temporary handles produced by traversal operations, such as reading an
 /// object property or converting a scoped value ref to a scoped object/array ref. Those temporary
@@ -69,6 +76,25 @@ internal sealed unsafe class JavaScriptHandleScope : IDisposable
       );
     }
     return scope;
+  }
+
+  /// <summary>
+  /// Gets whether this managed call stack already has exclusive access to the supplied runtime.
+  /// </summary>
+  /// <remarks>
+  /// The check intentionally does not ask the native host whether synchronous scheduling is
+  /// supported. It only answers whether managed code is already inside a valid runtime access frame
+  /// for the same ABI table and runtime handle. That distinction matters for React Native hosts:
+  /// external sync entry may be supported, but re-entering it from a host-function callback can
+  /// deadlock.
+  /// </remarks>
+  public static bool IsCurrentFor(JsiContext context)
+  {
+    var scope = current;
+    return scope is not null &&
+        !scope.disposed &&
+        scope.context.Api == context.Api &&
+        scope.context.RuntimeHandle == context.RuntimeHandle;
   }
 
   /// <summary>

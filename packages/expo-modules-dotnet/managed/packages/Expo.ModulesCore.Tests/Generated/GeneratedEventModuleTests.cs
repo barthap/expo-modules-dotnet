@@ -20,6 +20,19 @@ public sealed class GeneratedEventModuleTests
   }
 
   [Fact]
+  public async Task EmittedPayloadReachesJavaScriptListenerWhenSyncExecutionUnsupported()
+  {
+    var outcome = await EvaluateEventOutcomeAsync(
+        "events.addListener('onChange', value => { seen = value; });",
+        "events.EmitChangeAsync('payload')",
+        "seen",
+        disableSyncExecutionBeforeEvaluate: true
+    );
+
+    Assert.Equal("payload", outcome);
+  }
+
+  [Fact]
   public async Task PayloadlessEventCallsJavaScriptListener()
   {
     var outcome = await EvaluateEventOutcomeAsync(
@@ -63,7 +76,8 @@ public sealed class GeneratedEventModuleTests
   private static async Task<string> EvaluateEventOutcomeAsync(
       string listenerSetup,
       string expression,
-      string resultExpression)
+      string resultExpression,
+      bool disableSyncExecutionBeforeEvaluate = false)
   {
     using var fixture = HermesRuntimeFixture.Create();
     DotnetRuntimeContext? context = null;
@@ -78,7 +92,12 @@ public sealed class GeneratedEventModuleTests
 
     try
     {
-      fixture.Evaluate(
+      if (disableSyncExecutionBeforeEvaluate)
+      {
+        fixture.DisableSyncExecutionForTesting();
+      }
+
+      var setupResult = fixture.Evaluate(
           $$"""
           const events = globalThis._expoDotnet.modules.GeneratedEvents;
           let seen = '';
@@ -90,19 +109,22 @@ public sealed class GeneratedEventModuleTests
           true
           """,
           "generated-events-setup.js"
-      ).Dispose();
+      );
 
       await Task.Yield();
       fixture.WaitUntilIdle();
+      fixture.SetSyncExecutionSupportedForTesting(true);
 
       return fixture.Runtime.Execute(_ =>
       {
+        setupResult.Dispose();
         using var result = fixture.Evaluate("globalThis.__eventOutcome", "generated-events-result.js");
         return result.AsString();
       });
     }
     finally
     {
+      fixture.SetSyncExecutionSupportedForTesting(true);
       fixture.Runtime.Execute(_ =>
       {
         context?.Dispose();

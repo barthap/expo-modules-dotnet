@@ -49,7 +49,12 @@ public sealed class HermesRuntimeFixture : IDisposable
 
   public void DisableSyncExecutionForTesting()
   {
-    NativeTestHost.SetSyncExecutionSupported(testHostRuntime, false);
+    SetSyncExecutionSupportedForTesting(false);
+  }
+
+  public void SetSyncExecutionSupportedForTesting(bool supported)
+  {
+    NativeTestHost.SetSyncExecutionSupported(testHostRuntime, supported);
   }
 
   public JavaScriptValue Evaluate(string source, string sourceUrl = "expo-jsi-test.js")

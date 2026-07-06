@@ -60,10 +60,21 @@ priorities.
 - **WHEN** managed code schedules runtime work through `JavaScriptRuntime`
 - **THEN** the React Native connector SHALL route asynchronous work through
   `CallInvoker::invokeAsync`
-- **AND** generic managed sync execution SHALL remain gated by a passive
-  capability check
+- **AND** generic managed sync execution SHALL remain gated by the host sync
+  capability
+- **AND** React Native connectors MAY report generic sync execution as
+  supported when the borrowed runtime is valid and a `CallInvoker` is available
 - **AND** task priority SHALL be treated as advisory when the host scheduling
   primitive cannot honor it
+
+#### Scenario: Managed code re-enters sync execution from current runtime access
+- **GIVEN** managed code is already running inside an active access frame for
+  the owning JavaScript runtime
+- **WHEN** it calls `JavaScriptRuntime.Execute`
+- **THEN** the managed runtime SHALL execute the body inline in the current
+  access frame
+- **AND** it SHALL NOT call `CallInvoker::invokeSync`,
+  `RuntimeSchedulerCallInvoker::invokeSync`, or an equivalent scheduler path
 
 #### Scenario: Generated synchronous module function is called
 - **GIVEN** a generated synchronous C# module function is installed as a JSI host

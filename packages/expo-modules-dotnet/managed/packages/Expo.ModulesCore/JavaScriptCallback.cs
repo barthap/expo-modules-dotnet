@@ -104,6 +104,15 @@ public sealed class JavaScriptCallback<TArgs, TResult> : IDisposable, IRuntimeCo
   public TResult Invoke(TArgs args)
   {
     ThrowIfDisposed();
+    if (context.Runtime.HasExclusiveRuntimeAccess)
+    {
+      // Synchronous callback parameters are commonly invoked while a generated module host function
+      // is still on the JS stack. In that case the retained JS function can be called directly:
+      // scheduling a sync hop back onto the same runtime is unnecessary and can deadlock on React
+      // Native's RuntimeScheduler-backed CallInvoker.
+      return InvokeCore(args, context.Runtime);
+    }
+
     if (!context.Runtime.CanExecuteSync)
     {
       throw new NotSupportedException(

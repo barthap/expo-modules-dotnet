@@ -30,6 +30,60 @@ public sealed class GeneratedCallbackModuleTests
   }
 
   [Fact]
+  public void GeneratedModuleInvokesCallbackParameterFromCurrentRuntimeWhenSyncExecutionUnsupported()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    DotnetRuntimeContext? context = null;
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+      return true;
+    });
+
+    try
+    {
+      fixture.DisableSyncExecutionForTesting();
+
+      var setupResult = fixture.Evaluate(
+          """
+          globalThis.__callbackSyncUnsupported =
+            globalThis._expoDotnet.modules.GeneratedCallbacks.callNow(
+              'JS',
+              name => `Hello ${name}`
+            );
+          true
+          """,
+          "generated-callback-call-now-sync-unsupported.js"
+      );
+
+      fixture.SetSyncExecutionSupportedForTesting(true);
+      var result = fixture.Runtime.Execute(_ =>
+      {
+        setupResult.Dispose();
+        using var value = fixture.Evaluate(
+            "globalThis.__callbackSyncUnsupported",
+            "generated-callback-call-now-sync-unsupported-result.js"
+        );
+        return value.AsString();
+      });
+
+      Assert.Equal("Hello JS", result);
+    }
+    finally
+    {
+      fixture.SetSyncExecutionSupportedForTesting(true);
+      fixture.Runtime.Execute(_ =>
+      {
+        context?.Dispose();
+        return true;
+      });
+    }
+  }
+
+  [Fact]
   public void GeneratedModuleInvokesZeroArgumentCallbackParameter()
   {
     using var fixture = HermesRuntimeFixture.Create();

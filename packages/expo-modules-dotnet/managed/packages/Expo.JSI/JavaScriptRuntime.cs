@@ -103,7 +103,29 @@ public sealed unsafe class JavaScriptRuntime
   /// <summary>
   /// Gets whether this runtime supports synchronous execution through <see cref="Execute{T}" />.
   /// </summary>
+  /// <remarks>
+  /// <para>
+  /// This is a host capability for entering the JavaScript runtime from outside an active access
+  /// frame. It is not the reentrancy predicate used by code that is already running inside a
+  /// host-function callback or scheduled runtime task.
+  /// </para>
+  /// </remarks>
   public bool CanExecuteSync => context.Api->CanExecuteSync(context.RuntimeHandle);
+
+  /// <summary>
+  /// Gets whether managed code is already inside an exclusive access frame for this runtime.
+  /// </summary>
+  /// <remarks>
+  /// <para>
+  /// In the headless Hermes testhost the access frame maps cleanly to the executor thread. In React
+  /// Native, the important property is not a named thread, but that the current JS-to-managed call
+  /// stack already owns the runtime access. While this is true, callers may touch JSI directly and
+  /// should avoid generic synchronous scheduling. Calling a React Native
+  /// <c>CallInvoker::invokeSync</c> from this state can deadlock if the scheduler waits for the
+  /// queue or runtime that is already servicing the current callback.
+  /// </para>
+  /// </remarks>
+  public bool HasExclusiveRuntimeAccess => JavaScriptHandleScope.IsCurrentFor(context);
 
   /// <summary>
   /// Creates an owned JavaScript number value.
@@ -487,12 +509,29 @@ public sealed unsafe class JavaScriptRuntime
   /// Executes managed work synchronously on the JavaScript runtime.
   /// </summary>
   /// <remarks>
+  /// <para>
   /// Scoped refs created while <paramref name="body" /> runs are valid only until the body returns.
   /// Retain refs or return owned wrappers when values must escape the execution frame.
+  /// </para>
+  /// <para>
+  /// When managed code already has exclusive runtime access, this method runs the body inline under
+  /// a nested handle scope. That preserves scoped-ref lifetime rules while avoiding a reentrant
+  /// synchronous scheduler call. When no access frame is active, this method delegates to the host's
+  /// synchronous executor and blocks until the runtime work completes.
+  /// </para>
   /// </remarks>
   public T Execute<T>(Func<JavaScriptRuntime, T> body)
   {
     ArgumentNullException.ThrowIfNull(body);
+    if (HasExclusiveRuntimeAccess)
+    {
+      // Reentrant JS->managed->JS paths are already on a valid runtime access stack. Entering a
+      // nested managed handle scope is enough; asking the host scheduler to synchronously re-enter
+      // the same runtime can deadlock on React Native RuntimeSchedulerCallInvoker.
+      using var scope = JavaScriptHandleScope.Enter(context);
+      return body(new JavaScriptRuntime(context));
+    }
+
     if (!CanExecuteSync)
     {
       throw new NotSupportedException(
