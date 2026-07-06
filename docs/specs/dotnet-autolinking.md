@@ -135,8 +135,10 @@ with desktop staging.
 phase SHALL copy `ios/Managed/libExpoDotnetHost.dylib` into
 `${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}`, creating the destination so
 the dylib ships in the app bundle. The script phase SHALL forward
-`EXPO_DOTNET_LOADER` and `CONFIGURATION` consistently with macOS and SHALL use
-`${SRCROOT}`-relative paths.
+`EXPO_DOTNET_LOADER` and `CONFIGURATION` consistently with macOS, SHALL use
+`${SRCROOT}`-relative paths, and SHALL source `.xcode.env` /
+`.xcode.env.local` to resolve `NODE_BINARY` and `DOTNET_BINARY` for Xcode.app
+build environments.
 
 Because `apps/mobile-app` is CNG, `packages/expo-modules-dotnet/app.plugin.js`
 SHALL inject the Podfile helper during Expo prebuild. The plugin SHALL

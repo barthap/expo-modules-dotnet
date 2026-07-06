@@ -85,3 +85,21 @@ Windows app project copies that directory next to the built executable as
 
 HostFXR is the default loader. Override with `EXPO_DOTNET_LOADER` or
 `EXPO_JSI_DOTNET_LOADER` when testing another loader.
+
+### macOS Xcode Environment
+
+When building from Xcode.app, script phases do not inherit the interactive
+shell environment. If Xcode cannot find `node` or `dotnet`, configure the
+gitignored local env file:
+
+```sh
+cd apps/desktop-app/macos
+{
+  printf 'export NODE_BINARY="%s"\n' "$(command -v node)"
+  printf 'export DOTNET_BINARY="%s"\n' "$(command -v dotnet)"
+} > .xcode.env.local
+```
+
+The Expo .NET script phase follows the same convention as React Native and
+Expo: it reads `.xcode.env`, then `.xcode.env.local`, and uses `NODE_BINARY`
+and `DOTNET_BINARY` for the autolinking CLI and .NET build steps.

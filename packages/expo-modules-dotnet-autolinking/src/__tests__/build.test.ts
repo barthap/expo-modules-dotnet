@@ -9,6 +9,7 @@ import {
   defaultConfiguration,
   defaultLoaderMode,
   defaultRid,
+  dotnetBinary,
   dotnetArgsForBuild,
   locateAndroidNdkClangSync,
   sanitizedDotnetEnv,
@@ -210,6 +211,16 @@ describe('sanitizedDotnetEnv', () => {
     };
 
     expect(sanitizedDotnetEnv(env)).toEqual({ PATH: '/usr/bin' });
+  });
+});
+
+describe('dotnetBinary', () => {
+  it('uses dotnet by default', () => {
+    expect(dotnetBinary({})).toBe('dotnet');
+  });
+
+  it('uses DOTNET_BINARY when configured', () => {
+    expect(dotnetBinary({ DOTNET_BINARY: '<dotnet-root>/dotnet' })).toBe('<dotnet-root>/dotnet');
   });
 });
 

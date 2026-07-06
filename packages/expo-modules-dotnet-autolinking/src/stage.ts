@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
-import { defaultRid, sanitizedDotnetEnv, type LoaderMode } from './build';
+import { defaultRid, dotnetBinary, sanitizedDotnetEnv, type LoaderMode } from './build';
 
 export type StagePlatform = 'macos' | 'windows' | 'ios' | 'android';
 
@@ -241,7 +241,8 @@ function parseDotnetBasePath(dotnetInfo: string): string | undefined {
 
 function runDotnetInfoAsync(): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn('dotnet', ['--info'], {
+    const binary = dotnetBinary();
+    const child = spawn(binary, ['--info'], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: sanitizedDotnetEnv(process.env),
     });
@@ -250,7 +251,18 @@ function runDotnetInfoAsync(): Promise<string> {
 
     child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
     child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
-    child.on('error', reject);
+    child.on('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') {
+        reject(
+          new Error(
+            `[expo-modules-dotnet-autolinking] Could not find dotnet executable "${binary}". ` +
+              'Set DOTNET_BINARY in .xcode.env or .xcode.env.local.'
+          )
+        );
+        return;
+      }
+      reject(error);
+    });
     child.on('close', (code) => {
       if (code === 0) {
         resolve(Buffer.concat(stdout).toString('utf8'));

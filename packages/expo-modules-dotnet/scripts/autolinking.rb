@@ -34,6 +34,29 @@ def use_expo_modules_dotnet!(options = {})
     always_out_of_date: '1',
     script: <<~SCRIPT
       set -euo pipefail
+      ENV_PATH="$PODS_ROOT/../.xcode.env"
+      if [ -f "$ENV_PATH" ]; then
+        . "$ENV_PATH"
+      fi
+      LOCAL_ENV_PATH="${ENV_PATH}.local"
+      if [ -f "$LOCAL_ENV_PATH" ]; then
+        . "$LOCAL_ENV_PATH"
+      fi
+      if [ -z "${NODE_BINARY:-}" ]; then
+        NODE_BINARY="$(command -v node || true)"
+      fi
+      if ! type "$NODE_BINARY" >/dev/null 2>&1; then
+        echo "error: Could not find node executable. Set NODE_BINARY in .xcode.env or .xcode.env.local." >&2
+        exit 1
+      fi
+      if [ -z "${DOTNET_BINARY:-}" ]; then
+        DOTNET_BINARY="$(command -v dotnet || true)"
+      fi
+      if ! type "$DOTNET_BINARY" >/dev/null 2>&1; then
+        echo "error: Could not find dotnet executable. Set DOTNET_BINARY in .xcode.env or .xcode.env.local." >&2
+        exit 1
+      fi
+      export DOTNET_BINARY
       app_root="${SRCROOT}/#{relative_root}"
       cd "$app_root"
       extra_args=()
@@ -43,7 +66,7 @@ def use_expo_modules_dotnet!(options = {})
       if [ -n "${CONFIGURATION:-}" ]; then
         extra_args+=(--configuration "$CONFIGURATION")
       fi
-      node --no-warnings --eval "require('expo-modules-dotnet-autolinking').main(process.argv.slice(1))" \
+      "$NODE_BINARY" --no-warnings --eval "require('expo-modules-dotnet-autolinking').main(process.argv.slice(1))" \
         link --platform #{platform} --project-root "$app_root" ${extra_args[@]+"${extra_args[@]}"}
       #{ios_bundle_script}
     SCRIPT

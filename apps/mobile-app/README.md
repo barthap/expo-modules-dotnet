@@ -39,6 +39,26 @@ Android additionally requires `ANDROID_HOME` or `ANDROID_SDK_ROOT`;
 `ANDROID_NDK_HOME` is optional if the SDK has an installed NDK under
 `$ANDROID_HOME/ndk`.
 
+### iOS Xcode Environment
+
+This app is Expo prebuilt; `ios/` is generated and uncommitted. The
+`expo-modules-dotnet` config plugin injects the same `[CP-User] Link Expo .NET
+Modules` phase that the desktop macOS app uses. When building the generated
+workspace from Xcode.app, script phases may not inherit the interactive shell
+environment, so configure the generated local env file if Xcode cannot find
+`node` or `dotnet`:
+
+```bash
+cd apps/mobile-app/ios
+{
+  printf 'export NODE_BINARY="%s"\n' "$(command -v node)"
+  printf 'export DOTNET_BINARY="%s"\n' "$(command -v dotnet)"
+} > .xcode.env.local
+```
+
+Regenerate this file after a clean prebuild if needed. It is local machine
+configuration and should stay out of committed repo artifacts.
+
 ## How The Native Library Is Loaded
 
 Android loads two shared libraries:

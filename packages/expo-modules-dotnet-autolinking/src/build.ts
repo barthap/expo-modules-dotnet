@@ -169,6 +169,10 @@ export function sanitizedDotnetEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return sanitized;
 }
 
+export function dotnetBinary(env: NodeJS.ProcessEnv = process.env): string {
+  return env.DOTNET_BINARY !== undefined && env.DOTNET_BINARY !== '' ? env.DOTNET_BINARY : 'dotnet';
+}
+
 export function buildOutputDir(options: BuildOptions): string {
   const outputDir = path.join(
     path.dirname(options.csprojPath),
@@ -217,12 +221,24 @@ export async function runDotnetBuildAsync(
 
 function runDotnetAsync(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn('dotnet', args, {
+    const binary = dotnetBinary();
+    const child = spawn(binary, args, {
       stdio: 'inherit',
       env: sanitizedDotnetEnv(process.env),
     });
 
-    child.on('error', reject);
+    child.on('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') {
+        reject(
+          new Error(
+            `[expo-modules-dotnet-autolinking] Could not find dotnet executable "${binary}". ` +
+              'Set DOTNET_BINARY in .xcode.env or .xcode.env.local.'
+          )
+        );
+        return;
+      }
+      reject(error);
+    });
     child.on('close', (code) => {
       if (code === 0) {
         resolve();
