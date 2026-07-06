@@ -1,0 +1,4 @@
+interface:
+  display_name: "Expo JSI Handle Lifetime"
+  short_description: "Review Expo.JSI handle ownership safely"
+  default_prompt: "Use $expo-jsi-managed-handle-lifetime to review managed wrapper ownership in an Expo.JSI or Expo.ModulesCore change."
