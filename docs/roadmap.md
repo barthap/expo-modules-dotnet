@@ -184,10 +184,9 @@ ABI support.
 
 ## Backlog: Module System
 
-- **P1 — Module-authored lifecycle hooks**: `onCreate`, `onDestroy`, and future
-  authored resource cleanup hooks on top of the runtime-scoped
-  `DotnetRuntimeContext`. The P0 runtime-context teardown owner exists; authored
-  module lifecycle callbacks still need API design.
+- **P1 — Module-authored lifecycle hooks** (complete): `[OnCreate]` and
+  `[OnDestroy]` are generator-backed managed callbacks on top of the
+  runtime-scoped `DotnetRuntimeContext` / `ModuleRegistry` owner.
 - **P2/P3 — Lazy module initialization**: Modules instantiated on first JS
   access instead of eagerly at registration (depends on HostObject ABI).
 - **P1 — `expo-module.config.json`** (complete): Package metadata for dotnet

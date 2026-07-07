@@ -921,4 +921,131 @@ public sealed class ExpoModulesGeneratorTests
     var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI004");
     Assert.Contains("reserved observing hook name", diagnostic.GetMessage());
   }
+
+  [Fact]
+  public void GeneratorEmitsLifecycleHookCallbacksForModule()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Lifecycle")]
+        public sealed partial class LifecycleModule
+        {
+          [OnCreate]
+          internal void Start() {}
+
+          [OnDestroy]
+          public void Stop() {}
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains(
+        "context.ModuleRegistry.GetOrCreateModule(\"Lifecycle\", static () => new global::Expo.TestModules.LifecycleModule(), static module => module.Start(), static module => module.Stop())",
+        source
+    );
+    Assert.DoesNotContain("\"onCreate\"", source);
+    Assert.DoesNotContain("\"onDestroy\"", source);
+  }
+
+  [Fact]
+  public void GeneratorReportsInvalidLifecycleHook()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Lifecycle")]
+        public sealed partial class LifecycleModule
+        {
+          [OnCreate]
+          private void Start() {}
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI011");
+    Assert.Contains("method must be public or internal", diagnostic.GetMessage());
+  }
+
+  [Theory]
+  [InlineData("[OnCreate] public static void Start() {}", "method is static")]
+  [InlineData("[OnCreate] public void Start<T>() {}", "method is generic")]
+  [InlineData("[OnCreate] public int Start() => 0;", "method must return void")]
+  [InlineData("[OnCreate] public void Start(string value) {}", "method must not accept parameters")]
+  [InlineData("[OnCreate] private void Start() {}", "method must be public or internal")]
+  public void GeneratorReportsInvalidLifecycleHookShapes(
+      string methodSource,
+      string expectedReason)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Lifecycle")]
+        public sealed partial class LifecycleModule
+        {
+          {{methodSource}}
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI011");
+    Assert.Contains(expectedReason, diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void CompilerRejectsLifecycleAttributeOnNonMethodMembers()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Lifecycle")]
+        public sealed partial class LifecycleModule
+        {
+          [OnCreate]
+          public int Count;
+        }
+        """
+    );
+
+    Assert.Contains(result.Diagnostics, item => item.Id == "CS0592");
+  }
+
+  [Fact]
+  public void GeneratorReportsDuplicateLifecycleHook()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Lifecycle")]
+        public sealed partial class LifecycleModule
+        {
+          [OnDestroy]
+          public void First() {}
+
+          [OnDestroy]
+          public void Second() {}
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI011");
+    Assert.Contains("duplicate destroy lifecycle hook", diagnostic.GetMessage());
+  }
 }

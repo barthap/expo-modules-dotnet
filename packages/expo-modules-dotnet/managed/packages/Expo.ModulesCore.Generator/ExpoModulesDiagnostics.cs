@@ -93,4 +93,13 @@ internal static class ExpoModulesDiagnostics
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true
   );
+
+  public static readonly DiagnosticDescriptor InvalidLifecycleHook = new(
+      id: "EXPOJSI011",
+      title: "Invalid Expo module lifecycle hook",
+      messageFormat: "Module '{0}' has invalid {1} lifecycle hook '{2}': {3}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
 }

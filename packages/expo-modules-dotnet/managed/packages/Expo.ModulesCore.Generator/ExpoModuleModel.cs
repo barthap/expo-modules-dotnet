@@ -7,6 +7,8 @@ internal sealed record ExpoModuleModel(
     string ModuleName,
     Location? Location,
     ExpoModuleConstructorStrategy ConstructorStrategy,
+    ExpoLifecycleHookModel? OnCreateHook,
+    ExpoLifecycleHookModel? OnDestroyHook,
     EquatableArray<string> EventNames,
     EquatableArray<ExpoObservingHookModel> StartObservingHooks,
     EquatableArray<ExpoObservingHookModel> StopObservingHooks,
@@ -38,6 +40,10 @@ internal sealed record ExpoObservingHookModel(
     string MethodName,
     string? EventName,
     bool PassesEventName,
+    Location? Location);
+
+internal sealed record ExpoLifecycleHookModel(
+    string MethodName,
     Location? Location);
 
 internal sealed record ExpoParameterModel(

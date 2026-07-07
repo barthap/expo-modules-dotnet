@@ -7,7 +7,7 @@ public sealed class ModuleRegistry
   private readonly object gate = new();
   private readonly JavaScriptRuntime runtime;
   private readonly JavaScriptObjectFactory? objectFactory;
-  private readonly Dictionary<string, object> moduleInstances = new(StringComparer.Ordinal);
+  private readonly Dictionary<string, ModuleEntry> moduleInstances = new(StringComparer.Ordinal);
   private bool disposed;
 
   internal ModuleRegistry(JavaScriptRuntime runtime, JavaScriptObjectFactory objectFactory)
@@ -19,24 +19,40 @@ public sealed class ModuleRegistry
   public T GetOrCreateModule<T>(string moduleName, Func<T> factory)
       where T : class
   {
+    return GetOrCreateModule(moduleName, factory, null, null);
+  }
+
+  public T GetOrCreateModule<T>(
+      string moduleName,
+      Func<T> factory,
+      Action<T>? onCreate,
+      Action<T>? onDestroy)
+      where T : class
+  {
     ArgumentException.ThrowIfNullOrWhiteSpace(moduleName);
     ArgumentNullException.ThrowIfNull(factory);
 
+    T created;
     lock (gate)
     {
       ThrowIfDisposedLocked();
 
       if (moduleInstances.TryGetValue(moduleName, out var existing))
       {
-        return (T)existing;
+        return (T)existing.Instance;
       }
 
-      var created = factory() ?? throw new InvalidOperationException(
+      created = factory() ?? throw new InvalidOperationException(
           $"Module factory for '{moduleName}' returned null."
       );
-      moduleInstances.Add(moduleName, created);
-      return created;
+      moduleInstances.Add(moduleName, new ModuleEntry(
+          created,
+          onDestroy is null ? null : module => onDestroy((T)module)
+      ));
     }
+
+    onCreate?.Invoke(created);
+    return created;
   }
 
   public JavaScriptObject DefineModule(JavaScriptObject modules, string moduleName) =>
@@ -62,7 +78,7 @@ public sealed class ModuleRegistry
 
   internal void Dispose()
   {
-    List<IDisposable> disposableModules;
+    List<ModuleEntry> modules;
     lock (gate)
     {
       if (disposed)
@@ -71,13 +87,40 @@ public sealed class ModuleRegistry
       }
 
       disposed = true;
-      disposableModules = moduleInstances.Values.OfType<IDisposable>().ToList();
+      modules = moduleInstances.Values.ToList();
       moduleInstances.Clear();
     }
 
-    foreach (var module in disposableModules)
+    List<Exception>? exceptions = null;
+    foreach (var module in modules)
     {
-      module.Dispose();
+      try
+      {
+        module.OnDestroy?.Invoke(module.Instance);
+      }
+      catch (Exception exception)
+      {
+        (exceptions ??= []).Add(exception);
+      }
+
+      if (module.Instance is not IDisposable disposable)
+      {
+        continue;
+      }
+
+      try
+      {
+        disposable.Dispose();
+      }
+      catch (Exception exception)
+      {
+        (exceptions ??= []).Add(exception);
+      }
+    }
+
+    if (exceptions is not null)
+    {
+      throw new AggregateException(exceptions);
     }
   }
 
@@ -171,4 +214,6 @@ public sealed class ModuleRegistry
     }
     return action();
   }
+
+  private sealed record ModuleEntry(object Instance, Action<object>? OnDestroy);
 }

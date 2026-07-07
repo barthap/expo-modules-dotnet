@@ -11,6 +11,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 {
   private const string ExpoModuleAttributeMetadataName = "Expo.ModulesCore.ExpoModuleAttribute";
   private const string EventsAttributeMetadataName = "Expo.ModulesCore.EventsAttribute";
+  private const string OnCreateAttributeMetadataName = "Expo.ModulesCore.OnCreateAttribute";
+  private const string OnDestroyAttributeMetadataName = "Expo.ModulesCore.OnDestroyAttribute";
   private const string OnStartObservingAttributeMetadataName = "Expo.ModulesCore.OnStartObservingAttribute";
   private const string OnStopObservingAttributeMetadataName = "Expo.ModulesCore.OnStopObservingAttribute";
   private const string JSEnumAttributeMetadataName = "Expo.ModulesCore.JSEnumAttribute";
@@ -79,6 +81,20 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     }
 
     var recordCodecs = new List<ExpoGeneratedRecordCodecModel>();
+    var onCreateHook = GetLifecycleHook(
+        typeSymbol,
+        moduleName,
+        "create",
+        OnCreateAttributeMetadataName,
+        diagnostics
+    );
+    var onDestroyHook = GetLifecycleHook(
+        typeSymbol,
+        moduleName,
+        "destroy",
+        OnDestroyAttributeMetadataName,
+        diagnostics
+    );
     var eventNames = GetEventNames(typeSymbol, moduleName, diagnostics);
     var eventNameSet = new HashSet<string>(eventNames, StringComparer.Ordinal);
     var startObservingHooks = GetObservingHooks(
@@ -107,6 +123,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         moduleName,
         typeSymbol.Locations.FirstOrDefault(),
         constructorStrategy,
+        onCreateHook,
+        onDestroyHook,
         new EquatableArray<string>(eventNames),
         new EquatableArray<ExpoObservingHookModel>(startObservingHooks),
         new EquatableArray<ExpoObservingHookModel>(stopObservingHooks),
@@ -282,6 +300,105 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     }
 
     return hooks;
+  }
+
+  private static ExpoLifecycleHookModel? GetLifecycleHook(
+      INamedTypeSymbol typeSymbol,
+      string moduleName,
+      string hookKind,
+      string attributeMetadataName,
+      List<ExpoDiagnosticModel> diagnostics)
+  {
+    ExpoLifecycleHookModel? hook = null;
+    foreach (var member in typeSymbol.GetMembers())
+    {
+      var attribute = member.GetAttributes().FirstOrDefault(item =>
+          item.AttributeClass?.ToDisplayString() == attributeMetadataName);
+      if (attribute is null)
+      {
+        continue;
+      }
+
+      if (hook is not null)
+      {
+        diagnostics.Add(CreateInvalidLifecycleHook(
+            moduleName,
+            hookKind,
+            member,
+            $"duplicate {hookKind} lifecycle hook"
+        ));
+        continue;
+      }
+
+      if (member is not IMethodSymbol method || method.MethodKind != MethodKind.Ordinary)
+      {
+        diagnostics.Add(CreateInvalidLifecycleHook(
+            moduleName,
+            hookKind,
+            member,
+            "attribute must be applied to a method"
+        ));
+        continue;
+      }
+
+      if (method.DeclaredAccessibility is not (Accessibility.Public or Accessibility.Internal))
+      {
+        diagnostics.Add(CreateInvalidLifecycleHook(
+            moduleName,
+            hookKind,
+            method,
+            "method must be public or internal"
+        ));
+        continue;
+      }
+
+      if (method.IsStatic)
+      {
+        diagnostics.Add(CreateInvalidLifecycleHook(moduleName, hookKind, method, "method is static"));
+        continue;
+      }
+
+      if (method.IsGenericMethod)
+      {
+        diagnostics.Add(CreateInvalidLifecycleHook(moduleName, hookKind, method, "method is generic"));
+        continue;
+      }
+
+      if (!method.ReturnsVoid &&
+          method.ReturnType.SpecialType != SpecialType.System_Void)
+      {
+        diagnostics.Add(CreateInvalidLifecycleHook(moduleName, hookKind, method, "method must return void"));
+        continue;
+      }
+
+      if (method.Parameters.Length != 0)
+      {
+        diagnostics.Add(CreateInvalidLifecycleHook(
+            moduleName,
+            hookKind,
+            method,
+            "method must not accept parameters"
+        ));
+        continue;
+      }
+
+      hook = new ExpoLifecycleHookModel(method.Name, method.Locations.FirstOrDefault());
+    }
+
+    return hook;
+  }
+
+  private static ExpoDiagnosticModel CreateInvalidLifecycleHook(
+      string moduleName,
+      string hookKind,
+      ISymbol member,
+      string reason)
+  {
+    return new ExpoDiagnosticModel(
+        ExpoModulesDiagnostics.InvalidLifecycleHook.Id,
+        member.Locations.FirstOrDefault(),
+        new EquatableArray<string>(new[] { moduleName, hookKind, member.Name, reason })
+    );
   }
 
   private static ExpoDiagnosticModel CreateInvalidObservingHook(
@@ -628,10 +745,14 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       var factoryExpression = module.ConstructorStrategy == ExpoModuleConstructorStrategy.RuntimeContext
           ? $"() => new {module.FullyQualifiedTypeName}(context)"
           : $"static () => new {module.FullyQualifiedTypeName}()";
+      var onCreateExpression = GetLifecycleHookExpression(module.OnCreateHook);
+      var onDestroyExpression = GetLifecycleHookExpression(module.OnDestroyHook);
       builder.AppendLine(hasEvents
           ? $"    using var {moduleVariable} = context.ModuleRegistry.DefineNativeModule(modules, \"{EscapeString(module.ModuleName)}\");"
           : $"    using var {moduleVariable} = context.ModuleRegistry.DefineModule(modules, \"{EscapeString(module.ModuleName)}\");");
-      builder.AppendLine($"    var {moduleInstanceVariable} = context.ModuleRegistry.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", {factoryExpression});");
+      builder.AppendLine(module.OnCreateHook is null && module.OnDestroyHook is null
+          ? $"    var {moduleInstanceVariable} = context.ModuleRegistry.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", {factoryExpression});"
+          : $"    var {moduleInstanceVariable} = context.ModuleRegistry.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", {factoryExpression}, {onCreateExpression}, {onDestroyExpression});");
       if (hasEvents)
       {
         builder.AppendLine(
@@ -695,10 +816,14 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       "EXPOJSI008" => ExpoModulesDiagnostics.UnsupportedCallbackCodec,
       "EXPOJSI009" => ExpoModulesDiagnostics.InvalidEventName,
       "EXPOJSI010" => ExpoModulesDiagnostics.InvalidObservingHook,
+      "EXPOJSI011" => ExpoModulesDiagnostics.InvalidLifecycleHook,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());
   }
+
+  private static string GetLifecycleHookExpression(ExpoLifecycleHookModel? hook) =>
+      hook is null ? "null" : $"static module => module.{hook.MethodName}()";
 
   private static void EmitObservingHookRegistration(
       StringBuilder builder,

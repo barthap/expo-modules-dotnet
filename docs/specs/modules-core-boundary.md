@@ -161,6 +161,34 @@ through a context-owned `ModuleRegistry`.
   type
 - **THEN** each context SHALL receive its own authored module instance
 
+#### Scenario: Module create hook runs once
+- **GIVEN** an authored module declares a valid `[OnCreate]` method
+- **WHEN** generated registration creates the module instance for a runtime
+  context
+- **THEN** generated registration SHALL call the hook directly after the module
+  is stored in the context-owned registry
+- **AND** later registration in the same runtime context SHALL NOT call the hook
+  again
+- **AND** generated registration SHALL NOT expose `onCreate` as a JavaScript
+  module property
+
+#### Scenario: Module destroy hook runs during teardown
+- **GIVEN** an authored module declares a valid `[OnDestroy]` method
+- **WHEN** the owning `DotnetRuntimeContext` is disposed
+- **THEN** the context-owned registry SHALL call the hook once before
+  `IDisposable.Dispose`
+- **AND** all module destroy and dispose callbacks SHALL run even if one fails
+- **AND** cleanup failures SHALL be reported as one `AggregateException` after
+  cleanup finishes
+- **AND** generated registration SHALL NOT expose `onDestroy` as a JavaScript
+  module property
+
+#### Scenario: Lifecycle hook shape is invalid
+- **GIVEN** an authored lifecycle hook is static, generic, private, returns a
+  value, has parameters, or duplicates another hook of the same kind
+- **WHEN** the generator analyzes the module
+- **THEN** it SHALL report `EXPOJSI011`
+
 #### Scenario: Module inherits the convenience base class
 - **GIVEN** an authored module inherits from `Expo.ModulesCore.Module`
 - **WHEN** generated registration constructs the module with

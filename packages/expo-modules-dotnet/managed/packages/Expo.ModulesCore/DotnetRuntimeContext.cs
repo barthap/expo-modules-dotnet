@@ -147,26 +147,51 @@ public sealed class DotnetRuntimeContext : IDisposable
       retainedCallbacks.Clear();
     }
 
+    List<Exception>? exceptions = null;
+
     foreach (var registration in registrations)
     {
-      registration.Dispose();
+      DisposeAndCapture(registration, ref exceptions);
     }
-
     foreach (var callback in callbacks)
     {
       if (callback is IRuntimeContextRetainedCallback retainedCallback)
       {
-        retainedCallback.DisposeFromRuntimeContext();
+        DisposeAndCapture(retainedCallback.DisposeFromRuntimeContext, ref exceptions);
       }
       else
       {
-        callback.Dispose();
+        DisposeAndCapture(callback, ref exceptions);
       }
     }
 
-    moduleRegistry.Dispose();
-    events.Dispose();
-    objects.Dispose();
+    DisposeAndCapture(moduleRegistry.Dispose, ref exceptions);
+    DisposeAndCapture(events, ref exceptions);
+    DisposeAndCapture(objects, ref exceptions);
+
+    if (exceptions is not null)
+    {
+      throw new AggregateException(exceptions);
+    }
+  }
+
+  private static void DisposeAndCapture(IDisposable disposable, ref List<Exception>? exceptions) =>
+      DisposeAndCapture(disposable.Dispose, ref exceptions);
+
+  private static void DisposeAndCapture(Action dispose, ref List<Exception>? exceptions)
+  {
+    try
+    {
+      dispose();
+    }
+    catch (AggregateException exception)
+    {
+      (exceptions ??= []).AddRange(exception.InnerExceptions);
+    }
+    catch (Exception exception)
+    {
+      (exceptions ??= []).Add(exception);
+    }
   }
 
   private void ThrowIfDisposed()

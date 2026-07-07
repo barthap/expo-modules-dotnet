@@ -92,6 +92,160 @@ public sealed class DotnetRuntimeContextTests
   }
 
   [Fact]
+  public void ModuleRegistryRunsCreateHookOnceForNewInstance()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      var createCount = 0;
+
+      var first = context.ModuleRegistry.GetOrCreateModule(
+          "Lifecycle",
+          static () => new LifecycleModule(),
+          _ => createCount++,
+          null
+      );
+      var second = context.ModuleRegistry.GetOrCreateModule(
+          "Lifecycle",
+          static () => new LifecycleModule(),
+          _ => createCount++,
+          null
+      );
+
+      Assert.Same(first, second);
+      Assert.Equal(1, createCount);
+      return true;
+    });
+  }
+
+  [Fact]
+  public void ModuleRegistryRunsLifecycleHooksPerRuntimeContext()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var firstContext = new DotnetRuntimeContext(runtime);
+      using var secondContext = new DotnetRuntimeContext(runtime);
+      var createCount = 0;
+
+      firstContext.ModuleRegistry.GetOrCreateModule(
+          "Lifecycle",
+          static () => new LifecycleModule(),
+          _ => createCount++,
+          null
+      );
+      secondContext.ModuleRegistry.GetOrCreateModule(
+          "Lifecycle",
+          static () => new LifecycleModule(),
+          _ => createCount++,
+          null
+      );
+
+      Assert.Equal(2, createCount);
+      return true;
+    });
+  }
+
+  [Fact]
+  public void ModuleRegistryRunsDestroyHookBeforeDisposableCleanup()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      var calls = new List<string>();
+      var context = new DotnetRuntimeContext(runtime);
+      context.ModuleRegistry.GetOrCreateModule(
+          "Lifecycle",
+          () => new DisposableLifecycleModule(calls),
+          null,
+          module => module.Destroy()
+      );
+
+      context.Dispose();
+
+      Assert.Equal(new[] { "destroy", "dispose" }, calls);
+      return true;
+    });
+  }
+
+  [Fact]
+  public void ModuleRegistryAggregatesCleanupFailuresAfterRunningAllCleanup()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      var calls = new List<string>();
+      var context = new DotnetRuntimeContext(runtime);
+      context.ModuleRegistry.GetOrCreateModule(
+          "First",
+          () => new FailingLifecycleModule(calls, "first"),
+          null,
+          module => module.Destroy()
+      );
+      context.ModuleRegistry.GetOrCreateModule(
+          "Second",
+          () => new FailingLifecycleModule(calls, "second"),
+          null,
+          module => module.Destroy()
+      );
+
+      var exception = Assert.Throws<AggregateException>(() => context.Dispose());
+
+      Assert.Equal(
+          new[]
+          {
+              "first:destroy",
+              "first:dispose",
+              "second:destroy",
+              "second:dispose",
+          },
+          calls
+      );
+      Assert.Equal(4, exception.InnerExceptions.Count);
+      Assert.Contains(exception.InnerExceptions, item => item.Message == "first destroy failed");
+      Assert.Contains(exception.InnerExceptions, item => item.Message == "first dispose failed");
+      Assert.Contains(exception.InnerExceptions, item => item.Message == "second destroy failed");
+      Assert.Contains(exception.InnerExceptions, item => item.Message == "second dispose failed");
+      return true;
+    });
+  }
+
+  [Fact]
+  public void ContextDisposeReleasesEventStateWhenModuleCleanupFails()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      using var eventsModule = context.ModuleRegistry.DefineNativeModule(modules, "Events");
+      context.ModuleRegistry.GetOrCreateModule(
+          "Failing",
+          () => new FailingLifecycleModule([], "failing"),
+          null,
+          module => module.Destroy()
+      );
+
+      Assert.Throws<AggregateException>(() => context.Dispose());
+
+      using var result = fixture.Evaluate(
+          "const events = globalThis._expoDotnet.modules.Events;" +
+          "try { events.addListener('onChange', () => {}); 'no error'; } catch (error) { error.message; }",
+          "event-emitter-after-failed-module-cleanup.js"
+      );
+
+      Assert.Contains("EventEmitterRuntimeState", result.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
   public void ContextOwnedModuleRegistryDoesNotShareInstancesAcrossContexts()
   {
     using var fixture = HermesRuntimeFixture.Create();
@@ -191,6 +345,34 @@ public sealed class DotnetRuntimeContextTests
   private sealed class LifecycleModule
   {
     public double Value() => 42.0;
+  }
+
+  private sealed class DisposableLifecycleModule(List<string> calls) : IDisposable
+  {
+    public void Destroy()
+    {
+      calls.Add("destroy");
+    }
+
+    public void Dispose()
+    {
+      calls.Add("dispose");
+    }
+  }
+
+  private sealed class FailingLifecycleModule(List<string> calls, string name) : IDisposable
+  {
+    public void Destroy()
+    {
+      calls.Add($"{name}:destroy");
+      throw new InvalidOperationException($"{name} destroy failed");
+    }
+
+    public void Dispose()
+    {
+      calls.Add($"{name}:dispose");
+      throw new InvalidOperationException($"{name} dispose failed");
+    }
   }
 
   private sealed class RuntimeAwareModule : Module
