@@ -182,7 +182,7 @@ namespace {
 
 namespace jsi = facebook::jsi;
 
-constexpr uint32_t kApiVersion = 19;
+constexpr uint32_t kApiVersion = 20;
 
 struct ErrorResultBuffer {
   explicit ErrorResultBuffer(std::string value)
@@ -206,6 +206,117 @@ struct PropertyNamesResultBuffer {
   // Property names point into these owned strings until C# copies them.
   std::vector<std::string> strings;
   std::vector<expo_jsi_property_name> names;
+};
+
+struct ManagedNativeStateEntry {
+  expo_jsi_native_state_token token{};
+  void *releaseContext = nullptr;
+  expo_jsi_release_native_state_fn release = nullptr;
+  bool released = true;
+
+  ManagedNativeStateEntry() = default;
+
+  ManagedNativeStateEntry(expo_jsi_native_state_token token,
+                          void *releaseContext,
+                          expo_jsi_release_native_state_fn release)
+    : token(token),
+      releaseContext(releaseContext),
+      release(release)
+  {
+  }
+
+  ManagedNativeStateEntry(const ManagedNativeStateEntry &) = delete;
+  ManagedNativeStateEntry &operator=(const ManagedNativeStateEntry &) = delete;
+
+  ManagedNativeStateEntry(ManagedNativeStateEntry &&other) noexcept
+    : token(other.token),
+      releaseContext(other.releaseContext),
+      release(other.release),
+      released(other.released)
+  {
+    other.releaseContext = nullptr;
+    other.release = nullptr;
+    other.released = true;
+  }
+
+  ManagedNativeStateEntry &operator=(ManagedNativeStateEntry &&other) noexcept
+  {
+    if (this != &other) {
+      releaseOnce();
+      token = other.token;
+      releaseContext = other.releaseContext;
+      release = other.release;
+      released = other.released;
+      other.releaseContext = nullptr;
+      other.release = nullptr;
+      other.released = true;
+    }
+    return *this;
+  }
+
+  ~ManagedNativeStateEntry()
+  {
+    releaseOnce();
+  }
+
+  void armRelease() noexcept
+  {
+    released = false;
+  }
+
+  void releaseOnce() noexcept
+  {
+    if (released) {
+      return;
+    }
+    released = true;
+    if (release != nullptr) {
+      try {
+        release(releaseContext, token.type_id, token.registry_id, token.generation);
+      } catch (...) {
+      }
+    }
+  }
+};
+
+class ManagedNativeStateBag final : public jsi::NativeState {
+public:
+  ~ManagedNativeStateBag() override
+  {
+    clear();
+  }
+
+  void set(ManagedNativeStateEntry entry)
+  {
+    auto typeId = entry.token.type_id;
+    auto existing = entries_.find(typeId);
+    if (existing != entries_.end()) {
+      existing->second = std::move(entry);
+      existing->second.armRelease();
+      return;
+    }
+    auto inserted = entries_.emplace(typeId, std::move(entry));
+    inserted.first->second.armRelease();
+  }
+
+  const ManagedNativeStateEntry *get(uint64_t typeId) const
+  {
+    auto existing = entries_.find(typeId);
+    return existing == entries_.end() ? nullptr : &existing->second;
+  }
+
+  void clear(uint64_t typeId)
+  {
+    entries_.erase(typeId);
+  }
+
+  void clear()
+  {
+    entries_.clear();
+  }
+
+private:
+  std::unordered_map<uint64_t, ManagedNativeStateEntry> entries_;
 };
 
 expo_jsi_error makeError(int32_t code, const char *message)
@@ -1421,6 +1532,141 @@ expo_jsi_property_names_result objectGetOwnPropertyNames(expo_jsi_runtime_handle
   }
 }
 
+expo_jsi_native_state_result makeNativeStateResult(expo_jsi_native_state_token token)
+{
+  return expo_jsi_native_state_result{1, 1, token, makeOk()};
+}
+
+expo_jsi_native_state_result makeNativeStateNotFoundResult()
+{
+  return expo_jsi_native_state_result{1, 0, expo_jsi_native_state_token{0, 0, 0}, makeOk()};
+}
+
+expo_jsi_native_state_result makeNativeStateErrorResult(int32_t code, const char *message)
+{
+  return expo_jsi_native_state_result{
+    0,
+    0,
+    expo_jsi_native_state_token{0, 0, 0},
+    makeError(code, message),
+  };
+}
+
+std::shared_ptr<ManagedNativeStateBag> getNativeStateBag(jsi::Runtime &runtime,
+                                                         jsi::Object &object,
+                                                         bool create)
+{
+  if (object.hasNativeState<ManagedNativeStateBag>(runtime)) {
+    return object.getNativeState<ManagedNativeStateBag>(runtime);
+  }
+  if (object.hasNativeState<jsi::NativeState>(runtime)) {
+    throw std::runtime_error("JavaScript object has incompatible native state.");
+  }
+  if (!create) {
+    return nullptr;
+  }
+
+  auto bag = std::make_shared<ManagedNativeStateBag>();
+  object.setNativeState(runtime, bag);
+  return bag;
+}
+
+expo_jsi_error objectSetNativeState(expo_jsi_runtime_handle runtime,
+                                    expo_jsi_value_handle object,
+                                    expo_jsi_native_state_token token,
+                                    void *releaseContext,
+                                    expo_jsi_release_native_state_fn release)
+{
+  auto *runtimeHandle = tryRuntimeHandle(runtime, nullptr);
+  if (runtimeHandle == nullptr) {
+    return makeError(122, "Runtime handle is invalid.");
+  }
+  if (object == nullptr) {
+    return makeError(123, "Value handle is null.");
+  }
+  if (token.type_id == 0 || token.registry_id == 0 || token.generation == 0) {
+    return makeError(124, "NativeState token is invalid.");
+  }
+  if (release == nullptr) {
+    return makeError(125, "NativeState release callback is null.");
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto jsObject = checkedObject(jsRuntime, object);
+    auto bag = getNativeStateBag(jsRuntime, jsObject, true);
+    bag->set(ManagedNativeStateEntry(token, releaseContext, release));
+    return makeOk();
+  } catch (const std::exception &ex) {
+    return makeError(126, ex.what());
+  } catch (...) {
+    return makeError(127, "Unknown native exception while setting object native state.");
+  }
+}
+
+expo_jsi_native_state_result objectGetNativeState(expo_jsi_runtime_handle runtime,
+                                                  expo_jsi_value_handle object,
+                                                  uint64_t typeId)
+{
+  auto *runtimeHandle = tryRuntimeHandle(runtime, nullptr);
+  if (runtimeHandle == nullptr) {
+    return makeNativeStateErrorResult(128, "Runtime handle is invalid.");
+  }
+  if (object == nullptr) {
+    return makeNativeStateErrorResult(129, "Value handle is null.");
+  }
+  if (typeId == 0) {
+    return makeNativeStateErrorResult(130, "NativeState type id is invalid.");
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto jsObject = checkedObject(jsRuntime, object);
+    auto bag = getNativeStateBag(jsRuntime, jsObject, false);
+    if (bag == nullptr) {
+      return makeNativeStateNotFoundResult();
+    }
+
+    auto *entry = bag->get(typeId);
+    return entry == nullptr ? makeNativeStateNotFoundResult() : makeNativeStateResult(entry->token);
+  } catch (const std::exception &ex) {
+    return makeNativeStateErrorResult(131, ex.what());
+  } catch (...) {
+    return makeNativeStateErrorResult(
+      132, "Unknown native exception while getting object native state.");
+  }
+}
+
+expo_jsi_error objectClearNativeState(expo_jsi_runtime_handle runtime,
+                                      expo_jsi_value_handle object,
+                                      uint64_t typeId)
+{
+  auto *runtimeHandle = tryRuntimeHandle(runtime, nullptr);
+  if (runtimeHandle == nullptr) {
+    return makeError(133, "Runtime handle is invalid.");
+  }
+  if (object == nullptr) {
+    return makeError(134, "Value handle is null.");
+  }
+  if (typeId == 0) {
+    return makeError(135, "NativeState type id is invalid.");
+  }
+
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto jsObject = checkedObject(jsRuntime, object);
+    auto bag = getNativeStateBag(jsRuntime, jsObject, false);
+    if (bag != nullptr) {
+      bag->clear(typeId);
+    }
+    return makeOk();
+  } catch (const std::exception &ex) {
+    return makeError(136, ex.what());
+  } catch (...) {
+    return makeError(137, "Unknown native exception while clearing object native state.");
+  }
+}
+
 expo_jsi_value_result callFunction(expo_jsi_runtime_handle runtime,
                                    expo_jsi_value_handle function,
                                    const expo_jsi_value_handle *arguments,
@@ -1828,6 +2074,9 @@ const expo_jsi_api kApi{
   createClassValue,
   createClassWithSuperclassValue,
   strictEquals,
+  objectSetNativeState,
+  objectGetNativeState,
+  objectClearNativeState,
 };
 
 } // namespace

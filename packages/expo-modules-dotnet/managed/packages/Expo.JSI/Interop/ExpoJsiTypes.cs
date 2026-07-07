@@ -145,3 +145,30 @@ internal readonly unsafe struct ExpoJsiPropertyNamesResult
 
   public bool IsOk => Ok != 0;
 }
+
+[StructLayout(LayoutKind.Sequential)]
+internal readonly struct ExpoJsiNativeStateToken
+{
+  public readonly ulong TypeId;
+  public readonly ulong RegistryId;
+  public readonly uint Generation;
+
+  public ExpoJsiNativeStateToken(ulong typeId, ulong registryId, uint generation)
+  {
+    TypeId = typeId;
+    RegistryId = registryId;
+    Generation = generation;
+  }
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal readonly struct ExpoJsiNativeStateResult
+{
+  public readonly int Ok;
+  public readonly int Found;
+  public readonly ExpoJsiNativeStateToken Token;
+  public readonly ExpoJsiError Error;
+
+  public bool IsOk => Ok != 0;
+  public bool HasValue => IsOk && Found != 0;
+}

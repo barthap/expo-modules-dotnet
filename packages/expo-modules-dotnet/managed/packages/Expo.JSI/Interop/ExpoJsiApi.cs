@@ -278,6 +278,26 @@ internal readonly unsafe struct ExpoJsiApi
     ExpoJsiError*,
     byte> StrictEquals;
 
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiNativeStateToken,
+    nint,
+    delegate* unmanaged[Cdecl]<nint, ulong, ulong, uint, void>,
+    ExpoJsiError> ObjectSetNativeState;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ulong,
+    ExpoJsiNativeStateResult> ObjectGetNativeState;
+
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ulong,
+    ExpoJsiError> ObjectClearNativeState;
+
   private static readonly UTF8Encoding StrictUtf8 = new(
     encoderShouldEmitUTF8Identifier: false,
     throwOnInvalidBytes: true
@@ -340,6 +360,9 @@ internal readonly unsafe struct ExpoJsiApi
       || this.CreateClass is null
       || this.CreateClassWithSuperclass is null
       || this.StrictEquals is null
+      || this.ObjectSetNativeState is null
+      || this.ObjectGetNativeState is null
+      || this.ObjectClearNativeState is null
     )
     {
       throw new InvalidOperationException("Expo JSI API table is missing required functions.");
@@ -659,6 +682,35 @@ internal readonly unsafe struct ExpoJsiApi
     ExpoJsiValueHandle objectHandle
   ) => ObjectGetOwnPropertyNames(runtimeHandle, objectHandle);
 
+  public ExpoJsiError SetObjectNativeState(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueHandle objectHandle,
+    ExpoJsiNativeStateToken token,
+    nint releaseContext,
+    delegate* unmanaged[Cdecl]<nint, ulong, ulong, uint, void> release
+  )
+  {
+    return ObjectSetNativeState(runtimeHandle, objectHandle, token, releaseContext, release);
+  }
+
+  public ExpoJsiNativeStateResult GetObjectNativeState(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueHandle objectHandle,
+    ulong typeId
+  )
+  {
+    return ObjectGetNativeState(runtimeHandle, objectHandle, typeId);
+  }
+
+  public ExpoJsiError ClearObjectNativeState(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueHandle objectHandle,
+    ulong typeId
+  )
+  {
+    return ObjectClearNativeState(runtimeHandle, objectHandle, typeId);
+  }
+
   public ExpoJsiValueResult CallFunction(
     ExpoJsiRuntimeHandle runtimeHandle,
     ExpoJsiValueHandle functionHandle,
@@ -798,5 +850,5 @@ internal readonly unsafe struct ExpoJsiApi
   }
 
   public static uint ExpectedSize => (uint)sizeof(ExpoJsiApi);
-  public const uint ExpectedVersion = 19;
+  public const uint ExpectedVersion = 20;
 }

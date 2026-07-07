@@ -75,6 +75,34 @@ internal readonly unsafe struct JavaScriptObjectInner
     }
   }
 
+  public unsafe void SetNativeState(NativeStateRegistry.NativeStateRegistration registration)
+  {
+    var error = Context.Api->SetObjectNativeState(
+        Context.RuntimeHandle,
+        Handle,
+        registration.Token,
+        registration.ReleaseContext,
+        &NativeStateRegistry.ReleaseNativeState
+    );
+    Context.ThrowIfError(error, "Failed to set JavaScript object native state.");
+  }
+
+  public ExpoJsiNativeStateResult GetNativeState(ulong typeId)
+  {
+    var result = Context.Api->GetObjectNativeState(Context.RuntimeHandle, Handle, typeId);
+    if (!result.IsOk)
+    {
+      JsiContext.ThrowNativeError(result.Error, "Failed to get JavaScript object native state.");
+    }
+    return result;
+  }
+
+  public void ClearNativeState(ulong typeId)
+  {
+    var error = Context.Api->ClearObjectNativeState(Context.RuntimeHandle, Handle, typeId);
+    Context.ThrowIfError(error, "Failed to clear JavaScript object native state.");
+  }
+
   public ExpoJsiValueHandle AsValue()
   {
     var result = Context.Api->RetainValueAs(

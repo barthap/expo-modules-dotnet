@@ -286,6 +286,44 @@ expo_jsi_error countedExecuteSync(expo_jsi_runtime_handle runtime,
   return error;
 }
 
+struct CountedNativeStateReleaseContext {
+  expo_jsi_testhost_runtime_t *testhost;
+  void *innerContext;
+  expo_jsi_release_native_state_fn innerRelease;
+};
+
+void countedReleaseNativeState(void *releaseContext,
+                               uint64_t typeId,
+                               uint64_t registryId,
+                               uint32_t generation)
+{
+  auto *context = static_cast<CountedNativeStateReleaseContext *>(releaseContext);
+  if (context->testhost != nullptr) {
+    context->testhost->counters.released_native_states++;
+  }
+  if (context->innerRelease != nullptr) {
+    context->innerRelease(context->innerContext, typeId, registryId, generation);
+  }
+  delete context;
+}
+
+expo_jsi_error countedSetNativeState(expo_jsi_runtime_handle runtime,
+                                     expo_jsi_value_handle object,
+                                     expo_jsi_native_state_token token,
+                                     void *releaseContext,
+                                     expo_jsi_release_native_state_fn release)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto *countedContext = new CountedNativeStateReleaseContext{testhost, releaseContext, release};
+  auto error =
+    api->object_set_native_state(runtime, object, token, countedContext, countedReleaseNativeState);
+  if (error.code != 0) {
+    delete countedContext;
+  }
+  return error;
+}
+
 const expo_jsi_api *makeCountedApi(expo_jsi_testhost_runtime_t &runtime)
 {
   runtime.innerApi = expo::dotnet::api();
@@ -300,6 +338,7 @@ const expo_jsi_api *makeCountedApi(expo_jsi_testhost_runtime_t &runtime)
   runtime.countedApi.runtime_schedule_task = countedScheduleTask;
   runtime.countedApi.runtime_can_execute_sync = countedCanExecuteSync;
   runtime.countedApi.runtime_execute_sync = countedExecuteSync;
+  runtime.countedApi.object_set_native_state = countedSetNativeState;
   return &runtime.countedApi;
 }
 

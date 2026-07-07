@@ -43,6 +43,7 @@ internal static unsafe class NativeTestHost
     public readonly uint PrimitiveValueCreates;
     public readonly uint DeprecatedNumberCreates;
     public readonly uint DeprecatedBoolCreates;
+    public readonly uint ReleasedNativeStates;
   }
 
   internal static CreateResult CreateRuntime()

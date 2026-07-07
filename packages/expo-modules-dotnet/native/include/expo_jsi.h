@@ -107,6 +107,27 @@ typedef struct expo_jsi_property_names_result {
   expo_jsi_error error;
 } expo_jsi_property_names_result;
 
+// NativeState release callbacks may run during JavaScript object destruction,
+// entry replacement, explicit clear, or runtime teardown. They must not throw,
+// block on JavaScript runtime work, or touch JSI handles.
+typedef void (*expo_jsi_release_native_state_fn)(void *release_context,
+                                                 uint64_t type_id,
+                                                 uint64_t registry_id,
+                                                 uint32_t generation);
+
+typedef struct expo_jsi_native_state_token {
+  uint64_t type_id;
+  uint64_t registry_id;
+  uint32_t generation;
+} expo_jsi_native_state_token;
+
+typedef struct expo_jsi_native_state_result {
+  int32_t ok;
+  int32_t found;
+  expo_jsi_native_state_token token;
+  expo_jsi_error error;
+} expo_jsi_native_state_result;
+
 typedef expo_jsi_value_result (*expo_jsi_host_function_callback_fn)(
   void *callback_context,
   expo_jsi_runtime_handle runtime,
@@ -206,6 +227,20 @@ typedef expo_jsi_value_result (*expo_jsi_object_get_property_fn)(expo_jsi_runtim
 
 typedef expo_jsi_property_names_result (*expo_jsi_object_get_own_property_names_fn)(
   expo_jsi_runtime_handle runtime, expo_jsi_value_handle object);
+
+typedef expo_jsi_error (*expo_jsi_object_set_native_state_fn)(
+  expo_jsi_runtime_handle runtime,
+  expo_jsi_value_handle object,
+  expo_jsi_native_state_token token,
+  void *release_context,
+  expo_jsi_release_native_state_fn release);
+
+typedef expo_jsi_native_state_result (*expo_jsi_object_get_native_state_fn)(
+  expo_jsi_runtime_handle runtime, expo_jsi_value_handle object, uint64_t type_id);
+
+typedef expo_jsi_error (*expo_jsi_object_clear_native_state_fn)(expo_jsi_runtime_handle runtime,
+                                                                expo_jsi_value_handle object,
+                                                                uint64_t type_id);
 
 typedef expo_jsi_value_result (*expo_jsi_function_call_fn)(expo_jsi_runtime_handle runtime,
                                                            expo_jsi_value_handle function,
@@ -337,6 +372,9 @@ typedef struct expo_jsi_api {
   expo_jsi_create_class_fn create_class;
   expo_jsi_create_class_with_superclass_fn create_class_with_superclass;
   expo_jsi_strict_equals_fn strict_equals;
+  expo_jsi_object_set_native_state_fn object_set_native_state;
+  expo_jsi_object_get_native_state_fn object_get_native_state;
+  expo_jsi_object_clear_native_state_fn object_clear_native_state;
 } expo_jsi_api;
 
 #ifdef __cplusplus

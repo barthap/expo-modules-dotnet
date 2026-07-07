@@ -421,7 +421,7 @@ public sealed unsafe class JavaScriptRuntime
     ArgumentNullException.ThrowIfNull(callbackState);
 
     var nameBytes = Encoding.UTF8.GetBytes(name);
-    var callbackContext = new HostFunctionContext(context.Api, callback, callbackState).ToIntPtr();
+    var callbackContext = new HostFunctionContext(context, callback, callbackState).ToIntPtr();
 
     var result = context.Api->CreateHostFunctionValue(
         context.RuntimeHandle,
@@ -613,7 +613,7 @@ public sealed unsafe class JavaScriptRuntime
     try
     {
       context = HostFunctionContext.FromIntPtr(callbackContext);
-      var jsiContext = new JsiContext(context.Api, runtimeHandle);
+      var jsiContext = context.JsiContext;
       var runtime = new JavaScriptRuntime(jsiContext);
       using var scope = JavaScriptHandleScope.Enter(jsiContext);
       var thisValue = JavaScriptValueRef.FromBorrowedRoot(

@@ -28,6 +28,7 @@ typedef struct expo_jsi_testhost_counters {
   uint32_t primitive_value_creates;
   uint32_t deprecated_number_creates;
   uint32_t deprecated_bool_creates;
+  uint32_t released_native_states;
 } expo_jsi_testhost_counters;
 
 expo_jsi_testhost_create_result expo_jsi_testhost_create_runtime(void);

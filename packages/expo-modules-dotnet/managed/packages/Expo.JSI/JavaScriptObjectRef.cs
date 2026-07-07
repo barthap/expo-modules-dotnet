@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Expo.JSI.Internal;
 
 namespace Expo.JSI;
@@ -44,6 +45,56 @@ public readonly ref struct JavaScriptObjectRef
   /// Gets this object's own property names as managed strings.
   /// </summary>
   public IReadOnlyList<string> GetOwnPropertyNames() => Inner.GetOwnPropertyNames();
+
+  public void SetNativeState<TState>(TState state)
+      where TState : class, IJavaScriptNativeState<TState>
+  {
+    var inner = Inner;
+    var registration = inner.Context.NativeStates.Register(state);
+    try
+    {
+      inner.SetNativeState(registration);
+    }
+    catch
+    {
+      inner.Context.NativeStates.Release(registration.Token);
+      NativeStateRegistry.ReleaseContext(registration.ReleaseContext);
+      throw;
+    }
+  }
+
+  public TState GetNativeState<TState>()
+      where TState : class, IJavaScriptNativeState<TState>
+  {
+    var inner = Inner;
+    var result = inner.GetNativeState(TState.TypeId.Value);
+    if (!result.HasValue)
+    {
+      throw new InvalidOperationException(
+          $"NativeState entry for {typeof(TState).Name} is missing."
+      );
+    }
+    return inner.Context.NativeStates.Resolve<TState>(result.Token);
+  }
+
+  public bool TryGetNativeState<TState>([NotNullWhen(true)] out TState? state)
+      where TState : class, IJavaScriptNativeState<TState>
+  {
+    var inner = Inner;
+    var result = inner.GetNativeState(TState.TypeId.Value);
+    if (!result.HasValue)
+    {
+      state = null;
+      return false;
+    }
+    return inner.Context.NativeStates.TryResolve(result.Token, out state);
+  }
+
+  public void ClearNativeState<TState>()
+      where TState : class, IJavaScriptNativeState<TState>
+  {
+    Inner.ClearNativeState(TState.TypeId.Value);
+  }
 
   /// <summary>
   /// Retains this object ref as an owned JavaScript object wrapper.

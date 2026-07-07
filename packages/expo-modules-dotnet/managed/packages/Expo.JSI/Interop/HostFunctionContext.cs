@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using Expo.JSI;
+using Expo.JSI.Internal;
 
 namespace Expo.JSI.Interop;
 
@@ -10,17 +11,17 @@ internal sealed unsafe class HostFunctionContext
   private int lastErrorMessageLength;
 
   public HostFunctionContext(
-      ExpoJsiApi* api,
+      JsiContext jsiContext,
       JavaScriptHostFunction callback,
       object context
   )
   {
-    Api = api;
+    JsiContext = jsiContext;
     Callback = callback;
     Context = context;
   }
 
-  public ExpoJsiApi* Api { get; }
+  public JsiContext JsiContext { get; }
   public JavaScriptHostFunction Callback { get; }
   public object Context { get; }
 
