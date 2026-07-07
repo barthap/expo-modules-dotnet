@@ -218,6 +218,60 @@ public sealed class ModuleRegistryTests
   }
 
   [Fact]
+  public void EventEmitterDoesNotExposeEmitterIdProperty()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      using var module = context.ModuleRegistry.DefineNativeModule(modules, "Events");
+
+      using var result = fixture.Evaluate(
+          "const events = globalThis._expoDotnet.modules.Events;" +
+          "events.addListener('onChange', () => {});" +
+          "Object.prototype.hasOwnProperty.call(events, '__expo_dotnet_emitter_id__') || " +
+          "Object.getOwnPropertyNames(events).includes('__expo_dotnet_emitter_id__')",
+          "event-emitter-no-emitter-id.js"
+      );
+
+      Assert.False(result.AsBool());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void EventEmitterNativeStateKeepsExistingListenerBehavior()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      using var module = context.ModuleRegistry.DefineNativeModule(modules, "Events");
+
+      using var result = fixture.Evaluate(
+          "const events = globalThis._expoDotnet.modules.Events;" +
+          "let value = 0;" +
+          "const subscription = events.addListener('onChange', (next) => { value += next; });" +
+          "events.emit('onChange', 2);" +
+          "events.removeListener('onChange', () => {});" +
+          "events.emit('onChange', 3);" +
+          "subscription.remove();" +
+          "subscription.remove();" +
+          "events.emit('onChange', 5);" +
+          "value + ':' + events.listenerCount('onChange')",
+          "event-emitter-native-state-behavior.js"
+      );
+
+      Assert.Equal("5:0", result.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
   public void EventEmitterContinuesAfterListenerThrows()
   {
     using var fixture = HermesRuntimeFixture.Create();

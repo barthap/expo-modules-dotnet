@@ -4,8 +4,6 @@ namespace Expo.ModulesCore;
 
 internal sealed class EventEmitterRuntimeState : IDisposable
 {
-  private const string EmitterIdKey = "__expo_dotnet_emitter_id__";
-
   private readonly Dictionary<int, EmitterState> emitters = [];
   private int nextEmitterId = 1;
   private int nextListenerId = 1;
@@ -21,8 +19,7 @@ internal sealed class EventEmitterRuntimeState : IDisposable
     }
 
     var id = nextEmitterId++;
-    using var value = runtime.CreateNumber(id);
-    emitter.SetProperty(EmitterIdKey, value);
+    emitter.SetNativeState(new EventEmitterNativeState(id));
     emitters.Add(id, new EmitterState(emitter));
     return id;
   }
@@ -30,8 +27,9 @@ internal sealed class EventEmitterRuntimeState : IDisposable
   public int? GetEmitterId(JavaScriptObject emitter)
   {
     ThrowIfDisposed();
-    using var value = emitter.GetProperty(EmitterIdKey);
-    return value.IsDouble ? checked((int)value.AsDouble()) : null;
+    return emitter.TryGetNativeState<EventEmitterNativeState>(out var state)
+        ? state.EmitterId
+        : null;
   }
 
   public JavaScriptObject GetEmitter(int emitterId)
@@ -192,4 +190,13 @@ internal sealed class EventEmitterRuntimeState : IDisposable
     using var value = obj.AsValue();
     return value.AsObject();
   }
+}
+
+internal sealed class EventEmitterNativeState(int emitterId)
+    : IJavaScriptNativeState<EventEmitterNativeState>
+{
+  public static JavaScriptNativeStateTypeId TypeId { get; } =
+    JavaScriptNativeStateTypeId.FromName(nameof(EventEmitterNativeState));
+
+  public int EmitterId { get; } = emitterId;
 }
