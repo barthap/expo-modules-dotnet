@@ -13,12 +13,14 @@ namespace expo::dotnet::experiments {
 
 using run_proof_fn = int(EXPO_JSI_MANAGED_CALLTYPE *)(const expo_jsi_api *,
                                                       expo_jsi_runtime_handle);
-using register_modules_fn = int(EXPO_JSI_MANAGED_CALLTYPE *)(const expo_jsi_api *,
-                                                             expo_jsi_runtime_handle);
+using create_session_fn = void *(EXPO_JSI_MANAGED_CALLTYPE *)(const expo_jsi_api *,
+                                                              expo_jsi_runtime_handle);
+using teardown_session_fn = void(EXPO_JSI_MANAGED_CALLTYPE *)(void *);
 
 struct ManagedEntryPoints {
   run_proof_fn run_proof;
-  register_modules_fn register_modules;
+  create_session_fn create_session;
+  teardown_session_fn teardown_session;
 };
 
 ManagedEntryPoints loadManagedEntryPoints();

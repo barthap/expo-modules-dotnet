@@ -67,8 +67,9 @@ points from the published shared library. The native CMake flag
   - `EXPO_JSI_DOTNET_LOADER=nativeaot scripts/run-hermes-console-app.sh`
   - `scripts/run-hermes-console-app.sh`
 - Expected result: NativeAOT publishes `HermesConsoleApp` as a shared library,
-  the native app resolves `hermes_console_app_run` and
-  `hermes_console_app_register_modules`, and the existing Hermes proof prints
+  the native app resolves `hermes_console_app_run`,
+  `hermes_console_app_create_session`, and
+  `hermes_console_app_teardown_session`, and the existing Hermes proof prints
   `ok`.
 - Actual result: NativeAOT publish, native build, NativeAOT run, and default
   HostFXR run all completed successfully.

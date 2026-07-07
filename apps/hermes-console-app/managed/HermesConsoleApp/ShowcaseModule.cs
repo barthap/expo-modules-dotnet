@@ -12,6 +12,18 @@ internal sealed partial class ShowcaseModule : Module
   {
   }
 
+  [OnCreate]
+  public void OnCreate()
+  {
+    Console.WriteLine("Showcase module created");
+  }
+
+  [OnDestroy]
+  public void OnDestroy()
+  {
+    Console.WriteLine("Showcase module destroyed");
+  }
+
   [JS("getMessageAsync")]
   public async Task<string> GetMessageAsync()
   {

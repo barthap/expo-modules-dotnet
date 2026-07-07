@@ -84,18 +84,52 @@ ReleaseCounter make_release_counter(const expo_jsi_api *inner_api)
 }
 
 struct CSharpAPI {
-  proof::register_modules_fn register_modules;
+  proof::create_session_fn create_session;
+  proof::teardown_session_fn teardown_session;
   const expo_jsi_api *api;
   expo_jsi_runtime_handle runtime_handle;
+  void *runtime_context = nullptr;
+
+  CSharpAPI(proof::create_session_fn create_session,
+            proof::teardown_session_fn teardown_session,
+            const expo_jsi_api *api,
+            expo_jsi_runtime_handle runtime_handle)
+    : create_session(create_session),
+      teardown_session(teardown_session),
+      api(api),
+      runtime_handle(runtime_handle)
+  {
+  }
+
+  ~CSharpAPI()
+  {
+    teardown();
+  }
+
+  CSharpAPI(const CSharpAPI &) = delete;
+  CSharpAPI &operator=(const CSharpAPI &) = delete;
+
+  void teardown()
+  {
+    if (runtime_context == nullptr) {
+      return;
+    }
+    teardown_session(runtime_context);
+    runtime_context = nullptr;
+  }
 };
 
-void register_modules(jsi::Runtime &rt, CSharpAPI &cs)
+void create_managed_session(jsi::Runtime &rt, CSharpAPI &cs)
 {
-  int register_rc = cs.register_modules(cs.api, cs.runtime_handle);
-  if (register_rc != 0) {
-    throw std::runtime_error("Managed module registration failed with code " +
-                             std::to_string(register_rc));
+  cs.runtime_context = cs.create_session(cs.api, cs.runtime_handle);
+  if (cs.runtime_context == nullptr) {
+    throw std::runtime_error("Managed module registration failed.");
   }
+}
+
+void teardown_modules(CSharpAPI &cs)
+{
+  cs.teardown();
 }
 
 void run_generated_module_checks(jsi::Runtime &rt)
@@ -217,10 +251,11 @@ int main()
 
     auto release_counter = make_release_counter(expo::dotnet::api());
     active_release_counter = &release_counter;
-    auto cs = CSharpAPI{managed.register_modules, &release_counter.api, runtime_handle};
+    auto cs = CSharpAPI{
+      managed.create_session, managed.teardown_session, &release_counter.api, runtime_handle};
 
     connector.runtimeExecutor().executeSync([&](jsi::Runtime &rt) {
-      register_modules(rt, cs);
+      create_managed_session(rt, cs);
       run_generated_module_checks(rt);
       start_showcase_checks(rt);
     });
@@ -233,11 +268,12 @@ int main()
       throw std::runtime_error("Managed JSI proof failed with code " + std::to_string(rc));
     }
 
+    teardown_modules(cs);
+
     auto value_release_count = release_counter.value_release_count;
     std::cout << "Released owned value handles: " << value_release_count << std::endl;
-    if (value_release_count != 132) {
-      throw std::runtime_error(
-        "Expected exactly one hundred thirty-two counted owned value handle releases.");
+    if (value_release_count != 138) {
+      throw std::runtime_error("Expected exactly 138 counted owned value handle releases.");
     }
 
     auto string_release_count = release_counter.string_release_count;

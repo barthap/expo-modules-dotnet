@@ -119,7 +119,8 @@ ManagedEntryPoints loadHostFxrEntryPoints()
   auto load_assembly = getDotnetLoadAssembly(runtime_config);
 
   run_proof_fn run_proof = nullptr;
-  register_modules_fn register_modules = nullptr;
+  create_session_fn create_session = nullptr;
+  teardown_session_fn teardown_session = nullptr;
 
   int rc = load_assembly(assembly.c_str(),
                          "HermesConsoleApp.EntryPoints, HermesConsoleApp",
@@ -133,16 +134,27 @@ ManagedEntryPoints loadHostFxrEntryPoints()
 
   rc = load_assembly(assembly.c_str(),
                      "HermesConsoleApp.EntryPoints, HermesConsoleApp",
-                     "RegisterModules",
+                     "CreateRuntimeContext",
                      UNMANAGEDCALLERSONLY_METHOD,
                      nullptr,
-                     reinterpret_cast<void **>(&register_modules));
-  if (rc != 0 || register_modules == nullptr) {
-    throw std::runtime_error("Failed to resolve managed RegisterModules entry point: " +
+                     reinterpret_cast<void **>(&create_session));
+  if (rc != 0 || create_session == nullptr) {
+    throw std::runtime_error("Failed to resolve managed CreateRuntimeContext entry point: " +
                              std::to_string(rc));
   }
 
-  return ManagedEntryPoints{run_proof, register_modules};
+  rc = load_assembly(assembly.c_str(),
+                     "HermesConsoleApp.EntryPoints, HermesConsoleApp",
+                     "TeardownRuntimeContext",
+                     UNMANAGEDCALLERSONLY_METHOD,
+                     nullptr,
+                     reinterpret_cast<void **>(&teardown_session));
+  if (rc != 0 || teardown_session == nullptr) {
+    throw std::runtime_error("Failed to resolve managed TeardownRuntimeContext entry point: " +
+                             std::to_string(rc));
+  }
+
+  return ManagedEntryPoints{run_proof, create_session, teardown_session};
 }
 #endif
 
@@ -182,7 +194,8 @@ ManagedEntryPoints loadNativeAotEntryPoints()
 
   return ManagedEntryPoints{
     resolveExport<run_proof_fn>(library, "hermes_console_app_run"),
-    resolveExport<register_modules_fn>(library, "hermes_console_app_register_modules"),
+    resolveExport<create_session_fn>(library, "hermes_console_app_create_session"),
+    resolveExport<teardown_session_fn>(library, "hermes_console_app_teardown_session"),
   };
 }
 #endif

@@ -12,6 +12,18 @@ public sealed partial class ExampleMathModule : Module
   {
   }
 
+  [OnCreate]
+  public void OnCreate()
+  {
+    Console.WriteLine("ExampleModule created");
+  }
+
+  [OnDestroy]
+  public void OnDestroy()
+  {
+    Console.WriteLine("ExampleModule destroyed");
+  }
+
   [JS("add")]
   public double Add(double a, double b)
   {
