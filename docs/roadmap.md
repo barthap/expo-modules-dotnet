@@ -119,8 +119,10 @@ Completed scope:
       WebSocket, and data-heavy modules.
 
 2. **HostObject / NativeState / SharedObject**
-    - Add the object/state primitives needed for SharedObject, SharedRef, lazy
-      module access, and dynamic property surfaces.
+    - NativeState is complete as a generic, type-indexed object state primitive
+      and backs ModulesCore EventEmitter identity.
+    - HostObject, SharedObject, SharedRef, lazy module access, and dynamic
+      property surfaces remain future work.
 
 3. **Lazy module initialization**
     - Instantiate modules on first JS access once HostObject and lifecycle
@@ -155,8 +157,9 @@ managed wrapper surface.
   camera, file system, crypto, WebSocket binary, and data-heavy modules.
 - **P2/P3 — HostObject**: Property interceptor pattern — needed for
   SharedObject, lazy module initialization, and dynamic property access.
-- **P2/P3 — NativeState**: Attach native data to JS objects — needed for
-  SharedObject and SharedRef patterns.
+- **P2/P3 — NativeState**: complete. Generic type-indexed object state supports
+  hidden managed state identity without exposing raw JSI layouts or managed
+  object pointers.
 - **P2 — Events / EventEmitter**: Module-to-JS event emission — needed by nearly
   every interactive module, but lower priority than generated async methods.
 - **P2/P3 — `instanceof` checks**: Generalized beyond current Promise/Error —

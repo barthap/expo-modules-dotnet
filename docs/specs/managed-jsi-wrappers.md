@@ -45,6 +45,26 @@ functions, promises, promise values, and error objects.
 - **AND** return managed strings that remain valid after the native call
 - **AND** inherited prototype properties SHALL NOT be returned
 
+#### Scenario: Object wrapper stores type-indexed native state
+- **GIVEN** a managed state type implements `IJavaScriptNativeState<TState>`
+- **WHEN** managed code calls `SetNativeState<TState>`, `GetNativeState<TState>`,
+  `TryGetNativeState<TState>`, or `ClearNativeState<TState>` on a
+  `JavaScriptObject` or `JavaScriptObjectRef`
+- **THEN** the wrapper SHALL key the operation by `TState.TypeId`
+- **AND** the state type id SHALL come from a handwritten, trim-safe static
+  declaration rather than runtime type scanning or hot-path reflection
+- **AND** framework-owned state ids SHOULD be derived from `nameof(TState)` at
+  the declaring type instead of namespace-qualified runtime type names
+- **AND** duplicate live type ids for different managed state types SHALL fail
+  loudly
+
+#### Scenario: Object native state is hidden from JavaScript properties
+- **GIVEN** managed code attaches native state to a JavaScript object
+- **WHEN** JavaScript reads or enumerates the object's own properties
+- **THEN** the native state entry SHALL NOT appear as a JavaScript property
+- **AND** JavaScript SHALL NOT be able to spoof the state by assigning a
+  property with the same conceptual name
+
 #### Scenario: Array wrapper accesses indexes
 - **GIVEN** a `JavaScriptArray`
 - **WHEN** managed code reads length, gets a value, or sets a value at an index

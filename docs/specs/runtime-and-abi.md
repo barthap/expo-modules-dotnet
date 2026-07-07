@@ -312,6 +312,61 @@ matching managed teardown entry point.
 - **AND** still release managed pins and non-JSI module state
 - **AND** stale scheduled work SHALL not touch the runtime
 
+### Requirement: Object NativeState ABI
+
+The ABI SHALL expose generic object-associated native state operations through
+opaque object handles. Native `Expo.JSI` SHALL install at most one generic JSI
+NativeState holder on a JavaScript object and multiplex managed entries by
+handwritten managed state type id. The holder SHALL store opaque managed token
+tuples and release callbacks; it SHALL NOT know EventEmitter names, listener
+storage, module objects, SharedObject semantics, or other ModulesCore behavior.
+
+#### Scenario: State entry is attached
+- **GIVEN** managed code owns a JavaScript object wrapper
+- **AND** managed code has registered a managed state object in the current
+  runtime context's NativeState registry
+- **WHEN** managed code attaches that state to the object for `TState`
+- **THEN** native SHALL create or reuse the object's generic NativeState holder
+- **AND** native SHALL store the `type_id`, `registry_id`, `generation`, release
+  context, and release callback for `TState`
+- **AND** native SHALL NOT observe the managed state object's layout or module
+  semantics
+
+#### Scenario: State entry is retrieved
+- **GIVEN** a JavaScript object has a native state entry for `TState`
+- **WHEN** managed code requests the entry by `TState`'s type id
+- **THEN** native SHALL return the matching opaque token tuple when found
+- **AND** return a structured not-found result when missing
+- **AND** native SHALL NOT expose raw `facebook::jsi::NativeState` or managed
+  object addresses
+
+#### Scenario: State entry is replaced or cleared
+- **GIVEN** a JavaScript object has native state entries for multiple managed
+  state types
+- **WHEN** managed code replaces or clears the entry for `TState`
+- **THEN** native SHALL affect only the entry whose type id matches `TState`
+- **AND** entries for other managed state types SHALL remain attached
+- **AND** the replaced or cleared entry SHALL invoke its release callback
+  exactly once
+
+#### Scenario: State attach fails before ownership transfers
+- **GIVEN** managed code passes a registered state token and release context to
+  the native `set` operation
+- **WHEN** native fails before storing and arming the entry in the object's
+  NativeState holder
+- **THEN** native SHALL NOT invoke the release callback for that new entry
+- **AND** managed code SHALL remain responsible for releasing the registry entry
+  and release context on the failed attach path
+
+#### Scenario: NativeState release callback runs
+- **GIVEN** a native state entry is replaced, cleared, destroyed with the
+  JavaScript object, or released during runtime teardown
+- **WHEN** native invokes the managed release callback
+- **THEN** the callback SHALL be no-throw and idempotent
+- **AND** it SHALL only release or invalidate the managed registry entry
+- **AND** it SHALL NOT call JavaScript, touch JSI handles, schedule runtime
+  work, block on runtime work, or throw across the unmanaged boundary
+
 ### Requirement: ArrayBuffer Is Not Yet Wrapped
 
 The ABI value-kind enum MAY identify `ArrayBuffer`, but the managed package

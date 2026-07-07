@@ -66,3 +66,35 @@ handle scope and released when that scope exits.
 - **WHEN** managed code wraps it
 - **THEN** native remains responsible for keeping the runtime and API table
   valid for the wrapper lifetime
+
+### Requirement: NativeState Registry Owns Managed State Tokens
+
+Each managed runtime context SHALL own an internal NativeState registry that
+maps `(type id, registry id, generation)` token tuples to managed state objects.
+Native object state SHALL store only those token tuples and release callbacks,
+not raw managed object pointers.
+
+#### Scenario: Managed state is resolved
+- **GIVEN** native returns a NativeState token tuple for a JavaScript object
+- **WHEN** managed code resolves it as `TState`
+- **THEN** the registry SHALL validate runtime liveness, type id, registry id,
+  generation, and managed object type before returning the state object
+- **AND** `GetNativeState<TState>()` SHALL fail loudly when the entry is missing
+  or stale
+- **AND** `TryGetNativeState<TState>()` SHALL return `false` and `null` when the
+  entry is missing or stale
+
+#### Scenario: Managed state is released by native callback
+- **GIVEN** a native object state entry is destroyed, replaced, or cleared
+- **WHEN** native invokes the managed release callback
+- **THEN** the registry SHALL remove the matching token idempotently
+- **AND** duplicate or late release callbacks after registry disposal SHALL be
+  safe no-ops
+- **AND** the callback SHALL swallow managed exceptions before returning across
+  the unmanaged boundary
+
+#### Scenario: Runtime context disposes native state registry
+- **GIVEN** a runtime context owns live NativeState registry entries
+- **WHEN** the runtime context is disposed
+- **THEN** the registry SHALL invalidate all entries
+- **AND** stale native tokens SHALL no longer resolve to managed state

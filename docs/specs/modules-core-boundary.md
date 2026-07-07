@@ -351,29 +351,26 @@ inherited event methods. The ModulesCore-owned class hierarchy SHALL live under
 - **AND** new module objects SHALL NOT call prototype functions retained from
   the disposed context
 
-#### Design Note: NativeState and current emitter identity
+#### Scenario: EventEmitter identity is hidden native state
+- **GIVEN** JavaScript adds a listener to a ModulesCore event emitter object
+- **WHEN** ModulesCore needs to associate that object with managed listener
+  storage
+- **THEN** it SHALL attach an `EventEmitterNativeState` entry to the emitter
+  object through the generic `Expo.JSI` NativeState API
+- **AND** the native state entry SHALL contain only the managed emitter id used
+  by `EventEmitterRuntimeState`
+- **AND** ModulesCore SHALL NOT expose or mutate a
+  `__expo_dotnet_emitter_id__` JavaScript property
+- **AND** native `Expo.JSI` SHALL remain unaware of event names, listener
+  tables, observing hooks, and `_expoDotnet` classes
 
-The current event listener state does not use JSI `NativeState`. That is enough
-to keep the low-level bridge free of ModulesCore event code, but it does not
-make the current emitter-id approach ideal.
-
-The current `__expo_dotnet_emitter_id__` property is a managed-side substitute
-for hidden object-associated state. It works, but it is weaker than upstream:
-- it mutates the JS emitter object
-- it is observable/spoofable
-- it relies on a side dictionary in C#
-- lifetime is tied to `DotnetRuntimeContext`, not directly to the JS object
-
-Upstream iOS uses native state because listener state is hidden and follows the
-JS object. The production version should probably introduce a generic
-object-associated state ABI, not an event-specific one. Something like generic
-opaque per-object state with managed release callback, then ModulesCore uses it
-for EventEmitter and future SharedObject.
-
-The current implementation intentionally keeps event listener state out of
-low-level `Expo.JSI`; revisiting this should mean adding a generic native-state
-ABI primitive, not moving EventEmitter-specific code back into
-`ExpoJsiBridge.cpp`.
+#### Scenario: EventEmitter listener handles remain runtime-owned
+- **GIVEN** ModulesCore stores listener functions and retained emitter handles
+- **WHEN** a listener is removed or the owning runtime context is disposed
+- **THEN** `EventEmitterRuntimeState` SHALL release the retained JavaScript
+  handles through normal runtime-owned teardown
+- **AND** NativeState release for `EventEmitterNativeState` SHALL NOT dispose
+  JavaScript handles or call into JSI
 
 ### Requirement: Event Observing Hooks Use Module Object Functions
 
