@@ -39,7 +39,7 @@ export function requireDotnetModule<T>(name: string): T {
 
   const module = globalThis._expoDotnet?.modules?.[name];
   if (module == null) {
-    throw new Error(`.NET module '${name}' is not installed.`);
+    throw new Error(`Module '${name}' is not registered. Check that it is autolinked correctly.`);
   }
 
   return module as T;

@@ -729,8 +729,15 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine("  public static void Register(global::Expo.ModulesCore.DotnetRuntimeContext context)");
     builder.AppendLine("  {");
     builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(context);");
-    builder.AppendLine("    using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();");
-    builder.AppendLine("    Register(context, modules);");
+    foreach (var module in moduleModels)
+    {
+      builder.AppendLine("    context.ModuleRegistry.RegisterLazyModule(");
+      builder.AppendLine("        new global::Expo.ModulesCore.LazyModuleDefinition(");
+      builder.AppendLine($"            \"{EscapeString(module.ModuleName)}\",");
+      builder.AppendLine($"            static (context, modules) => {GetModuleRegistrationFunctionName(module)}(context, modules)");
+      builder.AppendLine("        )");
+      builder.AppendLine("    );");
+    }
     builder.AppendLine("  }");
     builder.AppendLine();
     builder.AppendLine("  public static void Register(global::Expo.ModulesCore.DotnetRuntimeContext context, global::Expo.JSI.JavaScriptObject modules)");
@@ -739,49 +746,13 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(modules);");
     foreach (var module in moduleModels)
     {
-      var moduleVariable = $"module_{SanitizeIdentifier(module.ModuleName)}";
-      var moduleInstanceVariable = $"instance_{SanitizeIdentifier(module.ModuleName)}";
-      var hasEvents = module.EventNames.Values.Count > 0;
-      var factoryExpression = module.ConstructorStrategy == ExpoModuleConstructorStrategy.RuntimeContext
-          ? $"() => new {module.FullyQualifiedTypeName}(context)"
-          : $"static () => new {module.FullyQualifiedTypeName}()";
-      var onCreateExpression = GetLifecycleHookExpression(module.OnCreateHook);
-      var onDestroyExpression = GetLifecycleHookExpression(module.OnDestroyHook);
-      builder.AppendLine(hasEvents
-          ? $"    using var {moduleVariable} = context.ModuleRegistry.DefineNativeModule(modules, \"{EscapeString(module.ModuleName)}\");"
-          : $"    using var {moduleVariable} = context.ModuleRegistry.DefineModule(modules, \"{EscapeString(module.ModuleName)}\");");
-      builder.AppendLine(module.OnCreateHook is null && module.OnDestroyHook is null
-          ? $"    var {moduleInstanceVariable} = context.ModuleRegistry.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", {factoryExpression});"
-          : $"    var {moduleInstanceVariable} = context.ModuleRegistry.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", {factoryExpression}, {onCreateExpression}, {onDestroyExpression});");
-      if (hasEvents)
-      {
-        builder.AppendLine(
-            $"    context.Events.Attach({moduleInstanceVariable}, {moduleVariable}, \"{EscapeString(module.ModuleName)}\", new[] {{ {string.Join(", ", module.EventNames.Values.Select(name => $"\"{EscapeString(name)}\""))} }});"
-        );
-      }
-      if (module.StartObservingHooks.Values.Count > 0)
-      {
-        EmitObservingHookRegistration(builder, module, moduleVariable, moduleInstanceVariable, "startObserving");
-      }
-      if (module.StopObservingHooks.Values.Count > 0)
-      {
-        EmitObservingHookRegistration(builder, module, moduleVariable, moduleInstanceVariable, "stopObserving");
-      }
-      foreach (var function in module.Functions.Values)
-      {
-        builder.AppendLine(function.IsAsync
-            ? "    GeneratedFunction.DefineAsync("
-            : "    GeneratedFunction.DefineSync(");
-        builder.AppendLine("        context,");
-        builder.AppendLine($"        {moduleVariable},");
-        builder.AppendLine($"        \"{EscapeString(function.JavaScriptName)}\",");
-        builder.AppendLine($"        {GetRequiredParameterCount(function)},");
-        builder.AppendLine($"        {GetHostFunctionName(module, function)},");
-        builder.AppendLine($"        {moduleInstanceVariable}");
-        builder.AppendLine("    );");
-      }
+      builder.AppendLine($"    using var module_{SanitizeIdentifier(module.ModuleName)} = {GetModuleRegistrationFunctionName(module)}(context, modules);");
     }
     builder.AppendLine("  }");
+    foreach (var module in moduleModels)
+    {
+      EmitModuleRegistrationFunction(builder, module);
+    }
     foreach (var module in moduleModels)
     {
       foreach (var function in module.Functions.Values)
@@ -800,6 +771,67 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine("}");
 
     context.AddSource($"{providerTypeName}.g.cs", SourceText.From(builder.ToString(), Encoding.UTF8));
+  }
+
+  private static void EmitModuleRegistrationFunction(StringBuilder builder, ExpoModuleModel module)
+  {
+    var moduleVariable = $"module_{SanitizeIdentifier(module.ModuleName)}";
+    var moduleInstanceVariable = $"instance_{SanitizeIdentifier(module.ModuleName)}";
+    var hasEvents = module.EventNames.Values.Count > 0;
+    var factoryExpression = module.ConstructorStrategy == ExpoModuleConstructorStrategy.RuntimeContext
+        ? $"() => new {module.FullyQualifiedTypeName}(context)"
+        : $"static () => new {module.FullyQualifiedTypeName}()";
+    var onCreateExpression = GetLifecycleHookExpression(module.OnCreateHook);
+    var onDestroyExpression = GetLifecycleHookExpression(module.OnDestroyHook);
+
+    builder.AppendLine();
+    builder.AppendLine($"  private static global::Expo.JSI.JavaScriptObject {GetModuleRegistrationFunctionName(module)}(");
+    builder.AppendLine("      global::Expo.ModulesCore.DotnetRuntimeContext context,");
+    builder.AppendLine("      global::Expo.JSI.JavaScriptObject modules)");
+    builder.AppendLine("  {");
+    builder.AppendLine(hasEvents
+        ? $"    var {moduleVariable} = context.ModuleRegistry.DefineNativeModule(modules, \"{EscapeString(module.ModuleName)}\");"
+        : $"    var {moduleVariable} = context.ModuleRegistry.DefineModule(modules, \"{EscapeString(module.ModuleName)}\");");
+    builder.AppendLine("    try");
+    builder.AppendLine("    {");
+    builder.AppendLine(module.OnCreateHook is null && module.OnDestroyHook is null
+        ? $"      var {moduleInstanceVariable} = context.ModuleRegistry.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", {factoryExpression});"
+        : $"      var {moduleInstanceVariable} = context.ModuleRegistry.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", {factoryExpression}, {onCreateExpression}, {onDestroyExpression});");
+    if (hasEvents)
+    {
+      builder.AppendLine(
+          $"      context.Events.Attach({moduleInstanceVariable}, {moduleVariable}, \"{EscapeString(module.ModuleName)}\", new[] {{ {string.Join(", ", module.EventNames.Values.Select(name => $"\"{EscapeString(name)}\""))} }});"
+      );
+    }
+    if (module.StartObservingHooks.Values.Count > 0)
+    {
+      EmitObservingHookRegistration(builder, module, moduleVariable, moduleInstanceVariable, "startObserving", "      ");
+    }
+    if (module.StopObservingHooks.Values.Count > 0)
+    {
+      EmitObservingHookRegistration(builder, module, moduleVariable, moduleInstanceVariable, "stopObserving", "      ");
+    }
+    foreach (var function in module.Functions.Values)
+    {
+      builder.AppendLine(function.IsAsync
+          ? "      GeneratedFunction.DefineAsync("
+          : "      GeneratedFunction.DefineSync(");
+      builder.AppendLine("          context,");
+      builder.AppendLine($"          {moduleVariable},");
+      builder.AppendLine($"          \"{EscapeString(function.JavaScriptName)}\",");
+      builder.AppendLine($"          {GetRequiredParameterCount(function)},");
+      builder.AppendLine($"          {GetHostFunctionName(module, function)},");
+      builder.AppendLine($"          {moduleInstanceVariable}");
+      builder.AppendLine("      );");
+    }
+    builder.AppendLine($"      return {moduleVariable};");
+    builder.AppendLine("    }");
+    builder.AppendLine("    catch");
+    builder.AppendLine("    {");
+    builder.AppendLine($"      {moduleVariable}.Dispose();");
+    builder.AppendLine("      throw;");
+    builder.AppendLine("    }");
+    builder.AppendLine("  }");
   }
 
   private static Diagnostic ToDiagnostic(ExpoDiagnosticModel model)
@@ -830,16 +862,17 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       ExpoModuleModel module,
       string moduleVariable,
       string moduleInstanceVariable,
-      string javaScriptName)
+      string javaScriptName,
+      string indent = "    ")
   {
-    builder.AppendLine("    GeneratedFunction.DefineSync(");
-    builder.AppendLine("        context,");
-    builder.AppendLine($"        {moduleVariable},");
-    builder.AppendLine($"        \"{javaScriptName}\",");
-    builder.AppendLine("        1,");
-    builder.AppendLine($"        {GetObservingHookFunctionName(module, javaScriptName)},");
-    builder.AppendLine($"        {moduleInstanceVariable}");
-    builder.AppendLine("    );");
+    builder.AppendLine($"{indent}GeneratedFunction.DefineSync(");
+    builder.AppendLine($"{indent}    context,");
+    builder.AppendLine($"{indent}    {moduleVariable},");
+    builder.AppendLine($"{indent}    \"{javaScriptName}\",");
+    builder.AppendLine($"{indent}    1,");
+    builder.AppendLine($"{indent}    {GetObservingHookFunctionName(module, javaScriptName)},");
+    builder.AppendLine($"{indent}    {moduleInstanceVariable}");
+    builder.AppendLine($"{indent});");
   }
 
   private static void EmitHostFunction(
@@ -1077,6 +1110,9 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 
   private static string GetHostFunctionName(ExpoModuleModel module, ExpoFunctionModel function) =>
       $"{SanitizeIdentifier(module.ModuleName)}_{SanitizeIdentifier(function.JavaScriptName)}_HostFunction";
+
+  private static string GetModuleRegistrationFunctionName(ExpoModuleModel module) =>
+      $"Register{SanitizeIdentifier(module.ModuleName)}";
 
   private static string GetObservingHookFunctionName(ExpoModuleModel module, string javaScriptName) =>
       $"{SanitizeIdentifier(module.ModuleName)}_{SanitizeIdentifier(javaScriptName)}_HostFunction";

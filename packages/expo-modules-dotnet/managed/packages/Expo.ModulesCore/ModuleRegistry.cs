@@ -5,15 +5,26 @@ namespace Expo.ModulesCore;
 public sealed class ModuleRegistry
 {
   private readonly object gate = new();
+  private readonly DotnetRuntimeContext? context;
   private readonly JavaScriptRuntime runtime;
   private readonly JavaScriptObjectFactory? objectFactory;
   private readonly Dictionary<string, ModuleEntry> moduleInstances = new(StringComparer.Ordinal);
+  private readonly Dictionary<string, LazyModuleDefinition> lazyModules = new(StringComparer.Ordinal);
+  private readonly Dictionary<string, JavaScriptObject> lazyModuleObjects = new(StringComparer.Ordinal);
+  private JavaScriptObject? lazyModulesHostObject;
+  private JavaScriptObject? lazyModulesBackingObject;
   private bool disposed;
 
   internal ModuleRegistry(JavaScriptRuntime runtime, JavaScriptObjectFactory objectFactory)
   {
     this.runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
     this.objectFactory = objectFactory ?? throw new ArgumentNullException(nameof(objectFactory));
+  }
+
+  internal ModuleRegistry(DotnetRuntimeContext context, JavaScriptObjectFactory objectFactory)
+      : this(context.Runtime, objectFactory)
+  {
+    this.context = context ?? throw new ArgumentNullException(nameof(context));
   }
 
   public T GetOrCreateModule<T>(string moduleName, Func<T> factory)
@@ -70,11 +81,40 @@ public sealed class ModuleRegistry
         return DefineNativeModule(objectFactory, modules, moduleName);
       });
 
+  public void RegisterLazyModule(LazyModuleDefinition definition)
+  {
+    ArgumentNullException.ThrowIfNull(definition);
+    ArgumentException.ThrowIfNullOrWhiteSpace(definition.Name);
+    ArgumentNullException.ThrowIfNull(definition.CreateModule);
+
+    lock (gate)
+    {
+      ThrowIfDisposedLocked();
+      if (context is null)
+      {
+        throw new InvalidOperationException(
+            "Lazy module registration requires a runtime context."
+        );
+      }
+      lazyModules[definition.Name] = definition;
+    }
+
+    EnsureLazyDotnetModulesObject();
+  }
+
   public JavaScriptObject GetOrCreateExpoModulesObject() =>
       WithLiveRegistry(() => GetOrCreateExpoModulesObject(runtime));
 
   public JavaScriptObject GetOrCreateDotnetModulesObject() =>
-      WithLiveRegistry(() => GetOrCreateDotnetModulesObject(runtime));
+      WithLiveRegistry(() =>
+      {
+        if (lazyModulesBackingObject is not null)
+        {
+          using var backingValue = lazyModulesBackingObject.AsValue();
+          return backingValue.AsObject();
+        }
+        return GetOrCreateDotnetModulesObject(runtime);
+      });
 
   internal void Dispose()
   {
@@ -89,6 +129,16 @@ public sealed class ModuleRegistry
       disposed = true;
       modules = moduleInstances.Values.ToList();
       moduleInstances.Clear();
+      lazyModules.Clear();
+      foreach (var module in lazyModuleObjects.Values)
+      {
+        module.Dispose();
+      }
+      lazyModuleObjects.Clear();
+      lazyModulesHostObject?.Dispose();
+      lazyModulesHostObject = null;
+      lazyModulesBackingObject?.Dispose();
+      lazyModulesBackingObject = null;
     }
 
     List<Exception>? exceptions = null;
@@ -213,6 +263,130 @@ public sealed class ModuleRegistry
       ThrowIfDisposedLocked();
     }
     return action();
+  }
+
+  private void EnsureLazyDotnetModulesObject()
+  {
+    JavaScriptObject? modulesHostObject;
+    lock (gate)
+    {
+      ThrowIfDisposedLocked();
+      modulesHostObject = lazyModulesHostObject;
+    }
+
+    if (modulesHostObject is not null)
+    {
+      return;
+    }
+
+    using var global = runtime.Global();
+    using var expoDotnet = GetOrCreateObject(runtime, global, "_expoDotnet");
+    using var existingModulesValue = expoDotnet.GetProperty("modules");
+    var backingObject = existingModulesValue.IsObject
+        ? existingModulesValue.AsObject()
+        : runtime.CreateObject();
+    var hostObject = runtime.CreateHostObject(new JavaScriptHostObjectDescriptor(
+        GetLazyModuleProperty,
+        Set: (_, propertyName, _, _) =>
+        {
+          throw new InvalidOperationException(
+              $"Cannot set property '{propertyName}' on _expoDotnet.modules."
+          );
+        },
+        GetPropertyNames: _ => GetLazyModuleNames()
+    ));
+
+    lock (gate)
+    {
+      ThrowIfDisposedLocked();
+      if (lazyModulesHostObject is not null)
+      {
+        hostObject.Dispose();
+        backingObject.Dispose();
+        return;
+      }
+
+      lazyModulesHostObject = hostObject;
+      lazyModulesBackingObject = backingObject;
+      using var modulesValue = hostObject.AsValue();
+      expoDotnet.SetProperty("modules", modulesValue);
+    }
+  }
+
+  private JavaScriptValue GetLazyModuleProperty(
+      JavaScriptRuntime callbackRuntime,
+      string propertyName,
+      object? state)
+  {
+    if (propertyName == "$$typeof")
+    {
+      return callbackRuntime.CreateUndefined();
+    }
+
+    LazyModuleDefinition definition;
+    JavaScriptObject? cached;
+    JavaScriptObject backingObject;
+    DotnetRuntimeContext ownerContext;
+    lock (gate)
+    {
+      ThrowIfDisposedLocked();
+      if (!lazyModules.TryGetValue(propertyName, out definition!))
+      {
+        backingObject = lazyModulesBackingObject ?? throw new InvalidOperationException(
+            "Lazy dotnet modules backing object is missing."
+        );
+        return backingObject.GetProperty(propertyName);
+      }
+      if (lazyModuleObjects.TryGetValue(propertyName, out cached))
+      {
+        return cached.AsValue();
+      }
+      backingObject = lazyModulesBackingObject ?? throw new InvalidOperationException(
+          "Lazy dotnet modules backing object is missing."
+      );
+      ownerContext = context ?? throw new InvalidOperationException(
+          "Lazy module registration requires a runtime context."
+      );
+    }
+
+    var created = definition.CreateModule(ownerContext, backingObject);
+    lock (gate)
+    {
+      ThrowIfDisposedLocked();
+      if (lazyModuleObjects.TryGetValue(propertyName, out cached))
+      {
+        created.Dispose();
+        return cached.AsValue();
+      }
+      lazyModuleObjects.Add(propertyName, created);
+      return created.AsValue();
+    }
+  }
+
+  private IReadOnlyList<string> GetLazyModuleNames()
+  {
+    JavaScriptObject? backingObject;
+    List<string> names;
+    lock (gate)
+    {
+      ThrowIfDisposedLocked();
+      names = lazyModules.Keys.ToList();
+      backingObject = lazyModulesBackingObject;
+    }
+
+    if (backingObject is null)
+    {
+      return names;
+    }
+
+    foreach (var name in backingObject.GetOwnPropertyNames())
+    {
+      if (!names.Contains(name, StringComparer.Ordinal))
+      {
+        names.Add(name);
+      }
+    }
+    return names;
   }
 
   private sealed record ModuleEntry(object Instance, Action<object>? OnDestroy);

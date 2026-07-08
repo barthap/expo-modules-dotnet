@@ -7,6 +7,151 @@ namespace Expo.ModulesCore.Tests.Generated;
 public sealed class ModuleRegistryTests
 {
   [Fact]
+  public void LazyDotnetModulesObjectEnumeratesNamesWithoutCreatingModules()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      var createCount = 0;
+      context.ModuleRegistry.RegisterLazyModule(new LazyModuleDefinition(
+          "Camera",
+          (moduleContext, modules) =>
+          {
+            createCount++;
+            return moduleContext.ModuleRegistry.DefineModule(modules, "Camera");
+          }
+      ));
+
+      using var names = fixture.Evaluate(
+          "Object.keys(globalThis._expoDotnet.modules).join(',')",
+          "lazy-modules-keys.js"
+      );
+
+      Assert.Equal("Camera", names.AsString());
+      Assert.Equal(0, createCount);
+      return true;
+    });
+  }
+
+  [Fact]
+  public void LazyDotnetModulesObjectCreatesKnownModuleOnFirstRead()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      var createCount = 0;
+      context.ModuleRegistry.RegisterLazyModule(new LazyModuleDefinition(
+          "Camera",
+          (moduleContext, modules) =>
+          {
+            createCount++;
+            var module = moduleContext.ModuleRegistry.DefineModule(modules, "Camera");
+            using var value = moduleContext.Runtime.CreateString("ready");
+            module.SetProperty("status", value);
+            return module;
+          }
+      ));
+
+      using var result = fixture.Evaluate(
+          "const first = globalThis._expoDotnet.modules.Camera;" +
+          "const second = globalThis._expoDotnet.modules.Camera;" +
+          "first === second && first.status",
+          "lazy-modules-first-read.js"
+      );
+
+      Assert.Equal("ready", result.AsString());
+      Assert.Equal(1, createCount);
+      return true;
+    });
+  }
+
+  [Fact]
+  public void LazyDotnetModulesObjectReturnsUndefinedForUnknownAndProbeProperties()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      context.ModuleRegistry.RegisterLazyModule(new LazyModuleDefinition(
+          "Camera",
+          (moduleContext, modules) => moduleContext.ModuleRegistry.DefineModule(modules, "Camera")
+      ));
+
+      using var result = fixture.Evaluate(
+          "String(globalThis._expoDotnet.modules.Unknown) + ':' + " +
+          "String(globalThis._expoDotnet.modules.$$typeof)",
+          "lazy-modules-unknown.js"
+      );
+
+      Assert.Equal("undefined:undefined", result.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void LazyDotnetModulesObjectPreservesExistingExplicitModules()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      using var explicitModule = context.ModuleRegistry.DefineModule(modules, "Explicit");
+      using var value = runtime.CreateString("ready");
+      explicitModule.SetProperty("status", value);
+
+      context.ModuleRegistry.RegisterLazyModule(new LazyModuleDefinition(
+          "Lazy",
+          (moduleContext, backingModules) => moduleContext.ModuleRegistry.DefineModule(backingModules, "Lazy")
+      ));
+
+      using var result = fixture.Evaluate(
+          "Object.keys(globalThis._expoDotnet.modules).join(',') + ':' + " +
+          "globalThis._expoDotnet.modules.Explicit.status",
+          "lazy-modules-preserves-existing-explicit.js"
+      );
+
+      Assert.Equal("Lazy,Explicit:ready", result.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void LazyDotnetModulesObjectExposesExplicitModulesAddedAfterLazySetup()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      context.ModuleRegistry.RegisterLazyModule(new LazyModuleDefinition(
+          "Lazy",
+          (moduleContext, backingModules) => moduleContext.ModuleRegistry.DefineModule(backingModules, "Lazy")
+      ));
+
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      using var explicitModule = context.ModuleRegistry.DefineModule(modules, "Explicit");
+      using var value = runtime.CreateString("ready");
+      explicitModule.SetProperty("status", value);
+
+      using var result = fixture.Evaluate(
+          "Object.keys(globalThis._expoDotnet.modules).join(',') + ':' + " +
+          "globalThis._expoDotnet.modules.Explicit.status",
+          "lazy-modules-exposes-late-explicit.js"
+      );
+
+      Assert.Equal("Lazy,Explicit:ready", result.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
   public void DotnetModulesObjectIsCreatedWithoutCreatingExpoGlobal()
   {
     using var fixture = HermesRuntimeFixture.Create();

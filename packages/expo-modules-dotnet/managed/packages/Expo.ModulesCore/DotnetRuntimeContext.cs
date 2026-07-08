@@ -41,7 +41,7 @@ public sealed class DotnetRuntimeContext : IDisposable
     Runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
     objects = new JavaScriptObjectFactory(Runtime);
     events = new ModuleEventEmitter(this);
-    moduleRegistry = new ModuleRegistry(Runtime, objects);
+    moduleRegistry = new ModuleRegistry(this, objects);
   }
 
   /// <summary>

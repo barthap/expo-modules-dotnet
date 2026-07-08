@@ -37,11 +37,13 @@ public sealed class ExpoModulesGeneratorTests
     );
     Assert.DoesNotContain("public static void Register(global::Expo.JSI.JavaScriptRuntime runtime", source);
     Assert.Contains("global::System.ArgumentNullException.ThrowIfNull(context);", source);
-    Assert.Contains("using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();", source);
-    Assert.Contains("Register(context, modules);", source);
+    Assert.Contains("context.ModuleRegistry.RegisterLazyModule(", source);
+    Assert.Contains("new global::Expo.ModulesCore.LazyModuleDefinition(", source);
+    Assert.DoesNotContain("using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();", source);
     Assert.Contains("global::System.ArgumentNullException.ThrowIfNull(modules);", source);
     Assert.Contains("context.ModuleRegistry.DefineModule(modules, \"Math\")", source);
     Assert.Contains("context.ModuleRegistry.GetOrCreateModule(\"Math\", static () => new global::Expo.TestModules.MathModule())", source);
+    Assert.Contains("RegisterMath(context, modules)", source);
   }
 
   [Fact]

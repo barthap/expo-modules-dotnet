@@ -9,6 +9,40 @@ namespace Expo.ModulesCore.Tests.Generated;
 public sealed class GeneratedMathAndTextModuleTests
 {
   [Fact]
+  public void DefaultGeneratedRegistrationCreatesModulesLazily()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      MathModule.CreateCount = 0;
+      TextModule.CreateCount = 0;
+
+      GeneratedMathAndTextModuleProvider.Register(context);
+
+      using var beforeAccess = fixture.Evaluate(
+          "Object.keys(globalThis._expoDotnet.modules).join(',') + ':' + " +
+          "String(globalThis._expoDotnet.modules.Unknown)",
+          "generated-lazy-before-access.js"
+      );
+      Assert.Equal("Math,Text:undefined", beforeAccess.AsString());
+      Assert.Equal(0, MathModule.CreateCount);
+      Assert.Equal(0, TextModule.CreateCount);
+
+      using var result = fixture.Evaluate(
+          "globalThis._expoDotnet.modules.Math.add(41.5, true)",
+          "generated-lazy-call.js"
+      );
+
+      Assert.Equal(42.5, result.AsDouble());
+      Assert.Equal(1, MathModule.CreateCount);
+      Assert.Equal(0, TextModule.CreateCount);
+      return true;
+    });
+  }
+
+  [Fact]
   public void GeneratedLookingCodeDispatchesSyncFunction()
   {
     using var fixture = HermesRuntimeFixture.Create();
@@ -103,40 +137,100 @@ public sealed class GeneratedMathAndTextModuleTests
 
   private sealed class MathModule
   {
+    public static int CreateCount { get; set; }
+
+    public MathModule()
+    {
+      CreateCount++;
+    }
+
     public double Add(double value, bool shouldAddOne) =>
         shouldAddOne ? value + 1.0 : value;
   }
 
   private sealed class TextModule
   {
+    public static int CreateCount { get; set; }
+
+    public TextModule()
+    {
+      CreateCount++;
+    }
+
     public string Greet(string name) => $"Hello, {name}";
   }
 
   private static class GeneratedMathAndTextModuleProvider
   {
+    public static void Register(DotnetRuntimeContext context)
+    {
+      ArgumentNullException.ThrowIfNull(context);
+      context.ModuleRegistry.RegisterLazyModule(
+          new LazyModuleDefinition(
+              "Math",
+              static (context, modules) => RegisterMath(context, modules)
+          )
+      );
+      context.ModuleRegistry.RegisterLazyModule(
+          new LazyModuleDefinition(
+              "Text",
+              static (context, modules) => RegisterText(context, modules)
+          )
+      );
+    }
+
     public static void Register(DotnetRuntimeContext context, JavaScriptObject modules)
     {
-      using var math = context.ModuleRegistry.DefineModule(modules, "Math");
-      using var text = context.ModuleRegistry.DefineModule(modules, "Text");
-      var mathModule = context.ModuleRegistry.GetOrCreateModule("Math", static () => new MathModule());
-      var textModule = context.ModuleRegistry.GetOrCreateModule("Text", static () => new TextModule());
+      ArgumentNullException.ThrowIfNull(context);
+      ArgumentNullException.ThrowIfNull(modules);
+      using var math = RegisterMath(context, modules);
+      using var text = RegisterText(context, modules);
+    }
 
-      GeneratedFunction.DefineSync(
-          context,
-          math,
-          "add",
-          2,
-          MathAddHostFunction,
-          mathModule
-      );
-      GeneratedFunction.DefineSync(
-          context,
-          text,
-          "greet",
-          1,
-          TextGreetHostFunction,
-          textModule
-      );
+    private static JavaScriptObject RegisterMath(DotnetRuntimeContext context, JavaScriptObject modules)
+    {
+      var math = context.ModuleRegistry.DefineModule(modules, "Math");
+      try
+      {
+        var mathModule = context.ModuleRegistry.GetOrCreateModule("Math", static () => new MathModule());
+        GeneratedFunction.DefineSync(
+            context,
+            math,
+            "add",
+            2,
+            MathAddHostFunction,
+            mathModule
+        );
+        return math;
+      }
+      catch
+      {
+        math.Dispose();
+        throw;
+      }
+    }
+
+    private static JavaScriptObject RegisterText(DotnetRuntimeContext context, JavaScriptObject modules)
+    {
+      var text = context.ModuleRegistry.DefineModule(modules, "Text");
+      try
+      {
+        var textModule = context.ModuleRegistry.GetOrCreateModule("Text", static () => new TextModule());
+        GeneratedFunction.DefineSync(
+            context,
+            text,
+            "greet",
+            1,
+            TextGreetHostFunction,
+            textModule
+        );
+        return text;
+      }
+      catch
+      {
+        text.Dispose();
+        throw;
+      }
     }
 
     private static JavaScriptValue MathAddHostFunction(
