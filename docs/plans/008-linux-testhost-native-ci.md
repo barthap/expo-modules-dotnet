@@ -7,11 +7,11 @@
 > in `docs/plans/README.md` — unless a reviewer dispatched you and told you they
 > maintain the index.
 >
-> **Drift check (run first)**: `git diff --stat 0f6fc760..HEAD -- scripts/ cmake/ packages/expo-modules-dotnet/native/testhost/ .github/workflows/`
-> If any in-scope file changed since this plan was written, compare the
+> **Drift check (run first)**: `git diff --stat aaadb165..HEAD -- scripts/ cmake/ packages/expo-modules-dotnet/native/testhost/ .github/workflows/`
+> If any in-scope file changed since this plan was re-baselined, compare the
 > "Current state" excerpts against the live code before proceeding; on a
-> mismatch, treat it as a STOP condition. (Exception: `.github/workflows/checks.yml`
-> existing is EXPECTED — plan 001 creates it.)
+> mismatch, treat it as a STOP condition. (`.github/workflows/checks.yml` from
+> plan 001 already exists at the re-baseline commit; that is EXPECTED, not drift.)
 
 ## Status
 
@@ -22,7 +22,11 @@
   established there; this plan adds the second workflow of the agreed
   two-file architecture)
 - **Category**: dx
-- **Planned at**: commit `0f6fc760`, 2026-07-08 (design agreed with operator same day)
+- **Planned at**: commit `0f6fc760`, 2026-07-08 (design agreed with operator same day).
+  Re-baselined to `aaadb165` (2026-07-08) after plan 001 landed: `checks.yml`
+  committed, and the F-001 formatter fix reflowed `cmake/ExpoHermesPrebuilt.cmake`
+  and `testhost/include/expo_jsi_testhost.h` (cmake-format/clang-format only —
+  no logic change). Line refs below refreshed to the `aaadb165` layout.
 
 ## Operator-decided CI architecture (do not deviate)
 
@@ -53,11 +57,13 @@ Linux puts the full suite on cheap 1×-multiplier runners and proves the
 - Platform state AFTER commit `e380065e` ("Port build/test scripts to
   Windows", 2026-07-08 rebase): macOS AND Windows are supported; Linux is the
   only missing leg.
-  - `cmake/ExpoHermesPrebuilt.cmake` (NEW, shared) — locates and links the
-    Hermes prebuilt: `if(APPLE)` links `hermesvm.framework` (lines ~42–62),
-    `elseif(WIN32)` handles `hermesvm.dll`/`hermes.dll` + ICU dll staging
-    (lines ~63–126). **The Linux port is now a branch in THIS file** — the
-    testhost `CMakeLists.txt` already delegates here.
+  - `cmake/ExpoHermesPrebuilt.cmake` (shared) — locates and links the
+    Hermes prebuilt inside `expo_configure_hermes_target()`: `if(APPLE)` links
+    `hermesvm.framework` (lines ~53–73), `elseif(WIN32)` handles
+    `hermesvm.dll`/`hermes.dll` + ICU dll staging (lines ~74–140), then a final
+    `else()` that FATAL_ERRORs on unsupported platforms (lines ~141–144). **The
+    Linux port is a new `elseif(UNIX AND NOT APPLE)` branch inserted before that
+    final `else()`** — the testhost `CMakeLists.txt` already delegates here.
   - Build scripts: `scripts/build-hermes-macos.sh` and
     `scripts/build-hermes-windows.ps1` (NEW) — both driven by
     `scripts/hermes-ref.txt` (override `HERMES_REF`), output under

@@ -5,7 +5,14 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 build_dir="$repo_root/build/jsi-testhost"
 configuration="${CONFIGURATION:-Debug}"
 hermes_root="${HERMES_PREBUILT_ROOT:-$repo_root/build/hermes/source/destroot}"
-testhost_library="$build_dir/libexpo_jsi_testhost.dylib"
+
+if [[ "$(uname)" == "Darwin" ]]; then
+  testhost_library="$build_dir/libexpo_jsi_testhost.dylib"
+  _build_hermes_hint="scripts/build-hermes-macos.sh"
+else
+  testhost_library="$build_dir/libexpo_jsi_testhost.so"
+  _build_hermes_hint="scripts/build-hermes-linux.sh"
+fi
 
 run_in_repo_env() {
 	if command -v direnv >/dev/null 2>&1; then
@@ -34,7 +41,7 @@ Hermes prebuilt was not found at:
   $hermes_root
 
 Run:
-  scripts/build-hermes-macos.sh
+  $_build_hermes_hint
 EOF
 	exit 1
 fi
@@ -59,10 +66,23 @@ dotnet test "$repo_root/packages/expo-modules-dotnet/managed/packages/Expo.Modul
 echo
 echo "==> Configuring native testhost"
 rm -rf "$build_dir"
+_cmake_extra_args=()
+if [[ "$(uname)" != "Darwin" ]]; then
+  # On Linux pick Ninja if available and prefer clang when the default C++
+  # compiler is not set, to match the CI toolchain.
+  if command -v ninja >/dev/null 2>&1; then
+    _cmake_extra_args+=("-G" "Ninja")
+  fi
+  if [[ -z "${CXX:-}" ]] && command -v clang++ >/dev/null 2>&1; then
+    export CC="${CC:-clang}"
+    export CXX="${CXX:-clang++}"
+  fi
+fi
 run_in_repo_env cmake \
 	-S "$repo_root/packages/expo-modules-dotnet/native/testhost" \
 	-B "$build_dir" \
-	-DHERMES_PREBUILT_ROOT="$hermes_root"
+	-DHERMES_PREBUILT_ROOT="$hermes_root" \
+	${_cmake_extra_args[@]+"${_cmake_extra_args[@]}"}
 
 echo
 echo "==> Building native testhost"
