@@ -23,7 +23,7 @@ native JavaScript runtime.
 #### Scenario: Runtime creates compound values
 - **GIVEN** managed code has a `JavaScriptRuntime`
 - **WHEN** it calls `Global`, `CreateObject`, `CreateArray`,
-  `CreateHostFunction`, or `CreatePromise`
+  `CreateHostFunction`, `CreateHostObject`, or `CreatePromise`
 - **THEN** the runtime SHALL return a typed owned wrapper over a native handle
 
 ### Requirement: Typed Owned Wrappers
@@ -70,6 +70,59 @@ functions, promises, promise values, and error objects.
 - **WHEN** managed code reads length, gets a value, or sets a value at an index
 - **THEN** the wrapper SHALL call the array ABI functions and preserve owned
   wrapper disposal rules
+
+### Requirement: Managed HostObject Wrapper
+
+`Expo.JSI` SHALL expose HostObject as a low-level JavaScript object primitive
+on `JavaScriptRuntime`. The managed HostObject API SHALL remain below
+`Expo.ModulesCore` and SHALL NOT know about `_expoDotnet`, module names,
+autolinking, SharedObject, or SharedRef.
+
+#### Scenario: Runtime creates a HostObject
+- **GIVEN** managed code has a live `JavaScriptRuntime`
+- **WHEN** it calls `CreateHostObject` with managed callbacks
+- **THEN** it SHALL receive an owned `JavaScriptObject`
+- **AND** that object SHALL dispatch property access through the supplied
+  callbacks
+
+#### Scenario: Runtime creates a typed HostObject wrapper
+- **GIVEN** managed code has a live `JavaScriptRuntime`
+- **AND** managed code has typed reference state for HostObject callbacks
+- **WHEN** it calls `CreateHostObject<TState>` with that state and managed
+  typed callbacks
+- **THEN** it SHALL receive an owned `JavaScriptHostObject<TState>`
+- **AND** HostObject getter, setter, and property-name callbacks SHALL receive
+  `TState` directly instead of requiring casts from `object`
+- **AND** the wrapper SHALL expose the typed `State`
+- **AND** the wrapper SHALL expose the composed `JavaScriptObject`
+- **AND** `AsValue` and `Dispose` SHALL delegate to the composed
+  `JavaScriptObject`
+- **AND** `JavaScriptObject` SHALL NOT inherit or know HostObject internals
+- **AND** disposing the typed wrapper SHALL release the composed object wrapper
+  but SHALL NOT guarantee callback state is released while JavaScript still
+  retains the HostObject
+
+#### Scenario: HostObject getter returns an owned value
+- **GIVEN** JavaScript reads a property on a managed HostObject
+- **WHEN** the managed getter returns a `JavaScriptValue`
+- **THEN** ownership of that value SHALL transfer to the HostObject bridge
+- **AND** the bridge SHALL return the value to JavaScript
+
+#### Scenario: HostObject setter receives invocation-scoped input
+- **GIVEN** JavaScript assigns a property on a managed HostObject with a setter
+- **WHEN** the setter callback runs
+- **THEN** the assigned value SHALL be exposed as a `JavaScriptValueRef` valid
+  only for that setter invocation
+- **AND** managed code SHALL retain an owned copy before storing it beyond the
+  callback
+
+#### Scenario: HostObject callback fails
+- **GIVEN** a managed HostObject getter, setter, or property-name callback
+  throws
+- **WHEN** JavaScript initiated the operation
+- **THEN** JavaScript SHALL observe a catchable `Error`
+- **AND** unmanaged callback cleanup SHALL log and swallow cleanup failures
+  rather than throwing across the ABI
 
 ### Requirement: Function Wrapper Invocation
 

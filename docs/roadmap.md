@@ -121,12 +121,21 @@ Completed scope:
 2. **HostObject / NativeState / SharedObject**
     - NativeState is complete as a generic, type-indexed object state primitive
       and backs ModulesCore EventEmitter identity.
-    - HostObject, SharedObject, SharedRef, lazy module access, and dynamic
-      property surfaces remain future work.
+    - HostObject is complete as a generic low-level property interceptor
+      primitive in `Expo.JSI`.
+    - SharedObject and SharedRef remain future work. Direction: follow upstream
+      class/prototype instances with hidden registry-backed native identity
+      rather than HostObject-first objects.
 
 3. **Lazy module initialization**
-    - Instantiate modules on first JS access once HostObject and lifecycle
-      semantics are ready.
+    - Complete: `_expoDotnet.modules` is a one-stage HostObject registry.
+      Generated default registration records lazy module definitions, and a
+      module object plus authored module instance are created on first read of
+      the registered root module property.
+    - Future optimization: if profiling shows root module property reads are
+      too expensive, move to a two-stage lazy shell model where root access
+      returns a cached shell and the real module object materializes on first
+      shell access.
 
 ### P3: Optimization And Tooling Polish
 
@@ -155,8 +164,8 @@ managed wrapper surface.
   dynamic code paths.
 - **P2/P3 — ArrayBuffer**: Wrapper and ABI for binary data transfer — needed by
   camera, file system, crypto, WebSocket binary, and data-heavy modules.
-- **P2/P3 — HostObject**: Property interceptor pattern — needed for
-  SharedObject, lazy module initialization, and dynamic property access.
+- **P2/P3 — HostObject**: complete. Property interceptor pattern backs lazy
+  `_expoDotnet.modules` and future dynamic property access.
 - **P2/P3 — NativeState**: complete. Generic type-indexed object state supports
   hidden managed state identity without exposing raw JSI layouts or managed
   object pointers.
@@ -187,8 +196,9 @@ ABI support.
 - **P1 — Module-authored lifecycle hooks** (complete): `[OnCreate]` and
   `[OnDestroy]` are generator-backed managed callbacks on top of the
   runtime-scoped `DotnetRuntimeContext` / `ModuleRegistry` owner.
-- **P2/P3 — Lazy module initialization**: Modules instantiated on first JS
-  access instead of eagerly at registration (depends on HostObject ABI).
+- **P2/P3 — Lazy module initialization**: complete. Modules instantiate on
+  first `_expoDotnet.modules.<name>` access instead of eagerly at default
+  provider registration.
 - **P1 — `expo-module.config.json`** (complete): Package metadata for dotnet
   Expo module libraries is parsed by `expo-modules-dotnet-autolinking`.
 - **P3 — Autolinking** (implemented for macOS/Windows/iOS/Android):

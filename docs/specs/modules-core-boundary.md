@@ -117,9 +117,10 @@ current compilation.
 - **AND** the provider SHALL expose `Register(DotnetRuntimeContext context)`
 - **AND** the provider SHALL expose
   `Register(DotnetRuntimeContext context, JavaScriptObject modules)`
-- **AND** the default overload SHALL install under the context-owned default
-  dotnet modules object
-- **AND** the explicit overload SHALL install under the supplied modules object
+- **AND** the default overload SHALL register lazy module definitions with the
+  context-owned `ModuleRegistry`
+- **AND** the explicit overload SHALL eagerly install under the supplied
+  modules object as a compatibility path
 - **AND** generated registration SHALL use `DotnetRuntimeContext` module
   instances
 - **AND** generated registration SHALL NOT require runtime reflection
@@ -297,6 +298,92 @@ directly, and encode return values through typed helpers.
 - **THEN** `Expo.ModulesCore` SHALL reuse the existing JavaScript object instead
   of replacing the `expo.modules` property
 - **AND** generated `[JS]` functions SHALL be defined on that existing object
+
+### Requirement: One-Stage Lazy Dotnet Module Registry
+
+`Expo.ModulesCore` SHALL install `globalThis._expoDotnet.modules` as a
+HostObject backed by build-time generated module metadata. The registry is
+one-stage lazy: reading a registered root module property creates and caches the
+real JavaScript module object immediately. Two-stage lazy shells are a future
+optimization only if profiling shows the extra complexity is needed.
+
+#### Scenario: Generated default registration is lazy
+- **GIVEN** a generated provider has `Register(DotnetRuntimeContext context)`
+- **WHEN** the default overload runs
+- **THEN** it SHALL register module names and creation callbacks with
+  `ModuleRegistry`
+- **AND** it SHALL NOT create JavaScript module objects or authored module
+  instances until JavaScript reads a registered module property
+
+#### Scenario: Registered module is read
+- **GIVEN** `_expoDotnet.modules` is installed for a runtime context
+- **AND** the generated module table contains `Camera`
+- **WHEN** JavaScript reads `_expoDotnet.modules.Camera`
+- **THEN** `Expo.ModulesCore` SHALL create and cache the real `Camera` module
+  object
+- **AND** it SHALL create or reuse the authored `Camera` module instance through
+  the context-owned `ModuleRegistry`
+- **AND** later reads of `_expoDotnet.modules.Camera` in the same runtime
+  context SHALL return the cached module object
+
+#### Scenario: Unknown module is read
+- **GIVEN** `_expoDotnet.modules` is installed for a runtime context
+- **AND** the generated module table does not contain `Camera`
+- **WHEN** JavaScript reads `_expoDotnet.modules.Camera`
+- **THEN** the HostObject SHALL return JavaScript `undefined`
+- **AND** it SHALL NOT create a module object or module instance
+
+#### Scenario: Probe property is read
+- **GIVEN** `_expoDotnet.modules` is installed for a runtime context
+- **WHEN** JavaScript reads a no-initialization probe property such as
+  `$$typeof`
+- **THEN** the HostObject SHALL return JavaScript `undefined`
+- **AND** it SHALL NOT create a module object or module instance
+
+#### Scenario: Module names are enumerated
+- **GIVEN** `_expoDotnet.modules` is installed for a runtime context
+- **WHEN** JavaScript enumerates own property names
+- **THEN** the HostObject SHALL return registered lazy module names
+- **AND** it SHALL include explicit modules already present in the backing
+  modules object
+- **AND** enumeration SHALL NOT create lazy module objects or authored module
+  instances
+
+#### Scenario: Explicit module registration mixes with lazy registration
+- **GIVEN** `_expoDotnet.modules` is installed as a lazy HostObject
+- **WHEN** existing explicit registration writes a module into
+  `ModuleRegistry.GetOrCreateDotnetModulesObject()`
+- **THEN** JavaScript reads through `_expoDotnet.modules.<name>` SHALL see the
+  explicitly registered module
+- **AND** explicit modules registered before lazy setup SHALL remain visible
+  after lazy setup
+
+#### Scenario: Root module registry is mutated from JavaScript
+- **GIVEN** `_expoDotnet.modules` is installed as a HostObject
+- **WHEN** JavaScript assigns a property on `_expoDotnet.modules`
+- **THEN** assignment SHALL fail with a catchable JavaScript error
+
+#### Scenario: Cached registry is used after teardown
+- **GIVEN** JavaScript still holds a reference to `_expoDotnet.modules`
+- **AND** the owning `DotnetRuntimeContext` has been disposed
+- **WHEN** JavaScript reads, writes, or enumerates the HostObject
+- **THEN** the operation SHALL fail with a catchable JavaScript error
+- **AND** it SHALL NOT crash or touch an invalid runtime handle
+
+### Requirement: Required Dotnet Module Lookup Error
+
+Raw HostObject property reads SHALL preserve ordinary JavaScript object
+semantics for unknown properties by returning `undefined`. Required module
+lookups SHALL be handled above the HostObject layer by JavaScript helpers or
+generated facades.
+
+#### Scenario: Required module is missing
+- **GIVEN** a JavaScript facade requires the `Camera` module
+- **AND** `_expoDotnet.modules.Camera` is `undefined`
+- **WHEN** the facade resolves the required module
+- **THEN** it SHALL throw a JavaScript `Error`
+- **AND** the error message SHALL say that `Camera` is not registered
+- **AND** the error message SHALL tell the user to check autolinking
 
 ### Requirement: Event Modules Use NativeModule Objects
 

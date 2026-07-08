@@ -124,6 +124,56 @@ install Expo ModulesCore-specific classes or own module event listener state.
 - **AND** the operation SHALL NOT expose raw `jsi::Value` layout to managed
   code
 
+### Requirement: HostObject ABI Boundary
+
+The ABI SHALL expose a generic HostObject creation primitive using opaque
+runtime and value handles. C++ owns the `facebook::jsi::HostObject`
+implementation and JSI mechanics; managed code owns property callback logic.
+The ABI SHALL NOT expose raw `jsi::Runtime`, `jsi::Value`, `jsi::Object`, or
+`jsi::PropNameID` layouts to C#.
+
+#### Scenario: HostObject gets a string property
+- **GIVEN** managed code creates a HostObject with a getter callback
+- **WHEN** JavaScript reads a string property on the object
+- **THEN** native SHALL call the managed getter through the ABI
+- **AND** the getter result SHALL be returned to JavaScript as the property
+  value through an owned value handle
+- **AND** C# SHALL observe the property name as a managed string
+
+#### Scenario: HostObject setter receives a scoped value
+- **GIVEN** managed code creates a HostObject with a setter callback
+- **WHEN** JavaScript assigns a property on the object
+- **THEN** native SHALL call the managed setter through the ABI
+- **AND** managed code SHALL receive the assigned value as an invocation-scoped
+  ref
+- **AND** managed code SHALL retain an owned copy before storing that value
+  beyond the setter callback
+
+#### Scenario: HostObject property names are enumerated
+- **GIVEN** managed code creates a HostObject with a property-name callback
+- **WHEN** JavaScript enumerates the object's own property names
+- **THEN** native SHALL call the managed property-name callback through the ABI
+- **AND** native SHALL release the callback-owned property-name buffer exactly
+  once after copying the names
+
+#### Scenario: HostObject callback throws
+- **GIVEN** a managed HostObject getter, setter, or property-name callback
+  throws
+- **WHEN** native receives the callback result
+- **THEN** native SHALL surface the failure to JavaScript as a catchable
+  `Error`
+- **AND** no C++ or managed exception SHALL cross an unmanaged boundary
+- **AND** callback-owned error buffers SHALL be released exactly once
+
+#### Scenario: HostObject callback context is released
+- **GIVEN** a HostObject is destroyed by JavaScript garbage collection or
+  runtime teardown
+- **WHEN** native releases the managed callback context
+- **THEN** cleanup SHALL NOT touch JSI handles
+- **AND** cleanup SHALL NOT throw across the unmanaged boundary
+- **AND** cleanup SHALL tolerate the owning runtime context already being
+  disposed
+
 ### Requirement: ABI Results Are Structured
 
 The ABI SHALL report fallible operations through explicit result structs or
