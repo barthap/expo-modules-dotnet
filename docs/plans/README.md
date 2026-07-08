@@ -14,14 +14,15 @@ your row when done.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001 | checks.yml — fast CI lane, ubuntu+windows matrix (no native) | P1 | S | — | DONE (pending operator commit) — pushed `advisor/001-ci-checks` (66eb41ba), CI run 28968345781: node+generator-tests green on BOTH ubuntu+windows; F-001 format fix applied in working tree (4 files, formatter-only, `scripts/format.sh --check --all` → exit 0), awaiting operator's `style:` commit |
+| 001 | checks.yml — fast CI lane, ubuntu+windows matrix (no native) | P1 | S | — | DONE — committed `aaadb165` on `advisor/001-ci-checks` (F-001 formatter fix folded in via amend). CI green on BOTH ubuntu+windows for node + generator-tests + format. |
 | 002 | Autolinking CLI command tests | P1 | M | — | TODO |
 | 003 | Bridge edge-case tests (UTF-8, promises, generator diagnostics) | P2 | M | — (001 recommended first) | TODO |
 | 004 | Bridge string hygiene (copy elimination + consistent UTF-8 validation) | P2 | S | 003 | TODO |
 | 005 | Docs refresh (roadmap events, autolinking README, platform table) | P3 | S | — | TODO |
 | 006 | ArrayBuffer support — design spike, delta spec, prototype | P2 | M | — (003 recommended first) | TODO |
 | 007 | SharedObject/SharedRef — design spike with identity prototype | P3 | M | — (006 recommended first) | TODO |
-| 008 | Linux testhost port + native-tests.yml (heavy lane, ubuntu+windows) | P1 | M–L | 001 | TODO |
+| 009 | Windows testhost teardown crash (0xC0000005 at process exit) | P1 | M | 008 | TODO — investigation spike, blocks native-tests Windows leg. See `009-windows-testhost-teardown-crash.md`. Diagnosed 2026-07-08 from run `28976399006` job `85984526708`: all 194 managed tests PASS, then `Expo.ModulesCore.Tests` host process segfaults (`0xC0000005`) at teardown. Code-grounded hypothesis: Hermes runtime is destroyed on the connector executor thread during the final fixture's `invalidate()`, running JS host-object/function finalizers that call back into managed release callbacks (`JavaScriptRuntime.cs:718/816/835`) as the CLR is shutting down → Windows DLL-unload race. macOS runs identical suite clean. Needs a Windows box to capture the faulting stack before a fix (operator). |
+| 008 | Linux testhost port + native-tests.yml (heavy lane, ubuntu+windows) | P1 | M–L | 001 | DONE code, pushed for CI verification — commits `272166cd` (build) + `521478b8` (ci) + `804595b6` (docs) on `advisor/001-ci-checks` (supersedes the broken `8f26cae8`). **2026-07-08 CI run `28976399006` failed BOTH legs, two unrelated causes.** (a) Linux (ubuntu-24.04): Hermes compiled fine, but jsi built as a static `libjsi.a` and was linked into a self-contained `libhermesvm.so` — there is NO separate `libjsi.so` on the x86 runner (arm64-in-docker produced one; toolchain-dependent). The C3 `cp .../jsi/libjsi.so` failed. **FIXED: layout-agnostic** — `build-hermes-linux.sh` stages `libjsi.so` only if present + dropped from the hard guard; `cmake/ExpoHermesPrebuilt.cmake` reverted the gpt-5.5 `FATAL_ERROR` to a conditional link; spec + comments corrected. `bash -n` + `format.sh --check --all` clean (also clears the cmake-format red on `checks`). Cannot self-prove on x86 (arm64 Mac) — CI is the proof. (b) Windows: real, separate native teardown segfault → split out to **plan 009**; not reproducible on the operator's Win11 box, so the `native-tests.yml` windows test step now sets `DOTNET_DbgEnableMiniDump` and uploads a `windows-crash-dump` artifact to capture the runner's faulting stack on the next run. Original review history below. **Review caught 3 Criticals in `build-hermes-linux.sh` (the committed `0a6674b6` version is broken; fixes are UNCOMMITTED in the working tree — operator to fixup into `0a6674b6`):** C1 lib copied from wrong dir; C2 `hermes/Public/*.h` not staged (compile fail); C3 `libhermesvm.so` NEEDs `libjsi.so` but it wasn't staged (load fail). Root cause: the executor's original 241-pass ran against a hand-completed destroot, not the script's output. All 3 fixed and **proven end-to-end**: fixed-script staging → `test-managed.sh` in ubuntu:24.04 → 241/241, no load errors. Also verified: macOS 241/241; cmake APPLE/WIN32 byte-identical; actionlint + YAML + format clean. **Residuals for the pushed Actions run:** Linux proof arm64-only (ubuntu-latest is x86_64); Windows leg deferred (ps1 proven on operator machine, runner wiring unverified). Credit: C1/C2 surfaced by gpt-5.5 review, C3 by follow-up ELF inspection. Final gpt-5.5 review (no Critical blocker) added 2 Important fixes, now applied (uncommitted): cmake libjsi.so comment corrected + soft `if(EXISTS)` link hardened to a `FATAL_ERROR` guard; `docs/specs/hermes-testhost.md` Linux contract now lists `lib/libjsi.so`. Open Minor (operator call): pin `ubuntu-24.04` vs `ubuntu-latest` so a future ICU-soname image roll can't poison the cached `.so`. |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -38,19 +39,12 @@ Confirmed on CI run 28968345781 and locally across clang-format 17/18/21
 `scripts/format.sh` exits at the C/C++ stage, so the CMake/C#/prettier stages
 were never evaluated — the true full scope may be larger. Both files were
 committed unformatted in `e380065e` ("Port build/test scripts to Windows").
-**Resolved (working tree, pending operator commit):** ran `scripts/format.sh`
-across all stages (installed `cmake-format`/cmakelang locally to unmask the
-CMake stage). `scripts/format.sh --check --all` now exits 0. Formatter-only
-changes, 4 files:
-
-- `apps/hermes-console-app/native/ManagedProofLoader.cpp`
-- `packages/expo-modules-dotnet/native/testhost/include/expo_jsi_testhost.h`
-- `apps/hermes-console-app/native/CMakeLists.txt` (cmake-format)
-- `cmake/ExpoHermesPrebuilt.cmake` (cmake-format)
-
-Operator to commit as a dedicated `style:` change (separate from the `ci:`
-workflow commit). Local clang-format is Apple 17 vs CI's apt 18 — skew risk low
-(17/18/21 agree on the C/C++ files); the pushed run is the final gate.
+**RESOLVED (committed):** ran `scripts/format.sh` across all stages (installed
+`cmake-format`/cmakelang locally to unmask the CMake stage). Formatter-only
+changes to 4 files — `ManagedProofLoader.cpp`, `expo_jsi_testhost.h`,
+`hermes-console-app/native/CMakeLists.txt`, `cmake/ExpoHermesPrebuilt.cmake` —
+folded into the plan-001 commit `aaadb165` via amend. `scripts/format.sh
+--check --all` exits 0; CI `format` job green.
 
 ## Dependency notes
 
