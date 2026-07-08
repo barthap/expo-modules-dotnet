@@ -118,9 +118,8 @@ void loadHostFxr()
 
   auto library = loadNativeLibrary(hostfxr_path);
 
-  init_for_config =
-    resolveExport<hostfxr_initialize_for_runtime_config_fn>(
-      library, "hostfxr_initialize_for_runtime_config");
+  init_for_config = resolveExport<hostfxr_initialize_for_runtime_config_fn>(
+    library, "hostfxr_initialize_for_runtime_config");
   get_runtime_delegate =
     resolveExport<hostfxr_get_runtime_delegate_fn>(library, "hostfxr_get_runtime_delegate");
   close_hostfxr = resolveExport<hostfxr_close_fn>(library, "hostfxr_close");
@@ -165,8 +164,7 @@ ManagedEntryPoints loadHostFxrEntryPoints()
   teardown_session_fn teardown_session = nullptr;
 
   int rc = load_assembly(assembly.c_str(),
-                         EXPO_JSI_HOSTFXR_LITERAL(
-                           "HermesConsoleApp.EntryPoints, HermesConsoleApp"),
+                         EXPO_JSI_HOSTFXR_LITERAL("HermesConsoleApp.EntryPoints, HermesConsoleApp"),
                          EXPO_JSI_HOSTFXR_LITERAL("Run"),
                          UNMANAGEDCALLERSONLY_METHOD,
                          nullptr,
@@ -176,8 +174,7 @@ ManagedEntryPoints loadHostFxrEntryPoints()
   }
 
   rc = load_assembly(assembly.c_str(),
-                     EXPO_JSI_HOSTFXR_LITERAL(
-                       "HermesConsoleApp.EntryPoints, HermesConsoleApp"),
+                     EXPO_JSI_HOSTFXR_LITERAL("HermesConsoleApp.EntryPoints, HermesConsoleApp"),
                      EXPO_JSI_HOSTFXR_LITERAL("CreateRuntimeContext"),
                      UNMANAGEDCALLERSONLY_METHOD,
                      nullptr,
@@ -188,8 +185,7 @@ ManagedEntryPoints loadHostFxrEntryPoints()
   }
 
   rc = load_assembly(assembly.c_str(),
-                     EXPO_JSI_HOSTFXR_LITERAL(
-                       "HermesConsoleApp.EntryPoints, HermesConsoleApp"),
+                     EXPO_JSI_HOSTFXR_LITERAL("HermesConsoleApp.EntryPoints, HermesConsoleApp"),
                      EXPO_JSI_HOSTFXR_LITERAL("TeardownRuntimeContext"),
                      UNMANAGEDCALLERSONLY_METHOD,
                      nullptr,

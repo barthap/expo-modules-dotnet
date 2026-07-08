@@ -10,13 +10,21 @@ function(expo_detect_windows_arch out_var)
   endif()
 
   if(_platform MATCHES "arm64ec")
-    set(${out_var} "arm64ec" PARENT_SCOPE)
+    set(${out_var}
+        "arm64ec"
+        PARENT_SCOPE)
   elseif(_platform MATCHES "arm64|aarch64")
-    set(${out_var} "arm64" PARENT_SCOPE)
+    set(${out_var}
+        "arm64"
+        PARENT_SCOPE)
   elseif(_platform MATCHES "x86|win32")
-    set(${out_var} "x86" PARENT_SCOPE)
+    set(${out_var}
+        "x86"
+        PARENT_SCOPE)
   else()
-    set(${out_var} "x64" PARENT_SCOPE)
+    set(${out_var}
+        "x64"
+        PARENT_SCOPE)
   endif()
 endfunction()
 
@@ -24,7 +32,8 @@ function(expo_configure_hermes_target target_name)
   set(options)
   set(one_value_args ROOT)
   set(multi_value_args)
-  cmake_parse_arguments(EXPO_HERMES "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
+  cmake_parse_arguments(EXPO_HERMES "${options}" "${one_value_args}"
+                        "${multi_value_args}" ${ARGN})
 
   if(EXPO_HERMES_ROOT)
     set(_hermes_root "${EXPO_HERMES_ROOT}")
@@ -37,7 +46,9 @@ function(expo_configure_hermes_target target_name)
     set(_hermes_root "${_repo_root}/build/hermes/source/destroot")
   endif()
 
-  set(HERMES_PREBUILT_ROOT "${_hermes_root}" CACHE PATH "Local Hermes prebuilt root")
+  set(HERMES_PREBUILT_ROOT
+      "${_hermes_root}"
+      CACHE PATH "Local Hermes prebuilt root")
 
   if(APPLE)
     set(_framework_dir "${_hermes_root}/Library/Frameworks/macosx")
@@ -122,11 +133,13 @@ function(expo_configure_hermes_target target_name)
       add_custom_command(
         TARGET ${target_name}
         POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_bin_dir}/hermes-icu.dll"
-                "$<TARGET_FILE_DIR:${target_name}>/hermes-icu.dll"
+        COMMAND
+          ${CMAKE_COMMAND} -E copy_if_different "${_bin_dir}/hermes-icu.dll"
+          "$<TARGET_FILE_DIR:${target_name}>/hermes-icu.dll"
         COMMENT "Copying hermes-icu.dll next to ${target_name}")
     endif()
   else()
-    message(FATAL_ERROR "Unsupported Hermes prebuilt platform: ${CMAKE_SYSTEM_NAME}")
+    message(
+      FATAL_ERROR "Unsupported Hermes prebuilt platform: ${CMAKE_SYSTEM_NAME}")
   endif()
 endfunction()
