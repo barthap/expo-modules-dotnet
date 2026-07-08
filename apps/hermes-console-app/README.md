@@ -58,6 +58,30 @@ default and uses `dotnet build`; NativeAOT uses `dotnet publish -r <rid>
 points from the published shared library. The native CMake flag
 `EXPO_JSI_DOTNET_LOADER` mirrors the script environment variable.
 
+## Windows
+
+Build or stage a Windows Hermes prebuilt first:
+
+```powershell
+.\scripts\build-hermes-windows.ps1 -Arch x64
+```
+
+The Windows script builds the official shared `hermesvm` target with Intl
+disabled by default. The Intl-enabled upstream build is currently blocked by
+Hermes/ICU header issues at the pinned Hermes revision.
+
+Run the HostFXR console proof:
+
+```powershell
+.\scripts\run-hermes-console-app.ps1
+```
+
+Run the Windows managed Hermes test suite:
+
+```powershell
+.\scripts\test-managed.ps1
+```
+
 ## NativeAOT Spike Record
 
 - Hypothesis: the Hermes console proof can keep the same opaque C ABI and JSI

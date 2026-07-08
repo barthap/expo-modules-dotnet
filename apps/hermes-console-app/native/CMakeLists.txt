@@ -19,6 +19,9 @@ set(EXPO_JSI_MANAGED_CONFIGURATION
     "Debug"
     CACHE STRING "Managed build configuration used by the Hermes console proof")
 
+get_filename_component(REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
+include("${REPO_ROOT}/cmake/ExpoHermesPrebuilt.cmake")
+
 if(EXPO_JSI_DOTNET_LOADER STREQUAL "hostfxr")
   set(DOTNET_ROOT "$ENV{DOTNET_ROOT}")
   if(NOT DOTNET_ROOT)
@@ -38,7 +41,16 @@ if(EXPO_JSI_DOTNET_LOADER STREQUAL "hostfxr")
     get_filename_component(DOTNET_ROOT "${DOTNET_SDK_DIR}/../.." ABSOLUTE)
   endif()
 
-  if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+  if(WIN32)
+    expo_detect_windows_arch(DOTNET_WINDOWS_ARCH)
+    if(DOTNET_WINDOWS_ARCH STREQUAL "x86")
+      set(DOTNET_HOST_RID "win-x86")
+    elseif(DOTNET_WINDOWS_ARCH STREQUAL "arm64")
+      set(DOTNET_HOST_RID "win-arm64")
+    else()
+      set(DOTNET_HOST_RID "win-x64")
+    endif()
+  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
     set(DOTNET_HOST_RID "osx-arm64")
   else()
     set(DOTNET_HOST_RID "osx-x64")
@@ -59,31 +71,12 @@ if(EXPO_JSI_DOTNET_LOADER STREQUAL "hostfxr")
   endif()
 endif()
 
-get_filename_component(REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
-
 set(HERMES_PREBUILT_ROOT
     "$ENV{HERMES_PREBUILT_ROOT}"
     CACHE PATH
-          "Local Hermes prebuilt root created by scripts/build-hermes-macos.sh")
+          "Local Hermes prebuilt root created by scripts/build-hermes-macos.sh or scripts/build-hermes-windows.ps1")
 if(NOT HERMES_PREBUILT_ROOT)
   set(HERMES_PREBUILT_ROOT "${REPO_ROOT}/build/hermes/source/destroot")
-endif()
-
-set(HERMES_ROOT "${HERMES_PREBUILT_ROOT}")
-set(HERMES_FRAMEWORK_DIR "${HERMES_ROOT}/Library/Frameworks/macosx")
-if(NOT EXISTS "${HERMES_ROOT}/include/hermes/hermes.h")
-  message(
-    FATAL_ERROR
-      "Could not find Hermes headers under ${HERMES_ROOT}. "
-      "Run scripts/build-hermes-macos.sh first, or pass "
-      "-DHERMES_PREBUILT_ROOT=<destroot>.")
-endif()
-if(NOT EXISTS "${HERMES_FRAMEWORK_DIR}/hermesvm.framework/hermesvm")
-  message(
-    FATAL_ERROR
-      "Could not find hermesvm.framework under ${HERMES_FRAMEWORK_DIR}. "
-      "Run scripts/build-hermes-macos.sh first, or pass "
-      "-DHERMES_PREBUILT_ROOT=<destroot>.")
 endif()
 
 add_executable(
@@ -97,7 +90,6 @@ add_executable(
 target_include_directories(
   hermes_console_app
   PRIVATE
-    "${HERMES_ROOT}/include"
     "${REPO_ROOT}/packages/expo-modules-dotnet/native/include"
     "${REPO_ROOT}/packages/expo-modules-dotnet/native/packages/jsi/include")
 
@@ -115,21 +107,32 @@ else()
             EXPO_JSI_MANAGED_CONFIGURATION="${EXPO_JSI_MANAGED_CONFIGURATION}")
 endif()
 
-target_link_options(hermes_console_app PRIVATE "-F${HERMES_FRAMEWORK_DIR}"
-                    "-Wl,-rpath,${HERMES_FRAMEWORK_DIR}")
-
-target_link_libraries(hermes_console_app PRIVATE "-framework hermesvm")
+expo_configure_hermes_target(hermes_console_app ROOT "${HERMES_PREBUILT_ROOT}")
 
 if(EXPO_JSI_DOTNET_LOADER STREQUAL "hostfxr")
-  target_link_libraries(hermes_console_app
-                        PRIVATE "${DOTNET_HOST_NATIVE_DIR}/libnethost.dylib")
+  if(WIN32)
+    target_link_libraries(hermes_console_app
+                          PRIVATE "${DOTNET_HOST_NATIVE_DIR}/nethost.lib")
 
-  add_custom_command(
-    TARGET hermes_console_app
-    POST_BUILD
-    COMMAND
-      ${CMAKE_COMMAND} -E copy_if_different
-      "${DOTNET_HOST_NATIVE_DIR}/libnethost.dylib"
-      "$<TARGET_FILE_DIR:hermes_console_app>/libnethost.dylib"
-    COMMENT "Copying libnethost.dylib next to hermes_console_app")
+    add_custom_command(
+      TARGET hermes_console_app
+      POST_BUILD
+      COMMAND
+        ${CMAKE_COMMAND} -E copy_if_different
+        "${DOTNET_HOST_NATIVE_DIR}/nethost.dll"
+        "$<TARGET_FILE_DIR:hermes_console_app>/nethost.dll"
+      COMMENT "Copying nethost.dll next to hermes_console_app")
+  else()
+    target_link_libraries(hermes_console_app
+                          PRIVATE "${DOTNET_HOST_NATIVE_DIR}/libnethost.dylib")
+
+    add_custom_command(
+      TARGET hermes_console_app
+      POST_BUILD
+      COMMAND
+        ${CMAKE_COMMAND} -E copy_if_different
+        "${DOTNET_HOST_NATIVE_DIR}/libnethost.dylib"
+        "$<TARGET_FILE_DIR:hermes_console_app>/libnethost.dylib"
+      COMMENT "Copying libnethost.dylib next to hermes_console_app")
+  endif()
 endif()

@@ -6,7 +6,14 @@
 #include <nethost.h>
 #endif
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
 #include <dlfcn.h>
+#endif
 
 #include <filesystem>
 #include <iostream>
@@ -17,6 +24,12 @@
 #define EXPO_JSI_MANAGED_CONFIGURATION "Debug"
 #endif
 
+#if defined(_WIN32)
+#define EXPO_JSI_HOSTFXR_LITERAL(value) L##value
+#else
+#define EXPO_JSI_HOSTFXR_LITERAL(value) value
+#endif
+
 namespace expo::dotnet::experiments {
 namespace {
 
@@ -24,6 +37,12 @@ namespace {
 hostfxr_initialize_for_runtime_config_fn init_for_config = nullptr;
 hostfxr_get_runtime_delegate_fn get_runtime_delegate = nullptr;
 hostfxr_close_fn close_hostfxr = nullptr;
+#endif
+
+#if defined(_WIN32)
+using native_library_handle = HMODULE;
+#else
+using native_library_handle = void *;
 #endif
 
 std::filesystem::path repoRootFromCurrentDirectory()
@@ -38,9 +57,30 @@ std::filesystem::path repoRootFromCurrentDirectory()
   throw std::runtime_error("Could not locate repository root from current working directory.");
 }
 
-template <typename Function> Function resolveExport(void *library, const char *name)
+native_library_handle loadNativeLibrary(const char_t *path)
 {
+#if defined(_WIN32)
+  auto library = LoadLibraryW(path);
+  if (library == nullptr) {
+    throw std::runtime_error("LoadLibraryW failed with code " + std::to_string(GetLastError()));
+  }
+  return library;
+#else
+  auto *library = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
+  if (library == nullptr) {
+    throw std::runtime_error(dlerror());
+  }
+  return library;
+#endif
+}
+
+template <typename Function> Function resolveExport(native_library_handle library, const char *name)
+{
+#if defined(_WIN32)
+  auto symbol = GetProcAddress(library, name);
+#else
   auto symbol = dlsym(library, name);
+#endif
   if (symbol == nullptr) {
     throw std::runtime_error("Failed to resolve managed export: " + std::string(name));
   }
@@ -70,18 +110,20 @@ void loadHostFxr()
     throw std::runtime_error("get_hostfxr_path failed with code " + std::to_string(rc));
   }
 
+#if defined(_WIN32)
+  std::wcout << L"Loaded HostFXR path: " << hostfxr_path << std::endl;
+#else
   std::cout << "Loaded HostFXR path: " << hostfxr_path << std::endl;
+#endif
 
-  void *library = dlopen(hostfxr_path, RTLD_LAZY | RTLD_LOCAL);
-  if (library == nullptr) {
-    throw std::runtime_error(dlerror());
-  }
+  auto library = loadNativeLibrary(hostfxr_path);
 
-  init_for_config = reinterpret_cast<hostfxr_initialize_for_runtime_config_fn>(
-    dlsym(library, "hostfxr_initialize_for_runtime_config"));
-  get_runtime_delegate = reinterpret_cast<hostfxr_get_runtime_delegate_fn>(
-    dlsym(library, "hostfxr_get_runtime_delegate"));
-  close_hostfxr = reinterpret_cast<hostfxr_close_fn>(dlsym(library, "hostfxr_close"));
+  init_for_config =
+    resolveExport<hostfxr_initialize_for_runtime_config_fn>(
+      library, "hostfxr_initialize_for_runtime_config");
+  get_runtime_delegate =
+    resolveExport<hostfxr_get_runtime_delegate_fn>(library, "hostfxr_get_runtime_delegate");
+  close_hostfxr = resolveExport<hostfxr_close_fn>(library, "hostfxr_close");
 
   if (init_for_config == nullptr || get_runtime_delegate == nullptr || close_hostfxr == nullptr) {
     throw std::runtime_error("Failed to resolve required HostFXR exports.");
@@ -123,8 +165,9 @@ ManagedEntryPoints loadHostFxrEntryPoints()
   teardown_session_fn teardown_session = nullptr;
 
   int rc = load_assembly(assembly.c_str(),
-                         "HermesConsoleApp.EntryPoints, HermesConsoleApp",
-                         "Run",
+                         EXPO_JSI_HOSTFXR_LITERAL(
+                           "HermesConsoleApp.EntryPoints, HermesConsoleApp"),
+                         EXPO_JSI_HOSTFXR_LITERAL("Run"),
                          UNMANAGEDCALLERSONLY_METHOD,
                          nullptr,
                          reinterpret_cast<void **>(&run_proof));
@@ -133,8 +176,9 @@ ManagedEntryPoints loadHostFxrEntryPoints()
   }
 
   rc = load_assembly(assembly.c_str(),
-                     "HermesConsoleApp.EntryPoints, HermesConsoleApp",
-                     "CreateRuntimeContext",
+                     EXPO_JSI_HOSTFXR_LITERAL(
+                       "HermesConsoleApp.EntryPoints, HermesConsoleApp"),
+                     EXPO_JSI_HOSTFXR_LITERAL("CreateRuntimeContext"),
                      UNMANAGEDCALLERSONLY_METHOD,
                      nullptr,
                      reinterpret_cast<void **>(&create_session));
@@ -144,8 +188,9 @@ ManagedEntryPoints loadHostFxrEntryPoints()
   }
 
   rc = load_assembly(assembly.c_str(),
-                     "HermesConsoleApp.EntryPoints, HermesConsoleApp",
-                     "TeardownRuntimeContext",
+                     EXPO_JSI_HOSTFXR_LITERAL(
+                       "HermesConsoleApp.EntryPoints, HermesConsoleApp"),
+                     EXPO_JSI_HOSTFXR_LITERAL("TeardownRuntimeContext"),
                      UNMANAGEDCALLERSONLY_METHOD,
                      nullptr,
                      reinterpret_cast<void **>(&teardown_session));
@@ -185,10 +230,7 @@ std::filesystem::path findNativeAotLibrary()
 ManagedEntryPoints loadNativeAotEntryPoints()
 {
   auto library_path = findNativeAotLibrary();
-  void *library = dlopen(library_path.c_str(), RTLD_NOW | RTLD_LOCAL);
-  if (library == nullptr) {
-    throw std::runtime_error(dlerror());
-  }
+  auto library = loadNativeLibrary(library_path.c_str());
 
   std::cout << "Loaded NativeAOT library: " << library_path.string() << std::endl;
 
