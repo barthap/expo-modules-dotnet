@@ -13,7 +13,24 @@ The repo-local Hermes prebuilt root SHALL support platform-specific native link
 layouts while preserving a common header root. macOS SHALL use
 `hermesvm.framework`. Windows SHALL use the official Hermes `hermesvm` shared
 library built from `scripts/hermes-ref.txt` and staged with `jsi.lib`,
-`hermesvm.lib`, and `hermesvm.dll`.
+`hermesvm.lib`, and `hermesvm.dll`. Linux SHALL use the shared
+`libhermesvm.so` built via `scripts/build-hermes-linux.sh`; the shared
+library path is embedded in `libexpo_jsi_testhost.so` via rpath at CMake
+configure time, so no `LD_LIBRARY_PATH` management is required at runtime.
+
+#### Scenario: Linux Hermes prebuilt is staged
+
+- **GIVEN** a Linux developer has CMake, Ninja, Clang, and libicu-dev available
+- **WHEN** the developer runs `scripts/build-hermes-linux.sh`
+- **THEN** the script SHALL build the official Hermes `hermesvm` target as a
+  shared library
+- **AND** it SHALL install `include/hermes/hermes.h`, `include/hermes/Public/`,
+  `include/jsi/jsi.h`, and `lib/libhermesvm.so` under the configured prebuilt
+  root; jsi is either embedded statically into `libhermesvm.so` or, when the
+  toolchain builds it shared, staged as `lib/libjsi.so` beside it — the script
+  and `cmake/ExpoHermesPrebuilt.cmake` handle both layouts
+- **AND** the CI cache key SHALL be
+  `hermes-Linux-<hash of scripts/hermes-ref.txt>`
 
 #### Scenario: Windows Hermes prebuilt is staged
 - **GIVEN** a Windows developer has VS 2026 C++ tooling and CMake available
@@ -34,17 +51,22 @@ library built from `scripts/hermes-ref.txt` and staged with `jsi.lib`,
 ### Requirement: Canonical Test Runners
 
 The repository SHALL use platform-paired Hermes-backed managed test runners. On
-macOS, `scripts/test-managed.sh` SHALL build the native Hermes testhost and run
-managed test projects. On Windows, `scripts/test-managed.ps1` SHALL build the
-Windows native Hermes testhost and run the same managed test projects. Both
-runners SHALL pass `EXPO_JSI_TESTHOST_LIBRARY` to managed tests.
+macOS and Linux, `scripts/test-managed.sh` SHALL build the native Hermes
+testhost and run managed test projects (the testhost library name is
+`.dylib` on macOS and `.so` on Linux, resolved via `uname` at runtime). On
+Windows, `scripts/test-managed.ps1` SHALL build the Windows native Hermes
+testhost and run the same managed test projects. All runners SHALL pass
+`EXPO_JSI_TESTHOST_LIBRARY` to managed tests.
 
-#### Scenario: macOS test runner executes
+#### Scenario: macOS / Linux test runner executes
+
 - **GIVEN** a developer runs `scripts/test-managed.sh`
-- **WHEN** the script runs
+- **WHEN** the script runs on macOS or Linux
 - **THEN** it SHALL build the native Hermes testhost, pass
   `EXPO_JSI_TESTHOST_LIBRARY` to managed tests, and run both `Expo.JSI.Tests`
   and `Expo.ModulesCore.Tests`
+- **AND** the testhost library name SHALL be `libexpo_jsi_testhost.dylib` on
+  macOS and `libexpo_jsi_testhost.so` on Linux
 
 #### Scenario: Windows test runner executes
 - **GIVEN** a Windows Hermes prebuilt exists under the configured

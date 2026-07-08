@@ -138,6 +138,42 @@ function(expo_configure_hermes_target target_name)
           "$<TARGET_FILE_DIR:${target_name}>/hermes-icu.dll"
         COMMENT "Copying hermes-icu.dll next to ${target_name}")
     endif()
+  elseif(UNIX AND NOT APPLE)
+    set(_lib_dir "${_hermes_root}/lib")
+    set(_hermes_lib "${_lib_dir}/libhermesvm.so")
+
+    if(NOT EXISTS "${_hermes_root}/include/hermes/hermes.h")
+      message(
+        FATAL_ERROR
+          "Could not find Hermes headers under ${_hermes_root}. "
+          "Run scripts/build-hermes-linux.sh first, or pass "
+          "-DHERMES_PREBUILT_ROOT=<destroot>.")
+    endif()
+    if(NOT EXISTS "${_hermes_root}/include/jsi/jsi.h")
+      message(
+        FATAL_ERROR
+          "Could not find JSI headers under ${_hermes_root}. "
+          "Run scripts/build-hermes-linux.sh first, or pass "
+          "-DHERMES_PREBUILT_ROOT=<destroot>.")
+    endif()
+    if(NOT EXISTS "${_hermes_lib}")
+      message(
+        FATAL_ERROR
+          "Could not find Hermes shared library at ${_hermes_lib}. "
+          "Run scripts/build-hermes-linux.sh first, or pass "
+          "-DHERMES_PREBUILT_ROOT=<destroot>.")
+    endif()
+
+    target_include_directories(${target_name} PRIVATE "${_hermes_root}/include")
+    target_link_libraries(${target_name} PRIVATE "${_hermes_lib}")
+    # Depending on the toolchain, Hermes either embeds jsi statically into
+    # libhermesvm.so (self-contained) or produces a separate libjsi.so that
+    # libhermesvm.so depends on at runtime. build-hermes-linux.sh stages
+    # libjsi.so only in the latter case; link it only when it is present.
+    if(EXISTS "${_lib_dir}/libjsi.so")
+      target_link_libraries(${target_name} PRIVATE "${_lib_dir}/libjsi.so")
+    endif()
+    target_link_options(${target_name} PRIVATE "-Wl,-rpath,${_lib_dir}")
   else()
     message(
       FATAL_ERROR "Unsupported Hermes prebuilt platform: ${CMAKE_SYSTEM_NAME}")
