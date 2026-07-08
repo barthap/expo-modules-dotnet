@@ -131,6 +131,12 @@ internal readonly unsafe struct ExpoJsiPropertyName
 {
   public readonly byte* Data;
   public readonly int Length;
+
+  public ExpoJsiPropertyName(byte* data, int length)
+  {
+    Data = data;
+    Length = length;
+  }
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -144,6 +150,23 @@ internal readonly unsafe struct ExpoJsiPropertyNamesResult
   public readonly ExpoJsiError Error;
 
   public bool IsOk => Ok != 0;
+
+  public ExpoJsiPropertyNamesResult(
+      int ok,
+      ExpoJsiPropertyName* names,
+      int count,
+      nint releaseContext,
+      delegate* unmanaged[Cdecl]<nint, void> release,
+      ExpoJsiError error
+  )
+  {
+    Ok = ok;
+    Names = names;
+    Count = count;
+    ReleaseContext = releaseContext;
+    Release = release;
+    Error = error;
+  }
 }
 
 [StructLayout(LayoutKind.Sequential)]

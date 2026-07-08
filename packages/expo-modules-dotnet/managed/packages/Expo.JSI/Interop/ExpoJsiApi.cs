@@ -298,6 +298,29 @@ internal readonly unsafe struct ExpoJsiApi
     ulong,
     ExpoJsiError> ObjectClearNativeState;
 
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    delegate* unmanaged[Cdecl]<
+      nint,
+      ExpoJsiRuntimeHandle,
+      byte*,
+      int,
+      ExpoJsiValueResult>,
+    delegate* unmanaged[Cdecl]<
+      nint,
+      ExpoJsiRuntimeHandle,
+      byte*,
+      int,
+      ExpoJsiValueHandle,
+      ExpoJsiError>,
+    delegate* unmanaged[Cdecl]<
+      nint,
+      ExpoJsiRuntimeHandle,
+      ExpoJsiPropertyNamesResult>,
+    nint,
+    delegate* unmanaged[Cdecl]<nint, void>,
+    ExpoJsiValueResult> CreateHostObject;
+
   private static readonly UTF8Encoding StrictUtf8 = new(
     encoderShouldEmitUTF8Identifier: false,
     throwOnInvalidBytes: true
@@ -363,6 +386,7 @@ internal readonly unsafe struct ExpoJsiApi
       || this.ObjectSetNativeState is null
       || this.ObjectGetNativeState is null
       || this.ObjectClearNativeState is null
+      || this.CreateHostObject is null
     )
     {
       throw new InvalidOperationException("Expo JSI API table is missing required functions.");
@@ -787,6 +811,39 @@ internal readonly unsafe struct ExpoJsiApi
     }
   }
 
+  public ExpoJsiValueResult CreateHostObjectValue(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    delegate* unmanaged[Cdecl]<
+      nint,
+      ExpoJsiRuntimeHandle,
+      byte*,
+      int,
+      ExpoJsiValueResult> get,
+    delegate* unmanaged[Cdecl]<
+      nint,
+      ExpoJsiRuntimeHandle,
+      byte*,
+      int,
+      ExpoJsiValueHandle,
+      ExpoJsiError> set,
+    delegate* unmanaged[Cdecl]<
+      nint,
+      ExpoJsiRuntimeHandle,
+      ExpoJsiPropertyNamesResult> getPropertyNames,
+    nint callbackContext,
+    delegate* unmanaged[Cdecl]<nint, void> releaseCallbackContext
+  )
+  {
+    return CreateHostObject(
+        runtimeHandle,
+        get,
+        set,
+        getPropertyNames,
+        callbackContext,
+        releaseCallbackContext
+    );
+  }
+
   public uint GetArgumentCount(
     ExpoJsiRuntimeHandle runtimeHandle,
     ExpoJsiArgumentsHandle argumentsHandle,
@@ -850,5 +907,5 @@ internal readonly unsafe struct ExpoJsiApi
   }
 
   public static uint ExpectedSize => (uint)sizeof(ExpoJsiApi);
-  public const uint ExpectedVersion = 20;
+  public const uint ExpectedVersion = 21;
 }

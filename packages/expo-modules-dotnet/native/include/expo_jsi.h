@@ -136,6 +136,20 @@ typedef expo_jsi_value_result (*expo_jsi_host_function_callback_fn)(
 
 typedef void (*expo_jsi_release_callback_context_fn)(void *callback_context);
 
+typedef expo_jsi_value_result (*expo_jsi_host_object_get_fn)(void *callback_context,
+                                                             expo_jsi_runtime_handle runtime,
+                                                             const char *name,
+                                                             int32_t name_len);
+
+typedef expo_jsi_error (*expo_jsi_host_object_set_fn)(void *callback_context,
+                                                      expo_jsi_runtime_handle runtime,
+                                                      const char *name,
+                                                      int32_t name_len,
+                                                      expo_jsi_value_handle value);
+
+typedef expo_jsi_property_names_result (*expo_jsi_host_object_get_property_names_fn)(
+  void *callback_context, expo_jsi_runtime_handle runtime);
+
 typedef void (*expo_jsi_task_callback_fn)(void *task_context);
 
 typedef void (*expo_jsi_release_task_context_fn)(void *task_context);
@@ -269,6 +283,14 @@ typedef expo_jsi_value_result (*expo_jsi_create_host_function_fn)(
   void *callback_context,
   expo_jsi_release_callback_context_fn release_callback_context);
 
+typedef expo_jsi_value_result (*expo_jsi_create_host_object_fn)(
+  expo_jsi_runtime_handle runtime,
+  expo_jsi_host_object_get_fn get,
+  expo_jsi_host_object_set_fn set,
+  expo_jsi_host_object_get_property_names_fn get_property_names,
+  void *callback_context,
+  expo_jsi_release_callback_context_fn release_callback_context);
+
 typedef uint32_t (*expo_jsi_get_arguments_count_fn)(expo_jsi_runtime_handle runtime,
                                                     expo_jsi_arguments_handle arguments,
                                                     expo_jsi_error *error);
@@ -375,6 +397,7 @@ typedef struct expo_jsi_api {
   expo_jsi_object_set_native_state_fn object_set_native_state;
   expo_jsi_object_get_native_state_fn object_get_native_state;
   expo_jsi_object_clear_native_state_fn object_clear_native_state;
+  expo_jsi_create_host_object_fn create_host_object;
 } expo_jsi_api;
 
 #ifdef __cplusplus

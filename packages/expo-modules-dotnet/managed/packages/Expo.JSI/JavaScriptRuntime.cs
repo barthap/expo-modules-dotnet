@@ -442,6 +442,89 @@ public sealed unsafe class JavaScriptRuntime
   }
 
   /// <summary>
+  /// Creates an owned JavaScript HostObject backed by managed property callbacks.
+  /// </summary>
+  /// <remarks>
+  /// The returned <see cref="JavaScriptObject" /> must be disposed by the caller. Setter callback
+  /// values are scoped refs; retain them before storing beyond the callback.
+  /// </remarks>
+  public JavaScriptObject CreateHostObject(JavaScriptHostObjectDescriptor descriptor)
+  {
+    ArgumentNullException.ThrowIfNull(descriptor);
+    ArgumentNullException.ThrowIfNull(descriptor.Get);
+
+    var callbackContext = new HostObjectContext(context, descriptor).ToIntPtr();
+    var result = context.Api->CreateHostObjectValue(
+        context.RuntimeHandle,
+        &GetHostObjectProperty,
+        descriptor.Set is null ? null : &SetHostObjectProperty,
+        &GetHostObjectPropertyNames,
+        callbackContext,
+        &ReleaseHostObjectContext
+    );
+    if (!result.IsOk)
+    {
+      HostObjectContext.Release(callbackContext);
+      JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript host object.");
+    }
+
+    return new JavaScriptObject(context, result.Value);
+  }
+
+  /// <summary>
+  /// Creates an owned JavaScript HostObject wrapper with typed managed state.
+  /// </summary>
+  /// <remarks>
+  /// The returned wrapper composes a normal <see cref="JavaScriptObject" /> and exposes
+  /// <paramref name="state" /> to managed code. Setter callback values are scoped refs; retain them
+  /// before storing beyond the callback.
+  /// </remarks>
+  public JavaScriptHostObject<TState> CreateHostObject<TState>(
+      TState state,
+      JavaScriptHostObjectDescriptor descriptor)
+      where TState : class
+  {
+    ArgumentNullException.ThrowIfNull(state);
+    ArgumentNullException.ThrowIfNull(descriptor);
+
+    var obj = CreateHostObject(descriptor with { State = state });
+    return new JavaScriptHostObject<TState>(state, obj);
+  }
+
+  /// <summary>
+  /// Creates an owned JavaScript HostObject wrapper with typed managed state and typed callbacks.
+  /// </summary>
+  /// <remarks>
+  /// The returned wrapper composes a normal <see cref="JavaScriptObject" /> and exposes
+  /// <paramref name="state" /> to managed code. Setter callback values are scoped refs; retain them
+  /// before storing beyond the callback.
+  /// </remarks>
+  public JavaScriptHostObject<TState> CreateHostObject<TState>(
+      TState state,
+      JavaScriptHostObjectDescriptor<TState> descriptor)
+      where TState : class
+  {
+    ArgumentNullException.ThrowIfNull(state);
+    ArgumentNullException.ThrowIfNull(descriptor);
+    ArgumentNullException.ThrowIfNull(descriptor.Get);
+
+    var untypedDescriptor = new JavaScriptHostObjectDescriptor(
+        Get: (runtime, propertyName, callbackState) =>
+            descriptor.Get(runtime, propertyName, (TState)callbackState!),
+        Set: descriptor.Set is null
+            ? null
+            : (runtime, propertyName, value, callbackState) =>
+                descriptor.Set(runtime, propertyName, value, (TState)callbackState!),
+        GetPropertyNames: descriptor.GetPropertyNames is null
+            ? null
+            : callbackState => descriptor.GetPropertyNames((TState)callbackState!),
+        State: state
+    );
+    var obj = CreateHostObject(untypedDescriptor);
+    return new JavaScriptHostObject<TState>(state, obj);
+  }
+
+  /// <summary>
   /// Schedules managed work to run on the JavaScript runtime.
   /// </summary>
   /// <remarks>
@@ -635,6 +718,111 @@ public sealed unsafe class JavaScriptRuntime
   private static void ReleaseHostFunctionContext(nint callbackContext)
   {
     HostFunctionContext.Release(callbackContext);
+  }
+
+  [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+  private static ExpoJsiValueResult GetHostObjectProperty(
+      nint callbackContext,
+      ExpoJsiRuntimeHandle runtimeHandle,
+      byte* name,
+      int nameLength
+  )
+  {
+    HostObjectContext? context = null;
+    try
+    {
+      context = HostObjectContext.FromIntPtr(callbackContext);
+      var runtime = new JavaScriptRuntime(context.JsiContext);
+      var propertyName = HostObjectContext.DecodePropertyName(name, nameLength);
+      using var scope = JavaScriptHandleScope.Enter(context.JsiContext);
+      using var result = context.Descriptor.Get(
+          runtime,
+          propertyName,
+          context.Descriptor.State
+      );
+      return new ExpoJsiValueResult(1, result.Detach(), default);
+    }
+    catch (Exception ex)
+    {
+      Console.Error.WriteLine(ex);
+      return new ExpoJsiValueResult(0, 0, context?.CaptureException(ex) ?? default);
+    }
+  }
+
+  [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+  private static ExpoJsiError SetHostObjectProperty(
+      nint callbackContext,
+      ExpoJsiRuntimeHandle runtimeHandle,
+      byte* name,
+      int nameLength,
+      ExpoJsiValueHandle valueHandle
+  )
+  {
+    HostObjectContext? context = null;
+    try
+    {
+      context = HostObjectContext.FromIntPtr(callbackContext);
+      var setter = context.Descriptor.Set;
+      if (setter is null)
+      {
+        return new ExpoJsiError(101, null, 0, 0, null);
+      }
+
+      var runtime = new JavaScriptRuntime(context.JsiContext);
+      var propertyName = HostObjectContext.DecodePropertyName(name, nameLength);
+      using var scope = JavaScriptHandleScope.Enter(context.JsiContext);
+      var value = JavaScriptValueRef.FromBorrowedRoot(
+          scope,
+          new JavaScriptValueInner(context.JsiContext, valueHandle)
+      );
+      setter(runtime, propertyName, value, context.Descriptor.State);
+      return default;
+    }
+    catch (Exception ex)
+    {
+      Console.Error.WriteLine(ex);
+      return context?.CaptureException(ex) ?? default;
+    }
+  }
+
+  [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+  private static ExpoJsiPropertyNamesResult GetHostObjectPropertyNames(
+      nint callbackContext,
+      ExpoJsiRuntimeHandle runtimeHandle
+  )
+  {
+    HostObjectContext? context = null;
+    try
+    {
+      context = HostObjectContext.FromIntPtr(callbackContext);
+      var names = context.Descriptor.GetPropertyNames?.Invoke(context.Descriptor.State) ?? [];
+      return HostObjectContext.CreatePropertyNamesResult(names);
+    }
+    catch (Exception ex)
+    {
+      Console.Error.WriteLine(ex);
+      return new ExpoJsiPropertyNamesResult(
+          0,
+          null,
+          0,
+          0,
+          null,
+          context?.CaptureException(ex) ?? default
+      );
+    }
+  }
+
+  [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+  private static void ReleaseHostObjectContext(nint callbackContext)
+  {
+    try
+    {
+      HostObjectContext.Release(callbackContext);
+    }
+    catch (Exception ex)
+    {
+      Console.Error.WriteLine(ex);
+    }
   }
 
   [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]

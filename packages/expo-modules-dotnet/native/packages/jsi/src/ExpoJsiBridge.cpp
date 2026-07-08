@@ -182,7 +182,7 @@ namespace {
 
 namespace jsi = facebook::jsi;
 
-constexpr uint32_t kApiVersion = 20;
+constexpr uint32_t kApiVersion = 21;
 
 struct ErrorResultBuffer {
   explicit ErrorResultBuffer(std::string value)
@@ -1781,6 +1781,146 @@ private:
   expo_jsi_runtime_handle runtimeHandle_;
 };
 
+std::string copyAndReleaseErrorMessage(expo_jsi_error error, const char *fallback)
+{
+  std::string message;
+  if (error.message != nullptr && error.message_len > 0) {
+    message.assign(error.message, static_cast<size_t>(error.message_len));
+  }
+  if (error.release != nullptr) {
+    error.release(error.release_context);
+  }
+  return message.empty() ? std::string(fallback) : message;
+}
+
+class ManagedHostObject final : public jsi::HostObject {
+public:
+  ManagedHostObject(expo_jsi_runtime_handle runtime,
+                    expo_jsi_host_object_get_fn get,
+                    expo_jsi_host_object_set_fn set,
+                    expo_jsi_host_object_get_property_names_fn getPropertyNames,
+                    void *callbackContext,
+                    expo_jsi_release_callback_context_fn releaseContext)
+    : runtime_(runtime),
+      get_(get),
+      set_(set),
+      getPropertyNames_(getPropertyNames),
+      callbackContext_(callbackContext),
+      releaseContext_(releaseContext)
+  {
+  }
+
+  ~ManagedHostObject() override
+  {
+    if (releaseContext_ != nullptr && callbackContext_ != nullptr) {
+      releaseContext_(callbackContext_);
+    }
+  }
+
+  jsi::Value get(jsi::Runtime &runtime, const jsi::PropNameID &name) override
+  {
+    auto propertyName = name.utf8(runtime);
+    auto result = get_(
+      callbackContext_, runtime_, propertyName.data(), static_cast<int32_t>(propertyName.size()));
+    if (result.ok == 0 || result.value == nullptr) {
+      delete result.value;
+      throw jsi::JSError(
+        runtime, copyAndReleaseErrorMessage(result.error, "Managed host object getter failed."));
+    }
+
+    try {
+      auto value = jsi::Value(runtime, result.value->value());
+      delete result.value;
+      return value;
+    } catch (...) {
+      delete result.value;
+      throw;
+    }
+  }
+
+  void set(jsi::Runtime &runtime, const jsi::PropNameID &name, const jsi::Value &value) override
+  {
+    auto propertyName = name.utf8(runtime);
+    if (set_ == nullptr) {
+      throw jsi::JSError(runtime,
+                         "Cannot set property '" + propertyName + "' on a read-only host object.");
+    }
+
+    auto valueHandle = expo::dotnet::ValueHandle::borrowed(value);
+    auto error = set_(callbackContext_,
+                      runtime_,
+                      propertyName.data(),
+                      static_cast<int32_t>(propertyName.size()),
+                      valueHandle.get());
+    if (error.code != 0) {
+      throw jsi::JSError(runtime,
+                         copyAndReleaseErrorMessage(error, "Managed host object setter failed."));
+    }
+  }
+
+  std::vector<jsi::PropNameID> getPropertyNames(jsi::Runtime &runtime) override
+  {
+    if (getPropertyNames_ == nullptr) {
+      return {};
+    }
+
+    auto result = getPropertyNames_(callbackContext_, runtime_);
+    if (result.ok == 0) {
+      throw jsi::JSError(
+        runtime,
+        copyAndReleaseErrorMessage(result.error, "Managed host object property names failed."));
+    }
+
+    struct ResultReleaseGuard {
+      expo_jsi_property_names_result *result;
+
+      ~ResultReleaseGuard()
+      {
+        if (result != nullptr && result->release != nullptr) {
+          result->release(result->release_context);
+        }
+      }
+
+      void release()
+      {
+        if (result != nullptr && result->release != nullptr) {
+          result->release(result->release_context);
+          result = nullptr;
+        }
+      }
+    } releaseGuard{&result};
+
+    if (result.count < 0) {
+      throw jsi::JSError(runtime, "Managed host object returned a negative property count.");
+    }
+    if (result.count > 0 && result.names == nullptr) {
+      throw jsi::JSError(runtime, "Managed host object returned null property names.");
+    }
+
+    std::vector<jsi::PropNameID> names;
+    names.reserve(static_cast<size_t>(result.count));
+    for (int32_t index = 0; index < result.count; index++) {
+      auto propertyName = result.names[index];
+      if (propertyName.length < 0 || (propertyName.length > 0 && propertyName.data == nullptr)) {
+        throw jsi::JSError(runtime, "Managed host object returned an invalid property name.");
+      }
+      names.push_back(jsi::PropNameID::forUtf8(
+        runtime, propertyName.data, static_cast<size_t>(propertyName.length)));
+    }
+
+    releaseGuard.release();
+    return names;
+  }
+
+private:
+  expo_jsi_runtime_handle runtime_;
+  expo_jsi_host_object_get_fn get_;
+  expo_jsi_host_object_set_fn set_;
+  expo_jsi_host_object_get_property_names_fn getPropertyNames_;
+  void *callbackContext_;
+  expo_jsi_release_callback_context_fn releaseContext_;
+};
+
 class ScheduledTaskContext final {
 public:
   ScheduledTaskContext(expo_jsi_task_callback_fn callback,
@@ -1904,6 +2044,44 @@ expo_jsi_value_result createHostFunction(
     return makeErrorResult(29, ex.what());
   } catch (...) {
     return makeErrorResult(30, "Unknown native exception while creating host function.");
+  }
+}
+
+expo_jsi_value_result createHostObject(expo_jsi_runtime_handle runtime,
+                                       expo_jsi_host_object_get_fn get,
+                                       expo_jsi_host_object_set_fn set,
+                                       expo_jsi_host_object_get_property_names_fn getPropertyNames,
+                                       void *callbackContext,
+                                       expo_jsi_release_callback_context_fn releaseCallbackContext)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_value_result{0, nullptr, error};
+  }
+  if (get == nullptr) {
+    return makeErrorResult(136, "Host object getter callback is null.");
+  }
+
+  auto releaseOnError = true;
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    std::shared_ptr<ManagedHostObject> hostObject;
+    hostObject = std::make_shared<ManagedHostObject>(
+      runtime, get, set, getPropertyNames, callbackContext, releaseCallbackContext);
+    releaseOnError = false;
+    auto object = jsi::Object::createFromHostObject(jsRuntime, std::move(hostObject));
+    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, object)));
+  } catch (const std::exception &ex) {
+    if (releaseOnError && releaseCallbackContext != nullptr && callbackContext != nullptr) {
+      releaseCallbackContext(callbackContext);
+    }
+    return makeErrorResult(137, ex.what());
+  } catch (...) {
+    if (releaseOnError && releaseCallbackContext != nullptr && callbackContext != nullptr) {
+      releaseCallbackContext(callbackContext);
+    }
+    return makeErrorResult(138, "Unknown native exception while creating host object.");
   }
 }
 
@@ -2077,6 +2255,7 @@ const expo_jsi_api kApi{
   objectSetNativeState,
   objectGetNativeState,
   objectClearNativeState,
+  createHostObject,
 };
 
 } // namespace
