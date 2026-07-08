@@ -1,0 +1,74 @@
+name: native-tests
+
+# Heavy CI lane: Hermes prebuilt cache + native testhost + full managed suite.
+# Runs on ubuntu-latest and windows-latest only — Apple runners cost 10× minutes.
+# Fast lane (no native toolchain) lives in checks.yml.
+on: [push, pull_request]
+
+concurrency:
+  group: native-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  managed-tests:
+    name: managed-tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # TODO: add loader: [hostfxr, nativeaot] dimension once NativeAOT
+        # end-to-end proof lands (see docs/plans/README.md maintenance notes).
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache Hermes prebuilt
+        id: hermes-cache
+        uses: actions/cache@v4
+        with:
+          path: build/hermes
+          key: hermes-${{ runner.os }}-${{ hashFiles('scripts/hermes-ref.txt') }}
+
+      - name: Build Hermes (Linux)
+        if: runner.os == 'Linux' && steps.hermes-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build clang python3 libicu-dev
+          bash scripts/build-hermes-linux.sh
+
+      - name: Build Hermes (Windows)
+        if: runner.os == 'Windows' && steps.hermes-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: scripts/build-hermes-windows.ps1
+
+      - name: Run managed test suite (Linux)
+        if: runner.os == 'Linux'
+        run: bash scripts/test-managed.sh
+
+      - name: Run managed test suite (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        # Capture a full crash dump if the test host segfaults (see plan 009:
+        # a 0xC0000005 teardown crash reproduces only on the runner). The env
+        # vars propagate to the dotnet test child processes.
+        env:
+          DOTNET_DbgEnableMiniDump: "1"
+          DOTNET_DbgMiniDumpType: "4"
+          DOTNET_DbgMiniDumpName: "${{ runner.temp }}/dumps/coredump.%p.dmp"
+        run: |
+          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}/dumps" | Out-Null
+          scripts/test-managed.ps1
+
+      - name: Upload Windows crash dump
+        if: failure() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-crash-dump
+          path: ${{ runner.temp }}/dumps
+          if-no-files-found: ignore
