@@ -39,15 +39,15 @@ typedef struct expo_jsi_testhost_counters {
 
 EXPO_JSI_TESTHOST_EXPORT expo_jsi_testhost_create_result expo_jsi_testhost_create_runtime(void);
 
-EXPO_JSI_TESTHOST_EXPORT expo_jsi_value_result expo_jsi_testhost_evaluate_script(
-  expo_jsi_testhost_runtime_handle testhost_runtime,
-  const uint8_t *source,
-  int32_t source_len,
-  const uint8_t *source_url,
-  int32_t source_url_len);
+EXPO_JSI_TESTHOST_EXPORT expo_jsi_value_result
+expo_jsi_testhost_evaluate_script(expo_jsi_testhost_runtime_handle testhost_runtime,
+                                  const uint8_t *source,
+                                  int32_t source_len,
+                                  const uint8_t *source_url,
+                                  int32_t source_url_len);
 
-EXPO_JSI_TESTHOST_EXPORT expo_jsi_testhost_counters expo_jsi_testhost_get_counters(
-  expo_jsi_testhost_runtime_handle testhost_runtime);
+EXPO_JSI_TESTHOST_EXPORT expo_jsi_testhost_counters
+expo_jsi_testhost_get_counters(expo_jsi_testhost_runtime_handle testhost_runtime);
 
 EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_reset_counters(
   expo_jsi_testhost_runtime_handle testhost_runtime);
@@ -55,8 +55,8 @@ EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_reset_counters(
 EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_drain_tasks(
   expo_jsi_testhost_runtime_handle testhost_runtime);
 
-EXPO_JSI_TESTHOST_EXPORT expo_jsi_error expo_jsi_testhost_wait_until_idle(
-  expo_jsi_testhost_runtime_handle testhost_runtime);
+EXPO_JSI_TESTHOST_EXPORT expo_jsi_error
+expo_jsi_testhost_wait_until_idle(expo_jsi_testhost_runtime_handle testhost_runtime);
 
 EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_set_sync_execution_supported(
   expo_jsi_testhost_runtime_handle testhost_runtime, uint8_t supported);

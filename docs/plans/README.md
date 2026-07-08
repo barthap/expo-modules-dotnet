@@ -14,7 +14,7 @@ your row when done.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001 | checks.yml — fast CI lane, ubuntu+windows matrix (no native) | P1 | S | — | TODO |
+| 001 | checks.yml — fast CI lane, ubuntu+windows matrix (no native) | P1 | S | — | DONE (pending operator commit) — pushed `advisor/001-ci-checks` (66eb41ba), CI run 28968345781: node+generator-tests green on BOTH ubuntu+windows; F-001 format fix applied in working tree (4 files, formatter-only, `scripts/format.sh --check --all` → exit 0), awaiting operator's `style:` commit |
 | 002 | Autolinking CLI command tests | P1 | M | — | TODO |
 | 003 | Bridge edge-case tests (UTF-8, promises, generator diagnostics) | P2 | M | — (001 recommended first) | TODO |
 | 004 | Bridge string hygiene (copy elimination + consistent UTF-8 validation) | P2 | S | 003 | TODO |
@@ -24,6 +24,33 @@ your row when done.
 | 008 | Linux testhost port + native-tests.yml (heavy lane, ubuntu+windows) | P1 | M–L | 001 | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
+
+### Finding F-001 (surfaced by plan 001, out of scope to fix there)
+
+Pre-existing clang-format violations block the `format` job on first CI run.
+Confirmed on CI run 28968345781 and locally across clang-format 17/18/21
+(deterministic, not env-specific). Flagged files at the C/C++ stage:
+
+- `apps/hermes-console-app/native/ManagedProofLoader.cpp` (lines ~121–191)
+- `packages/expo-modules-dotnet/native/testhost/include/expo_jsi_testhost.h`
+  (lines ~42–58)
+
+`scripts/format.sh` exits at the C/C++ stage, so the CMake/C#/prettier stages
+were never evaluated — the true full scope may be larger. Both files were
+committed unformatted in `e380065e` ("Port build/test scripts to Windows").
+**Resolved (working tree, pending operator commit):** ran `scripts/format.sh`
+across all stages (installed `cmake-format`/cmakelang locally to unmask the
+CMake stage). `scripts/format.sh --check --all` now exits 0. Formatter-only
+changes, 4 files:
+
+- `apps/hermes-console-app/native/ManagedProofLoader.cpp`
+- `packages/expo-modules-dotnet/native/testhost/include/expo_jsi_testhost.h`
+- `apps/hermes-console-app/native/CMakeLists.txt` (cmake-format)
+- `cmake/ExpoHermesPrebuilt.cmake` (cmake-format)
+
+Operator to commit as a dedicated `style:` change (separate from the `ci:`
+workflow commit). Local clang-format is Apple 17 vs CI's apt 18 — skew risk low
+(17/18/21 agree on the C/C++ files); the pushed run is the final gate.
 
 ## Dependency notes
 

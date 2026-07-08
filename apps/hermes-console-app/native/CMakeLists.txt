@@ -73,8 +73,10 @@ endif()
 
 set(HERMES_PREBUILT_ROOT
     "$ENV{HERMES_PREBUILT_ROOT}"
-    CACHE PATH
-          "Local Hermes prebuilt root created by scripts/build-hermes-macos.sh or scripts/build-hermes-windows.ps1")
+    CACHE
+      PATH
+      "Local Hermes prebuilt root created by scripts/build-hermes-macos.sh or scripts/build-hermes-windows.ps1"
+)
 if(NOT HERMES_PREBUILT_ROOT)
   set(HERMES_PREBUILT_ROOT "${REPO_ROOT}/build/hermes/source/destroot")
 endif()
