@@ -363,7 +363,7 @@ dotnet test packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Gener
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 Run:
 
@@ -382,7 +382,7 @@ git commit -m "Add generated view metadata syntax"
 - Modify: `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/ExpoModulesGenerator.cs`
 - Test: `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests/ExpoModulesGeneratorTests.cs`
 
-- [ ] **Step 1: Write failing diagnostics tests**
+- [x] **Step 1: Write failing diagnostics tests**
 
 Add these tests:
 
@@ -468,7 +468,7 @@ public void GeneratorReportsInvalidViewPropSetterShape()
 }
 ```
 
-- [ ] **Step 2: Verify tests fail**
+- [x] **Step 2: Verify tests fail**
 
 Run:
 
@@ -478,7 +478,7 @@ dotnet test packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Gener
 
 Expected: FAIL because diagnostics do not exist or do not use the expected ids.
 
-- [ ] **Step 3: Add diagnostics**
+- [x] **Step 3: Add diagnostics**
 
 Add to `ExpoModulesDiagnostics.cs`:
 
@@ -538,7 +538,7 @@ foreach (var duplicateView in modules
 }
 ```
 
-- [ ] **Step 4: Verify diagnostics pass**
+- [x] **Step 4: Verify diagnostics pass**
 
 Run:
 

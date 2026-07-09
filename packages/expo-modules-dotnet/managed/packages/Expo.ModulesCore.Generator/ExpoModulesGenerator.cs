@@ -115,7 +115,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         eventNameSet,
         diagnostics
     );
-    var view = GetView(typeSymbol);
+    var view = GetView(typeSymbol, moduleName, diagnostics);
     HashSet<string> reservedJavaScriptNames = eventNameSet.Count == 0
         ? []
         : new HashSet<string>(["startObserving", "stopObserving"], StringComparer.Ordinal);
@@ -138,7 +138,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     );
   }
 
-  private static ExpoViewModel? GetView(INamedTypeSymbol typeSymbol)
+  private static ExpoViewModel? GetView(
+      INamedTypeSymbol typeSymbol,
+      string moduleName,
+      List<ExpoDiagnosticModel> diagnostics)
   {
     var viewAttribute = typeSymbol.GetAttributes().FirstOrDefault(attribute =>
         attribute.AttributeClass?.ToDisplayString() == ViewAttributeMetadataName);
@@ -151,11 +154,16 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     var viewType = viewAttribute.ConstructorArguments.ElementAtOrDefault(1).Value as INamedTypeSymbol;
     if (string.IsNullOrWhiteSpace(componentName) || viewType is null)
     {
+      diagnostics.Add(new ExpoDiagnosticModel(
+          ExpoModulesDiagnostics.InvalidViewDeclaration.Id,
+          typeSymbol.Locations.FirstOrDefault(),
+          new EquatableArray<string>(new[] { moduleName, "view declaration must provide a non-empty component name and view type" })
+      ));
       return null;
     }
 
     var viewTypeName = viewType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-    var props = GetViewProps(typeSymbol, viewTypeName);
+    var props = GetViewProps(typeSymbol, moduleName, viewTypeName, diagnostics);
     return new ExpoViewModel(
         componentName!,
         viewTypeName,
@@ -166,7 +174,9 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 
   private static IEnumerable<ExpoViewPropModel> GetViewProps(
       INamedTypeSymbol typeSymbol,
-      string viewTypeName)
+      string moduleName,
+      string viewTypeName,
+      List<ExpoDiagnosticModel> diagnostics)
   {
     var props = new List<ExpoViewPropModel>();
     foreach (var method in typeSymbol.GetMembers().OfType<IMethodSymbol>())
@@ -179,14 +189,28 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       }
 
       var propName = propAttribute.ConstructorArguments.ElementAtOrDefault(0).Value as string;
-      if (string.IsNullOrWhiteSpace(propName) ||
-          method.IsStatic ||
+      if (string.IsNullOrWhiteSpace(propName))
+      {
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.InvalidViewProp.Id,
+            method.Locations.FirstOrDefault(),
+            new EquatableArray<string>(new[] { moduleName, method.Name, "prop name must be non-empty" })
+        ));
+        continue;
+      }
+
+      if (method.IsStatic ||
           method.IsGenericMethod ||
           method.Parameters.Length != 2 ||
           method.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) != viewTypeName ||
           !IsStringOrNullableString(method.Parameters[1].Type) ||
           (!method.ReturnsVoid && method.ReturnType.SpecialType != SpecialType.System_Void))
       {
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.InvalidViewProp.Id,
+            method.Locations.FirstOrDefault(),
+            new EquatableArray<string>(new[] { moduleName, method.Name, "prop setter must be an instance void method accepting the view type and string? value" })
+        ));
         continue;
       }
 
@@ -200,7 +224,24 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       ));
     }
 
-    return props;
+    foreach (var duplicate in props.GroupBy(prop => prop.PropName, StringComparer.Ordinal).Where(group => group.Count() > 1))
+    {
+      diagnostics.Add(new ExpoDiagnosticModel(
+          ExpoModulesDiagnostics.DuplicateViewPropName.Id,
+          duplicate.Skip(1).First().Location,
+          new EquatableArray<string>(new[] { moduleName, duplicate.Key })
+      ));
+    }
+
+    var duplicateNames = new HashSet<string>(
+        props
+            .GroupBy(prop => prop.PropName, StringComparer.Ordinal)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key),
+        StringComparer.Ordinal
+    );
+
+    return props.Where(prop => !duplicateNames.Contains(prop.PropName));
   }
 
   private static bool IsStringOrNullableString(ITypeSymbol typeSymbol) =>
@@ -755,6 +796,14 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
             .Select(group => group.Key),
         StringComparer.Ordinal
     );
+    var duplicateViewComponentNames = new HashSet<string>(
+        moduleModels
+            .Where(module => module.View is not null)
+            .GroupBy(module => module.View!.ComponentName, StringComparer.Ordinal)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key),
+        StringComparer.Ordinal
+    );
 
     foreach (var diagnostic in moduleModels.SelectMany(module => module.Diagnostics.Values))
     {
@@ -772,6 +821,23 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       context.ReportDiagnostic(ToDiagnostic(new ExpoDiagnosticModel(
           ExpoModulesDiagnostics.DuplicateModuleName.Id,
           duplicateModules[1].Location,
+          new EquatableArray<string>(new[] { group.Key })
+      )));
+    }
+
+    foreach (var group in moduleModels
+        .Where(module => module.View is not null)
+        .GroupBy(module => module.View!.ComponentName, StringComparer.Ordinal))
+    {
+      var duplicateViewModules = group.ToArray();
+      if (duplicateViewModules.Length <= 1)
+      {
+        continue;
+      }
+
+      context.ReportDiagnostic(ToDiagnostic(new ExpoDiagnosticModel(
+          ExpoModulesDiagnostics.DuplicateViewComponentName.Id,
+          duplicateViewModules[1].View?.Location ?? duplicateViewModules[1].Location,
           new EquatableArray<string>(new[] { group.Key })
       )));
     }
@@ -821,7 +887,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       builder.AppendLine($"    using var module_{SanitizeIdentifier(module.ModuleName)} = {GetModuleRegistrationFunctionName(module)}(context, modules);");
     }
     builder.AppendLine("  }");
-    EmitViewDefinitionMethods(builder, moduleModels);
+    EmitViewDefinitionMethods(builder, moduleModels, duplicateViewComponentNames);
     foreach (var module in moduleModels)
     {
       EmitModuleRegistrationFunction(builder, module);
@@ -848,9 +914,14 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 
   private static void EmitViewDefinitionMethods(
       StringBuilder builder,
-      IReadOnlyList<ExpoModuleModel> modules)
+      IReadOnlyList<ExpoModuleModel> modules,
+      ISet<string> duplicateViewComponentNames)
   {
-    var viewModules = modules.Where(module => module.View is not null).ToArray();
+    var viewModules = modules
+        .Where(module =>
+            module.View is not null &&
+            !duplicateViewComponentNames.Contains(module.View.ComponentName))
+        .ToArray();
 
     builder.AppendLine();
     builder.AppendLine("  public static global::System.Collections.Generic.IReadOnlyList<global::Expo.ModulesCore.GeneratedViewDefinition> GetViewDefinitions()");
@@ -1012,6 +1083,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       "EXPOJSI009" => ExpoModulesDiagnostics.InvalidEventName,
       "EXPOJSI010" => ExpoModulesDiagnostics.InvalidObservingHook,
       "EXPOJSI011" => ExpoModulesDiagnostics.InvalidLifecycleHook,
+      "EXPOJSI012" => ExpoModulesDiagnostics.DuplicateViewComponentName,
+      "EXPOJSI013" => ExpoModulesDiagnostics.DuplicateViewPropName,
+      "EXPOJSI014" => ExpoModulesDiagnostics.InvalidViewProp,
+      "EXPOJSI015" => ExpoModulesDiagnostics.InvalidViewDeclaration,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());

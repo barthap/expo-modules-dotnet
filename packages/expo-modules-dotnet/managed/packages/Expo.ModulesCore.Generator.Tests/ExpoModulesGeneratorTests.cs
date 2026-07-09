@@ -1005,6 +1005,86 @@ public sealed class ExpoModulesGeneratorTests
   }
 
   [Fact]
+  public void GeneratorReportsDuplicateViewComponentName()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public sealed class BoxView {}
+
+        [ExpoModule("First")]
+        [View("DuplicateBox", typeof(BoxView))]
+        public sealed partial class FirstModule {}
+
+        [ExpoModule("Second")]
+        [View("DuplicateBox", typeof(BoxView))]
+        public sealed partial class SecondModule {}
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI012");
+    Assert.Contains("DuplicateBox", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorReportsDuplicateViewPropName()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public sealed class BoxView {}
+
+        [ExpoModule("Box")]
+        [View("BoxView", typeof(BoxView))]
+        public sealed partial class BoxModule
+        {
+          [Prop("color")]
+          public void SetColor(BoxView view, string? value) {}
+
+          [Prop("color")]
+          public void SetTint(BoxView view, string? value) {}
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI013");
+    Assert.Contains("Box", diagnostic.GetMessage());
+    Assert.Contains("color", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorReportsInvalidViewPropSetterShape()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public sealed class BoxView {}
+
+        [ExpoModule("Box")]
+        [View("BoxView", typeof(BoxView))]
+        public sealed partial class BoxModule
+        {
+          [Prop("opacity")]
+          public void SetOpacity(BoxView view, double value) {}
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI014");
+    Assert.Contains("SetOpacity", diagnostic.GetMessage());
+    Assert.Contains("string", diagnostic.GetMessage());
+  }
+
+  [Fact]
   public void GeneratorReportsInvalidLifecycleHook()
   {
     var result = GeneratorTestHost.Run(

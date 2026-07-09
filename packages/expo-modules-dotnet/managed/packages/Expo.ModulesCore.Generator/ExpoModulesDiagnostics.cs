@@ -102,4 +102,40 @@ internal static class ExpoModulesDiagnostics
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true
   );
+
+  public static readonly DiagnosticDescriptor DuplicateViewComponentName = new(
+      id: "EXPOJSI012",
+      title: "Duplicate Expo view component name",
+      messageFormat: "Multiple Expo modules export view component name '{0}'",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor DuplicateViewPropName = new(
+      id: "EXPOJSI013",
+      title: "Duplicate Expo view prop name",
+      messageFormat: "Module '{0}' exports duplicate view prop name '{1}'",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor InvalidViewProp = new(
+      id: "EXPOJSI014",
+      title: "Invalid Expo view prop",
+      messageFormat: "Module '{0}' has invalid view prop setter '{1}': {2}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor InvalidViewDeclaration = new(
+      id: "EXPOJSI015",
+      title: "Invalid Expo view declaration",
+      messageFormat: "Module '{0}' has invalid view declaration: {1}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
 }
