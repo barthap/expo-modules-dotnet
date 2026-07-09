@@ -13,7 +13,7 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net10.0;net10.0-windows10.0.19041.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -25,5 +25,13 @@
   <PropertyGroup Condition="'$(PublishAot)' == 'true'">
     <NativeLib>Shared</NativeLib>
   </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">
+    <ProjectReference Include="../../../expo-modules-dotnet-windows/managed/Expo.ModulesCore.Windows/Expo.ModulesCore.Windows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' != 'net10.0-windows10.0.19041.0'">
+    <Compile Remove="**/*.Windows.cs" />
+  </ItemGroup>
 
 </Project>

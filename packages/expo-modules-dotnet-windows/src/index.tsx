@@ -1,3 +1,5 @@
+/// <reference path="./react-native-windows-native-component-registry.d.ts" />
+
 import * as NativeComponentRegistry from 'react-native-windows/Libraries/NativeComponent/NativeComponentRegistry';
 
 export function requireDotnetNativeView<Props extends object>(

@@ -956,7 +956,7 @@ apps/desktop-app/node_modules/.bin/react-native.CMD autolink-windows --check --s
 
 Actual: PASS, no auto-linking changes necessary.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 
@@ -976,7 +976,7 @@ git commit -m "Register Windows dotnet view components"
 - Create: `packages/example-module/dotnet/ExampleModule/ExampleColorBoxView.Windows.cs`
 - Modify: `packages/example-module/src/index.ts`
 
-- [ ] **Step 1: Multi-target the example module**
+- [x] **Step 1: Multi-target the example module**
 
 Change the project file to:
 
@@ -1002,7 +1002,7 @@ Change the project file to:
 </Project>
 ```
 
-- [ ] **Step 2: Add Windows partial module syntax**
+- [x] **Step 2: Add Windows partial module syntax**
 
 Create `ExampleMathModule.Windows.cs`:
 
@@ -1023,7 +1023,7 @@ public sealed partial class ExampleMathModule
 }
 ```
 
-- [ ] **Step 3: Add composition view**
+- [x] **Step 3: Add composition view**
 
 Create `ExampleColorBoxView.Windows.cs`:
 
@@ -1088,7 +1088,7 @@ public sealed class ExampleColorBoxView : WindowsExpoView
 }
 ```
 
-- [ ] **Step 4: Export JS view helper**
+- [x] **Step 4: Export JS view helper**
 
 Update `packages/example-module/src/index.ts`:
 
@@ -1110,7 +1110,9 @@ export const ExampleColorBox = requireDotnetNativeView<ExampleColorBoxProps>(
 );
 ```
 
-- [ ] **Step 5: Verify builds**
+Current implementation keeps `expo-modules-dotnet-windows` as an optional peer and exports a null fallback component on non-Windows platforms.
+
+- [x] **Step 5: Verify builds**
 
 Run:
 
@@ -1122,7 +1124,24 @@ pnpm --filter desktop-app typecheck
 
 Expected: universal target builds without Windows files; Windows target builds with `ExampleColorBoxView`; TypeScript sees the exported view.
 
-- [ ] **Step 6: Commit**
+Actual managed builds:
+
+```powershell
+dotnet build packages/example-module/dotnet/ExampleModule/ExampleModule.csproj -f net10.0
+dotnet build packages/example-module/dotnet/ExampleModule/ExampleModule.csproj -f net10.0-windows10.0.19041.0
+```
+
+Both passed with zero warnings and zero errors after `dotnet build-server shutdown` released a stale compiler lock from an earlier parallel build attempt.
+
+TypeScript verification:
+
+```powershell
+pnpm --filter desktop-app typecheck
+```
+
+Actual: PASS. The first install check required refreshing `pnpm-lock.yaml` because the new sidecar package and example module dev dependencies changed workspace package metadata.
+
+- [x] **Step 6: Commit**
 
 Run:
 

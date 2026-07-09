@@ -1,4 +1,7 @@
 import { requireDotnetModule } from 'expo-modules-dotnet';
+import { requireDotnetNativeView } from 'expo-modules-dotnet-windows';
+import type { ComponentType } from 'react';
+import { Platform, type StyleProp, type ViewStyle } from 'react-native';
 
 const nativeModule = requireDotnetModule<ExampleModule>('ExampleModule');
 
@@ -13,6 +16,11 @@ export type ExampleUserSummary = ExampleUser & {
 
 export type EventSubscription = {
   remove(): void;
+};
+
+export type ExampleColorBoxProps = {
+  color?: 'blue' | 'green' | 'red' | 'yellow' | 'purple' | string;
+  style?: StyleProp<ViewStyle>;
 };
 
 export type ExampleModule = {
@@ -30,6 +38,13 @@ export type ExampleModule = {
     callback: (value: string) => string
   ): string;
 };
+
+const NullExampleColorBox: ComponentType<ExampleColorBoxProps> = () => null;
+
+export const ExampleColorBox =
+  Platform.OS === 'windows'
+    ? requireDotnetNativeView<ExampleColorBoxProps>('ExampleColorBox', ['color'])
+    : NullExampleColorBox;
 
 export function add(a: number, b: number): number {
   return nativeModule.add(a, b);
