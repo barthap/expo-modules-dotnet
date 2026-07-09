@@ -956,6 +956,55 @@ public sealed class ExpoModulesGeneratorTests
   }
 
   [Fact]
+  public void GeneratorEmitsViewMetadataAndDirectPropDispatch()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public sealed class ColorBoxView
+        {
+          public string? Color { get; set; }
+        }
+
+        [ExpoModule("ExampleModule")]
+        [View("ExampleColorBox", typeof(ColorBoxView))]
+        public sealed partial class ExampleModule
+        {
+          [Prop("color")]
+          public void SetColor(ColorBoxView view, string? color)
+          {
+            view.Color = color;
+          }
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains(
+        "public static global::System.Collections.Generic.IReadOnlyList<global::Expo.ModulesCore.GeneratedViewDefinition> GetViewDefinitions()",
+        source
+    );
+    Assert.Contains("new global::Expo.ModulesCore.GeneratedViewDefinition(", source);
+    Assert.Contains("\"ExampleModule\"", source);
+    Assert.Contains("\"ExampleColorBox\"", source);
+    Assert.Contains("typeof(global::Expo.TestModules.ColorBoxView)", source);
+    Assert.Contains(
+        "new global::Expo.ModulesCore.GeneratedViewPropDefinition(\"color\", global::Expo.ModulesCore.GeneratedViewPropKind.String)",
+        source
+    );
+    Assert.Contains("public static object CreateView(", source);
+    Assert.Contains("public static void UpdateViewProp(", source);
+    Assert.Contains("module.SetColor((global::Expo.TestModules.ColorBoxView)view, value)", source);
+    Assert.DoesNotContain("MethodInfo.Invoke", source);
+    Assert.DoesNotContain("Delegate.DynamicInvoke", source);
+    Assert.DoesNotContain("JsonSerializer", source);
+  }
+
+  [Fact]
   public void GeneratorReportsInvalidLifecycleHook()
   {
     var result = GeneratorTestHost.Run(

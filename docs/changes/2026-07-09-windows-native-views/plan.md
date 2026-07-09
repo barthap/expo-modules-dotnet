@@ -59,7 +59,7 @@
 - Modify: `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/ExpoModulesGenerator.cs`
 - Test: `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests/ExpoModulesGeneratorTests.cs`
 
-- [ ] **Step 1: Write the failing generator test**
+- [x] **Step 1: Write the failing generator test**
 
 Add this test to `ExpoModulesGeneratorTests`:
 
@@ -108,7 +108,7 @@ public void GeneratorEmitsViewMetadataAndDirectPropDispatch()
 }
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run:
 
@@ -118,7 +118,7 @@ dotnet test packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Gener
 
 Expected: FAIL because `ViewAttribute`, `PropAttribute`, generated view metadata, `CreateView`, and `UpdateViewProp` do not exist yet.
 
-- [ ] **Step 3: Add platform-neutral core types**
+- [x] **Step 3: Add platform-neutral core types**
 
 Create `ViewAttribute.cs`:
 
@@ -189,7 +189,7 @@ public sealed record GeneratedViewDefinition(
     IReadOnlyList<GeneratedViewPropDefinition> Props);
 ```
 
-- [ ] **Step 4: Extend generator models**
+- [x] **Step 4: Extend generator models**
 
 Add records to `ExpoModuleModel.cs`:
 
@@ -211,7 +211,7 @@ internal sealed record ExpoViewPropModel(
 
 Add `ExpoViewModel? View` to `ExpoModuleModel` before `Functions`.
 
-- [ ] **Step 5: Extend generator implementation**
+- [x] **Step 5: Extend generator implementation**
 
 In `ExpoModulesGenerator.cs`, add metadata constants:
 
@@ -353,7 +353,7 @@ public static object CreateView(global::Expo.ModulesCore.DotnetRuntimeContext co
 public static void UpdateViewProp(global::Expo.ModulesCore.DotnetRuntimeContext context, string componentName, object view, string propName, string? value)
 ```
 
-- [ ] **Step 6: Run generator tests**
+- [x] **Step 6: Run generator tests**
 
 Run:
 

@@ -17,6 +17,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
   private const string OnStopObservingAttributeMetadataName = "Expo.ModulesCore.OnStopObservingAttribute";
   private const string JSEnumAttributeMetadataName = "Expo.ModulesCore.JSEnumAttribute";
   private const string JSAttributeMetadataName = "Expo.ModulesCore.JSAttribute";
+  private const string ViewAttributeMetadataName = "Expo.ModulesCore.ViewAttribute";
+  private const string PropAttributeMetadataName = "Expo.ModulesCore.PropAttribute";
   private const string DotnetRuntimeContextMetadataName = "Expo.ModulesCore.DotnetRuntimeContext";
   private const string JavaScriptValueMetadataName = "Expo.JSI.JavaScriptValue";
 
@@ -113,6 +115,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         eventNameSet,
         diagnostics
     );
+    var view = GetView(typeSymbol);
     HashSet<string> reservedJavaScriptNames = eventNameSet.Count == 0
         ? []
         : new HashSet<string>(["startObserving", "stopObserving"], StringComparer.Ordinal);
@@ -128,11 +131,80 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         new EquatableArray<string>(eventNames),
         new EquatableArray<ExpoObservingHookModel>(startObservingHooks),
         new EquatableArray<ExpoObservingHookModel>(stopObservingHooks),
+        view,
         new EquatableArray<ExpoFunctionModel>(functions),
         new EquatableArray<ExpoGeneratedRecordCodecModel>(recordCodecs),
         new EquatableArray<ExpoDiagnosticModel>(diagnostics)
     );
   }
+
+  private static ExpoViewModel? GetView(INamedTypeSymbol typeSymbol)
+  {
+    var viewAttribute = typeSymbol.GetAttributes().FirstOrDefault(attribute =>
+        attribute.AttributeClass?.ToDisplayString() == ViewAttributeMetadataName);
+    if (viewAttribute is null)
+    {
+      return null;
+    }
+
+    var componentName = viewAttribute.ConstructorArguments.ElementAtOrDefault(0).Value as string;
+    var viewType = viewAttribute.ConstructorArguments.ElementAtOrDefault(1).Value as INamedTypeSymbol;
+    if (string.IsNullOrWhiteSpace(componentName) || viewType is null)
+    {
+      return null;
+    }
+
+    var viewTypeName = viewType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    var props = GetViewProps(typeSymbol, viewTypeName);
+    return new ExpoViewModel(
+        componentName!,
+        viewTypeName,
+        typeSymbol.Locations.FirstOrDefault(),
+        new EquatableArray<ExpoViewPropModel>(props)
+    );
+  }
+
+  private static IEnumerable<ExpoViewPropModel> GetViewProps(
+      INamedTypeSymbol typeSymbol,
+      string viewTypeName)
+  {
+    var props = new List<ExpoViewPropModel>();
+    foreach (var method in typeSymbol.GetMembers().OfType<IMethodSymbol>())
+    {
+      var propAttribute = method.GetAttributes().FirstOrDefault(attribute =>
+          attribute.AttributeClass?.ToDisplayString() == PropAttributeMetadataName);
+      if (propAttribute is null)
+      {
+        continue;
+      }
+
+      var propName = propAttribute.ConstructorArguments.ElementAtOrDefault(0).Value as string;
+      if (string.IsNullOrWhiteSpace(propName) ||
+          method.IsStatic ||
+          method.IsGenericMethod ||
+          method.Parameters.Length != 2 ||
+          method.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) != viewTypeName ||
+          !IsStringOrNullableString(method.Parameters[1].Type) ||
+          (!method.ReturnsVoid && method.ReturnType.SpecialType != SpecialType.System_Void))
+      {
+        continue;
+      }
+
+      props.Add(new ExpoViewPropModel(
+          method.Name,
+          propName!,
+          viewTypeName,
+          method.Parameters[1].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+          "global::Expo.ModulesCore.GeneratedViewPropKind.String",
+          method.Locations.FirstOrDefault()
+      ));
+    }
+
+    return props;
+  }
+
+  private static bool IsStringOrNullableString(ITypeSymbol typeSymbol) =>
+      typeSymbol.SpecialType == SpecialType.System_String;
 
   private static IEnumerable<string> GetEventNames(
       INamedTypeSymbol typeSymbol,
@@ -749,6 +821,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       builder.AppendLine($"    using var module_{SanitizeIdentifier(module.ModuleName)} = {GetModuleRegistrationFunctionName(module)}(context, modules);");
     }
     builder.AppendLine("  }");
+    EmitViewDefinitionMethods(builder, moduleModels);
     foreach (var module in moduleModels)
     {
       EmitModuleRegistrationFunction(builder, module);
@@ -773,14 +846,104 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     context.AddSource($"{providerTypeName}.g.cs", SourceText.From(builder.ToString(), Encoding.UTF8));
   }
 
+  private static void EmitViewDefinitionMethods(
+      StringBuilder builder,
+      IReadOnlyList<ExpoModuleModel> modules)
+  {
+    var viewModules = modules.Where(module => module.View is not null).ToArray();
+
+    builder.AppendLine();
+    builder.AppendLine("  public static global::System.Collections.Generic.IReadOnlyList<global::Expo.ModulesCore.GeneratedViewDefinition> GetViewDefinitions()");
+    builder.AppendLine("  {");
+    if (viewModules.Length == 0)
+    {
+      builder.AppendLine("    return global::System.Array.Empty<global::Expo.ModulesCore.GeneratedViewDefinition>();");
+    }
+    else
+    {
+      builder.AppendLine("    return new global::Expo.ModulesCore.GeneratedViewDefinition[]");
+      builder.AppendLine("    {");
+      foreach (var module in viewModules)
+      {
+        var view = module.View!;
+        builder.AppendLine("      new global::Expo.ModulesCore.GeneratedViewDefinition(");
+        builder.AppendLine($"          \"{EscapeString(module.ModuleName)}\",");
+        builder.AppendLine($"          \"{EscapeString(view.ComponentName)}\",");
+        builder.AppendLine($"          typeof({view.ViewTypeName}),");
+        builder.AppendLine("          new global::Expo.ModulesCore.GeneratedViewPropDefinition[]");
+        builder.AppendLine("          {");
+        foreach (var prop in view.Props.Values)
+        {
+          builder.AppendLine($"            new global::Expo.ModulesCore.GeneratedViewPropDefinition(\"{EscapeString(prop.PropName)}\", {prop.PropKindExpression}),");
+        }
+        builder.AppendLine("          }");
+        builder.AppendLine("      ),");
+      }
+      builder.AppendLine("    };");
+    }
+    builder.AppendLine("  }");
+
+    builder.AppendLine();
+    builder.AppendLine("  public static object CreateView(global::Expo.ModulesCore.DotnetRuntimeContext context, string componentName)");
+    builder.AppendLine("  {");
+    builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(context);");
+    builder.AppendLine("    return componentName switch");
+    builder.AppendLine("    {");
+    foreach (var module in viewModules)
+    {
+      var view = module.View!;
+      builder.AppendLine($"      \"{EscapeString(view.ComponentName)}\" => new {view.ViewTypeName}(),");
+    }
+    builder.AppendLine("      _ => throw new global::System.InvalidOperationException($\"Unknown Expo view component '{componentName}'.\"),");
+    builder.AppendLine("    };");
+    builder.AppendLine("  }");
+
+    builder.AppendLine();
+    builder.AppendLine("  public static void UpdateViewProp(global::Expo.ModulesCore.DotnetRuntimeContext context, string componentName, object view, string propName, string? value)");
+    builder.AppendLine("  {");
+    builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(context);");
+    builder.AppendLine("    switch (componentName)");
+    builder.AppendLine("    {");
+    foreach (var module in viewModules)
+    {
+      var view = module.View!;
+      builder.AppendLine($"      case \"{EscapeString(view.ComponentName)}\":");
+      builder.AppendLine($"        Update{SanitizeIdentifier(view.ComponentName)}Prop(context, view, propName, value);");
+      builder.AppendLine("        return;");
+    }
+    builder.AppendLine("      default:");
+    builder.AppendLine("        throw new global::System.InvalidOperationException($\"Unknown Expo view component '{componentName}'.\");");
+    builder.AppendLine("    }");
+    builder.AppendLine("  }");
+
+    foreach (var module in viewModules)
+    {
+      var view = module.View!;
+      builder.AppendLine();
+      builder.AppendLine($"  private static void Update{SanitizeIdentifier(view.ComponentName)}Prop(global::Expo.ModulesCore.DotnetRuntimeContext context, object view, string propName, string? value)");
+      builder.AppendLine("  {");
+      builder.AppendLine($"    var module = context.ModuleRegistry.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", {GetModuleFactoryExpression(module)});");
+      builder.AppendLine("    switch (propName)");
+      builder.AppendLine("    {");
+      foreach (var prop in view.Props.Values)
+      {
+        builder.AppendLine($"      case \"{EscapeString(prop.PropName)}\":");
+        builder.AppendLine($"        module.{prop.MethodName}(({prop.ViewTypeName})view, value);");
+        builder.AppendLine("        return;");
+      }
+      builder.AppendLine("      default:");
+      builder.AppendLine("        return;");
+      builder.AppendLine("    }");
+      builder.AppendLine("  }");
+    }
+  }
+
   private static void EmitModuleRegistrationFunction(StringBuilder builder, ExpoModuleModel module)
   {
     var moduleVariable = $"module_{SanitizeIdentifier(module.ModuleName)}";
     var moduleInstanceVariable = $"instance_{SanitizeIdentifier(module.ModuleName)}";
     var hasEvents = module.EventNames.Values.Count > 0;
-    var factoryExpression = module.ConstructorStrategy == ExpoModuleConstructorStrategy.RuntimeContext
-        ? $"() => new {module.FullyQualifiedTypeName}(context)"
-        : $"static () => new {module.FullyQualifiedTypeName}()";
+    var factoryExpression = GetModuleFactoryExpression(module);
     var onCreateExpression = GetLifecycleHookExpression(module.OnCreateHook);
     var onDestroyExpression = GetLifecycleHookExpression(module.OnDestroyHook);
 
@@ -856,6 +1019,11 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 
   private static string GetLifecycleHookExpression(ExpoLifecycleHookModel? hook) =>
       hook is null ? "null" : $"static module => module.{hook.MethodName}()";
+
+  private static string GetModuleFactoryExpression(ExpoModuleModel module) =>
+      module.ConstructorStrategy == ExpoModuleConstructorStrategy.RuntimeContext
+          ? $"() => new {module.FullyQualifiedTypeName}(context)"
+          : $"static () => new {module.FullyQualifiedTypeName}()";
 
   private static void EmitObservingHookRegistration(
       StringBuilder builder,

@@ -12,6 +12,7 @@ internal sealed record ExpoModuleModel(
     EquatableArray<string> EventNames,
     EquatableArray<ExpoObservingHookModel> StartObservingHooks,
     EquatableArray<ExpoObservingHookModel> StopObservingHooks,
+    ExpoViewModel? View,
     EquatableArray<ExpoFunctionModel> Functions,
     EquatableArray<ExpoGeneratedRecordCodecModel> RecordCodecs,
     EquatableArray<ExpoDiagnosticModel> Diagnostics);
@@ -44,6 +45,20 @@ internal sealed record ExpoObservingHookModel(
 
 internal sealed record ExpoLifecycleHookModel(
     string MethodName,
+    Location? Location);
+
+internal sealed record ExpoViewModel(
+    string ComponentName,
+    string ViewTypeName,
+    Location? Location,
+    EquatableArray<ExpoViewPropModel> Props);
+
+internal sealed record ExpoViewPropModel(
+    string MethodName,
+    string PropName,
+    string ViewTypeName,
+    string ValueTypeName,
+    string PropKindExpression,
     Location? Location);
 
 internal sealed record ExpoParameterModel(
