@@ -412,10 +412,11 @@ jsi::Function createClassWithSuperclass(jsi::Runtime &runtime,
   auto superclassPrototype = superclass.getPropertyAsObject(runtime, "prototype");
   auto klass = createClass(runtime, name);
   auto prototype = klass.getPropertyAsObject(runtime, "prototype");
-  prototype.setProperty(runtime, "__proto__", superclassPrototype);
 
   auto objectClass = runtime.global().getPropertyAsObject(runtime, "Object");
   auto setPrototypeOf = objectClass.getPropertyAsFunction(runtime, "setPrototypeOf");
+  setPrototypeOf.callWithThis(
+    runtime, objectClass, {jsi::Value(runtime, prototype), jsi::Value(runtime, superclassPrototype)});
   setPrototypeOf.callWithThis(
     runtime, objectClass, {jsi::Value(runtime, klass), jsi::Value(runtime, superclass)});
   return klass;

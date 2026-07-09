@@ -87,4 +87,38 @@ public sealed class JavaScriptClassTests
       return true;
     });
   }
+
+  [Fact]
+  public void CreateClassWithSuperclassDoesNotRequireProtoAccessor()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      fixture.Evaluate(
+          "delete Object.prototype.__proto__; true",
+          "delete-proto-accessor.js"
+      ).Dispose();
+
+      using var baseClass = runtime.CreateClass("BridgeBaseWithoutProto");
+      using var subclass = runtime.CreateClass("BridgeSubclassWithoutProto", baseClass);
+      using var global = runtime.Global();
+      using var baseValue = baseClass.AsValue();
+      using var subclassValue = subclass.AsValue();
+      global.SetProperty("__BridgeBaseWithoutProto", baseValue);
+      global.SetProperty("__BridgeSubclassWithoutProto", subclassValue);
+
+      using var result = fixture.Evaluate(
+          "const instance = new globalThis.__BridgeSubclassWithoutProto();" +
+          "instance instanceof globalThis.__BridgeSubclassWithoutProto && " +
+          "instance instanceof globalThis.__BridgeBaseWithoutProto && " +
+          "Object.getPrototypeOf(globalThis.__BridgeSubclassWithoutProto) === globalThis.__BridgeBaseWithoutProto && " +
+          "Object.getPrototypeOf(globalThis.__BridgeSubclassWithoutProto.prototype) === globalThis.__BridgeBaseWithoutProto.prototype",
+          "create-subclass-without-proto-accessor-check.js"
+      );
+
+      Assert.True(result.AsBool());
+      return true;
+    });
+  }
 }
