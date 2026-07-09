@@ -60,6 +60,7 @@ describe('registerStageCommand', () => {
       csprojPath: path.join(outputDir, 'ExpoDotnetHost.csproj'),
       mode: 'hostfxr',
       configuration: 'Debug',
+      platform: 'macos',
       rid: 'macos-rid',
     });
     expect(stageArtifactsAsync).toHaveBeenCalledWith({
@@ -119,6 +120,7 @@ describe('registerStageCommand', () => {
       csprojPath: path.join(explicitOutputDir, 'ExpoDotnetHost.csproj'),
       mode: 'nativeaot',
       configuration: 'RelWithDebInfo',
+      platform: 'ios',
       rid: 'ios-arm64',
     });
     expect(stageArtifactsAsync).toHaveBeenCalledWith({

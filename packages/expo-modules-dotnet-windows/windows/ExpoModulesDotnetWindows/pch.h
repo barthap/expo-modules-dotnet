@@ -23,8 +23,8 @@
 #include <tchar.h>
 
 #include <cstdint>
-#include <future>
 #include <functional>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <optional>

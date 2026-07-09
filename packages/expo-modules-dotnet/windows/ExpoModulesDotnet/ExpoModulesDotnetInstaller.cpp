@@ -74,18 +74,23 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
     teardown();
   }
 
-  bool registerModules()
+  bool registerModules(std::wstring &error)
   {
     auto entryPoints = expo::modules::dotnet::resolveRuntimeContextEntryPoints(moduleConfig);
 
     if (entryPoints.createRuntimeContext == nullptr ||
         entryPoints.teardownRuntimeContext == nullptr) {
+      error = expo::modules::dotnet::managedLoaderLastError();
+      if (error.empty()) {
+        error = L"Managed runtime context entry points were not resolved.";
+      }
       return false;
     }
 
     auto runtimeContext =
       entryPoints.createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle);
     if (runtimeContext == nullptr) {
+      error = L"Managed CreateRuntimeContext returned a null runtime context.";
       return false;
     }
 
@@ -220,12 +225,12 @@ void ExpoModulesDotnetInstaller::Initialize(
     auto installedRuntime = std::make_shared<InstalledRuntime>(
       std::move(connector), runtimeHandle, std::move(moduleConfig));
 
-    if (!installedRuntime->registerModules()) {
-      auto loaderError = expo::modules::dotnet::managedLoaderLastError();
-      if (loaderError.empty()) {
+    std::wstring registrationError;
+    if (!installedRuntime->registerModules(registrationError)) {
+      if (registrationError.empty()) {
         throw std::runtime_error("Failed to register managed runtime context.");
       }
-      throw std::runtime_error(toUtf8(loaderError).c_str());
+      throw std::runtime_error(toUtf8(registrationError).c_str());
     }
 
     installedRuntime->subscribeToInstanceDestroyed(reactContext.Notifications());

@@ -134,15 +134,14 @@ struct DotnetViewProps : implements<DotnetViewProps, IComponentProps> {
     return values_;
   }
 
- private:
+private:
   std::unordered_set<std::string> allowedProps_;
   std::unordered_map<std::string, std::optional<std::string>> values_;
 };
 
-void updateProps(
-  winrt::Microsoft::ReactNative::ComponentView const &source,
-  const std::string &componentName,
-  IComponentProps const &newProps)
+void updateProps(winrt::Microsoft::ReactNative::ComponentView const &source,
+                 const std::string &componentName,
+                 IComponentProps const &newProps)
 {
   auto *viewHandle = handleForTag(source.Tag());
   if (viewHandle == nullptr) {
@@ -164,9 +163,8 @@ void updateProps(
   });
 }
 
-void updateLayout(
-  winrt::Microsoft::ReactNative::ComponentView const &source,
-  winrt::Microsoft::ReactNative::LayoutMetrics const &layoutMetrics)
+void updateLayout(winrt::Microsoft::ReactNative::ComponentView const &source,
+                  winrt::Microsoft::ReactNative::LayoutMetrics const &layoutMetrics)
 {
   auto *viewHandle = handleForTag(source.Tag());
   if (viewHandle == nullptr) {
@@ -189,8 +187,7 @@ void updateLayout(
 }
 
 winrt::Microsoft::UI::Composition::Visual createVisual(
-  const std::string &componentName,
-  winrt::Microsoft::ReactNative::ComponentView const &source)
+  const std::string &componentName, winrt::Microsoft::ReactNative::ComponentView const &source)
 {
   auto compositionView = source.try_as<winrt::Microsoft::ReactNative::Composition::ComponentView>();
   if (!compositionView) {
@@ -239,7 +236,8 @@ void RegisterDotnetViewComponents(IReactPackageBuilder const &packageBuilder) no
 
       fabricBuilder.AddViewComponent(
         winrt::to_hstring(componentName),
-        [componentName, propNames = std::move(propNames)](IReactViewComponentBuilder const &viewBuilder) {
+        [componentName,
+         propNames = std::move(propNames)](IReactViewComponentBuilder const &viewBuilder) {
           viewBuilder.SetCreateProps(
             [propNames](ViewProps const &, IComponentProps const &cloneFrom) {
               auto props = make_self<DotnetViewProps>(propNames);
@@ -258,9 +256,8 @@ void RegisterDotnetViewComponents(IReactPackageBuilder const &packageBuilder) no
               updateProps(source, componentName, newProps);
             });
 
-          auto compositionBuilder =
-            viewBuilder.try_as<
-              winrt::Microsoft::ReactNative::Composition::IReactCompositionViewComponentBuilder>();
+          auto compositionBuilder = viewBuilder.try_as<
+            winrt::Microsoft::ReactNative::Composition::IReactCompositionViewComponentBuilder>();
           if (!compositionBuilder) {
             return;
           }
@@ -278,18 +275,18 @@ void RegisterDotnetViewComponents(IReactPackageBuilder const &packageBuilder) no
 
           compositionBuilder.SetViewComponentViewInitializer(
             [](winrt::Microsoft::ReactNative::Composition::ViewComponentView const &view) {
-            auto tag = view.Tag();
-            auto dispatcher = view.ReactContext().UIDispatcher();
-            view.Destroying([tag, dispatcher](auto const &, auto const &) {
-              runOnUiDispatcher(dispatcher, [tag]() {
-                auto *viewHandle = takeHandleForTag(tag);
-                if (viewHandle != nullptr) {
-                  ManagedViewHost::Instance().DestroyView(viewHandle);
-                }
-                eraseVisualForTag(tag);
+              auto tag = view.Tag();
+              auto dispatcher = view.ReactContext().UIDispatcher();
+              view.Destroying([tag, dispatcher](auto const &, auto const &) {
+                runOnUiDispatcher(dispatcher, [tag]() {
+                  auto *viewHandle = takeHandleForTag(tag);
+                  if (viewHandle != nullptr) {
+                    ManagedViewHost::Instance().DestroyView(viewHandle);
+                  }
+                  eraseVisualForTag(tag);
+                });
               });
             });
-          });
 
           compositionBuilder.SetCreateVisualHandler(
             [componentName](winrt::Microsoft::ReactNative::ComponentView const &source) {

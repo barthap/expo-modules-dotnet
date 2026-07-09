@@ -77,9 +77,9 @@ std::vector<DotnetViewDefinition> parseViewMetadata(const std::string &json)
 bool hasRequiredEntryPoints(const expo::modules::dotnet::ManagedWindowsViewEntryPoints &entryPoints)
 {
   return entryPoints.getViewMetadata != nullptr && entryPoints.freeBuffer != nullptr &&
-    entryPoints.createView != nullptr && entryPoints.initializeComposition != nullptr &&
-    entryPoints.updateLayout != nullptr && entryPoints.updateStringProp != nullptr &&
-    entryPoints.destroyView != nullptr;
+         entryPoints.createView != nullptr && entryPoints.initializeComposition != nullptr &&
+         entryPoints.updateLayout != nullptr && entryPoints.updateStringProp != nullptr &&
+         entryPoints.destroyView != nullptr;
 }
 
 } // namespace
@@ -104,10 +104,9 @@ void *ManagedViewHost::CreateView(const std::string &componentName)
     return nullptr;
   }
 
-  return entryPoints_.createView(
-    runtimeContext,
-    reinterpret_cast<const uint8_t *>(componentName.data()),
-    static_cast<int>(componentName.size()));
+  return entryPoints_.createView(runtimeContext,
+                                 reinterpret_cast<const uint8_t *>(componentName.data()),
+                                 static_cast<int>(componentName.size()));
 }
 
 intptr_t ManagedViewHost::InitializeComposition(void *viewHandle, intptr_t compositor) noexcept
@@ -141,31 +140,30 @@ void ManagedViewHost::UpdateLayout(void *viewHandle, float width, float height) 
   }
 }
 
-void ManagedViewHost::UpdateStringProp(
-  void *viewHandle,
-  const std::string &componentName,
-  const std::string &propName,
-  const std::optional<std::string> &value) noexcept
+void ManagedViewHost::UpdateStringProp(void *viewHandle,
+                                       const std::string &componentName,
+                                       const std::string &propName,
+                                       const std::optional<std::string> &value) noexcept
 {
   try {
     EnsureInitialized();
     auto *runtimeContext = currentRuntimeContext();
-    if (runtimeContext == nullptr || viewHandle == nullptr || entryPoints_.updateStringProp == nullptr) {
+    if (runtimeContext == nullptr || viewHandle == nullptr ||
+        entryPoints_.updateStringProp == nullptr) {
       return;
     }
 
     const auto *valueData =
       value.has_value() ? reinterpret_cast<const uint8_t *>(value->data()) : nullptr;
     const auto valueLength = value.has_value() ? static_cast<int>(value->size()) : 0;
-    entryPoints_.updateStringProp(
-      runtimeContext,
-      viewHandle,
-      reinterpret_cast<const uint8_t *>(componentName.data()),
-      static_cast<int>(componentName.size()),
-      reinterpret_cast<const uint8_t *>(propName.data()),
-      static_cast<int>(propName.size()),
-      valueData,
-      valueLength);
+    entryPoints_.updateStringProp(runtimeContext,
+                                  viewHandle,
+                                  reinterpret_cast<const uint8_t *>(componentName.data()),
+                                  static_cast<int>(componentName.size()),
+                                  reinterpret_cast<const uint8_t *>(propName.data()),
+                                  static_cast<int>(propName.size()),
+                                  valueData,
+                                  valueLength);
   } catch (const std::exception &ex) {
     logMessage(std::string("UpdateStringProp failed: ") + ex.what());
   } catch (...) {

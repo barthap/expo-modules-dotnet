@@ -77,6 +77,16 @@ nativeaot platforms. Staging SHALL skip byte-identical files.
 - **THEN** the app-owned `Managed` location contains everything the macOS
   HostFXR loader resolves at startup
 
+#### Scenario: Windows hostfxr staging
+- **GIVEN** a Windows aggregator built for the Windows target framework
+- **WHEN** `stage --platform windows` completes
+- **THEN** the app-owned `windows/Managed` location contains the generated
+  host assembly, runtime configuration, deps file, transitive managed
+  dependency assemblies, and platform `nethost` runtime library that the
+  Windows HostFXR loader resolves at startup
+- **AND** Windows-only dependencies such as WinRT projection assemblies SHALL be
+  staged when the aggregator references the Windows native view sidecar
+
 ### Requirement: Default RIDs Cover Mobile Platforms
 The CLI SHALL select `iossimulator-arm64` for `link --platform ios` when
 `PLATFORM_NAME` is `iphonesimulator` or does not indicate a device build. The

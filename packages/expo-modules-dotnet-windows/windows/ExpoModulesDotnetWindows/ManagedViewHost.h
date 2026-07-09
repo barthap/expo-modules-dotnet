@@ -16,21 +16,20 @@ struct DotnetViewDefinition {
 };
 
 class ManagedViewHost final {
- public:
+public:
   static ManagedViewHost &Instance();
 
   const std::vector<DotnetViewDefinition> &ViewDefinitions();
   void *CreateView(const std::string &componentName);
   intptr_t InitializeComposition(void *viewHandle, intptr_t compositor) noexcept;
   void UpdateLayout(void *viewHandle, float width, float height) noexcept;
-  void UpdateStringProp(
-    void *viewHandle,
-    const std::string &componentName,
-    const std::string &propName,
-    const std::optional<std::string> &value) noexcept;
+  void UpdateStringProp(void *viewHandle,
+                        const std::string &componentName,
+                        const std::string &propName,
+                        const std::optional<std::string> &value) noexcept;
   void DestroyView(void *viewHandle) noexcept;
 
- private:
+private:
   ManagedViewHost() = default;
   void EnsureInitialized();
 

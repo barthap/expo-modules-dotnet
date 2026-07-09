@@ -28,6 +28,8 @@ Source priority when specs and other materials disagree:
   generated-binding helpers, and module test ownership.
 - `dotnet-autolinking.md`: .NET Expo module discovery, app-level aggregator
   generation, build, and artifact staging contract.
+- `windows-native-views.md`: Windows-only native view sidecar, generated view
+  metadata consumption, and desktop app proof contract.
 
 The public Expo adapter package currently lives at
 `packages/expo-modules-dotnet`. It owns the autolinkable React Native package

@@ -324,12 +324,18 @@ ManagedRuntimeContextEntryPoints resolveRuntimeContextEntryPoints(const ManagedM
   case ManagedLoaderKind::NativeAot:
     entryPoints.createRuntimeContext = reinterpret_cast<CreateRuntimeContextFn>(
       resolveNativeAotSymbol(config, kCreateRuntimeContextSymbol));
+    if (entryPoints.createRuntimeContext == nullptr) {
+      break;
+    }
     entryPoints.teardownRuntimeContext = reinterpret_cast<TeardownRuntimeContextFn>(
       resolveNativeAotSymbol(config, kTeardownRuntimeContextSymbol));
     break;
   case ManagedLoaderKind::HostFxr:
     entryPoints.createRuntimeContext = reinterpret_cast<CreateRuntimeContextFn>(
       resolveHostFxrMethod(config, kCreateRuntimeContextMethod));
+    if (entryPoints.createRuntimeContext == nullptr) {
+      break;
+    }
     entryPoints.teardownRuntimeContext = reinterpret_cast<TeardownRuntimeContextFn>(
       resolveHostFxrMethod(config, kTeardownRuntimeContextMethod));
     break;
@@ -342,50 +348,36 @@ ManagedWindowsViewEntryPoints resolveWindowsViewEntryPoints(const ManagedModuleC
   ManagedWindowsViewEntryPoints entryPoints;
   switch (config.loaderKind) {
   case ManagedLoaderKind::NativeAot:
-    entryPoints.getViewMetadata =
-      reinterpret_cast<WindowsGetViewMetadataFn>(resolveNativeAotSymbol(
-        config, kWindowsGetViewMetadataSymbol));
-    entryPoints.freeBuffer =
-      reinterpret_cast<WindowsFreeBufferFn>(resolveNativeAotSymbol(
-        config, kWindowsFreeBufferSymbol));
-    entryPoints.createView =
-      reinterpret_cast<WindowsCreateViewFn>(resolveNativeAotSymbol(
-        config, kWindowsCreateViewSymbol));
-    entryPoints.initializeComposition =
-      reinterpret_cast<WindowsInitializeCompositionFn>(resolveNativeAotSymbol(
-        config, kWindowsInitializeCompositionSymbol));
-    entryPoints.updateLayout =
-      reinterpret_cast<WindowsUpdateLayoutFn>(resolveNativeAotSymbol(
-        config, kWindowsUpdateLayoutSymbol));
-    entryPoints.updateStringProp =
-      reinterpret_cast<WindowsUpdateStringPropFn>(resolveNativeAotSymbol(
-        config, kWindowsUpdateStringPropSymbol));
-    entryPoints.destroyView =
-      reinterpret_cast<WindowsDestroyViewFn>(resolveNativeAotSymbol(
-        config, kWindowsDestroyViewSymbol));
+    entryPoints.getViewMetadata = reinterpret_cast<WindowsGetViewMetadataFn>(
+      resolveNativeAotSymbol(config, kWindowsGetViewMetadataSymbol));
+    entryPoints.freeBuffer = reinterpret_cast<WindowsFreeBufferFn>(
+      resolveNativeAotSymbol(config, kWindowsFreeBufferSymbol));
+    entryPoints.createView = reinterpret_cast<WindowsCreateViewFn>(
+      resolveNativeAotSymbol(config, kWindowsCreateViewSymbol));
+    entryPoints.initializeComposition = reinterpret_cast<WindowsInitializeCompositionFn>(
+      resolveNativeAotSymbol(config, kWindowsInitializeCompositionSymbol));
+    entryPoints.updateLayout = reinterpret_cast<WindowsUpdateLayoutFn>(
+      resolveNativeAotSymbol(config, kWindowsUpdateLayoutSymbol));
+    entryPoints.updateStringProp = reinterpret_cast<WindowsUpdateStringPropFn>(
+      resolveNativeAotSymbol(config, kWindowsUpdateStringPropSymbol));
+    entryPoints.destroyView = reinterpret_cast<WindowsDestroyViewFn>(
+      resolveNativeAotSymbol(config, kWindowsDestroyViewSymbol));
     break;
   case ManagedLoaderKind::HostFxr:
-    entryPoints.getViewMetadata =
-      reinterpret_cast<WindowsGetViewMetadataFn>(resolveHostFxrMethod(
-        config, kWindowsGetViewMetadataMethod));
+    entryPoints.getViewMetadata = reinterpret_cast<WindowsGetViewMetadataFn>(
+      resolveHostFxrMethod(config, kWindowsGetViewMetadataMethod));
     entryPoints.freeBuffer =
-      reinterpret_cast<WindowsFreeBufferFn>(resolveHostFxrMethod(
-        config, kWindowsFreeBufferMethod));
+      reinterpret_cast<WindowsFreeBufferFn>(resolveHostFxrMethod(config, kWindowsFreeBufferMethod));
     entryPoints.createView =
-      reinterpret_cast<WindowsCreateViewFn>(resolveHostFxrMethod(
-        config, kWindowsCreateViewMethod));
-    entryPoints.initializeComposition =
-      reinterpret_cast<WindowsInitializeCompositionFn>(resolveHostFxrMethod(
-        config, kWindowsInitializeCompositionMethod));
-    entryPoints.updateLayout =
-      reinterpret_cast<WindowsUpdateLayoutFn>(resolveHostFxrMethod(
-        config, kWindowsUpdateLayoutMethod));
-    entryPoints.updateStringProp =
-      reinterpret_cast<WindowsUpdateStringPropFn>(resolveHostFxrMethod(
-        config, kWindowsUpdateStringPropMethod));
-    entryPoints.destroyView =
-      reinterpret_cast<WindowsDestroyViewFn>(resolveHostFxrMethod(
-        config, kWindowsDestroyViewMethod));
+      reinterpret_cast<WindowsCreateViewFn>(resolveHostFxrMethod(config, kWindowsCreateViewMethod));
+    entryPoints.initializeComposition = reinterpret_cast<WindowsInitializeCompositionFn>(
+      resolveHostFxrMethod(config, kWindowsInitializeCompositionMethod));
+    entryPoints.updateLayout = reinterpret_cast<WindowsUpdateLayoutFn>(
+      resolveHostFxrMethod(config, kWindowsUpdateLayoutMethod));
+    entryPoints.updateStringProp = reinterpret_cast<WindowsUpdateStringPropFn>(
+      resolveHostFxrMethod(config, kWindowsUpdateStringPropMethod));
+    entryPoints.destroyView = reinterpret_cast<WindowsDestroyViewFn>(
+      resolveHostFxrMethod(config, kWindowsDestroyViewMethod));
     break;
   }
   return entryPoints;

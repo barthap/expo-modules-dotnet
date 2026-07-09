@@ -8,6 +8,7 @@ export interface BuildOptions {
   csprojPath: string;
   mode: LoaderMode;
   configuration: string;
+  platform?: 'macos' | 'windows' | 'ios' | 'android';
   rid?: string;
   androidNdkClangPath?: string;
 }
@@ -174,11 +175,13 @@ export function dotnetBinary(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 export function buildOutputDir(options: BuildOptions): string {
+  const targetFramework =
+    options.platform === 'windows' ? 'net10.0-windows10.0.19041.0' : 'net10.0';
   const outputDir = path.join(
     path.dirname(options.csprojPath),
     'bin',
     options.configuration,
-    'net10.0'
+    targetFramework
   );
 
   if (options.mode === 'hostfxr') {

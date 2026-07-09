@@ -96,6 +96,36 @@ attributes are consumed by the Roslyn generator.
 - **AND** the host-function boundary SHALL expose it to JavaScript as a
   catchable `Error`
 
+### Requirement: Generated View Syntax Is Non-Inert
+
+`Expo.ModulesCore` MAY expose platform-neutral native view authoring metadata
+such as `[View]` and `[Prop]` only when the Roslyn generator consumes that
+syntax and emits generated view metadata. Runtime native view hosting remains
+owned by platform adapters, not `Expo.ModulesCore`.
+
+#### Scenario: View-backed module is compiled
+- **GIVEN** a C# module declares `[ExpoModule]`, `[View]`, and one or more
+  `[Prop]` methods
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL emit platform-neutral view metadata for the
+  component
+- **AND** the generated provider SHALL expose that metadata without runtime
+  module scanning
+- **AND** generated prop dispatch SHALL call authored prop setters directly
+
+#### Scenario: Invalid view syntax is compiled
+- **GIVEN** a module declares a duplicate component name, duplicate prop name,
+  unsupported prop type, or unsupported prop method shape
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report an actionable diagnostic
+- **AND** generated code SHALL NOT silently skip the invalid view declaration
+
+#### Scenario: Portable core is built with view syntax
+- **GIVEN** `Expo.JSI` and `Expo.ModulesCore` are compiled outside Windows
+- **WHEN** view syntax support is present
+- **THEN** neither package SHALL require RNW, WinUI, AppKit, XAML, or Windows
+  composition references
+
 ### Requirement: Generated Providers Are Library-Local
 
 The Roslyn generator SHALL emit one deterministic provider for modules in the

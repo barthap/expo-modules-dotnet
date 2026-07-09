@@ -79,7 +79,7 @@ export function registerLinkCommand(program: Command): void {
         platform,
         appRoot: destinationAppRoot,
         mode,
-        builtOutputDir: buildOutputDir({ csprojPath, mode, configuration, rid }),
+        builtOutputDir: buildOutputDir({ csprojPath, mode, configuration, platform, rid }),
       });
       const destination = stageDestination(platform, destinationAppRoot);
       console.log(

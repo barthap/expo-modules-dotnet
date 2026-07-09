@@ -86,6 +86,7 @@ describe('registerLinkCommand', () => {
       csprojPath,
       mode: 'hostfxr',
       configuration: 'Debug',
+      platform: 'macos',
       rid: 'osx-arm64',
     });
     expect(stageArtifactsAsync).toHaveBeenCalledWith({

@@ -167,6 +167,7 @@ describe('generateAggregator', () => {
     const provider = readGenerated(outputDir, 'LinkedExpoModulesProvider.g.cs');
 
     expect(csproj).toContain('<TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>');
+    expect(csproj).toContain('<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>');
     expect(csproj).toContain(
       'expo-modules-dotnet-windows/managed/Expo.ModulesCore.Windows/Expo.ModulesCore.Windows.csproj'
     );
@@ -191,6 +192,7 @@ describe('generateAggregator', () => {
     const entryPoints = readGenerated(outputDir, 'EntryPoints.g.cs');
 
     expect(csproj).toContain('<TargetFramework>net10.0</TargetFramework>');
+    expect(csproj).not.toContain('CopyLocalLockFileAssemblies');
     expect(csproj).not.toContain('Expo.ModulesCore.Windows.csproj');
     expect(entryPoints).not.toContain('expo_dotnet_windows_create_view');
   });

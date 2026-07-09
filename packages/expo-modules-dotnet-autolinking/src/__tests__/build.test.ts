@@ -237,6 +237,19 @@ describe('buildOutputDir', () => {
     ).toBe(path.join('generated', 'bin', 'Debug', 'net10.0'));
   });
 
+  it('returns the Windows hostfxr build output directory', () => {
+    const csprojPath = path.join('generated', 'ExpoDotnetHost.csproj');
+
+    expect(
+      buildOutputDir({
+        csprojPath,
+        mode: 'hostfxr',
+        configuration: 'Debug',
+        platform: 'windows',
+      })
+    ).toBe(path.join('generated', 'bin', 'Debug', 'net10.0-windows10.0.19041.0'));
+  });
+
   it('returns the nativeaot publish output directory', () => {
     const csprojPath = path.join('generated', 'ExpoDotnetHost.csproj');
 

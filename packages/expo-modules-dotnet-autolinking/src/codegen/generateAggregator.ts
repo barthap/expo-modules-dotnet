@@ -86,6 +86,7 @@ function generateCsproj(projects: DotnetProjectRef[], options: GenerateOptions):
     <AssemblyName>ExpoDotnetHost</AssemblyName>
     <RootNamespace>Expo.ModulesCore.Generated</RootNamespace>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    ${isWindows ? '<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>' : ''}
   </PropertyGroup>
   <PropertyGroup Condition="'$(PublishAot)' == 'true'">
     <NativeLib>Shared</NativeLib>
