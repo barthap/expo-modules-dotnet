@@ -226,6 +226,54 @@ public sealed class JavaScriptPromiseTests
   }
 
   [Fact]
+  public async Task CreatePromiseFromManagedTaskReleasesCapabilityOnRuntimeThread()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var unblock = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+    fixture.ResetCounters();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      using var promise = runtime.CreatePromise(async cancellationToken =>
+      {
+        var result = await unblock.Task.WaitAsync(cancellationToken);
+        return JavaScriptPromiseResult.Resolve(js => js.CreateString(result));
+      }, TestContext.Current.CancellationToken);
+      using var promiseValue = promise.AsValue();
+      global.SetProperty("managedTaskPromise", promiseValue);
+
+      using var setup = fixture.Evaluate(
+          """
+          globalThis.managedTaskPromiseResult = "";
+          globalThis.managedTaskPromise.then(value => {
+            globalThis.managedTaskPromiseResult = value;
+          });
+          undefined;
+          """,
+          "promise-managed-task-release-thread-setup.js"
+      );
+
+      return true;
+    });
+
+    unblock.SetResult("done");
+
+    await EventuallyAsync(
+        fixture,
+        "globalThis.managedTaskPromiseResult",
+        value => value.AsString() == "done"
+    );
+    await EventuallyCounterAsync(
+        fixture,
+        counters => counters.ReleasedPromises > 0 || counters.ReleasedPromisesOffRuntimeThread > 0
+    );
+
+    Assert.Equal(0u, fixture.Counters.ReleasedPromisesOffRuntimeThread);
+    Assert.True(fixture.Counters.ReleasedPromises >= 1);
+  }
+
+  [Fact]
   public async Task CreatePromiseFromManagedTaskRejectsThrownExceptionWithJavaScriptErrorObject()
   {
     using var fixture = HermesRuntimeFixture.Create();
@@ -374,5 +422,25 @@ public sealed class JavaScriptPromiseTests
     }
 
     Assert.Fail($"Timed out waiting for JavaScript expression to match: {expression}");
+  }
+
+  private static async Task EventuallyCounterAsync(
+      HermesRuntimeFixture fixture,
+      Func<NativeTestHost.Counters, bool> predicate
+  )
+  {
+    var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+    while (DateTime.UtcNow < deadline)
+    {
+      fixture.WaitUntilIdle();
+      if (predicate(fixture.Counters))
+      {
+        return;
+      }
+
+      await Task.Delay(10, TestContext.Current.CancellationToken);
+    }
+
+    Assert.Fail("Timed out waiting for native testhost counters to match.");
   }
 }
