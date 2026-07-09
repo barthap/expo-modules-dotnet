@@ -5,6 +5,7 @@
 
 #include <dlfcn.h>
 #include <memory>
+#include <mutex>
 #include <string>
 
 #include "ReactNativeRuntimeConnector.h"
@@ -94,65 +95,120 @@ public:
 
   ~InstalledRuntime()
   {
-    if (connector_ != nullptr) {
-      connector_->invalidate();
-    }
-    if (managedRuntimeContext_ != nullptr && teardownRuntimeContext_ != nullptr) {
-      teardownRuntimeContext_(managedRuntimeContext_);
+    std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector;
+    expo_jsi_runtime_handle runtimeHandle = nullptr;
+    void *managedRuntimeContext = nullptr;
+    TeardownRuntimeContextFn teardownRuntimeContext = nullptr;
+
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      connector = std::move(connector_);
+      runtimeHandle = runtimeHandle_;
+      runtimeHandle_ = nullptr;
+      managedRuntimeContext = managedRuntimeContext_;
       managedRuntimeContext_ = nullptr;
+      teardownRuntimeContext = teardownRuntimeContext_;
+      teardownRuntimeContext_ = nullptr;
+      lastError_.clear();
+      registered_ = false;
+      registrationInProgress_ = false;
     }
-    if (runtimeHandle_ != nullptr) {
-      expo::dotnet::releaseReactNativeRuntimeHandle(runtimeHandle_);
+
+    if (connector != nullptr) {
+      connector->invalidate();
+    }
+    if (managedRuntimeContext != nullptr && teardownRuntimeContext != nullptr) {
+      teardownRuntimeContext(managedRuntimeContext);
+    }
+    if (runtimeHandle != nullptr) {
+      expo::dotnet::releaseReactNativeRuntimeHandle(runtimeHandle);
     }
   }
 
   bool registerModules()
   {
-    if (registered_) {
-      return true;
-    }
-
-    auto createRuntimeContext = resolveCreateRuntimeContext();
-    auto teardownRuntimeContext = resolveTeardownRuntimeContext();
-    if (createRuntimeContext == nullptr || teardownRuntimeContext == nullptr) {
-      lastError_ = "Failed to resolve structured create/teardown runtime context entry points. "
-                   "Run the expo-modules-dotnet-autolinking link command (or a full app build, "
-                   "which runs it as a script phase) before launching the iOS app.";
-      NSLog(@"[ExpoModulesDotnet] %s", lastError_.c_str());
-      return false;
-    }
-
-    RuntimeContextResult result;
-    createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_, &result);
-    teardownRuntimeContext_ = teardownRuntimeContext;
-    if (result.ok == 0 || result.runtimeContext == nullptr) {
-      lastError_ = takeRuntimeContextError(result.error);
-      if (lastError_.empty()) {
-        lastError_ = "NativeAOT runtime context registration failed.";
+    expo_jsi_runtime_handle runtimeHandle = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (registered_) {
+        return true;
       }
-      NSLog(@"[ExpoModulesDotnet] %s", lastError_.c_str());
-      return false;
+      if (registrationInProgress_) {
+        lastError_ = "Module registration is already in progress.";
+        return false;
+      }
+      registrationInProgress_ = true;
+      runtimeHandle = runtimeHandle_;
     }
 
-    managedRuntimeContext_ = result.runtimeContext;
-    NSLog(@"[ExpoModulesDotnet] NativeAOT managed modules registered.");
-    registered_ = true;
-    lastError_.clear();
-    return true;
+    try {
+      auto createRuntimeContext = resolveCreateRuntimeContext();
+      auto teardownRuntimeContext = resolveTeardownRuntimeContext();
+      if (createRuntimeContext == nullptr || teardownRuntimeContext == nullptr) {
+        const std::string lastError =
+          "Failed to resolve structured create/teardown runtime context entry points. "
+          "Run the expo-modules-dotnet-autolinking link command (or a full app build, "
+          "which runs it as a script phase) before launching the iOS app.";
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          registrationInProgress_ = false;
+          lastError_ = lastError;
+        }
+        NSLog(@"[ExpoModulesDotnet] %s", lastError.c_str());
+        return false;
+      }
+
+      RuntimeContextResult result;
+      createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, &result);
+      if (result.ok == 0 || result.runtimeContext == nullptr) {
+        auto lastError = takeRuntimeContextError(result.error);
+        if (lastError.empty()) {
+          lastError = "NativeAOT runtime context registration failed.";
+        }
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          registrationInProgress_ = false;
+          teardownRuntimeContext_ = teardownRuntimeContext;
+          lastError_ = lastError;
+        }
+        NSLog(@"[ExpoModulesDotnet] %s", lastError.c_str());
+        return false;
+      }
+
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        registrationInProgress_ = false;
+        managedRuntimeContext_ = result.runtimeContext;
+        teardownRuntimeContext_ = teardownRuntimeContext;
+        registered_ = true;
+        lastError_.clear();
+      }
+      NSLog(@"[ExpoModulesDotnet] NativeAOT managed modules registered.");
+      return true;
+    } catch (...) {
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        registrationInProgress_ = false;
+      }
+      throw;
+    }
   }
 
   std::string lastError() const
   {
+    std::lock_guard<std::mutex> lock(mutex_);
     return lastError_;
   }
 
 private:
+  mutable std::mutex mutex_;
   std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector_;
   expo_jsi_runtime_handle runtimeHandle_ = nullptr;
   void *managedRuntimeContext_ = nullptr;
   TeardownRuntimeContextFn teardownRuntimeContext_ = nullptr;
   std::string lastError_;
   bool registered_ = false;
+  bool registrationInProgress_ = false;
 };
 
 class ExpoModulesDotnetInstallerTurboModule final : public facebook::react::TurboModule {
@@ -207,6 +263,7 @@ private:
   // The install record owns connector state, not the RN runtime. Resetting it
   // invalidates the borrowed runtime holder before the managed ABI handle is
   // released.
+  std::mutex _installedRuntimeMutex;
   std::shared_ptr<InstalledRuntime> _installedRuntime;
 }
 
@@ -227,32 +284,51 @@ RCT_EXPORT_MODULE()
   auto installedRuntime =
     std::make_shared<InstalledRuntime>(std::move(connector), runtimeHandle);
 
-  _installedRuntime = std::move(installedRuntime);
+  {
+    std::lock_guard<std::mutex> lock(_installedRuntimeMutex);
+    _installedRuntime.swap(installedRuntime);
+  }
 }
 
 - (BOOL)installModules
 {
-  if (_installedRuntime == nullptr) {
+  std::shared_ptr<InstalledRuntime> installedRuntime;
+  {
+    std::lock_guard<std::mutex> lock(_installedRuntimeMutex);
+    installedRuntime = _installedRuntime;
+  }
+
+  if (installedRuntime == nullptr) {
     NSLog(@"[ExpoModulesDotnet] NativeAOT module runtime is not ready.");
     return NO;
   }
 
-  return _installedRuntime->registerModules();
+  return installedRuntime->registerModules();
 }
 
 - (NSString *)getLastError
 {
-  if (_installedRuntime == nullptr) {
+  std::shared_ptr<InstalledRuntime> installedRuntime;
+  {
+    std::lock_guard<std::mutex> lock(_installedRuntimeMutex);
+    installedRuntime = _installedRuntime;
+  }
+
+  if (installedRuntime == nullptr) {
     return @"NativeAOT module runtime is not ready.";
   }
 
-  auto lastError = _installedRuntime->lastError();
+  auto lastError = installedRuntime->lastError();
   return lastError.empty() ? @"" : @(lastError.c_str());
 }
 
 - (void)invalidate
 {
-  _installedRuntime.reset();
+  std::shared_ptr<InstalledRuntime> installedRuntime;
+  {
+    std::lock_guard<std::mutex> lock(_installedRuntimeMutex);
+    installedRuntime = std::move(_installedRuntime);
+  }
 }
 
 @end

@@ -4,6 +4,7 @@
 #import <ReactCommon/RCTTurboModuleWithJSIBindings.h>
 
 #include <memory>
+#include <mutex>
 #include <string>
 
 #include "ManagedLoader.h"
@@ -43,65 +44,119 @@ public:
 
   ~InstalledRuntime()
   {
-    if (connector_ != nullptr) {
-      connector_->invalidate();
-    }
-    if (managedRuntimeContext_ != nullptr && teardownRuntimeContext_ != nullptr) {
-      teardownRuntimeContext_(managedRuntimeContext_);
+    std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector;
+    expo_jsi_runtime_handle runtimeHandle = nullptr;
+    void *managedRuntimeContext = nullptr;
+    expo::modules::dotnet::TeardownRuntimeContextFn teardownRuntimeContext = nullptr;
+
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      connector = std::move(connector_);
+      runtimeHandle = runtimeHandle_;
+      runtimeHandle_ = nullptr;
+      managedRuntimeContext = managedRuntimeContext_;
       managedRuntimeContext_ = nullptr;
+      teardownRuntimeContext = teardownRuntimeContext_;
+      teardownRuntimeContext_ = nullptr;
+      lastError_.clear();
+      registered_ = false;
+      registrationInProgress_ = false;
     }
-    if (runtimeHandle_ != nullptr) {
-      expo::dotnet::releaseReactNativeRuntimeHandle(runtimeHandle_);
+
+    if (connector != nullptr) {
+      connector->invalidate();
+    }
+    if (managedRuntimeContext != nullptr && teardownRuntimeContext != nullptr) {
+      teardownRuntimeContext(managedRuntimeContext);
+    }
+    if (runtimeHandle != nullptr) {
+      expo::dotnet::releaseReactNativeRuntimeHandle(runtimeHandle);
     }
   }
 
   bool registerModules()
   {
-    if (registered_) {
+    expo_jsi_runtime_handle runtimeHandle = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (registered_) {
+        return true;
+      }
+      if (registrationInProgress_) {
+        lastError_ = "Module registration is already in progress.";
+        return false;
+      }
+      registrationInProgress_ = true;
+      runtimeHandle = runtimeHandle_;
+    }
+
+    try {
+      auto entryPoints = expo::modules::dotnet::resolveRuntimeContextEntryPoints(moduleConfig_);
+      if (entryPoints.createRuntimeContext == nullptr ||
+          entryPoints.teardownRuntimeContext == nullptr) {
+        auto lastError = expo::modules::dotnet::managedLoaderLastError();
+        if (lastError.empty()) {
+          lastError =
+            "Failed to resolve structured create/teardown runtime context entry points. Rebuild "
+            "the managed ExpoDotnetHost artifacts with expo-modules-dotnet-autolinking.";
+        }
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          registrationInProgress_ = false;
+          lastError_ = lastError;
+        }
+        NSLog(@"[ExpoModulesDotnet] %s", lastError.c_str());
+        return false;
+      }
+
+      expo::modules::dotnet::RuntimeContextResult result;
+      entryPoints.createRuntimeContext(
+        expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, &result);
+      if (result.ok == 0 || result.runtimeContext == nullptr) {
+        auto lastError = takeRuntimeContextError(result.error);
+        if (lastError.empty()) {
+          lastError =
+            std::string(expo::modules::dotnet::managedLoaderKindName(moduleConfig_.loaderKind)) +
+            " runtime context registration failed.";
+        }
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          registrationInProgress_ = false;
+          teardownRuntimeContext_ = entryPoints.teardownRuntimeContext;
+          lastError_ = lastError;
+        }
+        NSLog(@"[ExpoModulesDotnet] %s", lastError.c_str());
+        return false;
+      }
+
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        registrationInProgress_ = false;
+        managedRuntimeContext_ = result.runtimeContext;
+        teardownRuntimeContext_ = entryPoints.teardownRuntimeContext;
+        registered_ = true;
+        lastError_.clear();
+      }
+      NSLog(@"[ExpoModulesDotnet] %s managed modules registered.",
+            expo::modules::dotnet::managedLoaderKindName(moduleConfig_.loaderKind));
       return true;
-    }
-
-    auto entryPoints = expo::modules::dotnet::resolveRuntimeContextEntryPoints(moduleConfig_);
-    if (entryPoints.createRuntimeContext == nullptr || entryPoints.teardownRuntimeContext == nullptr) {
-      lastError_ = expo::modules::dotnet::managedLoaderLastError();
-      if (lastError_.empty()) {
-        lastError_ =
-          "Failed to resolve structured create/teardown runtime context entry points. Rebuild the "
-          "managed ExpoDotnetHost artifacts with expo-modules-dotnet-autolinking.";
+    } catch (...) {
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        registrationInProgress_ = false;
       }
-      NSLog(@"[ExpoModulesDotnet] %s", lastError_.c_str());
-      return false;
+      throw;
     }
-
-    expo::modules::dotnet::RuntimeContextResult result;
-    entryPoints.createRuntimeContext(
-      expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_, &result);
-    teardownRuntimeContext_ = entryPoints.teardownRuntimeContext;
-    if (result.ok == 0 || result.runtimeContext == nullptr) {
-      lastError_ = takeRuntimeContextError(result.error);
-      if (lastError_.empty()) {
-        lastError_ =
-          std::string(expo::modules::dotnet::managedLoaderKindName(moduleConfig_.loaderKind)) +
-          " runtime context registration failed.";
-      }
-      NSLog(@"[ExpoModulesDotnet] %s", lastError_.c_str());
-      return false;
-    }
-
-    managedRuntimeContext_ = result.runtimeContext;
-    NSLog(@"[ExpoModulesDotnet] %s managed modules registered.",
-          expo::modules::dotnet::managedLoaderKindName(moduleConfig_.loaderKind));
-    registered_ = true;
-    lastError_.clear();
-    return true;
   }
 
   std::string lastError() const
   {
+    std::lock_guard<std::mutex> lock(mutex_);
     return lastError_;
   }
 
 private:
+  mutable std::mutex mutex_;
   std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector_;
   expo_jsi_runtime_handle runtimeHandle_ = nullptr;
   expo::modules::dotnet::ManagedModuleConfig moduleConfig_;
@@ -109,7 +164,20 @@ private:
   expo::modules::dotnet::TeardownRuntimeContextFn teardownRuntimeContext_ = nullptr;
   std::string lastError_;
   bool registered_ = false;
+  bool registrationInProgress_ = false;
 };
+
+std::shared_ptr<InstalledRuntime> createInstalledRuntime(
+  facebook::jsi::Runtime &runtime,
+  const std::shared_ptr<facebook::react::CallInvoker> &callInvoker)
+{
+  auto connector =
+    std::make_unique<expo::dotnet::ReactNativeRuntimeConnector>(runtime, callInvoker);
+  auto runtimeHandle = expo::dotnet::createReactNativeRuntimeHandle(*connector);
+  auto moduleConfig = expo::modules::dotnet::loadManagedHostConfig();
+  return std::make_shared<InstalledRuntime>(
+    std::move(connector), runtimeHandle, std::move(moduleConfig));
+}
 
 class ExpoModulesDotnetInstallerTurboModule final : public facebook::react::TurboModule {
 public:
@@ -167,6 +235,7 @@ private:
   // The install record owns connector state, not the RN runtime. Resetting it
   // invalidates the borrowed runtime holder before the managed ABI handle is
   // released.
+  std::mutex _installedRuntimeMutex;
   std::shared_ptr<InstalledRuntime> _installedRuntime;
 }
 
@@ -181,43 +250,66 @@ RCT_EXPORT_MODULE()
 - (void)installJSIBindingsWithRuntime:(facebook::jsi::Runtime &)runtime
                           callInvoker:(const std::shared_ptr<facebook::react::CallInvoker> &)callInvoker
 {
-  auto connector =
-    std::make_unique<expo::dotnet::ReactNativeRuntimeConnector>(runtime, callInvoker);
-  auto runtimeHandle = expo::dotnet::createReactNativeRuntimeHandle(*connector);
-  auto moduleConfig = expo::modules::dotnet::loadManagedHostConfig();
-  auto installedRuntime =
-    std::make_shared<InstalledRuntime>(std::move(connector), runtimeHandle, std::move(moduleConfig));
+  auto installedRuntime = createInstalledRuntime(runtime, callInvoker);
 
-  _installedRuntime = std::move(installedRuntime);
+  {
+    std::lock_guard<std::mutex> lock(_installedRuntimeMutex);
+    _installedRuntime.swap(installedRuntime);
+  }
 }
 
 - (BOOL)installModulesWithRuntime:(facebook::jsi::Runtime &)runtime
                        callInvoker:(const std::shared_ptr<facebook::react::CallInvoker> &)callInvoker
 {
-  if (_installedRuntime == nullptr) {
-    [self installJSIBindingsWithRuntime:runtime callInvoker:callInvoker];
+  std::shared_ptr<InstalledRuntime> installedRuntime;
+  {
+    std::lock_guard<std::mutex> lock(_installedRuntimeMutex);
+    installedRuntime = _installedRuntime;
   }
 
-  return [self installModules];
+  if (installedRuntime == nullptr) {
+    auto candidateRuntime = createInstalledRuntime(runtime, callInvoker);
+    {
+      std::lock_guard<std::mutex> lock(_installedRuntimeMutex);
+      if (_installedRuntime == nullptr) {
+        _installedRuntime.swap(candidateRuntime);
+      }
+      installedRuntime = _installedRuntime;
+    }
+  }
+
+  return installedRuntime->registerModules();
 }
 
 - (BOOL)installModules
 {
-  if (_installedRuntime == nullptr) {
+  std::shared_ptr<InstalledRuntime> installedRuntime;
+  {
+    std::lock_guard<std::mutex> lock(_installedRuntimeMutex);
+    installedRuntime = _installedRuntime;
+  }
+
+  if (installedRuntime == nullptr) {
     NSLog(@"[ExpoModulesDotnet] macOS module runtime is not ready.");
     return NO;
   }
 
-  return _installedRuntime->registerModules();
+  return installedRuntime->registerModules();
 }
 
 - (NSString *)getLastError
 {
-  if (_installedRuntime == nullptr) {
+  std::shared_ptr<InstalledRuntime> installedRuntime;
+  {
+    std::lock_guard<std::mutex> lock(_installedRuntimeMutex);
+    installedRuntime = _installedRuntime;
+  }
+
+  if (installedRuntime == nullptr) {
     return @"macOS module runtime is not ready.";
   }
 
-  auto lastError = _installedRuntime->lastError();
+  auto lastError = installedRuntime->lastError();
   if (!lastError.empty()) {
     return @(lastError.c_str());
   }
@@ -228,7 +320,11 @@ RCT_EXPORT_MODULE()
 
 - (void)invalidate
 {
-  _installedRuntime.reset();
+  std::shared_ptr<InstalledRuntime> installedRuntime;
+  {
+    std::lock_guard<std::mutex> lock(_installedRuntimeMutex);
+    installedRuntime = std::move(_installedRuntime);
+  }
 }
 
 @end
