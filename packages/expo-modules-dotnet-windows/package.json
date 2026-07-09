@@ -1,0 +1,17 @@
+{
+  "name": "expo-modules-dotnet-windows",
+  "version": "0.1.0",
+  "description": "Windows native view support for .NET-backed Expo modules",
+  "main": "src/index.tsx",
+  "types": "src/index.tsx",
+  "license": "MIT",
+  "peerDependencies": {
+    "expo-modules-dotnet": "*",
+    "react": "*",
+    "react-native": "*",
+    "react-native-windows": "*"
+  },
+  "devDependencies": {
+    "typescript": "catalog:react-native-81"
+  }
+}

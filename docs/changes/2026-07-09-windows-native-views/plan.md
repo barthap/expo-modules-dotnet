@@ -685,7 +685,7 @@ pnpm --filter expo-modules-dotnet-autolinking test -- generateAggregator
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 
@@ -705,7 +705,7 @@ git commit -m "Generate Windows view entry points"
 - Create: `packages/expo-modules-dotnet-windows/managed/Expo.ModulesCore.Windows/WindowsExpoView.cs`
 - Modify: `pnpm-workspace.yaml` only if package discovery needs an explicit workspace entry beyond `packages/*`.
 
-- [ ] **Step 1: Create sidecar package manifest**
+- [x] **Step 1: Create sidecar package manifest**
 
 Create `package.json`:
 
@@ -729,7 +729,7 @@ Create `package.json`:
 }
 ```
 
-- [ ] **Step 2: Create managed Windows project**
+- [x] **Step 2: Create managed Windows project**
 
 Create `Expo.ModulesCore.Windows.csproj`:
 
@@ -748,7 +748,7 @@ Create `Expo.ModulesCore.Windows.csproj`:
 </Project>
 ```
 
-- [ ] **Step 3: Add composition-backed base view**
+- [x] **Step 3: Add composition-backed base view**
 
 Create `WindowsExpoView.cs`:
 
@@ -799,7 +799,7 @@ public abstract class WindowsExpoView
 }
 ```
 
-- [ ] **Step 4: Verify managed sidecar builds**
+- [x] **Step 4: Verify managed sidecar builds**
 
 Run:
 
