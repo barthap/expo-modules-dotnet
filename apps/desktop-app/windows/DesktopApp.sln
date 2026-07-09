@@ -13,6 +13,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ExpoDesktopStubs", "..\node
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ExpoModulesDotnet", "..\node_modules\expo-modules-dotnet\windows\ExpoModulesDotnet\ExpoModulesDotnet.vcxproj", "{A7B9E08A-8F3B-4B3B-A521-2E6D6BB55F40}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ExpoModulesDotnetWindows", "..\node_modules\expo-modules-dotnet-windows\windows\ExpoModulesDotnetWindows\ExpoModulesDotnetWindows.vcxproj", "{A1D9D82E-7180-4B28-A8E3-BEF40B3151E4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -95,6 +97,18 @@ Global
 		{A7B9E08A-8F3B-4B3B-A521-2E6D6BB55F40}.Release|x86.Build.0 = Release|Win32
 		{A7B9E08A-8F3B-4B3B-A521-2E6D6BB55F40}.Release|ARM64.ActiveCfg = Release|ARM64
 		{A7B9E08A-8F3B-4B3B-A521-2E6D6BB55F40}.Release|ARM64.Build.0 = Release|ARM64
+		{A1D9D82E-7180-4B28-A8E3-BEF40B3151E4}.Debug|x64.ActiveCfg = Debug|x64
+		{A1D9D82E-7180-4B28-A8E3-BEF40B3151E4}.Debug|x64.Build.0 = Debug|x64
+		{A1D9D82E-7180-4B28-A8E3-BEF40B3151E4}.Debug|x86.ActiveCfg = Debug|Win32
+		{A1D9D82E-7180-4B28-A8E3-BEF40B3151E4}.Debug|x86.Build.0 = Debug|Win32
+		{A1D9D82E-7180-4B28-A8E3-BEF40B3151E4}.Debug|ARM64.ActiveCfg = Debug|ARM64
+		{A1D9D82E-7180-4B28-A8E3-BEF40B3151E4}.Debug|ARM64.Build.0 = Debug|ARM64
+		{A1D9D82E-7180-4B28-A8E3-BEF40B3151E4}.Release|x64.ActiveCfg = Release|x64
+		{A1D9D82E-7180-4B28-A8E3-BEF40B3151E4}.Release|x64.Build.0 = Release|x64
+		{A1D9D82E-7180-4B28-A8E3-BEF40B3151E4}.Release|x86.ActiveCfg = Release|Win32
+		{A1D9D82E-7180-4B28-A8E3-BEF40B3151E4}.Release|x86.Build.0 = Release|Win32
+		{A1D9D82E-7180-4B28-A8E3-BEF40B3151E4}.Release|ARM64.ActiveCfg = Release|ARM64
+		{A1D9D82E-7180-4B28-A8E3-BEF40B3151E4}.Release|ARM64.Build.0 = Release|ARM64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

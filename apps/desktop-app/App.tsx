@@ -1,4 +1,5 @@
 import {
+  ExampleColorBox,
   add,
   addStatusListener,
   describeUser,
@@ -35,6 +36,7 @@ const initialResults: Record<CapabilityKey, string> = {
 
 export default function App() {
   const [results, setResults] = useState(initialResults);
+  const [boxColor, setBoxColor] = useState('green');
 
   function setResult(key: CapabilityKey, value: string) {
     setResults(previous => ({ ...previous, [key]: value }));
@@ -148,6 +150,22 @@ export default function App() {
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>Expo.ModulesCore {Platform.OS}</Text>
         <Text style={styles.subtitle}>ExampleModule interactive showcase</Text>
+        {Platform.OS === 'windows' ? (
+          <View style={styles.nativeViewSection}>
+            <ExampleColorBox color={boxColor} style={styles.nativeColorBox} />
+            <Pressable
+              accessibilityRole="button"
+              onPress={() =>
+                setBoxColor(previous => (previous === 'green' ? 'purple' : 'green'))
+              }
+              style={({ pressed }) => [
+                styles.button,
+                pressed ? styles.buttonPressed : null,
+              ]}>
+              <Text style={styles.buttonText}>Toggle native color</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <View style={styles.rows}>
           {capabilities.map(capability => (
             <View key={capability.key} style={styles.row}>
@@ -196,6 +214,14 @@ const styles = StyleSheet.create({
   rows: {
     borderColor: '#cfd8dc',
     borderTopWidth: 1,
+  },
+  nativeViewSection: {
+    gap: 12,
+    marginBottom: 20,
+  },
+  nativeColorBox: {
+    height: 96,
+    width: '100%',
   },
   row: {
     borderBottomWidth: 1,

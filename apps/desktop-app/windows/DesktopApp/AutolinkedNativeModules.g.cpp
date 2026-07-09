@@ -12,6 +12,9 @@
 // Includes from expo-modules-dotnet
 #include <winrt/ExpoModulesDotnet.h>
 
+// Includes from expo-modules-dotnet-windows
+#include <winrt/ExpoModulesDotnetWindows.h>
+
 namespace winrt::Microsoft::ReactNative
 {
 
@@ -23,6 +26,8 @@ void RegisterAutolinkedNativeModulePackages(winrt::Windows::Foundation::Collecti
     packageProviders.Append(winrt::ExpoDesktopStubs::ReactPackageProvider());
     // IReactPackageProviders from expo-modules-dotnet
     packageProviders.Append(winrt::ExpoModulesDotnet::ReactPackageProvider());
+    // IReactPackageProviders from expo-modules-dotnet-windows
+    packageProviders.Append(winrt::ExpoModulesDotnetWindows::ReactPackageProvider());
 }
 
 }

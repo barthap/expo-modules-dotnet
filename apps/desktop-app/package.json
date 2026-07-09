@@ -24,6 +24,7 @@
     "expo-desktop-prebuild-config": "^1.0.20",
     "expo-desktop-stubs": "^54.0.13",
     "expo-modules-dotnet": "workspace:*",
+    "expo-modules-dotnet-windows": "workspace:*",
     "react": "catalog:react-native-81",
     "react-native": "catalog:react-native-81",
     "react-native-macos": "catalog:react-native-81",

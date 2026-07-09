@@ -1162,7 +1162,7 @@ git commit -m "Add example Windows native view"
 - Modify: `apps/desktop-app/windows/DesktopApp/AutolinkedNativeModules.g.props`
 - Modify: `apps/desktop-app/windows/DesktopApp/AutolinkedNativeModules.g.targets`
 
-- [ ] **Step 1: Add sidecar dependency**
+- [x] **Step 1: Add sidecar dependency**
 
 In `apps/desktop-app/package.json`, add:
 
@@ -1170,7 +1170,7 @@ In `apps/desktop-app/package.json`, add:
 "expo-modules-dotnet-windows": "workspace:*"
 ```
 
-- [ ] **Step 2: Render the native view on Windows**
+- [x] **Step 2: Render the native view on Windows**
 
 Import:
 
@@ -1213,7 +1213,7 @@ nativeColorBox: {
 },
 ```
 
-- [ ] **Step 3: Run Windows autolinking**
+- [x] **Step 3: Run Windows autolinking**
 
 Run:
 
@@ -1223,7 +1223,9 @@ pnpm --filter desktop-app exec react-native autolink-windows --sln "windows\Desk
 
 Expected: generated Windows autolinking files include the sidecar native package.
 
-- [ ] **Step 4: Verify app typecheck**
+Actual: PASS. `AutolinkedNativeModules.g.cpp`, `AutolinkedNativeModules.g.targets`, and `DesktopApp.sln` include `ExpoModulesDotnetWindows`.
+
+- [x] **Step 4: Verify app typecheck**
 
 Run:
 
@@ -1233,7 +1235,9 @@ pnpm --filter desktop-app typecheck
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+Actual: PASS.
+
+- [x] **Step 5: Commit**
 
 Run:
 

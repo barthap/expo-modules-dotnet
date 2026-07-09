@@ -14,5 +14,9 @@
     <ProjectReference Include="$(ProjectDir)..\..\node_modules\expo-modules-dotnet\windows\ExpoModulesDotnet\ExpoModulesDotnet.vcxproj">
       <Project>{A7B9E08A-8F3B-4B3B-A521-2E6D6BB55F40}</Project>
     </ProjectReference>
+    <!-- Projects from expo-modules-dotnet-windows -->
+    <ProjectReference Include="$(ProjectDir)..\..\node_modules\expo-modules-dotnet-windows\windows\ExpoModulesDotnetWindows\ExpoModulesDotnetWindows.vcxproj">
+      <Project>{A1D9D82E-7180-4B28-A8E3-BEF40B3151E4}</Project>
+    </ProjectReference>
   </ItemGroup>
 </Project>

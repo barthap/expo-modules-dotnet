@@ -84,6 +84,9 @@ importers:
       expo-modules-dotnet:
         specifier: workspace:*
         version: link:../../packages/expo-modules-dotnet
+      expo-modules-dotnet-windows:
+        specifier: workspace:*
+        version: link:../../packages/expo-modules-dotnet-windows
       react:
         specifier: catalog:react-native-81
         version: 19.1.4
