@@ -86,6 +86,32 @@ Windows app project copies that directory next to the built executable as
 HostFXR is the default loader. Override with `EXPO_DOTNET_LOADER` or
 `EXPO_JSI_DOTNET_LOADER` when testing another loader.
 
+### Windows NativeAOT
+
+The Windows app defaults to HostFXR. To run the NativeAOT loader, build and
+launch from a shell that sets the runtime loader override, and pass the matching
+MSBuild property so the autolinking target stages the NativeAOT payload:
+
+```powershell
+$env:EXPO_DOTNET_LOADER = "nativeaot"
+pnpm --filter desktop-app exec react-native run-windows --release --msbuildprops ExpoDotnetLoader=nativeaot
+```
+
+For a build-only check without launching the app:
+
+```powershell
+MSBuild.exe apps/desktop-app/windows/DesktopApp.sln /restore /p:Configuration=Release /p:Platform=x64 /p:ExpoDotnetLoader=nativeaot /m:1
+```
+
+To stage only the managed NativeAOT artifacts:
+
+```powershell
+pnpm --filter desktop-app exec expo-modules-dotnet-autolinking link --platform windows --mode nativeaot --configuration Release --rid win-x64
+```
+
+Unset `EXPO_DOTNET_LOADER` or set it back to `hostfxr` before returning to the
+default HostFXR flow.
+
 ### macOS Xcode Environment
 
 When building from Xcode.app, script phases do not inherit the interactive
