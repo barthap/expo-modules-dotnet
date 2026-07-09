@@ -53,6 +53,19 @@ std::string toUtf8(const std::wstring &value)
   return result;
 }
 
+std::wstring takeRuntimeContextError(expo::modules::dotnet::RuntimeContextError &error)
+{
+  std::wstring message;
+  if (error.message != nullptr && error.messageLength > 0) {
+    std::string utf8(error.message, static_cast<size_t>(error.messageLength));
+    message = toWide(utf8.c_str());
+  }
+  if (error.release != nullptr) {
+    error.release(error.releaseContext);
+  }
+  return message;
+}
+
 } // namespace
 
 struct ExpoModulesDotnetInstaller::InstalledRuntime final
@@ -71,23 +84,33 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
     teardown();
   }
 
-  bool registerModules()
+  bool registerModules(std::wstring &error)
   {
     auto entryPoints = expo::modules::dotnet::resolveRuntimeContextEntryPoints(moduleConfig);
 
     if (entryPoints.createRuntimeContext == nullptr ||
         entryPoints.teardownRuntimeContext == nullptr) {
+      error = expo::modules::dotnet::managedLoaderLastError();
+      if (error.empty()) {
+        error =
+          L"Failed to resolve structured create/teardown runtime context entry points. Rebuild "
+          L"the managed ExpoDotnetHost artifacts with expo-modules-dotnet-autolinking.";
+      }
       return false;
     }
 
-    auto runtimeContext =
-      entryPoints.createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle);
-    if (runtimeContext == nullptr) {
+    expo::modules::dotnet::RuntimeContextResult result;
+    entryPoints.createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, &result);
+    if (result.ok == 0 || result.runtimeContext == nullptr) {
+      error = takeRuntimeContextError(result.error);
+      if (error.empty()) {
+        error = L"Managed runtime context registration failed.";
+      }
       return false;
     }
 
     std::lock_guard<std::mutex> lock(mutex);
-    managedRuntimeContext = runtimeContext;
+    managedRuntimeContext = result.runtimeContext;
     teardownRuntimeContext = entryPoints.teardownRuntimeContext;
     registered = true;
     return true;
@@ -211,12 +234,12 @@ void ExpoModulesDotnetInstaller::Initialize(
     auto installedRuntime = std::make_shared<InstalledRuntime>(
       std::move(connector), runtimeHandle, std::move(moduleConfig));
 
-    if (!installedRuntime->registerModules()) {
-      auto loaderError = expo::modules::dotnet::managedLoaderLastError();
-      if (loaderError.empty()) {
+    std::wstring registrationError;
+    if (!installedRuntime->registerModules(registrationError)) {
+      if (registrationError.empty()) {
         throw std::runtime_error("Failed to register managed runtime context.");
       }
-      throw std::runtime_error(toUtf8(loaderError).c_str());
+      throw std::runtime_error(toUtf8(registrationError).c_str());
     }
 
     installedRuntime->subscribeToInstanceDestroyed(reactContext.Notifications());

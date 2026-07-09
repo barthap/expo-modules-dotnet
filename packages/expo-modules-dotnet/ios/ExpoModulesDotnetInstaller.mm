@@ -5,17 +5,45 @@
 
 #include <dlfcn.h>
 #include <memory>
+#include <string>
 
 #include "ReactNativeRuntimeConnector.h"
 
 @protocol ExpoModulesDotnetInstalling
 - (BOOL)installModules;
+- (NSString *)getLastError;
 @end
 
 namespace {
 
-using CreateRuntimeContextFn = void *(*)(const expo_jsi_api *, expo_jsi_runtime_handle);
+struct RuntimeContextError {
+  const char *message = nullptr;
+  int32_t messageLength = 0;
+  void *releaseContext = nullptr;
+  void (*release)(void *) = nullptr;
+};
+
+struct RuntimeContextResult {
+  int32_t ok = 0;
+  void *runtimeContext = nullptr;
+  RuntimeContextError error;
+};
+
+using CreateRuntimeContextFn =
+  void (*)(const expo_jsi_api *, expo_jsi_runtime_handle, RuntimeContextResult *);
 using TeardownRuntimeContextFn = void (*)(void *);
+
+std::string takeRuntimeContextError(RuntimeContextError &error)
+{
+  std::string message;
+  if (error.message != nullptr && error.messageLength > 0) {
+    message.assign(error.message, static_cast<size_t>(error.messageLength));
+  }
+  if (error.release != nullptr) {
+    error.release(error.releaseContext);
+  }
+  return message;
+}
 
 void *loadAggregatorLibrary()
 {
@@ -45,7 +73,7 @@ void *resolveAggregatorSymbol(const char *symbolName)
 
 CreateRuntimeContextFn resolveCreateRuntimeContext()
 {
-  auto *symbol = resolveAggregatorSymbol("expo_dotnet_create_runtime_context");
+  auto *symbol = resolveAggregatorSymbol("expo_dotnet_create_runtime_context_result");
   return reinterpret_cast<CreateRuntimeContextFn>(symbol);
 }
 
@@ -87,20 +115,35 @@ public:
     auto createRuntimeContext = resolveCreateRuntimeContext();
     auto teardownRuntimeContext = resolveTeardownRuntimeContext();
     if (createRuntimeContext == nullptr || teardownRuntimeContext == nullptr) {
-      NSLog(@"[ExpoModulesDotnet] Failed to resolve create/teardown runtime context entry points. Run the expo-modules-dotnet-autolinking link command (or a full app build, which runs it as a script phase) before launching the iOS app.");
+      lastError_ = "Failed to resolve structured create/teardown runtime context entry points. "
+                   "Run the expo-modules-dotnet-autolinking link command (or a full app build, "
+                   "which runs it as a script phase) before launching the iOS app.";
+      NSLog(@"[ExpoModulesDotnet] %s", lastError_.c_str());
       return false;
     }
 
-    managedRuntimeContext_ = createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
+    RuntimeContextResult result;
+    createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_, &result);
     teardownRuntimeContext_ = teardownRuntimeContext;
-    if (managedRuntimeContext_ == nullptr) {
-      NSLog(@"[ExpoModulesDotnet] NativeAOT runtime context registration failed.");
+    if (result.ok == 0 || result.runtimeContext == nullptr) {
+      lastError_ = takeRuntimeContextError(result.error);
+      if (lastError_.empty()) {
+        lastError_ = "NativeAOT runtime context registration failed.";
+      }
+      NSLog(@"[ExpoModulesDotnet] %s", lastError_.c_str());
       return false;
     }
 
+    managedRuntimeContext_ = result.runtimeContext;
     NSLog(@"[ExpoModulesDotnet] NativeAOT managed modules registered.");
     registered_ = true;
+    lastError_.clear();
     return true;
+  }
+
+  std::string lastError() const
+  {
+    return lastError_;
   }
 
 private:
@@ -108,6 +151,7 @@ private:
   expo_jsi_runtime_handle runtimeHandle_ = nullptr;
   void *managedRuntimeContext_ = nullptr;
   TeardownRuntimeContextFn teardownRuntimeContext_ = nullptr;
+  std::string lastError_;
   bool registered_ = false;
 };
 
@@ -122,6 +166,10 @@ public:
       .argCount = 0,
       .invoker = ExpoModulesDotnetInstallerTurboModule::installModules,
     };
+    methodMap_["getLastError"] = MethodMetadata{
+      .argCount = 0,
+      .invoker = ExpoModulesDotnetInstallerTurboModule::getLastError,
+    };
   }
 
 private:
@@ -133,6 +181,17 @@ private:
     auto &installerTurboModule =
       static_cast<ExpoModulesDotnetInstallerTurboModule &>(turboModule);
     return facebook::jsi::Value([installerTurboModule.installer_ installModules]);
+  }
+
+  static facebook::jsi::Value getLastError(facebook::jsi::Runtime &runtime,
+                                           facebook::react::TurboModule &turboModule,
+                                           const facebook::jsi::Value *,
+                                           size_t)
+  {
+    auto &installerTurboModule =
+      static_cast<ExpoModulesDotnetInstallerTurboModule &>(turboModule);
+    NSString *lastError = [installerTurboModule.installer_ getLastError];
+    return facebook::jsi::String::createFromUtf8(runtime, lastError.UTF8String);
   }
 
   id<ExpoModulesDotnetInstalling> installer_;
@@ -179,6 +238,16 @@ RCT_EXPORT_MODULE()
   }
 
   return _installedRuntime->registerModules();
+}
+
+- (NSString *)getLastError
+{
+  if (_installedRuntime == nullptr) {
+    return @"NativeAOT module runtime is not ready.";
+  }
+
+  auto lastError = _installedRuntime->lastError();
+  return lastError.empty() ? @"" : @(lastError.c_str());
 }
 
 - (void)invalidate

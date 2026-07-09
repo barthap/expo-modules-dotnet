@@ -122,6 +122,7 @@ function generateEntryPoints(): string {
   return `${csharpBanner}
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using Expo.JSI;
 using Expo.ModulesCore;
 
@@ -130,19 +131,30 @@ namespace Expo.ModulesCore.Generated;
 public static class EntryPoints
 {
     [UnmanagedCallersOnly(
-        EntryPoint = "expo_dotnet_create_runtime_context",
+        EntryPoint = "expo_dotnet_create_runtime_context_result",
         CallConvs = new[] { typeof(CallConvCdecl) }
     )]
-    public static nint CreateRuntimeContext(nint api, nint runtimeHandle)
+    public static unsafe void CreateRuntimeContextResult(
+        nint api,
+        nint runtimeHandle,
+        RuntimeContextResult* result)
     {
+        if (result is null)
+        {
+            return;
+        }
+
         try
         {
-            return CreateRuntimeContextCore(api, runtimeHandle);
+            var context = CreateRuntimeContextCore(api, runtimeHandle);
+            result->Ok = 1;
+            result->RuntimeContext = context;
+            result->Error = default;
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine(ex);
-            return 0;
+            SetError(result, ex);
+            LogException(ex);
         }
     }
 
@@ -152,7 +164,14 @@ public static class EntryPoints
     )]
     public static void TeardownRuntimeContext(nint runtimeContext)
     {
-        TeardownRuntimeContextCore(runtimeContext);
+        try
+        {
+            TeardownRuntimeContextCore(runtimeContext);
+        }
+        catch (Exception ex)
+        {
+            LogException(ex);
+        }
     }
 
     private static nint CreateRuntimeContextCore(nint api, nint runtimeHandle)
@@ -166,11 +185,13 @@ public static class EntryPoints
         }
         catch
         {
-            context.Dispose();
+            DisposeRuntimeContext(context);
             throw;
         }
     }
 
+    // Startup cleanup and app teardown run behind unmanaged entry points. Keep
+    // every exception contained so managed failures never cross the C ABI.
     private static void TeardownRuntimeContextCore(nint runtimeContext)
     {
         if (runtimeContext == 0)
@@ -179,12 +200,84 @@ public static class EntryPoints
         }
 
         var handle = GCHandle.FromIntPtr(runtimeContext);
-        if (handle.Target is DotnetRuntimeContext context)
+        try
+        {
+            if (handle.Target is DotnetRuntimeContext context)
+            {
+                DisposeRuntimeContext(context);
+            }
+        }
+        finally
+        {
+            // The native adapter passed this opaque context back to us; release
+            // its GCHandle even when managed context disposal reports failures.
+            handle.Free();
+        }
+    }
+
+    private static void DisposeRuntimeContext(DotnetRuntimeContext context)
+    {
+        try
         {
             context.Dispose();
         }
+        catch (Exception ex)
+        {
+            LogException(ex);
+        }
+    }
 
-        handle.Free();
+    private static void LogException(Exception exception)
+    {
+        try
+        {
+            Console.Error.WriteLine(exception);
+        }
+        catch
+        {
+            // Best-effort logging only. Throwing while reporting an exception
+            // would reopen the unmanaged boundary this path is protecting.
+        }
+    }
+
+    private static unsafe void SetError(RuntimeContextResult* result, Exception exception)
+    {
+        var message = Encoding.UTF8.GetBytes(exception.Message);
+        var buffer = Marshal.AllocHGlobal(message.Length);
+        Marshal.Copy(message, 0, buffer, message.Length);
+
+        result->Ok = 0;
+        result->RuntimeContext = 0;
+        result->Error.Message = (byte*)buffer;
+        result->Error.MessageLength = message.Length;
+        result->Error.ReleaseContext = buffer;
+        result->Error.Release = &ReleaseRuntimeContextError;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static void ReleaseRuntimeContextError(nint releaseContext)
+    {
+        if (releaseContext != 0)
+        {
+            Marshal.FreeHGlobal(releaseContext);
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct RuntimeContextResult
+    {
+        public int Ok;
+        public nint RuntimeContext;
+        public RuntimeContextError Error;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct RuntimeContextError
+    {
+        public byte* Message;
+        public int MessageLength;
+        public nint ReleaseContext;
+        public delegate* unmanaged[Cdecl]<nint, void> Release;
     }
 }
 `;

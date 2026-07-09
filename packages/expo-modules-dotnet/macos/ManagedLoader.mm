@@ -7,17 +7,40 @@
 #include <array>
 #include <cstdlib>
 #include <dlfcn.h>
+#include <mutex>
 
 namespace expo::modules::dotnet {
 namespace {
 
 constexpr const char *kManagedSubdirectory = "Managed";
 NSString *const kLoaderInfoPlistKey = @"ExpoModulesDotnetLoader";
-constexpr const char *kCreateRuntimeContextSymbol = "expo_dotnet_create_runtime_context";
+constexpr const char *kCreateRuntimeContextSymbol = "expo_dotnet_create_runtime_context_result";
 constexpr const char *kTeardownRuntimeContextSymbol = "expo_dotnet_teardown_runtime_context";
 constexpr const char *kEntryPointType = "Expo.ModulesCore.Generated.EntryPoints, ExpoDotnetHost";
-constexpr const char *kCreateRuntimeContextMethod = "CreateRuntimeContext";
+constexpr const char *kCreateRuntimeContextMethod = "CreateRuntimeContextResult";
 constexpr const char *kTeardownRuntimeContextMethod = "TeardownRuntimeContext";
+
+std::mutex g_errorMutex;
+std::string g_lastError;
+
+void setLastError(std::string message)
+{
+  NSLog(@"[ExpoModulesDotnet] %s", message.c_str());
+  std::lock_guard<std::mutex> lock(g_errorMutex);
+  g_lastError = std::move(message);
+}
+
+void clearLastError()
+{
+  std::lock_guard<std::mutex> lock(g_errorMutex);
+  g_lastError.clear();
+}
+
+std::string dlerrorMessage(const char *operation)
+{
+  const char *error = dlerror();
+  return std::string(operation) + " failed: " + (error == nullptr ? "unknown error" : error);
+}
 
 std::string pathForBundledResource(NSString *name, NSString *extension)
 {
@@ -28,11 +51,11 @@ std::string pathForBundledResource(NSString *name, NSString *extension)
     url = [[NSBundle mainBundle] URLForResource:name withExtension:extension];
   }
   if (url == nil) {
-    NSLog(@"[ExpoModulesDotnet] Missing managed artifact Managed/%@.%@. Run the "
-           "expo-modules-dotnet-autolinking link command (or a full app build, which runs it as a "
-           "script phase) before launching the macOS app.",
-          name,
-          extension);
+    setLastError(
+      "Missing managed artifact Managed/" + std::string([name UTF8String]) + "." +
+      std::string([extension UTF8String]) +
+      ". Run the expo-modules-dotnet-autolinking link command (or a full app build, which runs it "
+      "as a script phase) before launching the macOS app.");
   }
   return url == nil ? std::string() : std::string([[url path] UTF8String]);
 }
@@ -85,13 +108,13 @@ void *openHostFxr(const ManagedModuleConfig &config)
 {
   void *nethost = openLibrary(config.nethostPath);
   if (nethost == nullptr) {
-    NSLog(@"[ExpoModulesDotnet] Failed to load libnethost.dylib: %s", dlerror());
+    setLastError(dlerrorMessage("dlopen(libnethost.dylib)"));
     return nullptr;
   }
 
   auto getHostFxrPath = reinterpret_cast<get_hostfxr_path_fn>(dlsym(nethost, "get_hostfxr_path"));
   if (getHostFxrPath == nullptr) {
-    NSLog(@"[ExpoModulesDotnet] Failed to resolve get_hostfxr_path: %s", dlerror());
+    setLastError(dlerrorMessage("dlsym(get_hostfxr_path)"));
     return nullptr;
   }
 
@@ -99,13 +122,13 @@ void *openHostFxr(const ManagedModuleConfig &config)
   size_t hostFxrPathSize = hostFxrPath.size();
   auto status = getHostFxrPath(hostFxrPath.data(), &hostFxrPathSize, nullptr);
   if (status != 0) {
-    NSLog(@"[ExpoModulesDotnet] get_hostfxr_path failed with status %d.", status);
+    setLastError("get_hostfxr_path failed with status " + std::to_string(status) + ".");
     return nullptr;
   }
 
   void *hostFxr = dlopen(hostFxrPath.data(), RTLD_NOW | RTLD_LOCAL);
   if (hostFxr == nullptr) {
-    NSLog(@"[ExpoModulesDotnet] Failed to load hostfxr from %s: %s", hostFxrPath.data(), dlerror());
+    setLastError(dlerrorMessage("dlopen(hostfxr)"));
   }
   return hostFxr;
 }
@@ -114,16 +137,17 @@ void *resolveNativeAotSymbol(const ManagedModuleConfig &config, const char *symb
 {
   void *library = openLibrary(config.nativeLibraryPath);
   if (library == nullptr) {
-    NSLog(@"[ExpoModulesDotnet] Failed to load NativeAOT ExpoDotnetHost library: %s", dlerror());
+    setLastError(dlerrorMessage("dlopen(NativeAOT ExpoDotnetHost library)"));
     return nullptr;
   }
 
   auto *symbol = dlsym(library, symbolName);
   if (symbol == nullptr) {
-    NSLog(@"[ExpoModulesDotnet] Failed to resolve %s: %s", symbolName, dlerror());
+    setLastError(dlerrorMessage((std::string("dlsym(") + symbolName + ")").c_str()));
     return nullptr;
   }
 
+  clearLastError();
   return symbol;
 }
 
@@ -143,15 +167,15 @@ void *resolveHostFxrMethod(const ManagedModuleConfig &config, const char *method
 
   if (initializeForRuntimeConfig == nullptr || getRuntimeDelegate == nullptr ||
       closeHostContext == nullptr) {
-    NSLog(@"[ExpoModulesDotnet] Failed to resolve required hostfxr exports: %s", dlerror());
+    setLastError(dlerrorMessage("dlsym(required hostfxr exports)"));
     return nullptr;
   }
 
   hostfxr_handle hostContext = nullptr;
   auto status = initializeForRuntimeConfig(config.runtimeConfigPath.c_str(), nullptr, &hostContext);
   if (status < 0 || status > 2 || hostContext == nullptr) {
-    NSLog(@"[ExpoModulesDotnet] hostfxr_initialize_for_runtime_config failed with status %d.",
-          status);
+    setLastError("hostfxr_initialize_for_runtime_config failed with status " +
+                 std::to_string(status) + ".");
     return nullptr;
   }
 
@@ -161,7 +185,7 @@ void *resolveHostFxrMethod(const ManagedModuleConfig &config, const char *method
                               &loadAssemblyDelegate);
   closeHostContext(hostContext);
   if (status != 0 || loadAssemblyDelegate == nullptr) {
-    NSLog(@"[ExpoModulesDotnet] hostfxr_get_runtime_delegate failed with status %d.", status);
+    setLastError("hostfxr_get_runtime_delegate failed with status " + std::to_string(status) + ".");
     return nullptr;
   }
 
@@ -176,11 +200,12 @@ void *resolveHostFxrMethod(const ManagedModuleConfig &config, const char *method
                                              nullptr,
                                              &method);
   if (status != 0 || method == nullptr) {
-    NSLog(@"[ExpoModulesDotnet] load_assembly_and_get_function_pointer failed with status %d.",
-          status);
+    setLastError("load_assembly_and_get_function_pointer failed with status " +
+                 std::to_string(status) + ".");
     return nullptr;
   }
 
+  clearLastError();
   return method;
 }
 
@@ -234,6 +259,12 @@ ManagedRuntimeContextEntryPoints resolveRuntimeContextEntryPoints(const ManagedM
           resolveHostFxrMethod(config, kTeardownRuntimeContextMethod));
       return entryPoints;
   }
+}
+
+std::string managedLoaderLastError()
+{
+  std::lock_guard<std::mutex> lock(g_errorMutex);
+  return g_lastError;
 }
 
 } // namespace expo::modules::dotnet

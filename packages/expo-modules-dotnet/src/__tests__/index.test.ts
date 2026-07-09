@@ -57,4 +57,18 @@ describe('requireDotnetModule', () => {
       );
     }
   );
+
+  it('includes native installer diagnostics when installation does not create the registry', async () => {
+    mockNative.installer.installModules.mockReturnValue(false);
+    mockNative.installer.getLastError.mockReturnValue(
+      'Expo JSI ABI version mismatch: native=21 managed=22.'
+    );
+
+    const { requireDotnetModule } = await import('../index');
+
+    expect(() => requireDotnetModule('ExampleModule')).toThrow(
+      'expo-modules-dotnet native installer failed: ' +
+        'Expo JSI ABI version mismatch: native=21 managed=22.'
+    );
+  });
 });

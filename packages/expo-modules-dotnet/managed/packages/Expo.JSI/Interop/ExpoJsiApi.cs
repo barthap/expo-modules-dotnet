@@ -339,7 +339,9 @@ internal readonly unsafe struct ExpoJsiApi
     }
     if (this.Version != ExpoJsiApi.ExpectedVersion)
     {
-      throw new InvalidOperationException($"Unsupported Expo JSI API version {this.Version}.");
+      throw new InvalidOperationException(
+        $"Expo JSI ABI version mismatch: native={this.Version} managed={ExpoJsiApi.ExpectedVersion}."
+      );
     }
     if (
       this.CreateNumber is null

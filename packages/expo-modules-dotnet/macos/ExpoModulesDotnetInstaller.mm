@@ -4,17 +4,31 @@
 #import <ReactCommon/RCTTurboModuleWithJSIBindings.h>
 
 #include <memory>
+#include <string>
 
 #include "ManagedLoader.h"
 #include "ReactNativeRuntimeConnector.h"
 
 @protocol ExpoModulesDotnetInstalling
 - (BOOL)installModules;
+- (NSString *)getLastError;
 - (BOOL)installModulesWithRuntime:(facebook::jsi::Runtime &)runtime
                        callInvoker:(const std::shared_ptr<facebook::react::CallInvoker> &)callInvoker;
 @end
 
 namespace {
+
+std::string takeRuntimeContextError(expo::modules::dotnet::RuntimeContextError &error)
+{
+  std::string message;
+  if (error.message != nullptr && error.messageLength > 0) {
+    message.assign(error.message, static_cast<size_t>(error.messageLength));
+  }
+  if (error.release != nullptr) {
+    error.release(error.releaseContext);
+  }
+  return message;
+}
 
 class InstalledRuntime final {
 public:
@@ -49,23 +63,42 @@ public:
 
     auto entryPoints = expo::modules::dotnet::resolveRuntimeContextEntryPoints(moduleConfig_);
     if (entryPoints.createRuntimeContext == nullptr || entryPoints.teardownRuntimeContext == nullptr) {
-      NSLog(@"[ExpoModulesDotnet] Failed to resolve create/teardown runtime context entry points.");
+      lastError_ = expo::modules::dotnet::managedLoaderLastError();
+      if (lastError_.empty()) {
+        lastError_ =
+          "Failed to resolve structured create/teardown runtime context entry points. Rebuild the "
+          "managed ExpoDotnetHost artifacts with expo-modules-dotnet-autolinking.";
+      }
+      NSLog(@"[ExpoModulesDotnet] %s", lastError_.c_str());
       return false;
     }
 
-    managedRuntimeContext_ =
-      entryPoints.createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_);
+    expo::modules::dotnet::RuntimeContextResult result;
+    entryPoints.createRuntimeContext(
+      expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle_, &result);
     teardownRuntimeContext_ = entryPoints.teardownRuntimeContext;
-    if (managedRuntimeContext_ == nullptr) {
-      NSLog(@"[ExpoModulesDotnet] %s runtime context registration failed.",
-            expo::modules::dotnet::managedLoaderKindName(moduleConfig_.loaderKind));
+    if (result.ok == 0 || result.runtimeContext == nullptr) {
+      lastError_ = takeRuntimeContextError(result.error);
+      if (lastError_.empty()) {
+        lastError_ =
+          std::string(expo::modules::dotnet::managedLoaderKindName(moduleConfig_.loaderKind)) +
+          " runtime context registration failed.";
+      }
+      NSLog(@"[ExpoModulesDotnet] %s", lastError_.c_str());
       return false;
     }
 
+    managedRuntimeContext_ = result.runtimeContext;
     NSLog(@"[ExpoModulesDotnet] %s managed modules registered.",
           expo::modules::dotnet::managedLoaderKindName(moduleConfig_.loaderKind));
     registered_ = true;
+    lastError_.clear();
     return true;
+  }
+
+  std::string lastError() const
+  {
+    return lastError_;
   }
 
 private:
@@ -74,6 +107,7 @@ private:
   expo::modules::dotnet::ManagedModuleConfig moduleConfig_;
   void *managedRuntimeContext_ = nullptr;
   expo::modules::dotnet::TeardownRuntimeContextFn teardownRuntimeContext_ = nullptr;
+  std::string lastError_;
   bool registered_ = false;
 };
 
@@ -89,6 +123,10 @@ public:
       .argCount = 0,
       .invoker = ExpoModulesDotnetInstallerTurboModule::installModules,
     };
+    methodMap_["getLastError"] = MethodMetadata{
+      .argCount = 0,
+      .invoker = ExpoModulesDotnetInstallerTurboModule::getLastError,
+    };
   }
 
 private:
@@ -102,6 +140,17 @@ private:
     return facebook::jsi::Value(
       [installerTurboModule.installer_ installModulesWithRuntime:runtime
                                                      callInvoker:installerTurboModule.jsInvoker_]);
+  }
+
+  static facebook::jsi::Value getLastError(facebook::jsi::Runtime &runtime,
+                                           facebook::react::TurboModule &turboModule,
+                                           const facebook::jsi::Value *,
+                                           size_t)
+  {
+    auto &installerTurboModule =
+      static_cast<ExpoModulesDotnetInstallerTurboModule &>(turboModule);
+    NSString *lastError = [installerTurboModule.installer_ getLastError];
+    return facebook::jsi::String::createFromUtf8(runtime, lastError.UTF8String);
   }
 
   id<ExpoModulesDotnetInstalling> installer_;
@@ -160,6 +209,21 @@ RCT_EXPORT_MODULE()
   }
 
   return _installedRuntime->registerModules();
+}
+
+- (NSString *)getLastError
+{
+  if (_installedRuntime == nullptr) {
+    return @"macOS module runtime is not ready.";
+  }
+
+  auto lastError = _installedRuntime->lastError();
+  if (!lastError.empty()) {
+    return @(lastError.c_str());
+  }
+
+  auto loaderError = expo::modules::dotnet::managedLoaderLastError();
+  return loaderError.empty() ? @"" : @(loaderError.c_str());
 }
 
 - (void)invalidate

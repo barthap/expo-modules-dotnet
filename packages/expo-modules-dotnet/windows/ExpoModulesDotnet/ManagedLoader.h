@@ -11,7 +11,22 @@ enum class ManagedLoaderKind {
   NativeAot,
 };
 
-using CreateRuntimeContextFn = void *(*)(const expo_jsi_api *, expo_jsi_runtime_handle);
+struct RuntimeContextError {
+  const char *message = nullptr;
+  int32_t messageLength = 0;
+  void *releaseContext = nullptr;
+  void (*release)(void *) = nullptr;
+};
+
+struct RuntimeContextResult {
+  int32_t ok = 0;
+  void *runtimeContext = nullptr;
+  RuntimeContextError error;
+};
+
+using CreateRuntimeContextFn = void (*)(const expo_jsi_api *,
+                                        expo_jsi_runtime_handle,
+                                        RuntimeContextResult *);
 using TeardownRuntimeContextFn = void (*)(void *);
 
 struct ManagedRuntimeContextEntryPoints {

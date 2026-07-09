@@ -14,11 +14,11 @@ namespace expo::modules::dotnet {
 namespace {
 
 constexpr const wchar_t *kManagedSubdirectory = L"Managed";
-constexpr const char *kCreateRuntimeContextSymbol = "expo_dotnet_create_runtime_context";
+constexpr const char *kCreateRuntimeContextSymbol = "expo_dotnet_create_runtime_context_result";
 constexpr const char *kTeardownRuntimeContextSymbol = "expo_dotnet_teardown_runtime_context";
 constexpr const wchar_t *kEntryPointType =
   L"Expo.ModulesCore.Generated.EntryPoints, ExpoDotnetHost";
-constexpr const wchar_t *kCreateRuntimeContextMethod = L"CreateRuntimeContext";
+constexpr const wchar_t *kCreateRuntimeContextMethod = L"CreateRuntimeContextResult";
 constexpr const wchar_t *kTeardownRuntimeContextMethod = L"TeardownRuntimeContext";
 
 std::mutex g_errorMutex;

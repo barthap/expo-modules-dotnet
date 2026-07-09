@@ -108,6 +108,66 @@ describe('generateAggregator', () => {
     expect(provider).not.toContain('ExpoModulesProvider_Expo.Test-Modules');
   });
 
+  it('emits a structured runtime-context creation result', () => {
+    const { adapterPackageRoot, manifest, outputDir } = makeFixture();
+
+    generateAggregator(manifest, { outputDir, adapterPackageRoot });
+
+    const entryPoints = readGenerated(outputDir, 'EntryPoints.g.cs');
+    expect(entryPoints).toContain('EntryPoint = "expo_dotnet_create_runtime_context_result"');
+    expect(entryPoints).toContain('public static unsafe void CreateRuntimeContextResult');
+    expect(entryPoints).toContain('result->Ok = 1;');
+    expect(entryPoints).toContain('result->Error.Release = &ReleaseRuntimeContextError;');
+    expect(entryPoints).toContain(`    public static void TeardownRuntimeContext(nint runtimeContext)
+    {
+        try
+        {
+            TeardownRuntimeContextCore(runtimeContext);
+        }
+        catch (Exception ex)
+        {
+            LogException(ex);
+        }
+    }`);
+    expect(entryPoints).toContain(`        try
+        {
+            if (handle.Target is DotnetRuntimeContext context)
+            {
+                DisposeRuntimeContext(context);
+            }
+        }
+        finally
+        {
+            // The native adapter passed this opaque context back to us; release
+            // its GCHandle even when managed context disposal reports failures.
+            handle.Free();
+        }`);
+    expect(entryPoints).toContain(`    private static void DisposeRuntimeContext(DotnetRuntimeContext context)
+    {
+        try
+        {
+            context.Dispose();
+        }
+        catch (Exception ex)
+        {
+            LogException(ex);
+        }
+    }`);
+    expect(entryPoints).toContain(`    private static void LogException(Exception exception)
+    {
+        try
+        {
+            Console.Error.WriteLine(exception);
+        }
+        catch
+        {
+            // Best-effort logging only. Throwing while reporting an exception
+            // would reopen the unmanaged boundary this path is protecting.
+        }
+    }`);
+    expect(entryPoints).not.toContain('expo_dotnet_get_last_error');
+  });
+
   it('references managed core and module projects with relative forward-slash paths', () => {
     const { adapterPackageRoot, manifest, outputDir } = makeFixture();
 

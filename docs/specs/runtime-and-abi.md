@@ -246,6 +246,8 @@ The managed interop layer SHALL validate the native API table before using it.
   disagree
 - **WHEN** managed code validates the API table
 - **THEN** managed code SHALL reject the table before calling ABI functions
+- **AND** the rejection message SHALL include both versions as
+  `native=X managed=Y`
 
 ### Requirement: Loader Choice Preserves ABI Shape
 

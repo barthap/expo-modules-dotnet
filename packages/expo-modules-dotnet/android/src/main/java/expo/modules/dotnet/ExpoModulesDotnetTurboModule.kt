@@ -25,6 +25,10 @@ class ExpoModulesDotnetTurboModule(reactContext: ReactApplicationContext) :
   @ReactMethod(isBlockingSynchronousMethod = true)
   external fun installModules(): Boolean
 
+  @DoNotStrip
+  @ReactMethod(isBlockingSynchronousMethod = true)
+  external fun getLastError(): String
+
   private external fun invalidateRuntime()
 
   override fun invalidate() {
@@ -36,7 +40,8 @@ class ExpoModulesDotnetTurboModule(reactContext: ReactApplicationContext) :
     const val NAME = "ExpoModulesDotnetInstaller"
 
     init {
-      SoLoader.loadLibrary("ExpoDotnetHost")
+      // ExpoDotnetHost is loaded lazily from C++ so missing/stale app artifacts
+      // can be reported through installModules()/getLastError().
       SoLoader.loadLibrary("expo-modules-dotnet")
     }
   }

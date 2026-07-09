@@ -33,10 +33,12 @@ package-root-relative csproj paths with optional `assemblyName`.
 The tool SHALL generate a single app-level project with the stable assembly
 name `ExpoDotnetHost` that references every resolved module project, calls
 each library-local `ExpoModulesProvider_{assemblyName}.Register`, and owns the
-`expo_dotnet_create_runtime_context` and
+`expo_dotnet_create_runtime_context_result` and
 `expo_dotnet_teardown_runtime_context` entry points. Generated registration
 order SHALL be deterministic. Generated files SHALL only be rewritten when
-content changes.
+content changes. Runtime-context creation SHALL write a structured result
+containing success state, the runtime-context handle, and a self-contained
+UTF-8 error message with a release callback when managed startup fails.
 
 #### Scenario: Multiple modules resolved
 - **GIVEN** two resolved dotnet module packages
@@ -48,6 +50,15 @@ content changes.
 #### Scenario: No modules resolved
 - **GIVEN** zero resolved dotnet module packages
 - **THEN** the tool SHALL emit a valid aggregator with an empty provider list
+
+#### Scenario: Managed startup fails
+- **GIVEN** generated `ExpoDotnetHost` fails while creating the managed runtime
+  context
+- **WHEN** the generated runtime-context entry point returns
+- **THEN** the result SHALL report `ok = 0`
+- **AND** the runtime-context handle SHALL be null
+- **AND** the error SHALL contain the managed exception message as UTF-8 bytes
+- **AND** native adapters SHALL release the error after copying it
 
 #### Scenario: Duplicate assembly names
 - **GIVEN** two resolved projects with the same effective `assemblyName`
@@ -181,8 +192,11 @@ entry point symbols, and MAY fall back to `dlsym(RTLD_DEFAULT, ...)` for
 compatibility. iOS loader errors SHALL reference the autolinking CLI. The
 Android loader SHALL load `ExpoDotnetHost` through SoLoader, and its C++
 fallback SHALL `dlopen` `libExpoDotnetHost.so`. Mobile loaders SHALL resolve
-the generated `expo_dotnet_create_runtime_context` and
+the generated `expo_dotnet_create_runtime_context_result` and
 `expo_dotnet_teardown_runtime_context` symbols from the generated aggregator.
+If the structured create-runtime-context symbol or HostFXR method cannot be
+resolved, loaders SHALL fail with a diagnostic that tells the developer to
+rebuild or regenerate the managed artifacts.
 
 #### Scenario: Mobile example app runtime
 - **GIVEN** the iOS and Android app builds run through their autolinking hooks
