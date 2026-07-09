@@ -2,9 +2,9 @@
   "name": "expo-modules-dotnet-autolinking",
   "version": "0.1.0",
   "description": "Autolinking tool for .NET-backed Expo modules",
-  "main": "build/index.js",
+  "main": "bootstrap.cjs",
   "bin": { "expo-modules-dotnet-autolinking": "bin/expo-modules-dotnet-autolinking.js" },
-  "files": ["bin", "build"],
+  "files": ["bin", "bootstrap.cjs", "build"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepare": "tsc -p tsconfig.json",

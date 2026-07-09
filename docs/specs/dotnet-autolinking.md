@@ -88,6 +88,30 @@ nativeaot platforms. Staging SHALL skip byte-identical files.
 - **THEN** the app-owned `Managed` location contains everything the macOS
   HostFXR loader resolves at startup
 
+### Requirement: Workspace CLI Bootstrap Avoids Stale Generated Hosts
+The `expo-modules-dotnet-autolinking` package SHALL expose a package-owned
+bootstrap entry point for local workspace development. When the package is a
+workspace checkout that includes TypeScript source and the compiled `build/`
+entry point is missing or older than source/config files, the bootstrap SHALL
+refresh the package build before loading the CLI. Published npm packages SHALL
+run the compiled `build/` output without rebuilding because they do not ship
+the workspace TypeScript source.
+
+#### Scenario: Workspace CLI source changed
+- **GIVEN** a local workspace checkout where `src/` is newer than
+  `build/index.js`
+- **WHEN** a platform hook or direct command loads
+  `expo-modules-dotnet-autolinking`
+- **THEN** the package bootstrap SHALL rebuild the local CLI before generating,
+  building, or staging app artifacts
+
+#### Scenario: Published package install
+- **GIVEN** an npm-published `expo-modules-dotnet-autolinking` package install
+  containing only published package files
+- **WHEN** a platform hook or direct command loads the package
+- **THEN** the bootstrap SHALL load the compiled CLI without running a package
+  build
+
 ### Requirement: Default RIDs Cover Mobile Platforms
 The CLI SHALL select `iossimulator-arm64` for `link --platform ios` when
 `PLATFORM_NAME` is `iphonesimulator` or does not indicate a device build. The
