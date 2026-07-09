@@ -54,6 +54,15 @@ by an asynchronous managed operation.
 - **WHEN** the scheduler observes the failure
 - **THEN** the JavaScript promise SHALL reject with an error value
 
+#### Scenario: Async promise capability is released
+- **GIVEN** an asynchronous managed operation created a native promise
+  capability
+- **WHEN** the operation settles or rejects that promise
+- **THEN** the scheduler SHALL release the native promise capability during the
+  same runtime access path
+- **AND** it SHALL NOT release the capability from an arbitrary managed
+  continuation thread
+
 ### Requirement: Promise Detection
 
 `JavaScriptValue` SHALL expose promise detection before wrapping a value as a

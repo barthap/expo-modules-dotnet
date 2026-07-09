@@ -9,22 +9,37 @@ internal static class JavaScriptPromiseScheduler
       CancellationToken cancellationToken
   )
   {
+    JavaScriptPromiseResult result;
     try
     {
-      var result = await operation(cancellationToken).ConfigureAwait(false);
-      await runtime.ScheduleAsync(
-          js => SettlePromiseFromResult(js, promise, result),
-          JavaScriptTaskPriority.Immediate,
-          CancellationToken.None
-      ).ConfigureAwait(false);
+      result = await operation(cancellationToken).ConfigureAwait(false);
     }
     catch (Exception ex)
     {
       await runtime.ScheduleAsync(
-          js => RejectPromiseWithError(js, promise, ex),
+          js => RejectPromiseWithErrorAndDispose(js, promise, ex),
           JavaScriptTaskPriority.Immediate,
           CancellationToken.None
       ).ConfigureAwait(false);
+      return;
+    }
+
+    await runtime.ScheduleAsync(
+        js => SettlePromiseFromResultAndDispose(js, promise, result),
+        JavaScriptTaskPriority.Immediate,
+        CancellationToken.None
+    ).ConfigureAwait(false);
+  }
+
+  private static void SettlePromiseFromResultAndDispose(
+      JavaScriptRuntime runtime,
+      JavaScriptPromise promise,
+      JavaScriptPromiseResult result
+  )
+  {
+    try
+    {
+      SettlePromiseFromResult(runtime, promise, result);
     }
     finally
     {
@@ -53,6 +68,22 @@ internal static class JavaScriptPromiseScheduler
     catch (Exception ex)
     {
       RejectPromiseWithError(runtime, promise, ex);
+    }
+  }
+
+  private static void RejectPromiseWithErrorAndDispose(
+      JavaScriptRuntime runtime,
+      JavaScriptPromise promise,
+      Exception exception
+  )
+  {
+    try
+    {
+      RejectPromiseWithError(runtime, promise, exception);
+    }
+    finally
+    {
+      promise.Dispose();
     }
   }
 

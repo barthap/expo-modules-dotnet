@@ -98,6 +98,32 @@ release all managed-backed contexts BEFORE the runtime handle is released, and
 force managed finalization to complete before process exit** — rather than
 letting Hermes teardown call into managed during CLR shutdown.
 
+## Dump result (confirmed on Windows CI)
+
+The CI dump at `.temp/windows-crash-dump/coredump.7980.dmp` does **not** point
+at the finalizer thread or at Hermes runtime destruction during process exit.
+The faulting managed thread is a threadpool worker with
+`System.ExecutionEngineException` while executing:
+
+```text
+Expo.JSI.Interop.ExpoJsiApi.ReleasePromiseHandle
+Expo.JSI.JavaScriptPromise.Dispose
+Expo.JSI.JavaScriptPromiseScheduler.SettleAsync
+```
+
+That stack shows the async promise scheduler settled the promise through
+`runtime.ScheduleAsync(...)`, then resumed on a managed continuation thread and
+disposed the `JavaScriptPromise` capability from there. The native promise
+handle owns `jsi::Object` / `jsi::Function` state, and `releasePromise` deletes
+that handle directly. Releasing it outside the Hermes executor violates the
+runtime access/lifetime model and is the concrete crash trigger captured by the
+dump.
+
+**Confirmed root cause:** async managed promise capability cleanup ran off the
+JSI runtime thread. The targeted fix is to dispose the capability inside the
+scheduled runtime callback after resolve/reject, so settlement and handle
+release happen in the same runtime access frame.
+
 ## Step 1 — Confirm on Windows (capture the faulting stack)
 
 Do this first; do not commit a fix on hypothesis alone.

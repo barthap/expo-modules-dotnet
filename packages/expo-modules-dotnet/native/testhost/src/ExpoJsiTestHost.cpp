@@ -174,6 +174,12 @@ void countedReleasePromise(expo_jsi_runtime_handle runtime, expo_jsi_promise_han
   auto *testhost = runtimeFor(runtime);
   if (testhost != nullptr && promise != nullptr) {
     testhost->counters.released_promises++;
+    try {
+      (void)testhost->connector.runtime();
+    } catch (...) {
+      testhost->counters.released_promises_off_runtime_thread++;
+      return;
+    }
   }
   const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
   api->release_promise(runtime, promise);
