@@ -27,6 +27,18 @@ def use_expo_modules_dotnet!(options = {})
   else
     ''
   end
+  macos_bundle_script = if platform == :macos
+    <<~SCRIPT
+      resources_dir="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
+      managed_source="$app_root/macos/Managed"
+      managed_dest="$resources_dir/Managed"
+      mkdir -p "$resources_dir"
+      rm -rf "$managed_dest"
+      ditto "$managed_source" "$managed_dest"
+    SCRIPT
+  else
+    ''
+  end
 
   script_phase(
     name: 'Link Expo .NET Modules',
@@ -69,6 +81,7 @@ def use_expo_modules_dotnet!(options = {})
       "$NODE_BINARY" --no-warnings --eval "require('expo-modules-dotnet-autolinking').main(process.argv.slice(1))" \
         link --platform #{platform} --project-root "$app_root" ${extra_args[@]+"${extra_args[@]}"}
       #{ios_bundle_script}
+      #{macos_bundle_script}
     SCRIPT
   )
 end

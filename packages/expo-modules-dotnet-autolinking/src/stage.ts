@@ -139,7 +139,7 @@ function nativeAotLibraryNames(platform: StagePlatform): { source: string; basen
     case 'ios':
       return { source: 'ExpoDotnetHost.dylib', basename: 'libExpoDotnetHost.dylib' };
     case 'macos':
-      return { source: 'libExpoDotnetHost.dylib', basename: 'libExpoDotnetHost.dylib' };
+      return { source: 'ExpoDotnetHost.dylib', basename: 'libExpoDotnetHost.dylib' };
     case 'windows':
       return { source: 'ExpoDotnetHost.dll', basename: 'ExpoDotnetHost.dll' };
   }

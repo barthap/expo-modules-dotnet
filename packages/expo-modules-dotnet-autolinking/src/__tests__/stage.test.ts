@@ -152,12 +152,12 @@ describe('stageArtifactsAsync', () => {
     await expect(pathExistsAsync(path.join(destination, '.gitkeep'))).resolves.toBe(true);
   });
 
-  it('stages only the macOS NativeAOT library from the publish directory', async () => {
+  it('renames the macOS NativeAOT library from the publish directory', async () => {
     const root = await makeTempRootAsync();
     const appRoot = path.join(root, 'app');
     const builtOutputDir = path.join(root, 'publish');
 
-    await writeFileAsync(path.join(builtOutputDir, 'libExpoDotnetHost.dylib'), 'native');
+    await writeFileAsync(path.join(builtOutputDir, 'ExpoDotnetHost.dylib'), 'native');
     await writeFileAsync(path.join(builtOutputDir, 'ExpoDotnetHost.dll'), 'managed');
 
     const result = await stageArtifactsAsync({
@@ -172,6 +172,9 @@ describe('stageArtifactsAsync', () => {
     await expect(sortedDirectoryEntriesAsync(destination)).resolves.toEqual([
       'libExpoDotnetHost.dylib',
     ]);
+    await expect(
+      fs.readFile(path.join(destination, 'libExpoDotnetHost.dylib'), 'utf8')
+    ).resolves.toBe('native');
   });
 
   it('renames and fixes the iOS NativeAOT dylib after copying it', async () => {
@@ -283,7 +286,7 @@ describe('stageArtifactsAsync', () => {
       throw new Error('desktop staging should not run install_name_tool');
     };
 
-    await writeFileAsync(path.join(macosOutputDir, 'libExpoDotnetHost.dylib'), 'native');
+    await writeFileAsync(path.join(macosOutputDir, 'ExpoDotnetHost.dylib'), 'native');
     await writeFileAsync(path.join(windowsOutputDir, 'ExpoDotnetHost.dll'), 'native');
 
     await expect(
