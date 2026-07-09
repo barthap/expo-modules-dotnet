@@ -17,28 +17,28 @@ fully before starting, honor its STOP conditions, and update your row when done.
 | 006 | ArrayBuffer support — design spike, delta spec, prototype | P2 | M | — (003 recommended first) | TODO |
 | 007 | SharedObject/SharedRef — design spike with identity prototype | P3 | M | — (006 recommended first) | TODO |
 | 008 | Linux testhost port + native-tests.yml (heavy lane, ubuntu+windows) | P1 | M–L | 001 | DONE |
-| 009 | Windows testhost teardown crash (0xC0000005 at process exit) | P1 | M | 008 | IN PROGRESS |
+| 009 | Windows testhost teardown crash (0xC0000005 at process exit) | P1 | M | 008 | DONE |
 | 010 | Darwin installer lifecycle locking | P1 | M | — | DONE — managed suite, desktop typecheck, Darwin smokes, and formatting pass. |
 | 011 | Publish Hermes prebuilts as downloadable artifacts (keyed by `hermes-ref.txt`) instead of Actions cache | P3 | M | 008 | BACKLOG — nice-to-have; removes per-`hermes-ref`-bump cold builds and warms fresh clones/local dev. Not urgent (cache handles steady state once `main` is seeded). |
 
 Status values: TODO | IN PROGRESS | DONE | OPEN (follow-up) | BACKLOG (nice-to-have) | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
-### Plan 009 — Windows teardown crash (IN PROGRESS)
+### Plan 009 — Windows teardown crash (DONE)
 
 Intermittent `0xC0000005` segfault in `Expo.ModulesCore.Tests` at process
-teardown on the `windows-latest` runner (all tests pass first; race, not
-deterministic). Not reproducible locally. **Reproduced 2026-07-09** on
-native-tests run `29035088584` (branch `codex/windows-native-views`) and the
-`windows-crash-dump` artifact was captured — the stack analysis step can now
-run (`gh run download 29035088584 -n windows-crash-dump`, analyze on a Windows
-box). Detail in `009-windows-testhost-teardown-crash.md`.
-
-Fix authored on `windows/testhost-crash-fix` (dump-confirmed root cause:
-async promise capability disposed off the runtime thread in
-`JavaScriptPromiseScheduler.SettleAsync`; the fix disposes inside the
-scheduled runtime callback). Advisor-reviewed 2026-07-09: approved, pending
-merge and green CI on main. The bug lived in shared `Expo.JSI` managed core —
-it affected all hosts (real RN apps included), not just the testhost.
+teardown on the `windows-latest` runner. Reproduced 2026-07-09 on native-tests
+run `29035088584` with a `windows-crash-dump` artifact; dump analysis
+confirmed the root cause: the async promise capability was disposed off the
+runtime thread in `JavaScriptPromiseScheduler.SettleAsync`. Fix (dispose
+inside the scheduled runtime callback) advisor-reviewed, rebase-merged into
+`main` 2026-07-09. The bug lived in shared `Expo.JSI` managed core — it
+affected all hosts (real RN apps included), not just the testhost. The same
+branch also fixed a pre-existing `Counters` struct layout mismatch in the
+`Expo.ModulesCore.Tests` fixture (24-byte managed vs 40-byte native, returned
+by value — a stack overrun on every `GetCounters` call). Crash was
+intermittent: treat as fully closed after several green Windows runs on
+`main`; dump instrumentation and the `released_promises_off_runtime_thread`
+counter stay armed. Detail in `009-windows-testhost-teardown-crash.md`.
 
 ### Reconcile notes (2026-07-09, at `56463734`)
 

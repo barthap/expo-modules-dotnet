@@ -3,7 +3,12 @@ name: native-tests
 # Heavy CI lane: Hermes prebuilt cache + native testhost + full managed suite.
 # Runs on ubuntu-latest and windows-latest only — Apple runners cost 10× minutes.
 # Fast lane (no native toolchain) lives in checks.yml.
-on: [push, pull_request]
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
 concurrency:
   group: native-tests-${{ github.ref }}

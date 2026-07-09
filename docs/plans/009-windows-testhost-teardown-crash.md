@@ -46,8 +46,12 @@ Exception: scripts/test-managed.ps1:37  (dotnet exited with code 1)
   (WinDbg/cdb) to confirm or refute the teardown-order hypothesis below.
   (The same run's ubuntu failure is unrelated — branch-specific NETSDK1100
   from a new Windows-targeting csproj.)
-- **Status 2026-07-09:** IN PROGRESS — dump handed to
-  `<windows-test-machine>` for stack analysis.
+- **Status 2026-07-09:** RESOLVED — dump analyzed on `<windows-test-machine>`,
+  root cause confirmed (see "Dump result" below), fix merged into `main`
+  (`Fix promise disposal on runtime thread`). Crash was intermittent, so
+  treat as closed after several green `native-tests` Windows runs on `main`;
+  the `windows-crash-dump` instrumentation and the
+  `released_promises_off_runtime_thread` counter stay armed.
 
 ## Root-cause hypothesis (code-grounded, unconfirmed without a stack)
 
