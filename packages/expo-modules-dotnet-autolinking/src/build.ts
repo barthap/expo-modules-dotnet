@@ -192,6 +192,18 @@ export function buildOutputDir(options: BuildOptions): string {
   return path.join(outputDir, options.rid, 'publish');
 }
 
+export function nativeAotCleanDirs(options: {
+  csprojPath: string;
+  configuration: string;
+  rid: string;
+}): string[] {
+  const projectRoot = path.dirname(options.csprojPath);
+  return [
+    path.join(projectRoot, 'obj', options.configuration, 'net10.0', options.rid),
+    path.join(projectRoot, 'bin', options.configuration, 'net10.0', options.rid),
+  ];
+}
+
 export async function runDotnetBuildAsync(
   options: BuildOptions & { adapterPackageRoot?: string }
 ): Promise<void> {
@@ -200,6 +212,9 @@ export async function runDotnetBuildAsync(
       throw new Error(
         '[expo-modules-dotnet-autolinking] NativeAOT builds require adapterPackageRoot.'
       );
+    }
+    if (options.rid === undefined) {
+      throw new Error('[expo-modules-dotnet-autolinking] NativeAOT builds require a RID.');
     }
 
     await runDotnetAsync([
@@ -214,6 +229,14 @@ export async function runDotnetBuildAsync(
       '-c',
       'Debug',
     ]);
+
+    await Promise.all(
+      nativeAotCleanDirs({
+        csprojPath: options.csprojPath,
+        configuration: options.configuration,
+        rid: options.rid,
+      }).map((directory) => fs.promises.rm(directory, { recursive: true, force: true }))
+    );
   }
 
   await runDotnetAsync(dotnetArgsForBuild(options));

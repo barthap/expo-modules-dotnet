@@ -93,7 +93,10 @@ SHALL override the platform default.
 ### Requirement: NativeAOT Publish Handles Mobile Toolchains
 `build --mode nativeaot` for mobile RIDs SHALL publish the `ExpoDotnetHost`
 aggregator with `/p:PublishAot=true`, `/p:NativeLib=Shared`,
-`/p:PublishAotUsingRuntimePack=true`, and `--self-contained true`. For
+`/p:PublishAotUsingRuntimePack=true`, and `--self-contained true`. Before
+publishing, the CLI SHALL remove the generated host's RID-specific NativeAOT
+`obj` and `bin` directories so regenerated entry-point exports cannot reuse
+stale NativeAOT intermediates. For
 `android-arm64`, the CLI SHALL discover the NDK clang from
 `ANDROID_NDK_HOME`, or from the newest NDK under `$ANDROID_HOME/ndk` or
 `$ANDROID_SDK_ROOT/ndk`, and pass

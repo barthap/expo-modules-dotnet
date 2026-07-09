@@ -12,6 +12,7 @@ import {
   dotnetBinary,
   dotnetArgsForBuild,
   locateAndroidNdkClangSync,
+  nativeAotCleanDirs,
   sanitizedDotnetEnv,
 } from '../build';
 
@@ -248,5 +249,20 @@ describe('buildOutputDir', () => {
         rid: 'osx-arm64',
       })
     ).toBe(path.join('generated', 'bin', 'Release', 'net10.0', 'osx-arm64', 'publish'));
+  });
+});
+
+describe('nativeAotCleanDirs', () => {
+  it('returns RID-specific generated host obj and bin directories', () => {
+    expect(
+      nativeAotCleanDirs({
+        csprojPath: 'generated/ExpoDotnetHost.csproj',
+        configuration: 'Release',
+        rid: 'android-arm64',
+      })
+    ).toEqual([
+      path.join('generated', 'obj', 'Release', 'net10.0', 'android-arm64'),
+      path.join('generated', 'bin', 'Release', 'net10.0', 'android-arm64'),
+    ]);
   });
 });
