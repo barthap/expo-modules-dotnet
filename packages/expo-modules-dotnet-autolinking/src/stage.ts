@@ -25,6 +25,7 @@ interface StageFile {
 }
 
 const preservedDestinationFiles = new Set(['.gitkeep', '.gitignore']);
+const loaderMarkerBasename = 'ExpoDotnetHost.loader';
 
 export function stageDestination(platform: StagePlatform, appRoot: string): string {
   switch (platform) {
@@ -69,7 +70,10 @@ export async function stageArtifactsAsync(
       : nativeAotStageFiles(options);
 
   await fs.mkdir(destination, { recursive: true });
-  await removeStaleFilesAsync(destination, new Set(stageFiles.map((file) => file.basename)));
+  await removeStaleFilesAsync(
+    destination,
+    new Set([...stageFiles.map((file) => file.basename), loaderMarkerBasename])
+  );
 
   const staged: string[] = [];
   const skipped: string[] = [];
@@ -91,6 +95,15 @@ export async function stageArtifactsAsync(
         destinationPath,
       ]);
     }
+  }
+
+  const loaderMarkerPath = path.join(destination, loaderMarkerBasename);
+  const loaderMarkerContent = `${options.mode}\n`;
+  if (await fileContentEqualsAsync(loaderMarkerPath, loaderMarkerContent)) {
+    skipped.push(loaderMarkerBasename);
+  } else {
+    await fs.writeFile(loaderMarkerPath, loaderMarkerContent);
+    staged.push(loaderMarkerBasename);
   }
 
   return { staged, skipped };
@@ -186,6 +199,14 @@ async function filesAreEqualAsync(source: string, destination: string): Promise<
     fs.readFile(destination),
   ]);
   return sourceBuffer.equals(destinationBuffer);
+}
+
+async function fileContentEqualsAsync(filePath: string, content: string): Promise<boolean> {
+  try {
+    return (await fs.readFile(filePath, 'utf8')) === content;
+  } catch {
+    return false;
+  }
 }
 
 async function latestStablePackVersionAsync(packRoot: string): Promise<string> {

@@ -80,13 +80,26 @@ NOT be loaded into one app.
 `stage` SHALL copy the artifacts each platform loader expects into app-owned
 locations: managed assemblies, runtime config, deps file, and platform
 `nethost` runtime library for hostfxr platforms; the single native library for
-nativeaot platforms. Staging SHALL skip byte-identical files.
+nativeaot platforms. Desktop staging SHALL also write an
+`ExpoDotnetHost.loader` marker containing the staged loader mode so packaged
+apps can select HostFXR or NativeAOT without relying on shell environment
+propagation. Environment variables MAY override the staged marker for local
+debugging. Staging SHALL skip byte-identical files.
 
 #### Scenario: macOS hostfxr staging
 - **GIVEN** a built aggregator and `stage --platform macos`
 - **WHEN** staging completes
 - **THEN** the app-owned `Managed` location contains everything the macOS
   HostFXR loader resolves at startup
+
+#### Scenario: Windows NativeAOT package launch
+- **GIVEN** `link --platform windows --mode nativeaot` stages a Windows app
+- **WHEN** the app is launched through AppX activation without inheriting the
+  developer shell environment
+- **THEN** the Windows loader SHALL select NativeAOT from the staged loader
+  marker
+- **AND** it SHALL NOT fall back to HostFXR because `EXPO_DOTNET_LOADER` is
+  absent from the packaged process
 
 ### Requirement: Workspace CLI Bootstrap Avoids Stale Generated Hosts
 The `expo-modules-dotnet-autolinking` package SHALL expose a package-owned
@@ -111,6 +124,20 @@ the workspace TypeScript source.
 - **WHEN** a platform hook or direct command loads the package
 - **THEN** the bootstrap SHALL load the compiled CLI without running a package
   build
+
+### Requirement: Windows Build Hook Refreshes Managed Payloads Before Packaging
+The Windows MSBuild hook SHALL run the dotnet autolinking `link` command before
+`PrepareForBuild`, not only before C++ compilation, so up-to-date native
+projects still refresh managed artifacts when switching between HostFXR and
+NativeAOT or between Debug and Release builds.
+
+#### Scenario: NativeAOT to HostFXR switch
+- **GIVEN** a previous Windows build staged NativeAOT artifacts
+- **WHEN** a default Debug Windows build runs and the native project is already
+  up-to-date
+- **THEN** the build SHALL still restage HostFXR artifacts before packaging
+- **AND** the packaged AppX layout SHALL contain `nethost.dll`,
+  `ExpoDotnetHost.runtimeconfig.json`, and `ExpoDotnetHost.loader`
 
 ### Requirement: Default RIDs Cover Mobile Platforms
 The CLI SHALL select `iossimulator-arm64` for `link --platform ios` when

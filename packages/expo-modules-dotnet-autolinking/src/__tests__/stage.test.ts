@@ -80,6 +80,7 @@ describe('stageArtifactsAsync', () => {
     expect(result.staged.sort()).toEqual([
       'ExpoDotnetHost.deps.json',
       'ExpoDotnetHost.dll',
+      'ExpoDotnetHost.loader',
       'ExpoDotnetHost.runtimeconfig.json',
       'libnethost.dylib',
     ]);
@@ -87,9 +88,13 @@ describe('stageArtifactsAsync', () => {
     await expect(sortedDirectoryEntriesAsync(destination)).resolves.toEqual([
       'ExpoDotnetHost.deps.json',
       'ExpoDotnetHost.dll',
+      'ExpoDotnetHost.loader',
       'ExpoDotnetHost.runtimeconfig.json',
       'libnethost.dylib',
     ]);
+    await expect(fs.readFile(path.join(destination, 'ExpoDotnetHost.loader'), 'utf8')).resolves.toBe(
+      'hostfxr\n'
+    );
     await expect(pathExistsAsync(path.join(destination, 'Foo.pdb'))).resolves.toBe(false);
   });
 
@@ -123,6 +128,7 @@ describe('stageArtifactsAsync', () => {
     expect(result.skipped.sort()).toEqual([
       'ExpoDotnetHost.deps.json',
       'ExpoDotnetHost.dll',
+      'ExpoDotnetHost.loader',
       'ExpoDotnetHost.runtimeconfig.json',
       'libnethost.dylib',
     ]);
@@ -168,10 +174,14 @@ describe('stageArtifactsAsync', () => {
     });
 
     const destination = stageDestination('macos', appRoot);
-    expect(result.staged).toEqual(['libExpoDotnetHost.dylib']);
+    expect(result.staged.sort()).toEqual(['ExpoDotnetHost.loader', 'libExpoDotnetHost.dylib']);
     await expect(sortedDirectoryEntriesAsync(destination)).resolves.toEqual([
+      'ExpoDotnetHost.loader',
       'libExpoDotnetHost.dylib',
     ]);
+    await expect(fs.readFile(path.join(destination, 'ExpoDotnetHost.loader'), 'utf8')).resolves.toBe(
+      'nativeaot\n'
+    );
     await expect(
       fs.readFile(path.join(destination, 'libExpoDotnetHost.dylib'), 'utf8')
     ).resolves.toBe('native');
@@ -198,9 +208,10 @@ describe('stageArtifactsAsync', () => {
 
     const destination = stageDestination('ios', appRoot);
     const destinationPath = path.join(destination, 'libExpoDotnetHost.dylib');
-    expect(result.staged).toEqual(['libExpoDotnetHost.dylib']);
+    expect(result.staged.sort()).toEqual(['ExpoDotnetHost.loader', 'libExpoDotnetHost.dylib']);
     expect(result.skipped).toEqual([]);
     await expect(sortedDirectoryEntriesAsync(destination)).resolves.toEqual([
+      'ExpoDotnetHost.loader',
       'libExpoDotnetHost.dylib',
     ]);
     await expect(fs.readFile(destinationPath, 'utf8')).resolves.toBe('native');
@@ -240,7 +251,7 @@ describe('stageArtifactsAsync', () => {
     });
 
     expect(result.staged).toEqual([]);
-    expect(result.skipped).toEqual(['libExpoDotnetHost.dylib']);
+    expect(result.skipped.sort()).toEqual(['ExpoDotnetHost.loader', 'libExpoDotnetHost.dylib']);
     expect(calls).toHaveLength(1);
   });
 
@@ -265,10 +276,11 @@ describe('stageArtifactsAsync', () => {
       },
     });
 
-    expect(result.staged).toEqual(['libExpoDotnetHost.so']);
+    expect(result.staged.sort()).toEqual(['ExpoDotnetHost.loader', 'libExpoDotnetHost.so']);
     expect(result.skipped).toEqual([]);
     await expect(sortedDirectoryEntriesAsync(destination)).resolves.toEqual([
       '.gitkeep',
+      'ExpoDotnetHost.loader',
       'libExpoDotnetHost.so',
     ]);
     await expect(pathExistsAsync(path.join(destination, 'stale.so'))).resolves.toBe(false);
@@ -297,7 +309,10 @@ describe('stageArtifactsAsync', () => {
         builtOutputDir: macosOutputDir,
         runCommandAsync: failCommand,
       })
-    ).resolves.toEqual({ staged: ['libExpoDotnetHost.dylib'], skipped: [] });
+    ).resolves.toEqual({
+      staged: ['libExpoDotnetHost.dylib', 'ExpoDotnetHost.loader'],
+      skipped: [],
+    });
     await expect(
       stageArtifactsAsync({
         platform: 'windows',
@@ -306,7 +321,7 @@ describe('stageArtifactsAsync', () => {
         builtOutputDir: windowsOutputDir,
         runCommandAsync: failCommand,
       })
-    ).resolves.toEqual({ staged: ['ExpoDotnetHost.dll'], skipped: [] });
+    ).resolves.toEqual({ staged: ['ExpoDotnetHost.dll', 'ExpoDotnetHost.loader'], skipped: [] });
   });
 });
 

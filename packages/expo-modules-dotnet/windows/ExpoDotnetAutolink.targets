@@ -12,7 +12,7 @@
     <Exec Command="node --no-warnings --eval &quot;$(ExpoDotnetAutolinkEval)&quot; generate --project-root &quot;$(ExpoDotnetAppRoot)&quot;"
           WorkingDirectory="$(ExpoDotnetAppRoot)" />
   </Target>
-  <Target Name="ExpoDotnetLink" BeforeTargets="ClCompile">
+  <Target Name="ExpoDotnetLink" BeforeTargets="PrepareForBuild">
     <Exec Command="node --no-warnings --eval &quot;$(ExpoDotnetAutolinkEval)&quot; link --platform windows --project-root &quot;$(ExpoDotnetAppRoot)&quot; $(ExpoDotnetModeArgs) $(ExpoDotnetConfigArgs)"
           WorkingDirectory="$(ExpoDotnetAppRoot)" />
   </Target>

@@ -5,6 +5,7 @@
 #include "ManagedHostFxr.h"
 
 #include <array>
+#include <fstream>
 #include <filesystem>
 #include <mutex>
 #include <sstream>
@@ -14,6 +15,7 @@ namespace expo::modules::dotnet {
 namespace {
 
 constexpr const wchar_t *kManagedSubdirectory = L"Managed";
+constexpr const wchar_t *kLoaderMarkerFile = L"ExpoDotnetHost.loader";
 constexpr const char *kCreateRuntimeContextSymbol = "expo_dotnet_create_runtime_context_result";
 constexpr const char *kTeardownRuntimeContextSymbol = "expo_dotnet_teardown_runtime_context";
 constexpr const wchar_t *kEntryPointType =
@@ -142,9 +144,22 @@ std::wstring loaderKindFromEnvironment()
   return size == 0 ? std::wstring() : std::wstring(loader.data(), size);
 }
 
+std::wstring loaderKindFromMarker()
+{
+  std::ifstream marker(managedDirectory() / kLoaderMarkerFile);
+  std::string value;
+  if (!std::getline(marker, value)) {
+    return L"";
+  }
+  return toWide(value.c_str());
+}
+
 ManagedLoaderKind selectedLoaderKind()
 {
   auto loader = loaderKindFromEnvironment();
+  if (loader.empty()) {
+    loader = loaderKindFromMarker();
+  }
   return loader.empty() ? ManagedLoaderKind::HostFxr : parseLoaderKind(loader);
 }
 
