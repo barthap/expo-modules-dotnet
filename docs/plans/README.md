@@ -9,7 +9,7 @@ honor its STOP conditions, and update your row when done.
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
 | 001 | checks.yml — fast CI lane, ubuntu+windows matrix (no native) | P1 | S | — | DONE — green on ubuntu+windows (node + generator-tests + format). |
-| 002 | Autolinking CLI command tests | P1 | M | — | TODO |
+| 002 | Autolinking CLI command tests | P1 | M | — | DONE — 4 command test files (resolve/stage/build/link), 79 tests pass, typecheck clean. |
 | 003 | Bridge edge-case tests (UTF-8, promises, generator diagnostics) | P2 | M | — (001 recommended first) | TODO |
 | 004 | Bridge string hygiene (copy elimination + consistent UTF-8 validation) | P2 | S | 003 | TODO |
 | 005 | Docs refresh (roadmap events, autolinking README, platform table) | P3 | S | — | TODO |
@@ -17,8 +17,9 @@ honor its STOP conditions, and update your row when done.
 | 007 | SharedObject/SharedRef — design spike with identity prototype | P3 | M | — (006 recommended first) | TODO |
 | 008 | Linux testhost port + native-tests.yml (heavy lane, ubuntu+windows) | P1 | M–L | 001 | DONE — verified green on `ca53bb87` (both native-tests legs + checks). See notes below. |
 | 009 | Windows testhost teardown crash (0xC0000005 at process exit) | P1 | M | 008 | OPEN — follow-up, not blocking; intermittent, only actionable when CI fails again. See notes below. |
+| 010 | Publish Hermes prebuilts as downloadable artifacts (keyed by `hermes-ref.txt`) instead of Actions cache | P3 | M | 008 | BACKLOG — nice-to-have; removes per-`hermes-ref`-bump cold builds and warms fresh clones/local dev. Not urgent (cache handles steady state once `main` is seeded). |
 
-Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
+Status values: TODO | IN PROGRESS | DONE | OPEN (follow-up) | BACKLOG (nice-to-have) | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
 ### Plan 009 — Windows teardown crash (follow-up, not blocking)
 
