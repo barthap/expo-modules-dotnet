@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Label="ReactNativeWindowsExperimentalFeatures">
+    <RnwNewArch>true</RnwNewArch>
+    <UseExperimentalNuget>true</UseExperimentalNuget>
+    <HermesPlatform Condition="'$(HermesPlatform)' == '' and '$(Platform)' == 'Win32'">x86</HermesPlatform>
+    <HermesPlatform Condition="'$(HermesPlatform)' == '' and '$(Platform)' == 'x64'">x64</HermesPlatform>
+    <HermesPlatform Condition="'$(HermesPlatform)' == '' and '$(Platform)' == 'ARM64'">arm64</HermesPlatform>
+    <HermesPlatform Condition="'$(HermesPlatform)' == '' and '$(Platform)' == 'ARM64EC'">arm64ec</HermesPlatform>
+    <ReactExperimentalFeaturesSet>true</ReactExperimentalFeaturesSet>
+  </PropertyGroup>
+</Project>

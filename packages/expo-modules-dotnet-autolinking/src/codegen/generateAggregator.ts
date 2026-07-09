@@ -288,6 +288,69 @@ function generateEntryPoints(options: GenerateOptions): string {
         }
     }
 
+    [UnmanagedCallersOnly(
+        EntryPoint = "expo_dotnet_windows_initialize_composition",
+        CallConvs = new[] { typeof(CallConvCdecl) }
+    )]
+    public static nint InitializeWindowsComposition(nint viewHandle, nint compositor)
+    {
+        try
+        {
+            var view = ViewFromHandle(viewHandle);
+            return view.InitializeComposition(compositor);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            return 0;
+        }
+    }
+
+    [UnmanagedCallersOnly(
+        EntryPoint = "expo_dotnet_windows_update_layout",
+        CallConvs = new[] { typeof(CallConvCdecl) }
+    )]
+    public static void UpdateWindowsLayout(nint viewHandle, float width, float height)
+    {
+        try
+        {
+            ViewFromHandle(viewHandle).UpdateLayout(width, height);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+        }
+    }
+
+    [UnmanagedCallersOnly(
+        EntryPoint = "expo_dotnet_windows_destroy_view",
+        CallConvs = new[] { typeof(CallConvCdecl) }
+    )]
+    public static void DestroyWindowsView(nint viewHandle)
+    {
+        if (viewHandle == 0)
+        {
+            return;
+        }
+
+        var handle = GCHandle.FromIntPtr(viewHandle);
+        try
+        {
+            if (handle.Target is Expo.ModulesCore.Windows.WindowsExpoView view)
+            {
+                view.DisposeComposition();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+        }
+        finally
+        {
+            handle.Free();
+        }
+    }
+
     private static DotnetRuntimeContext RuntimeContextFromHandle(nint runtimeContext)
     {
         if (runtimeContext == 0)
@@ -298,6 +361,18 @@ function generateEntryPoints(options: GenerateOptions): string {
         var handle = GCHandle.FromIntPtr(runtimeContext);
         return handle.Target as DotnetRuntimeContext
             ?? throw new InvalidOperationException("Runtime context handle does not target DotnetRuntimeContext.");
+    }
+
+    private static Expo.ModulesCore.Windows.WindowsExpoView ViewFromHandle(nint viewHandle)
+    {
+        if (viewHandle == 0)
+        {
+            throw new ArgumentException("View handle is null.", nameof(viewHandle));
+        }
+
+        var handle = GCHandle.FromIntPtr(viewHandle);
+        return handle.Target as Expo.ModulesCore.Windows.WindowsExpoView
+            ?? throw new InvalidOperationException("View handle does not target WindowsExpoView.");
     }
 
     private static unsafe string ReadUtf8(nint utf8, int length)

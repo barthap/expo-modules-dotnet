@@ -809,7 +809,7 @@ dotnet build packages/expo-modules-dotnet-windows/managed/Expo.ModulesCore.Windo
 
 Expected: PASS on Windows with the Windows SDK available. If this fails because package references are required for `Microsoft.UI.Composition` or `WinRT`, add the minimum package references and rerun.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
@@ -831,13 +831,12 @@ git commit -m "Add Windows managed view sidecar"
 - Modify: `packages/expo-modules-dotnet/windows/ExpoModulesDotnet/ExpoModulesDotnetInstaller.cpp`
 - Modify: `packages/expo-modules-dotnet/windows/ExpoModulesDotnet/ExpoModulesDotnet.def`
 
-- [ ] **Step 1: Add runtime context accessor to base Windows package**
+- [x] **Step 1: Add runtime context accessor to base Windows package**
 
 In `ExpoModulesDotnetInstaller.h`, add a Windows-only accessor:
 
 ```cpp
 void *CurrentManagedRuntimeContext() noexcept;
-expo::modules::dotnet::ManagedModuleConfig CurrentManagedModuleConfig() noexcept;
 ```
 
 In `ExpoModulesDotnetInstaller.cpp`, implement by returning the installed runtime state under the existing mutex. Return `nullptr` when no runtime is installed.
@@ -846,12 +845,11 @@ In `ExpoModulesDotnet.def`, export:
 
 ```text
 expo_modules_dotnet_current_runtime_context
-expo_modules_dotnet_current_module_config
 ```
 
-These are the only native junction points from the view sidecar back into the base Windows installer.
+This is the only native junction point from the view sidecar back into the base Windows installer. The sidecar resolves generated managed view entrypoints through the shared Windows loader instead of exporting C++ config structs across DLL boundaries.
 
-- [ ] **Step 2: Add sidecar React Native config**
+- [x] **Step 2: Add sidecar React Native config**
 
 Create `react-native.config.js`:
 
@@ -877,7 +875,7 @@ module.exports = {
 };
 ```
 
-- [ ] **Step 3: Add JS native view helper**
+- [x] **Step 3: Add JS native view helper**
 
 Create `src/index.tsx`:
 
@@ -900,7 +898,7 @@ export function requireDotnetNativeView<Props extends object>(
 }
 ```
 
-- [ ] **Step 4: Create native sidecar project from the existing Windows package pattern**
+- [x] **Step 4: Create native sidecar project from the existing Windows package pattern**
 
 Copy the minimal RNW C++/WinRT project shape from `packages/expo-modules-dotnet/windows/ExpoModulesDotnet` and rename it to `ExpoModulesDotnetWindows`. Keep these files focused:
 
@@ -939,7 +937,7 @@ Use the previous Windows proof's `ExpoViewManager.cpp` only as a reference for
 RNW Fabric callback names and lifetime ordering. Do not copy its JSON prop
 dispatch.
 
-- [ ] **Step 5: Verify RNW autolinking sees the sidecar**
+- [x] **Step 5: Verify RNW autolinking sees the sidecar**
 
 Run:
 
@@ -948,6 +946,15 @@ pnpm --filter desktop-app exec react-native autolink-windows --check --sln "wind
 ```
 
 Expected before app dependency update: no sidecar project appears. After Task 7 adds the app dependency and runs autolink, the generated `AutolinkedNativeModules.g.*` files include `ExpoModulesDotnetWindows`.
+
+Current pre-app-dependency check used the app-local CLI because `pnpm exec`
+attempted a dependency-status install:
+
+```powershell
+apps/desktop-app/node_modules/.bin/react-native.CMD autolink-windows --check --sln "windows\DesktopApp.sln" --proj "windows\DesktopApp\DesktopApp.vcxproj"
+```
+
+Actual: PASS, no auto-linking changes necessary.
 
 - [ ] **Step 6: Commit**
 

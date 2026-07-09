@@ -16,10 +16,25 @@ namespace {
 constexpr const wchar_t *kManagedSubdirectory = L"Managed";
 constexpr const char *kCreateRuntimeContextSymbol = "expo_dotnet_create_runtime_context";
 constexpr const char *kTeardownRuntimeContextSymbol = "expo_dotnet_teardown_runtime_context";
+constexpr const char *kWindowsGetViewMetadataSymbol = "expo_dotnet_windows_get_view_metadata";
+constexpr const char *kWindowsFreeBufferSymbol = "expo_dotnet_windows_free_buffer";
+constexpr const char *kWindowsCreateViewSymbol = "expo_dotnet_windows_create_view";
+constexpr const char *kWindowsInitializeCompositionSymbol =
+  "expo_dotnet_windows_initialize_composition";
+constexpr const char *kWindowsUpdateLayoutSymbol = "expo_dotnet_windows_update_layout";
+constexpr const char *kWindowsUpdateStringPropSymbol = "expo_dotnet_windows_update_string_prop";
+constexpr const char *kWindowsDestroyViewSymbol = "expo_dotnet_windows_destroy_view";
 constexpr const wchar_t *kEntryPointType =
   L"Expo.ModulesCore.Generated.EntryPoints, ExpoDotnetHost";
 constexpr const wchar_t *kCreateRuntimeContextMethod = L"CreateRuntimeContext";
 constexpr const wchar_t *kTeardownRuntimeContextMethod = L"TeardownRuntimeContext";
+constexpr const wchar_t *kWindowsGetViewMetadataMethod = L"GetWindowsViewMetadata";
+constexpr const wchar_t *kWindowsFreeBufferMethod = L"FreeWindowsBuffer";
+constexpr const wchar_t *kWindowsCreateViewMethod = L"CreateWindowsView";
+constexpr const wchar_t *kWindowsInitializeCompositionMethod = L"InitializeWindowsComposition";
+constexpr const wchar_t *kWindowsUpdateLayoutMethod = L"UpdateWindowsLayout";
+constexpr const wchar_t *kWindowsUpdateStringPropMethod = L"UpdateWindowsStringProp";
+constexpr const wchar_t *kWindowsDestroyViewMethod = L"DestroyWindowsView";
 
 std::mutex g_errorMutex;
 std::wstring g_lastError;
@@ -317,6 +332,60 @@ ManagedRuntimeContextEntryPoints resolveRuntimeContextEntryPoints(const ManagedM
       resolveHostFxrMethod(config, kCreateRuntimeContextMethod));
     entryPoints.teardownRuntimeContext = reinterpret_cast<TeardownRuntimeContextFn>(
       resolveHostFxrMethod(config, kTeardownRuntimeContextMethod));
+    break;
+  }
+  return entryPoints;
+}
+
+ManagedWindowsViewEntryPoints resolveWindowsViewEntryPoints(const ManagedModuleConfig &config)
+{
+  ManagedWindowsViewEntryPoints entryPoints;
+  switch (config.loaderKind) {
+  case ManagedLoaderKind::NativeAot:
+    entryPoints.getViewMetadata =
+      reinterpret_cast<WindowsGetViewMetadataFn>(resolveNativeAotSymbol(
+        config, kWindowsGetViewMetadataSymbol));
+    entryPoints.freeBuffer =
+      reinterpret_cast<WindowsFreeBufferFn>(resolveNativeAotSymbol(
+        config, kWindowsFreeBufferSymbol));
+    entryPoints.createView =
+      reinterpret_cast<WindowsCreateViewFn>(resolveNativeAotSymbol(
+        config, kWindowsCreateViewSymbol));
+    entryPoints.initializeComposition =
+      reinterpret_cast<WindowsInitializeCompositionFn>(resolveNativeAotSymbol(
+        config, kWindowsInitializeCompositionSymbol));
+    entryPoints.updateLayout =
+      reinterpret_cast<WindowsUpdateLayoutFn>(resolveNativeAotSymbol(
+        config, kWindowsUpdateLayoutSymbol));
+    entryPoints.updateStringProp =
+      reinterpret_cast<WindowsUpdateStringPropFn>(resolveNativeAotSymbol(
+        config, kWindowsUpdateStringPropSymbol));
+    entryPoints.destroyView =
+      reinterpret_cast<WindowsDestroyViewFn>(resolveNativeAotSymbol(
+        config, kWindowsDestroyViewSymbol));
+    break;
+  case ManagedLoaderKind::HostFxr:
+    entryPoints.getViewMetadata =
+      reinterpret_cast<WindowsGetViewMetadataFn>(resolveHostFxrMethod(
+        config, kWindowsGetViewMetadataMethod));
+    entryPoints.freeBuffer =
+      reinterpret_cast<WindowsFreeBufferFn>(resolveHostFxrMethod(
+        config, kWindowsFreeBufferMethod));
+    entryPoints.createView =
+      reinterpret_cast<WindowsCreateViewFn>(resolveHostFxrMethod(
+        config, kWindowsCreateViewMethod));
+    entryPoints.initializeComposition =
+      reinterpret_cast<WindowsInitializeCompositionFn>(resolveHostFxrMethod(
+        config, kWindowsInitializeCompositionMethod));
+    entryPoints.updateLayout =
+      reinterpret_cast<WindowsUpdateLayoutFn>(resolveHostFxrMethod(
+        config, kWindowsUpdateLayoutMethod));
+    entryPoints.updateStringProp =
+      reinterpret_cast<WindowsUpdateStringPropFn>(resolveHostFxrMethod(
+        config, kWindowsUpdateStringPropMethod));
+    entryPoints.destroyView =
+      reinterpret_cast<WindowsDestroyViewFn>(resolveHostFxrMethod(
+        config, kWindowsDestroyViewMethod));
     break;
   }
   return entryPoints;

@@ -172,7 +172,10 @@ describe('generateAggregator', () => {
     );
     expect(entryPoints).toContain('expo_dotnet_windows_get_view_metadata');
     expect(entryPoints).toContain('expo_dotnet_windows_create_view');
+    expect(entryPoints).toContain('expo_dotnet_windows_initialize_composition');
+    expect(entryPoints).toContain('expo_dotnet_windows_update_layout');
     expect(entryPoints).toContain('expo_dotnet_windows_update_string_prop');
+    expect(entryPoints).toContain('expo_dotnet_windows_destroy_view');
     expect(entryPoints).toContain('LinkedExpoModulesProvider.GetViewDefinitions()');
     expect(provider).toContain('public static IReadOnlyList<GeneratedViewDefinition> GetViewDefinitions()');
     expect(provider).toContain('ExpoModulesProvider_A.GetViewDefinitions()');
