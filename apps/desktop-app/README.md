@@ -112,6 +112,37 @@ pnpm --filter desktop-app exec expo-modules-dotnet-autolinking link --platform w
 runtime overrides, but AppX activation does not have to inherit them for the
 NativeAOT flow above.
 
+### macOS NativeAOT
+
+The macOS app defaults to HostFXR. To run it with NativeAOT, override the
+`EXPO_DOTNET_LOADER` Xcode build setting with `nativeaot`. This setting controls
+both the managed artifact staging phase and the loader value embedded in the
+built app's `Info.plist`.
+
+In Xcode, open `apps/desktop-app/macos/desktopapp.xcworkspace`, select the
+`desktopapp-macOS` target, and set the User-Defined `EXPO_DOTNET_LOADER` build
+setting to `nativeaot` for the `Debug` configuration. Then run the app from
+Xcode with Metro running.
+
+For a command-line Debug build, pass the same setting directly to
+`xcodebuild`:
+
+```sh
+set -euo pipefail
+xcodebuild \
+  -workspace apps/desktop-app/macos/desktopapp.xcworkspace \
+  -scheme desktopapp-macOS \
+  -configuration Debug \
+  -derivedDataPath apps/desktop-app/macos/build \
+  EXPO_DOTNET_LOADER=nativeaot \
+  2>&1 | xcsift -f toon
+open apps/desktop-app/macos/build/Build/Products/Debug/desktopapp.app
+```
+
+NativeAOT uses `osx-arm64` on Apple Silicon and `osx-x64` on Intel Macs. A
+successful build logs `Built dotnet host: mode nativeaot` and stages
+`libExpoDotnetHost.dylib` under `apps/desktop-app/macos/Managed`.
+
 ### macOS Xcode Environment
 
 When building from Xcode.app, script phases do not inherit the interactive
