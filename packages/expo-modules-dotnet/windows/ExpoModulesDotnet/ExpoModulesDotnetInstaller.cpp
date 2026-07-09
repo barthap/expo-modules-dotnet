@@ -3,6 +3,7 @@
 #include "ExpoModulesDotnetInstaller.h"
 
 #include <ReactNotificationService.h>
+#include <ReactPropertyBag.h>
 
 #include <sstream>
 #include <stdexcept>
@@ -10,9 +11,6 @@
 
 namespace winrt::ExpoModulesDotnet {
 namespace {
-
-std::mutex g_currentRuntimeMutex;
-void *g_currentManagedRuntimeContext = nullptr;
 
 void logMessage(const std::wstring &message)
 {
@@ -56,16 +54,25 @@ std::string toUtf8(const std::wstring &value)
   return result;
 }
 
+winrt::Microsoft::ReactNative::ReactPropertyId<int64_t> runtimeContextProperty() noexcept
+{
+  static const winrt::Microsoft::ReactNative::ReactPropertyId<int64_t> property{
+    L"Expo.ModulesDotnet", L"RuntimeContext"};
+  return property;
+}
+
 } // namespace
 
 struct ExpoModulesDotnetInstaller::InstalledRuntime final
   : std::enable_shared_from_this<ExpoModulesDotnetInstaller::InstalledRuntime> {
   InstalledRuntime(std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector,
                    expo_jsi_runtime_handle runtimeHandle,
-                   expo::modules::dotnet::ManagedModuleConfig moduleConfig)
+                   expo::modules::dotnet::ManagedModuleConfig moduleConfig,
+                   winrt::Microsoft::ReactNative::ReactPropertyBag runtimeProperties)
     : connector(std::move(connector)),
       runtimeHandle(runtimeHandle),
-      moduleConfig(std::move(moduleConfig))
+      moduleConfig(std::move(moduleConfig)),
+      runtimeProperties(std::move(runtimeProperties))
   {
   }
 
@@ -97,6 +104,7 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
     std::lock_guard<std::mutex> lock(mutex);
     managedRuntimeContext = runtimeContext;
     teardownRuntimeContext = entryPoints.teardownRuntimeContext;
+    runtimeProperties.Set(runtimeContextProperty(), reinterpret_cast<int64_t>(runtimeContext));
     registered = true;
     return true;
   }
@@ -162,14 +170,10 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
       destroyedSubscription = nullptr;
     }
 
+    runtimeProperties.Remove(runtimeContextProperty());
+
     if (teardownRuntimeContextFn != nullptr && managedRuntimeContextToTeardown != nullptr) {
       teardownRuntimeContextFn(managedRuntimeContextToTeardown);
-    }
-    {
-      std::lock_guard<std::mutex> currentLock(g_currentRuntimeMutex);
-      if (g_currentManagedRuntimeContext == managedRuntimeContextToTeardown) {
-        g_currentManagedRuntimeContext = nullptr;
-      }
     }
     if (runtimeHandleToRelease != nullptr) {
       expo::dotnet::releaseReactNativeRuntimeHandle(runtimeHandleToRelease);
@@ -181,6 +185,7 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
   std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector;
   expo_jsi_runtime_handle runtimeHandle = nullptr;
   expo::modules::dotnet::ManagedModuleConfig moduleConfig;
+  winrt::Microsoft::ReactNative::ReactPropertyBag runtimeProperties{nullptr};
   void *managedRuntimeContext = nullptr;
   expo::modules::dotnet::TeardownRuntimeContextFn teardownRuntimeContext = nullptr;
   bool registered = false;
@@ -223,7 +228,7 @@ void ExpoModulesDotnetInstaller::Initialize(
     auto moduleConfig = expo::modules::dotnet::loadManagedHostConfig();
 
     auto installedRuntime = std::make_shared<InstalledRuntime>(
-      std::move(connector), runtimeHandle, std::move(moduleConfig));
+      std::move(connector), runtimeHandle, std::move(moduleConfig), reactContext.Properties());
 
     std::wstring registrationError;
     if (!installedRuntime->registerModules(registrationError)) {
@@ -240,10 +245,6 @@ void ExpoModulesDotnetInstaller::Initialize(
       state->installedRuntime = installedRuntime;
       state->registered = state->installedRuntime->isRegistered();
       state->lastError.clear();
-    }
-    {
-      std::lock_guard<std::mutex> lock(g_currentRuntimeMutex);
-      g_currentManagedRuntimeContext = installedRuntime->managedRuntimeContext;
     }
 
     logMessage(L"[ExpoModulesDotnet] Windows managed modules registered.");
@@ -313,15 +314,4 @@ std::string ExpoModulesDotnetInstaller::getLastError() noexcept
   return "Windows module registration has not started.";
 }
 
-void *CurrentManagedRuntimeContext() noexcept
-{
-  std::lock_guard<std::mutex> lock(g_currentRuntimeMutex);
-  return g_currentManagedRuntimeContext;
-}
-
 } // namespace winrt::ExpoModulesDotnet
-
-extern "C" __declspec(dllexport) void *expo_modules_dotnet_current_runtime_context() noexcept
-{
-  return winrt::ExpoModulesDotnet::CurrentManagedRuntimeContext();
-}

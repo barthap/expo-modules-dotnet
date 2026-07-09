@@ -7,8 +7,6 @@
 namespace expo::modules::dotnet::windows {
 namespace {
 
-using CurrentRuntimeContextFn = void *(*)();
-
 void logMessage(const std::string &message) noexcept
 {
   OutputDebugStringA("[ExpoModulesDotnetWindows] ");
@@ -16,70 +14,128 @@ void logMessage(const std::string &message) noexcept
   OutputDebugStringA("\n");
 }
 
-std::string toUtf8(winrt::hstring const &value)
+winrt::Microsoft::ReactNative::ReactPropertyId<int64_t> runtimeContextProperty() noexcept
 {
-  return winrt::to_string(value);
+  static const winrt::Microsoft::ReactNative::ReactPropertyId<int64_t> property{
+    L"Expo.ModulesDotnet", L"RuntimeContext"};
+  return property;
 }
 
-CurrentRuntimeContextFn resolveCurrentRuntimeContext()
+void *RuntimeContextFromReactContext(
+  winrt::Microsoft::ReactNative::IReactContext const &reactContext) noexcept
 {
-  HMODULE module = GetModuleHandleW(L"ExpoModulesDotnet.dll");
-  if (module == nullptr) {
-    module = LoadLibraryW(L"ExpoModulesDotnet.dll");
+  auto value = winrt::Microsoft::ReactNative::ReactPropertyBag(reactContext.Properties())
+                 .Get(runtimeContextProperty());
+  return value.has_value() ? reinterpret_cast<void *>(*value) : nullptr;
+}
+
+std::string readLastViewError(
+  const expo::modules::dotnet::ManagedWindowsViewEntryPoints &entryPoints)
+{
+  if (entryPoints.getViewLastError == nullptr) {
+    return "";
   }
-  if (module == nullptr) {
-    return nullptr;
+
+  const auto length = entryPoints.getViewLastError(nullptr, 0);
+  if (length <= 0) {
+    return "";
   }
 
-  return reinterpret_cast<CurrentRuntimeContextFn>(
-    GetProcAddress(module, "expo_modules_dotnet_current_runtime_context"));
+  std::string value(static_cast<size_t>(length), '\0');
+  return entryPoints.getViewLastError(reinterpret_cast<uint8_t *>(value.data()),
+                                      static_cast<int>(value.size())) == length
+           ? value
+           : "";
 }
 
-void *currentRuntimeContext() noexcept
+bool readMetadataString(expo::modules::dotnet::WindowsGetViewStringFn getString,
+                        int viewIndex,
+                        std::string &value)
 {
-  static auto runtimeContextFn = resolveCurrentRuntimeContext();
-  return runtimeContextFn == nullptr ? nullptr : runtimeContextFn();
+  const auto length = getString(viewIndex, nullptr, 0);
+  if (length < 0) {
+    return false;
+  }
+  if (length == 0) {
+    value.clear();
+    return true;
+  }
+  value.resize(static_cast<size_t>(length));
+  return getString(viewIndex,
+                   reinterpret_cast<uint8_t *>(value.data()),
+                   static_cast<int>(value.size())) == length;
 }
 
-std::vector<DotnetViewDefinition> parseViewMetadata(const std::string &json)
+bool readMetadataPropString(expo::modules::dotnet::WindowsGetViewPropNameFn getString,
+                            int viewIndex,
+                            int propIndex,
+                            std::string &value)
+{
+  const auto length = getString(viewIndex, propIndex, nullptr, 0);
+  if (length < 0) {
+    return false;
+  }
+  if (length == 0) {
+    value.clear();
+    return true;
+  }
+  value.resize(static_cast<size_t>(length));
+  return getString(viewIndex,
+                   propIndex,
+                   reinterpret_cast<uint8_t *>(value.data()),
+                   static_cast<int>(value.size())) == length;
+}
+
+std::vector<DotnetViewDefinition> readViewMetadata(
+  const expo::modules::dotnet::ManagedWindowsViewEntryPoints &entryPoints)
 {
   std::vector<DotnetViewDefinition> views;
-  if (json.empty()) {
+  const auto viewCount = entryPoints.getViewCount();
+  if (viewCount < 0) {
+    auto error = readLastViewError(entryPoints);
+    if (error.empty()) {
+      error = "managed view metadata count failed.";
+    }
+    logMessage("Managed view metadata is unavailable: " + error);
+    return views;
+  }
+  if (viewCount == 0) {
     return views;
   }
 
-  auto array = winrt::Windows::Data::Json::JsonArray::Parse(winrt::to_hstring(json));
-  for (auto const &item : array) {
-    auto viewObject = item.GetObject();
+  for (int viewIndex = 0; viewIndex < viewCount; viewIndex++) {
     DotnetViewDefinition view;
-    view.moduleName = toUtf8(viewObject.GetNamedString(L"ModuleName", L""));
-    view.componentName = toUtf8(viewObject.GetNamedString(L"ComponentName", L""));
+    if (!readMetadataString(entryPoints.getViewModuleName, viewIndex, view.moduleName) ||
+        !readMetadataString(entryPoints.getViewComponentName, viewIndex, view.componentName) ||
+        view.componentName.empty()) {
+      continue;
+    }
 
-    if (viewObject.HasKey(L"Props")) {
-      for (auto const &propItem : viewObject.GetNamedArray(L"Props")) {
-        auto propObject = propItem.GetObject();
-        DotnetViewPropDefinition prop;
-        prop.name = toUtf8(propObject.GetNamedString(L"Name", L""));
-        prop.kind = toUtf8(propObject.GetNamedString(L"Kind", L""));
-        if (!prop.name.empty()) {
-          view.props.push_back(std::move(prop));
-        }
+    const auto propCount = entryPoints.getViewPropCount(viewIndex);
+    for (int propIndex = 0; propIndex < propCount; propIndex++) {
+      DotnetViewPropDefinition prop;
+      if (!readMetadataPropString(entryPoints.getViewPropName, viewIndex, propIndex, prop.name) ||
+          prop.name.empty()) {
+        continue;
       }
+      const auto kind = entryPoints.getViewPropKind(viewIndex, propIndex);
+      prop.kind = kind == 0 ? "String" : "";
+      view.props.push_back(std::move(prop));
     }
 
-    if (!view.componentName.empty()) {
-      views.push_back(std::move(view));
-    }
+    views.push_back(std::move(view));
   }
   return views;
 }
 
 bool hasRequiredEntryPoints(const expo::modules::dotnet::ManagedWindowsViewEntryPoints &entryPoints)
 {
-  return entryPoints.getViewMetadata != nullptr && entryPoints.freeBuffer != nullptr &&
-         entryPoints.createView != nullptr && entryPoints.initializeComposition != nullptr &&
-         entryPoints.updateLayout != nullptr && entryPoints.updateStringProp != nullptr &&
-         entryPoints.destroyView != nullptr;
+  return entryPoints.getViewLastError != nullptr && entryPoints.getViewCount != nullptr &&
+         entryPoints.getViewModuleName != nullptr && entryPoints.getViewComponentName != nullptr &&
+         entryPoints.getViewPropCount != nullptr && entryPoints.getViewPropName != nullptr &&
+         entryPoints.getViewPropKind != nullptr && entryPoints.createView != nullptr &&
+         entryPoints.initializeComposition != nullptr && entryPoints.updateLayout != nullptr &&
+         entryPoints.updateStringProp != nullptr && entryPoints.destroyView != nullptr;
 }
 
 } // namespace
@@ -96,10 +152,11 @@ const std::vector<DotnetViewDefinition> &ManagedViewHost::ViewDefinitions()
   return viewDefinitions_;
 }
 
-void *ManagedViewHost::CreateView(const std::string &componentName)
+void *ManagedViewHost::CreateView(winrt::Microsoft::ReactNative::IReactContext const &reactContext,
+                                  const std::string &componentName)
 {
   EnsureInitialized();
-  auto *runtimeContext = currentRuntimeContext();
+  auto *runtimeContext = RuntimeContextFromReactContext(reactContext);
   if (runtimeContext == nullptr || entryPoints_.createView == nullptr) {
     return nullptr;
   }
@@ -140,14 +197,16 @@ void ManagedViewHost::UpdateLayout(void *viewHandle, float width, float height) 
   }
 }
 
-void ManagedViewHost::UpdateStringProp(void *viewHandle,
-                                       const std::string &componentName,
-                                       const std::string &propName,
-                                       const std::optional<std::string> &value) noexcept
+void ManagedViewHost::UpdateStringProp(
+  winrt::Microsoft::ReactNative::IReactContext const &reactContext,
+  void *viewHandle,
+  const std::string &componentName,
+  const std::string &propName,
+  const std::optional<std::string> &value) noexcept
 {
   try {
     EnsureInitialized();
-    auto *runtimeContext = currentRuntimeContext();
+    auto *runtimeContext = RuntimeContextFromReactContext(reactContext);
     if (runtimeContext == nullptr || viewHandle == nullptr ||
         entryPoints_.updateStringProp == nullptr) {
       return;
@@ -196,16 +255,11 @@ void ManagedViewHost::EnsureInitialized()
       return;
     }
 
-    uint8_t *buffer = nullptr;
-    int length = 0;
-    if (entryPoints_.getViewMetadata(&buffer, &length) != 0 || buffer == nullptr || length <= 0) {
+    viewDefinitions_ = readViewMetadata(entryPoints_);
+    if (viewDefinitions_.empty()) {
       logMessage("Managed view metadata is empty or unavailable.");
       return;
     }
-
-    std::string json(reinterpret_cast<const char *>(buffer), static_cast<size_t>(length));
-    entryPoints_.freeBuffer(buffer);
-    viewDefinitions_ = parseViewMetadata(json);
 
     std::ostringstream message;
     message << "Loaded " << viewDefinitions_.size() << " managed view definition(s).";

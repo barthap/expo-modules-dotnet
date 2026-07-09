@@ -16,8 +16,14 @@ namespace {
 constexpr const wchar_t *kManagedSubdirectory = L"Managed";
 constexpr const char *kCreateRuntimeContextSymbol = "expo_dotnet_create_runtime_context";
 constexpr const char *kTeardownRuntimeContextSymbol = "expo_dotnet_teardown_runtime_context";
-constexpr const char *kWindowsGetViewMetadataSymbol = "expo_dotnet_windows_get_view_metadata";
-constexpr const char *kWindowsFreeBufferSymbol = "expo_dotnet_windows_free_buffer";
+constexpr const char *kWindowsGetViewLastErrorSymbol = "expo_dotnet_windows_get_view_last_error";
+constexpr const char *kWindowsGetViewCountSymbol = "expo_dotnet_windows_get_view_count";
+constexpr const char *kWindowsGetViewModuleNameSymbol = "expo_dotnet_windows_get_view_module_name";
+constexpr const char *kWindowsGetViewComponentNameSymbol =
+  "expo_dotnet_windows_get_view_component_name";
+constexpr const char *kWindowsGetViewPropCountSymbol = "expo_dotnet_windows_get_view_prop_count";
+constexpr const char *kWindowsGetViewPropNameSymbol = "expo_dotnet_windows_get_view_prop_name";
+constexpr const char *kWindowsGetViewPropKindSymbol = "expo_dotnet_windows_get_view_prop_kind";
 constexpr const char *kWindowsCreateViewSymbol = "expo_dotnet_windows_create_view";
 constexpr const char *kWindowsInitializeCompositionSymbol =
   "expo_dotnet_windows_initialize_composition";
@@ -28,8 +34,13 @@ constexpr const wchar_t *kEntryPointType =
   L"Expo.ModulesCore.Generated.EntryPoints, ExpoDotnetHost";
 constexpr const wchar_t *kCreateRuntimeContextMethod = L"CreateRuntimeContext";
 constexpr const wchar_t *kTeardownRuntimeContextMethod = L"TeardownRuntimeContext";
-constexpr const wchar_t *kWindowsGetViewMetadataMethod = L"GetWindowsViewMetadata";
-constexpr const wchar_t *kWindowsFreeBufferMethod = L"FreeWindowsBuffer";
+constexpr const wchar_t *kWindowsGetViewLastErrorMethod = L"GetWindowsViewLastError";
+constexpr const wchar_t *kWindowsGetViewCountMethod = L"GetWindowsViewCount";
+constexpr const wchar_t *kWindowsGetViewModuleNameMethod = L"GetWindowsViewModuleName";
+constexpr const wchar_t *kWindowsGetViewComponentNameMethod = L"GetWindowsViewComponentName";
+constexpr const wchar_t *kWindowsGetViewPropCountMethod = L"GetWindowsViewPropCount";
+constexpr const wchar_t *kWindowsGetViewPropNameMethod = L"GetWindowsViewPropName";
+constexpr const wchar_t *kWindowsGetViewPropKindMethod = L"GetWindowsViewPropKind";
 constexpr const wchar_t *kWindowsCreateViewMethod = L"CreateWindowsView";
 constexpr const wchar_t *kWindowsInitializeCompositionMethod = L"InitializeWindowsComposition";
 constexpr const wchar_t *kWindowsUpdateLayoutMethod = L"UpdateWindowsLayout";
@@ -348,10 +359,20 @@ ManagedWindowsViewEntryPoints resolveWindowsViewEntryPoints(const ManagedModuleC
   ManagedWindowsViewEntryPoints entryPoints;
   switch (config.loaderKind) {
   case ManagedLoaderKind::NativeAot:
-    entryPoints.getViewMetadata = reinterpret_cast<WindowsGetViewMetadataFn>(
-      resolveNativeAotSymbol(config, kWindowsGetViewMetadataSymbol));
-    entryPoints.freeBuffer = reinterpret_cast<WindowsFreeBufferFn>(
-      resolveNativeAotSymbol(config, kWindowsFreeBufferSymbol));
+    entryPoints.getViewLastError = reinterpret_cast<WindowsGetViewLastErrorFn>(
+      resolveNativeAotSymbol(config, kWindowsGetViewLastErrorSymbol));
+    entryPoints.getViewCount = reinterpret_cast<WindowsGetViewCountFn>(
+      resolveNativeAotSymbol(config, kWindowsGetViewCountSymbol));
+    entryPoints.getViewModuleName = reinterpret_cast<WindowsGetViewStringFn>(
+      resolveNativeAotSymbol(config, kWindowsGetViewModuleNameSymbol));
+    entryPoints.getViewComponentName = reinterpret_cast<WindowsGetViewStringFn>(
+      resolveNativeAotSymbol(config, kWindowsGetViewComponentNameSymbol));
+    entryPoints.getViewPropCount = reinterpret_cast<WindowsGetViewPropCountFn>(
+      resolveNativeAotSymbol(config, kWindowsGetViewPropCountSymbol));
+    entryPoints.getViewPropName = reinterpret_cast<WindowsGetViewPropNameFn>(
+      resolveNativeAotSymbol(config, kWindowsGetViewPropNameSymbol));
+    entryPoints.getViewPropKind = reinterpret_cast<WindowsGetViewPropKindFn>(
+      resolveNativeAotSymbol(config, kWindowsGetViewPropKindSymbol));
     entryPoints.createView = reinterpret_cast<WindowsCreateViewFn>(
       resolveNativeAotSymbol(config, kWindowsCreateViewSymbol));
     entryPoints.initializeComposition = reinterpret_cast<WindowsInitializeCompositionFn>(
@@ -364,10 +385,20 @@ ManagedWindowsViewEntryPoints resolveWindowsViewEntryPoints(const ManagedModuleC
       resolveNativeAotSymbol(config, kWindowsDestroyViewSymbol));
     break;
   case ManagedLoaderKind::HostFxr:
-    entryPoints.getViewMetadata = reinterpret_cast<WindowsGetViewMetadataFn>(
-      resolveHostFxrMethod(config, kWindowsGetViewMetadataMethod));
-    entryPoints.freeBuffer =
-      reinterpret_cast<WindowsFreeBufferFn>(resolveHostFxrMethod(config, kWindowsFreeBufferMethod));
+    entryPoints.getViewLastError = reinterpret_cast<WindowsGetViewLastErrorFn>(
+      resolveHostFxrMethod(config, kWindowsGetViewLastErrorMethod));
+    entryPoints.getViewCount = reinterpret_cast<WindowsGetViewCountFn>(
+      resolveHostFxrMethod(config, kWindowsGetViewCountMethod));
+    entryPoints.getViewModuleName = reinterpret_cast<WindowsGetViewStringFn>(
+      resolveHostFxrMethod(config, kWindowsGetViewModuleNameMethod));
+    entryPoints.getViewComponentName = reinterpret_cast<WindowsGetViewStringFn>(
+      resolveHostFxrMethod(config, kWindowsGetViewComponentNameMethod));
+    entryPoints.getViewPropCount = reinterpret_cast<WindowsGetViewPropCountFn>(
+      resolveHostFxrMethod(config, kWindowsGetViewPropCountMethod));
+    entryPoints.getViewPropName = reinterpret_cast<WindowsGetViewPropNameFn>(
+      resolveHostFxrMethod(config, kWindowsGetViewPropNameMethod));
+    entryPoints.getViewPropKind = reinterpret_cast<WindowsGetViewPropKindFn>(
+      resolveHostFxrMethod(config, kWindowsGetViewPropKindMethod));
     entryPoints.createView =
       reinterpret_cast<WindowsCreateViewFn>(resolveHostFxrMethod(config, kWindowsCreateViewMethod));
     entryPoints.initializeComposition = reinterpret_cast<WindowsInitializeCompositionFn>(

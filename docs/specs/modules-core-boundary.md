@@ -711,6 +711,13 @@ aggregation and staging instead of legacy per-module adapter-owned staging.
 - **AND** module class discovery SHALL remain owned by each library's Roslyn
   generation step
 
+#### Scenario: App-level view names are duplicated
+- **GIVEN** two linked libraries expose the same generated view component name
+- **WHEN** the app-level provider prepares view metadata or dispatches a view
+- **THEN** it SHALL throw an actionable error naming the duplicate component
+- **AND** duplicate view component names SHALL NOT be resolved by provider or
+  manifest order
+
 #### Scenario: Public adapter looks up a staged module
 - **GIVEN** an app depends on `expo-modules-dotnet`
 - **WHEN** JavaScript calls `requireDotnetModule<T>(name)`

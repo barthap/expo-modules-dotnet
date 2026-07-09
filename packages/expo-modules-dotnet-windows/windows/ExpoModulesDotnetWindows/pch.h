@@ -11,10 +11,10 @@
 #include <unknwn.h>
 
 #include <CppWinRTIncludes.h>
+#include <ReactPropertyBag.h>
 #include <winrt/Microsoft.ReactNative.Composition.h>
 #include <winrt/Microsoft.ReactNative.h>
 #include <winrt/Microsoft.UI.Composition.h>
-#include <winrt/Windows.Data.Json.h>
 #include <winrt/base.h>
 
 #include <malloc.h>

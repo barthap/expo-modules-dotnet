@@ -13,8 +13,12 @@ enum class ManagedLoaderKind {
 
 using CreateRuntimeContextFn = void *(*)(const expo_jsi_api *, expo_jsi_runtime_handle);
 using TeardownRuntimeContextFn = void (*)(void *);
-using WindowsGetViewMetadataFn = int (*)(uint8_t **, int *);
-using WindowsFreeBufferFn = void (*)(uint8_t *);
+using WindowsGetViewLastErrorFn = int (*)(uint8_t *, int);
+using WindowsGetViewCountFn = int (*)();
+using WindowsGetViewStringFn = int (*)(int, uint8_t *, int);
+using WindowsGetViewPropCountFn = int (*)(int);
+using WindowsGetViewPropNameFn = int (*)(int, int, uint8_t *, int);
+using WindowsGetViewPropKindFn = int (*)(int, int);
 using WindowsCreateViewFn = void *(*)(void *, const uint8_t *, int);
 using WindowsInitializeCompositionFn = intptr_t (*)(void *, intptr_t);
 using WindowsUpdateLayoutFn = void (*)(void *, float, float);
@@ -28,8 +32,13 @@ struct ManagedRuntimeContextEntryPoints {
 };
 
 struct ManagedWindowsViewEntryPoints {
-  WindowsGetViewMetadataFn getViewMetadata = nullptr;
-  WindowsFreeBufferFn freeBuffer = nullptr;
+  WindowsGetViewLastErrorFn getViewLastError = nullptr;
+  WindowsGetViewCountFn getViewCount = nullptr;
+  WindowsGetViewStringFn getViewModuleName = nullptr;
+  WindowsGetViewStringFn getViewComponentName = nullptr;
+  WindowsGetViewPropCountFn getViewPropCount = nullptr;
+  WindowsGetViewPropNameFn getViewPropName = nullptr;
+  WindowsGetViewPropKindFn getViewPropKind = nullptr;
   WindowsCreateViewFn createView = nullptr;
   WindowsInitializeCompositionFn initializeComposition = nullptr;
   WindowsUpdateLayoutFn updateLayout = nullptr;

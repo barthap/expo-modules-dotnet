@@ -11,8 +11,6 @@
 
 namespace winrt::ExpoModulesDotnet {
 
-void *CurrentManagedRuntimeContext() noexcept;
-
 REACT_MODULE(ExpoModulesDotnetInstaller)
 struct ExpoModulesDotnetInstaller {
   REACT_INIT(Initialize)
@@ -33,5 +31,3 @@ private:
 };
 
 } // namespace winrt::ExpoModulesDotnet
-
-extern "C" __declspec(dllexport) void *expo_modules_dotnet_current_runtime_context() noexcept;

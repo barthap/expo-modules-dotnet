@@ -45,7 +45,11 @@ Portable core packages SHALL NOT depend on the sidecar package.
 
 The Windows sidecar SHALL consume generated metadata for `[View]` and `[Prop]`
 declarations. It SHALL NOT discover authored view modules through runtime
-module scanning as the ordinary dispatch path.
+module scanning as the ordinary dispatch path. Generated Windows metadata
+entry points SHALL expose metadata through typed native calls such as indexed
+view and prop counts, caller-owned string buffers, and numeric prop kinds. The
+sidecar SHALL NOT consume generated view metadata through JSON strings,
+serialized anonymous objects, or dynamic payloads.
 
 #### Scenario: React creates a generated view component
 - **GIVEN** a C# module declares a generated view component and prop setters
@@ -60,6 +64,26 @@ module scanning as the ordinary dispatch path.
 - **THEN** it SHALL skip view registration or report an actionable installer
   error
 - **AND** it SHALL NOT crash because metadata is absent
+
+#### Scenario: Windows sidecar loads view metadata
+- **GIVEN** a Windows aggregator exposes generated view definitions
+- **WHEN** the sidecar loads metadata
+- **THEN** it SHALL call typed metadata entry points
+- **AND** generated code SHALL NOT call JSON serializers for view metadata
+
+### Requirement: View Operations Use Runtime-Scoped Context
+
+Windows view operations SHALL use the managed runtime context associated with
+the component's RNW React context. The installer SHALL store the active managed
+runtime context in the RNW context property bag using an ABI-safe value, and the
+sidecar SHALL read that property from the component context when creating views
+or dispatching props.
+
+#### Scenario: Multiple runtime contexts exist in one process
+- **GIVEN** two RNW contexts have separate managed runtime contexts
+- **WHEN** a view in one context receives a prop update
+- **THEN** the sidecar SHALL dispatch the prop with that view's context handle
+- **AND** it SHALL NOT use a process-global current-context export
 
 ### Requirement: Desktop App Renders A Custom Windows View
 

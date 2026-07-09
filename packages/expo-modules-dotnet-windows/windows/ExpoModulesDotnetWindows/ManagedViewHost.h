@@ -20,10 +20,12 @@ public:
   static ManagedViewHost &Instance();
 
   const std::vector<DotnetViewDefinition> &ViewDefinitions();
-  void *CreateView(const std::string &componentName);
+  void *CreateView(winrt::Microsoft::ReactNative::IReactContext const &reactContext,
+                   const std::string &componentName);
   intptr_t InitializeComposition(void *viewHandle, intptr_t compositor) noexcept;
   void UpdateLayout(void *viewHandle, float width, float height) noexcept;
-  void UpdateStringProp(void *viewHandle,
+  void UpdateStringProp(winrt::Microsoft::ReactNative::IReactContext const &reactContext,
+                        void *viewHandle,
                         const std::string &componentName,
                         const std::string &propName,
                         const std::optional<std::string> &value) noexcept;

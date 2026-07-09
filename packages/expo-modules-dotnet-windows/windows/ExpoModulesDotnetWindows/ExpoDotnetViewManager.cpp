@@ -154,13 +154,15 @@ void updateProps(winrt::Microsoft::ReactNative::ComponentView const &source,
   }
 
   auto dispatcher = source.ReactContext().UIDispatcher();
+  auto reactContext = source.ReactContext();
   auto values = props->Values();
-  runOnUiDispatcher(dispatcher, [viewHandle, componentName, values = std::move(values)]() {
-    auto &host = ManagedViewHost::Instance();
-    for (const auto &[name, value] : values) {
-      host.UpdateStringProp(viewHandle, componentName, name, value);
-    }
-  });
+  runOnUiDispatcher(dispatcher,
+                    [reactContext, viewHandle, componentName, values = std::move(values)]() {
+                      auto &host = ManagedViewHost::Instance();
+                      for (const auto &[name, value] : values) {
+                        host.UpdateStringProp(reactContext, viewHandle, componentName, name, value);
+                      }
+                    });
 }
 
 void updateLayout(winrt::Microsoft::ReactNative::ComponentView const &source,
@@ -194,7 +196,7 @@ winrt::Microsoft::UI::Composition::Visual createVisual(
     return nullptr;
   }
 
-  auto *viewHandle = ManagedViewHost::Instance().CreateView(componentName);
+  auto *viewHandle = ManagedViewHost::Instance().CreateView(source.ReactContext(), componentName);
   if (viewHandle == nullptr) {
     return nullptr;
   }

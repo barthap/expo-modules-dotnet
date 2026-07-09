@@ -171,16 +171,41 @@ describe('generateAggregator', () => {
     expect(csproj).toContain(
       'expo-modules-dotnet-windows/managed/Expo.ModulesCore.Windows/Expo.ModulesCore.Windows.csproj'
     );
-    expect(entryPoints).toContain('expo_dotnet_windows_get_view_metadata');
-    expect(entryPoints).toContain('expo_dotnet_windows_create_view');
+    expect(entryPoints).toContain('expo_dotnet_windows_get_view_last_error');
+    expect(entryPoints).toContain('expo_dotnet_windows_get_view_count');
+    expect(entryPoints).toContain('expo_dotnet_windows_get_view_module_name');
+    expect(entryPoints).toContain('expo_dotnet_windows_get_view_component_name');
+    expect(entryPoints).toContain('expo_dotnet_windows_get_view_prop_count');
+    expect(entryPoints).toContain('expo_dotnet_windows_get_view_prop_name');
+    expect(entryPoints).toContain('expo_dotnet_windows_get_view_prop_kind');
     expect(entryPoints).toContain('expo_dotnet_windows_initialize_composition');
     expect(entryPoints).toContain('expo_dotnet_windows_update_layout');
     expect(entryPoints).toContain('expo_dotnet_windows_update_string_prop');
     expect(entryPoints).toContain('expo_dotnet_windows_destroy_view');
     expect(entryPoints).toContain('LinkedExpoModulesProvider.GetViewDefinitions()');
+    expect(entryPoints).toContain('RecordWindowsViewException');
+    expect(entryPoints).not.toContain('JsonSerializer');
+    expect(entryPoints).not.toContain('GetWindowsViewMetadata');
+    expect(entryPoints).not.toContain('FreeWindowsBuffer');
     expect(provider).toContain('public static IReadOnlyList<GeneratedViewDefinition> GetViewDefinitions()');
     expect(provider).toContain('ExpoModulesProvider_A.GetViewDefinitions()');
     expect(provider).toContain('ExpoModulesProvider_B.GetViewDefinitions()');
+  });
+
+  it('validates duplicate view component names across linked assemblies', () => {
+    const { adapterPackageRoot, manifest, outputDir } = makeFixture();
+
+    generateAggregator(manifest, { outputDir, adapterPackageRoot, platform: 'windows' });
+
+    const provider = readGenerated(outputDir, 'LinkedExpoModulesProvider.g.cs');
+    const entryPoints = readGenerated(outputDir, 'EntryPoints.g.cs');
+    expect(provider).toContain('ValidateUniqueViewComponentNames');
+    expect(provider).toContain('Duplicate Expo view component name');
+    expect(entryPoints).toContain('GetWindowsViewLastError');
+    expect(entryPoints).toContain('WindowsViewLastError');
+    expect(provider).not.toContain(
+      'if (Expo.ModulesCore.Generated.ExpoModulesProvider_A.GetViewDefinitions().Any(view => view.ComponentName == componentName))'
+    );
   });
 
   it('keeps non-Windows aggregation universal', () => {
