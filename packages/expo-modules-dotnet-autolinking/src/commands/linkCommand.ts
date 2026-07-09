@@ -54,7 +54,11 @@ export function registerLinkCommand(program: Command): void {
       const manifest = await discoverDotnetManifestAsync(appRoot);
       console.log(`Resolved dotnet modules: ${formatCount(manifest.modules.length, 'module')}`);
 
-      const generateResult = generateAggregator(manifest, { outputDir, adapterPackageRoot });
+      const generateResult = generateAggregator(manifest, {
+        outputDir,
+        adapterPackageRoot,
+        platform,
+      });
       console.log(
         `Generated dotnet host: wrote ${formatCount(
           generateResult.writtenFiles.length,

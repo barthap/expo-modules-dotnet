@@ -548,7 +548,7 @@ dotnet test packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Gener
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
@@ -568,7 +568,7 @@ git commit -m "Validate generated view declarations"
 - Modify: `packages/expo-modules-dotnet-autolinking/src/commands/generateCommand.ts`
 - Test: `packages/expo-modules-dotnet-autolinking/src/__tests__/generateAggregator.test.ts`
 
-- [ ] **Step 1: Write failing autolinking tests**
+- [x] **Step 1: Write failing autolinking tests**
 
 Add tests:
 
@@ -608,7 +608,7 @@ it('keeps non-Windows aggregation universal', () => {
 });
 ```
 
-- [ ] **Step 2: Run failing tests**
+- [x] **Step 2: Run failing tests**
 
 Run:
 
@@ -618,7 +618,7 @@ pnpm --filter expo-modules-dotnet-autolinking test -- generateAggregator
 
 Expected: FAIL because `GenerateOptions` does not include `platform`, Windows target framework is not generated, and Windows view entry points do not exist.
 
-- [ ] **Step 3: Add platform-aware generation**
+- [x] **Step 3: Add platform-aware generation**
 
 Extend `GenerateOptions`:
 
@@ -646,7 +646,7 @@ const coreReferences = [
 
 Use `${targetFramework}` in the generated project file.
 
-- [ ] **Step 4: Generate view entry points only for Windows**
+- [x] **Step 4: Generate view entry points only for Windows**
 
 Change `generateEntryPoints()` to accept `options.platform` and append Windows-only methods when `platform === "windows"`. The generated methods should include:
 
@@ -675,7 +675,7 @@ LinkedExpoModulesProvider.UpdateViewProp(context, componentName, view, propName,
 
 Metadata JSON is allowed here because it is startup metadata, not the prop dispatch path.
 
-- [ ] **Step 5: Verify tests pass**
+- [x] **Step 5: Verify tests pass**
 
 Run:
 

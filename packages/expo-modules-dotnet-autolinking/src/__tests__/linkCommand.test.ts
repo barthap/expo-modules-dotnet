@@ -70,7 +70,11 @@ describe('registerLinkCommand', () => {
 
     expect(resolveAppRoot).toHaveBeenCalledWith(undefined);
     expect(discoverDotnetManifestAsync).toHaveBeenCalledWith(appRoot);
-    expect(generateAggregator).toHaveBeenCalledWith(manifest, { outputDir, adapterPackageRoot });
+    expect(generateAggregator).toHaveBeenCalledWith(manifest, {
+      outputDir,
+      adapterPackageRoot,
+      platform: 'macos',
+    });
     expect(runDotnetBuildAsync).toHaveBeenCalledWith({
       csprojPath,
       mode: 'hostfxr',

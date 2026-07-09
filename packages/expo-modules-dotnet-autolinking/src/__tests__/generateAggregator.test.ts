@@ -27,6 +27,10 @@ function makeAdapterPackageRoot(root: string): string {
   const adapterPackageRoot = path.join(root, 'adapter', 'expo-modules-dotnet');
   writeCsproj(adapterPackageRoot, 'managed/packages/Expo.JSI/Expo.JSI.csproj');
   writeCsproj(adapterPackageRoot, 'managed/packages/Expo.ModulesCore/Expo.ModulesCore.csproj');
+  writeCsproj(
+    path.join(root, 'adapter', 'expo-modules-dotnet-windows'),
+    'managed/Expo.ModulesCore.Windows/Expo.ModulesCore.Windows.csproj'
+  );
   return adapterPackageRoot;
 }
 
@@ -151,6 +155,41 @@ describe('generateAggregator', () => {
     const provider = readGenerated(outputDir, 'LinkedExpoModulesProvider.g.cs');
     expect(provider).toContain('public static void Register(DotnetRuntimeContext context)');
     expect(provider).not.toMatch(/ExpoModulesProvider_.*\.Register\(context\);/);
+  });
+
+  it('generates Windows view entry points and sidecar reference for Windows aggregation', () => {
+    const { adapterPackageRoot, manifest, outputDir } = makeFixture();
+
+    generateAggregator(manifest, { outputDir, adapterPackageRoot, platform: 'windows' });
+
+    const csproj = readGenerated(outputDir, 'ExpoDotnetHost.csproj');
+    const entryPoints = readGenerated(outputDir, 'EntryPoints.g.cs');
+    const provider = readGenerated(outputDir, 'LinkedExpoModulesProvider.g.cs');
+
+    expect(csproj).toContain('<TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>');
+    expect(csproj).toContain(
+      'expo-modules-dotnet-windows/managed/Expo.ModulesCore.Windows/Expo.ModulesCore.Windows.csproj'
+    );
+    expect(entryPoints).toContain('expo_dotnet_windows_get_view_metadata');
+    expect(entryPoints).toContain('expo_dotnet_windows_create_view');
+    expect(entryPoints).toContain('expo_dotnet_windows_update_string_prop');
+    expect(entryPoints).toContain('LinkedExpoModulesProvider.GetViewDefinitions()');
+    expect(provider).toContain('public static IReadOnlyList<GeneratedViewDefinition> GetViewDefinitions()');
+    expect(provider).toContain('ExpoModulesProvider_A.GetViewDefinitions()');
+    expect(provider).toContain('ExpoModulesProvider_B.GetViewDefinitions()');
+  });
+
+  it('keeps non-Windows aggregation universal', () => {
+    const { adapterPackageRoot, manifest, outputDir } = makeFixture();
+
+    generateAggregator(manifest, { outputDir, adapterPackageRoot, platform: 'macos' });
+
+    const csproj = readGenerated(outputDir, 'ExpoDotnetHost.csproj');
+    const entryPoints = readGenerated(outputDir, 'EntryPoints.g.cs');
+
+    expect(csproj).toContain('<TargetFramework>net10.0</TargetFramework>');
+    expect(csproj).not.toContain('Expo.ModulesCore.Windows.csproj');
+    expect(entryPoints).not.toContain('expo_dotnet_windows_create_view');
   });
 
   it('skips unchanged files on a second run', () => {
