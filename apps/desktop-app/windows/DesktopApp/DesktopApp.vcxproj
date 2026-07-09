@@ -102,6 +102,7 @@
   <PropertyGroup Label="ExpoModulesDotnet">
     <ExpoDotnetLoader Condition="'$(ExpoDotnetLoader)' == ''">hostfxr</ExpoDotnetLoader>
     <ExpoDotnetManagedDir>$(MSBuildThisFileDirectory)..\Managed\</ExpoDotnetManagedDir>
+    <BundleEntryFile>$(MSBuildThisFileDirectory)..\..\index.ts</BundleEntryFile>
   </PropertyGroup>
   <ItemGroup>
     <ClInclude Include="DesktopApp.h" />

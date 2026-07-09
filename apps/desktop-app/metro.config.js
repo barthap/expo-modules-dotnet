@@ -8,6 +8,10 @@ const rnwPath = fs.realpathSync(
   path.resolve(require.resolve('react-native-windows/package.json'), '..')
 );
 
+config.resolver.platforms = Array.from(
+  new Set([...(config.resolver.platforms || []), 'windows', 'macos'])
+);
+
 config.resolver.blockList = [
   new RegExp(`${path.resolve(__dirname, 'windows').replace(/[/\\]/g, '/')}.*`),
   new RegExp(`${rnwPath}/build/.*`),
