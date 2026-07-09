@@ -2,7 +2,11 @@ name: checks
 
 # Fast CI lane: no native toolchain, no Hermes, no Apple runners.
 # Heavy native suite lives in native-tests.yml (separate workflow).
-on: [push, pull_request]
+on:
+  pull_request:
+  push:
+    branches:
+      - main
 
 concurrency:
   group: checks-${{ github.ref }}
