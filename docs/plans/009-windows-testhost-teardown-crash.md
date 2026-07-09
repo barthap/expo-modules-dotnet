@@ -36,6 +36,18 @@ Exception: scripts/test-managed.ps1:37  (dotnet exited with code 1)
   Failed on `28976399006`, passed on the re-run → this is a genuine race, not a
   deterministic crash. A single green run does NOT close it; the dump-capture
   instrumentation (below) is armed to catch the next occurrence on CI.
+- **Reproduced 2026-07-09 — dump captured.** `native-tests` run `29035088584`
+  (branch `codex/windows-native-views`), job `managed-tests (windows-latest)`:
+  Generator 44/44, JSI 118/118, ModulesCore 67/67 all pass, then
+  `[xUnit.net] [FATAL ERROR] Xunit.Sdk.TestPipelineException` at teardown →
+  exit 1. The run uploaded a **`windows-crash-dump` artifact** — this plan is
+  now actionable: download the dump (`gh run download 29035088584 -n
+  windows-crash-dump`) and analyze the faulting stack on a Windows box
+  (WinDbg/cdb) to confirm or refute the teardown-order hypothesis below.
+  (The same run's ubuntu failure is unrelated — branch-specific NETSDK1100
+  from a new Windows-targeting csproj.)
+- **Status 2026-07-09:** IN PROGRESS — dump handed to
+  `<windows-test-machine>` for stack analysis.
 
 ## Root-cause hypothesis (code-grounded, unconfirmed without a stack)
 
