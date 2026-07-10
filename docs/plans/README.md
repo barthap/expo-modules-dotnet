@@ -11,7 +11,7 @@ fully before starting, honor its STOP conditions, and update your row when done.
 |------|-------|----------|--------|------------|--------|
 | 001 | checks.yml — fast CI lane, ubuntu+windows matrix (no native) | P1 | S | — | DONE — green on ubuntu+windows (node + generator-tests + format). |
 | 002 | Autolinking CLI command tests | P1 | M | — | DONE — 4 command test files (resolve/stage/build/link), 79 tests pass, typecheck clean. |
-| 003 | Bridge edge-case tests (UTF-8, promises, generator diagnostics) | P2 | M | — (001 recommended first) | TODO |
+| 003 | Bridge edge-case tests (UTF-8, promises, generator diagnostics) | P2 | M | — (001 recommended first) | DONE — 15 UTF-8 string round trips, 3 double-settlement orderings, and all 11 generator diagnostics covered; managed suite and format green. |
 | 004 | Bridge string hygiene (copy elimination + consistent UTF-8 validation) | P2 | S | 003 | TODO |
 | 005 | Docs refresh (roadmap events, autolinking README, platform table) | P3 | S | — | TODO |
 | 006 | ArrayBuffer support — design spike, delta spec, prototype | P2 | M | — (003 recommended first) | TODO |

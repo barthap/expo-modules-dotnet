@@ -107,7 +107,7 @@ public sealed class JavaScriptPromiseTests
   }
 
   [Fact]
-  public void SecondSettlementIsIgnored()
+  public void ResolveThenResolveInvokesThenOnceWithFirstValue()
   {
     using var fixture = HermesRuntimeFixture.Create();
 
@@ -121,8 +121,10 @@ public sealed class JavaScriptPromiseTests
       using var setup = fixture.Evaluate(
           """
           globalThis.promiseResult = "";
+          globalThis.promiseFulfillmentCount = 0;
           globalThis.managedPromise.then(value => {
             globalThis.promiseResult = value;
+            globalThis.promiseFulfillmentCount += 1;
           });
           undefined;
           """,
@@ -144,7 +146,133 @@ public sealed class JavaScriptPromiseTests
           "globalThis.promiseResult",
           "promise-second-settlement-result.js"
       );
+      using var fulfillmentCount = fixture.Evaluate(
+          "globalThis.promiseFulfillmentCount",
+          "promise-second-settlement-count.js"
+      );
       Assert.Equal("first", result.AsString());
+      Assert.Equal(1, fulfillmentCount.AsDouble());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void ResolveThenRejectInvokesThenOnceAndDoesNotInvokeCatch()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      using var promise = runtime.CreatePromise();
+      using var promiseValue = promise.AsValue();
+      global.SetProperty("managedPromise", promiseValue);
+
+      using var setup = fixture.Evaluate(
+          """
+          globalThis.promiseResult = "";
+          globalThis.promiseFulfillmentCount = 0;
+          globalThis.promiseRejectionCount = 0;
+          globalThis.managedPromise.then(value => {
+            globalThis.promiseResult = value;
+            globalThis.promiseFulfillmentCount += 1;
+          });
+          globalThis.managedPromise.catch(() => {
+            globalThis.promiseRejectionCount += 1;
+          });
+          undefined;
+          """,
+          "promise-resolve-then-reject-setup.js"
+      );
+
+      using var value = runtime.CreateString("resolved");
+      using var reason = runtime.CreateString("rejected");
+      promise.Resolve(value);
+      promise.Reject(reason);
+      return true;
+    });
+
+    fixture.WaitUntilIdle();
+
+    fixture.Runtime.Execute(_ =>
+    {
+      using var result = fixture.Evaluate(
+          "globalThis.promiseResult",
+          "promise-resolve-then-reject-result.js"
+      );
+      using var fulfillmentCount = fixture.Evaluate(
+          "globalThis.promiseFulfillmentCount",
+          "promise-resolve-then-reject-fulfillment-count.js"
+      );
+      using var rejectionCount = fixture.Evaluate(
+          "globalThis.promiseRejectionCount",
+          "promise-resolve-then-reject-rejection-count.js"
+      );
+      Assert.Equal("resolved", result.AsString());
+      Assert.Equal(1, fulfillmentCount.AsDouble());
+      Assert.Equal(0, rejectionCount.AsDouble());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void RejectThenResolveInvokesCatchOnceWithFirstReason()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      using var promise = runtime.CreatePromise();
+      using var promiseValue = promise.AsValue();
+      global.SetProperty("managedPromise", promiseValue);
+
+      using var setup = fixture.Evaluate(
+          """
+          globalThis.rejectionReason = "";
+          globalThis.promiseFulfillmentCount = 0;
+          globalThis.promiseRejectionCount = 0;
+          globalThis.managedPromise.then(
+            () => {
+              globalThis.promiseFulfillmentCount += 1;
+            },
+            () => {}
+          );
+          globalThis.managedPromise.catch(reason => {
+            globalThis.rejectionReason = reason;
+            globalThis.promiseRejectionCount += 1;
+          });
+          undefined;
+          """,
+          "promise-reject-then-resolve-setup.js"
+      );
+
+      using var reason = runtime.CreateString("rejected");
+      using var value = runtime.CreateString("resolved");
+      promise.Reject(reason);
+      promise.Resolve(value);
+      return true;
+    });
+
+    fixture.WaitUntilIdle();
+
+    fixture.Runtime.Execute(_ =>
+    {
+      using var reason = fixture.Evaluate(
+          "globalThis.rejectionReason",
+          "promise-reject-then-resolve-reason.js"
+      );
+      using var fulfillmentCount = fixture.Evaluate(
+          "globalThis.promiseFulfillmentCount",
+          "promise-reject-then-resolve-fulfillment-count.js"
+      );
+      using var rejectionCount = fixture.Evaluate(
+          "globalThis.promiseRejectionCount",
+          "promise-reject-then-resolve-rejection-count.js"
+      );
+      Assert.Equal("rejected", reason.AsString());
+      Assert.Equal(0, fulfillmentCount.AsDouble());
+      Assert.Equal(1, rejectionCount.AsDouble());
       return true;
     });
   }

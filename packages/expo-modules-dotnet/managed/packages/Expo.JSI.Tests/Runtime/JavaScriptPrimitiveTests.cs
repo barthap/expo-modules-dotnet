@@ -103,7 +103,19 @@ public sealed class JavaScriptPrimitiveTests
   [InlineData("hello")]
   [InlineData("Zoë")]
   [InlineData("a\0b")]
-  public void CreateStringRoundTripsStrictUtf8(string expected)
+  [InlineData("\0")]
+  [InlineData("\u007F")]
+  [InlineData("\u0080")]
+  [InlineData("\u07FF")]
+  [InlineData("\u0800")]
+  [InlineData("\uD7FF")]
+  [InlineData("\uE000")]
+  [InlineData("\uFFFD")]
+  [InlineData("\uFFFF")]
+  [InlineData("\U00010000")]
+  [InlineData("\U0010FFFF")]
+  [InlineData("ASCII \u0080 \u0800 \U00010000 \U0010FFFF")]
+  public void CreateStringRoundTripsUtf8Boundaries(string expected)
   {
     using var fixture = HermesRuntimeFixture.Create();
 
@@ -114,6 +126,11 @@ public sealed class JavaScriptPrimitiveTests
       return true;
     });
   }
+
+  // Invalid UTF-8 byte sequences cannot be covered through the managed wrapper today:
+  // JavaScriptRuntime.CreateString and ExpoJsiApi.CreateStringValue both accept only string,
+  // and the raw create-string ABI function pointer is private to ExpoJsiApi. Exercising invalid
+  // bytes would require new managed or ABI testability surface, which this test suite avoids.
 
   [Fact]
   public void DisposingOwnedValueIncrementsReleaseCounter()
