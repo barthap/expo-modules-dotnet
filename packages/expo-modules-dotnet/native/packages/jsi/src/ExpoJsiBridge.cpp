@@ -763,11 +763,11 @@ expo_jsi_value_result createString(expo_jsi_runtime_handle runtime,
   }
 
   try {
-    const char *text = length == 0 ? "" : reinterpret_cast<const char *>(data);
-    auto value =
-      jsi::Value(runtimeHandle->runtime(),
-                 jsi::String::createFromUtf8(runtimeHandle->runtime(),
-                                             std::string(text, static_cast<size_t>(length))));
+    static constexpr uint8_t emptyStringData = 0;
+    const uint8_t *utf8 = length == 0 ? &emptyStringData : data;
+    auto value = jsi::Value(
+      runtimeHandle->runtime(),
+      jsi::String::createFromUtf8(runtimeHandle->runtime(), utf8, static_cast<size_t>(length)));
     return makeValueResult(expo::dotnet::ValueHandle::owned(std::move(value)));
   } catch (const std::exception &ex) {
     return makeErrorResult(43, ex.what());
@@ -1442,6 +1442,9 @@ expo_jsi_error objectSetProperty(expo_jsi_runtime_handle runtime,
   if (name == nullptr || name_len < 0) {
     return makeError(23, "Property name is invalid.");
   }
+  if (!isValidUtf8(reinterpret_cast<const uint8_t *>(name), name_len)) {
+    return makeError(139, "Property name is not valid UTF-8.");
+  }
   if (value == nullptr) {
     return makeError(24, "Value handle is null.");
   }
@@ -1474,6 +1477,9 @@ expo_jsi_value_result objectGetProperty(expo_jsi_runtime_handle runtime,
   }
   if (name == nullptr || name_len < 0) {
     return makeErrorResult(51, "Property name is invalid.");
+  }
+  if (!isValidUtf8(reinterpret_cast<const uint8_t *>(name), name_len)) {
+    return makeErrorResult(140, "Property name is not valid UTF-8.");
   }
 
   try {
@@ -1907,6 +1913,10 @@ public:
       if (propertyName.length < 0 || (propertyName.length > 0 && propertyName.data == nullptr)) {
         throw jsi::JSError(runtime, "Managed host object returned an invalid property name.");
       }
+      if (!isValidUtf8(propertyName.data, propertyName.length)) {
+        throw jsi::JSError(runtime,
+                           "Managed host object returned a property name that is not valid UTF-8.");
+      }
       names.push_back(jsi::PropNameID::forUtf8(
         runtime, propertyName.data, static_cast<size_t>(propertyName.length)));
     }
@@ -2000,6 +2010,9 @@ expo_jsi_value_result createHostFunction(
   }
   if (name == nullptr || name_len < 0) {
     return makeErrorResult(28, "Host function name is invalid.");
+  }
+  if (!isValidUtf8(reinterpret_cast<const uint8_t *>(name), name_len)) {
+    return makeErrorResult(141, "Host function name is not valid UTF-8.");
   }
 
   try {

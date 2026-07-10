@@ -100,6 +100,7 @@ public sealed class JavaScriptPrimitiveTests
   }
 
   [Theory]
+  [InlineData("")]
   [InlineData("hello")]
   [InlineData("Zoë")]
   [InlineData("a\0b")]

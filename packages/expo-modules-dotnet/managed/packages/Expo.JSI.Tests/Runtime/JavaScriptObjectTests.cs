@@ -5,6 +5,19 @@ namespace Expo.JSI.Tests.Runtime;
 
 public sealed class JavaScriptObjectTests
 {
+  public static TheoryData<byte[]> InvalidUtf8PropertyNames =>
+      new()
+      {
+        new byte[] { 0xC0, 0x80 },
+        new byte[] { 0xE0, 0x80, 0x80 },
+        new byte[] { 0xED, 0xA0, 0x80 },
+        new byte[] { 0xF4, 0x90, 0x80, 0x80 },
+        new byte[] { 0x80 },
+        new byte[] { 0xE2, 0x82 },
+        new byte[] { 0xC1, 0xBF },
+        new byte[] { 0xF5, 0x80, 0x80, 0x80 },
+      };
+
   [Fact]
   public void GetPropertyReadsValueSetFromManagedObject()
   {
@@ -156,6 +169,49 @@ public sealed class JavaScriptObjectTests
       using var actual = target.GetProperty("zażółć");
       Assert.Equal(JavaScriptValueKind.String, actual.Kind);
       Assert.Equal("ok", actual.AsString());
+      return true;
+    });
+  }
+
+  [Theory]
+  [MemberData(nameof(InvalidUtf8PropertyNames))]
+  public void SetPropertyRejectsInvalidUtf8Name(byte[] name)
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var target = runtime.CreateObject();
+      using var value = runtime.CreateNumber(1);
+
+      var error = fixture.SetObjectPropertyRaw(target, name, value);
+      var message = error.GetMessageAndRelease();
+
+      Assert.NotEqual(0, error.Code);
+      Assert.Contains("not valid UTF-8", message, StringComparison.Ordinal);
+      return true;
+    });
+  }
+
+  [Theory]
+  [MemberData(nameof(InvalidUtf8PropertyNames))]
+  public void GetPropertyRejectsInvalidUtf8Name(byte[] name)
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var target = runtime.CreateObject();
+      var result = fixture.GetObjectPropertyRaw(target, name);
+
+      if (result.IsOk)
+      {
+        using var unexpectedValue = runtime.FromOwnedValueHandle(result.Value);
+        Assert.False(result.IsOk, "Invalid UTF-8 unexpectedly produced a property value.");
+      }
+
+      var message = result.Error.GetMessageAndRelease();
+      Assert.Contains("not valid UTF-8", message, StringComparison.Ordinal);
       return true;
     });
   }

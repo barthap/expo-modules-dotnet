@@ -1,12 +1,23 @@
+using Expo.JSI.Interop;
+
 namespace Expo.JSI.Tests.Fixtures;
 
-public sealed class HermesRuntimeFixture : IDisposable
+public sealed unsafe class HermesRuntimeFixture : IDisposable
 {
+  private readonly ExpoJsiApi* api;
+  private readonly nint runtimeHandle;
   private nint testHostRuntime;
 
-  private HermesRuntimeFixture(JavaScriptRuntime runtime, nint testHostRuntime)
+  private HermesRuntimeFixture(
+      JavaScriptRuntime runtime,
+      ExpoJsiApi* api,
+      nint runtimeHandle,
+      nint testHostRuntime
+  )
   {
     Runtime = runtime;
+    this.api = api;
+    this.runtimeHandle = runtimeHandle;
     this.testHostRuntime = testHostRuntime;
     TestRuntime = new JavaScriptTestRuntime(runtime, testHostRuntime);
   }
@@ -29,7 +40,31 @@ public sealed class HermesRuntimeFixture : IDisposable
     }
 
     var runtime = JavaScriptRuntime.FromNative(result.Api, result.Runtime);
-    return new HermesRuntimeFixture(runtime, result.TestHostRuntime);
+    return new HermesRuntimeFixture(
+        runtime,
+        (ExpoJsiApi*)result.Api,
+        result.Runtime,
+        result.TestHostRuntime
+    );
+  }
+
+  internal ExpoJsiError SetObjectPropertyRaw(
+      JavaScriptObject target,
+      ReadOnlySpan<byte> name,
+      JavaScriptValue value
+  )
+  {
+    using var targetValue = target.AsValue();
+    return api->SetObjectProperty(runtimeHandle, targetValue.Handle, name, value.Handle);
+  }
+
+  internal ExpoJsiValueResult GetObjectPropertyRaw(
+      JavaScriptObject target,
+      ReadOnlySpan<byte> name
+  )
+  {
+    using var targetValue = target.AsValue();
+    return api->GetObjectProperty(runtimeHandle, targetValue.Handle, name);
   }
 
   public void ResetCounters()

@@ -224,12 +224,23 @@ frames.
 
 The ABI SHALL represent strings as UTF-8 pointer plus byte length and SHALL
 provide a release callback for owned native string buffers.
+Native SHALL validate managed-provided string, property-name, and host-function-name
+byte spans as strict UTF-8 before constructing `jsi::String` or `jsi::PropNameID`
+values.
 
 #### Scenario: Managed code reads a JavaScript string
 - **GIVEN** native returns `expo_jsi_string_result`
 - **WHEN** managed code converts it to a C# `string`
 - **THEN** managed code copies the UTF-8 bytes and releases the native buffer
   through the provided callback
+
+#### Scenario: Managed code supplies invalid UTF-8
+
+- **GIVEN** managed code supplies invalid UTF-8 bytes for a JavaScript string,
+  property name, or host-function name
+- **WHEN** native receives the bytes through the ABI or a HostObject callback
+- **THEN** native SHALL reject them before constructing the corresponding JSI
+  string or property-name value
 
 ### Requirement: ABI Version And Size Validation
 
