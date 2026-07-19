@@ -303,15 +303,31 @@ the loader choice SHALL NOT change the C ABI shape passed into managed code.
 - **AND** call the resolved entry point with the same `expo_jsi_api` table and
   opaque runtime handle shape used by macOS
 
-#### Scenario: Windows bridge compiles against the app's React Native header lane
-- **GIVEN** a Windows app resolves `react-native-windows` and does not set
-  `ReactNativeDir` explicitly
-- **WHEN** `ExpoModulesDotnet` compiles the common JSI bridge for either
-  HostFXR or NativeAOT
-- **THEN** it SHALL resolve `ReactNativeDir` as the sibling `react-native`
-  package of `ReactNativeWindowsDir`
-- **AND** version-gated bridge code SHALL see the same React Native header lane
-  as the React Native Windows JSI headers
+#### Scenario: ArrayBuffer support follows the selected JSI declaration
+- **GIVEN** a native target selects a `jsi::ArrayBuffer` declaration that
+  provides `detached(jsi::Runtime&)` and `tryGetMutableBuffer(jsi::Runtime&)`
+- **WHEN** the common JSI bridge compiles
+- **THEN** it SHALL use those APIs for detachment validation and MutableBuffer
+  access
+- **AND** it SHALL not use a React Native version macro to select that behavior
+
+#### Scenario: Older JSI declarations omit ArrayBuffer extensions
+- **GIVEN** a native target selects a `jsi::ArrayBuffer` declaration without
+  `detached(jsi::Runtime&)` or `tryGetMutableBuffer(jsi::Runtime&)`
+- **WHEN** the common JSI bridge compiles
+- **THEN** it SHALL compile without referring to the missing member
+- **AND** MutableBuffer discovery SHALL report no backing MutableBuffer
+- **AND** detachment probing SHALL treat the buffer as not introspectable
+
+#### Scenario: Windows bridge defers React Native core paths to RNW
+- **GIVEN** a Windows app builds `ExpoModulesDotnet` through RNW property
+  sheets
+- **WHEN** the adapter compiles for either HostFXR or NativeAOT
+- **THEN** the adapter project SHALL not derive `ReactNativeDir` from its own
+  package directory or assume it is a sibling of `react-native-windows`
+- **AND** it SHALL not add an independent `ReactCommon` include root
+- **AND** imported RNW property sheets SHALL provide the JSI and CallInvoker
+  include paths used by the adapter
 
 #### Scenario: Desktop NativeAOT entry point uses the same registration ABI
 - **GIVEN** `apps/desktop-app` selects the `nativeaot` loader and stages a

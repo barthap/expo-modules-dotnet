@@ -15,25 +15,13 @@
 #include <unordered_map>
 #include <vector>
 
-#if __has_include(<cxxreact/ReactNativeVersion.h>)
-#include <cxxreact/ReactNativeVersion.h>
-#endif
-
+#include "ArrayBufferCapabilities.h"
 #include "ArrayBufferHandles.h"
 #include "ExpoJsiBridgeTestHooks.h"
 #include "JsiRuntimeConnector.h"
 #include "RuntimeState.h"
 
 namespace expo::dotnet {
-
-// RN 0.86 introduced ArrayBuffer detached-state and MutableBuffer APIs. Keep this gate in
-// lockstep with ExpoModulesJSI's JSIUtils.h so older RN headers never see those members.
-#if defined(REACT_NATIVE_VERSION_MAJOR) && defined(REACT_NATIVE_VERSION_MINOR) &&                  \
-  (REACT_NATIVE_VERSION_MAJOR > 0 || REACT_NATIVE_VERSION_MINOR >= 86)
-#define EXPO_DOTNET_HAS_ARRAY_BUFFER_INTROSPECTION 1
-#else
-#define EXPO_DOTNET_HAS_ARRAY_BUFFER_INTROSPECTION 0
-#endif
 
 // Opaque ABI owner of shared RuntimeState. The host owns the connector and its
 // JSI runtime; RuntimeState only borrows that connector until invalidation.
@@ -792,27 +780,6 @@ void validateArrayBufferSnapshot(bool detached, int32_t currentLength, int32_t c
   }
 }
 
-bool isArrayBufferDetached(jsi::Runtime &runtime, const jsi::ArrayBuffer &arrayBuffer)
-{
-#if EXPO_DOTNET_HAS_ARRAY_BUFFER_INTROSPECTION
-  try {
-    return arrayBuffer.detached(runtime);
-  } catch (const std::exception &error) {
-    // The pinned Hermes test runtime exposes the JSI method but reports that detachment is not
-    // implemented. Treat that capability gap as "not detached"; engines that support the check
-    // still get the strict validation required by the bridge contract.
-    if (std::string_view(error.what()).find("not supported") != std::string_view::npos) {
-      return false;
-    }
-    throw;
-  }
-#else
-  (void)runtime;
-  (void)arrayBuffer;
-  return false;
-#endif
-}
-
 void requireSameRuntime(const std::shared_ptr<expo::dotnet::RuntimeState> &expected,
                         const expo::dotnet::RuntimeHandle *actual)
 {
@@ -1297,21 +1264,17 @@ expo_jsi_mutable_buffer_result tryGetMutableBuffer(expo_jsi_runtime_handle runti
   try {
     auto &jsRuntime = runtimeHandle->runtime();
     auto arrayBuffer = checkedArrayBuffer(jsRuntime, value);
-#if EXPO_DOTNET_HAS_ARRAY_BUFFER_INTROSPECTION
-    if (isArrayBufferDetached(jsRuntime, arrayBuffer)) {
+    if (expo::dotnet::detail::isArrayBufferDetached(jsRuntime, arrayBuffer)) {
       return makeMutableBufferErrorResult(140, "ArrayBuffer is detached.");
     }
     auto byteLength = checkedArrayBufferLength(arrayBuffer.size(jsRuntime));
-    auto mutableBuffer = arrayBuffer.tryGetMutableBuffer(jsRuntime);
+    auto mutableBuffer =
+      expo::dotnet::detail::tryGetArrayBufferMutableBuffer(jsRuntime, arrayBuffer);
     if (mutableBuffer == nullptr) {
       return makeMutableBufferNotFoundResult(0);
     }
     return makeMutableBufferResult(
       std::make_unique<expo::dotnet::MutableBufferHandle>(std::move(mutableBuffer)), byteLength);
-#else
-    (void)arrayBuffer;
-    return makeMutableBufferNotFoundResult(0);
-#endif
   } catch (const std::exception &ex) {
     return makeMutableBufferErrorResult(141, ex.what());
   } catch (...) {
@@ -1331,15 +1294,13 @@ expo_jsi_array_buffer_result retainArrayBuffer(expo_jsi_runtime_handle runtime,
   try {
     auto &jsRuntime = runtimeHandle->runtime();
     auto arrayBuffer = checkedArrayBuffer(jsRuntime, value);
-    if (isArrayBufferDetached(jsRuntime, arrayBuffer)) {
+    if (expo::dotnet::detail::isArrayBufferDetached(jsRuntime, arrayBuffer)) {
       return makeArrayBufferErrorResult(143, "ArrayBuffer is detached.");
     }
     auto byteLength = checkedArrayBufferLength(arrayBuffer.size(jsRuntime));
-#if EXPO_DOTNET_HAS_ARRAY_BUFFER_INTROSPECTION
-    if (arrayBuffer.tryGetMutableBuffer(jsRuntime) != nullptr) {
+    if (expo::dotnet::detail::isArrayBufferMutableBufferBacked(jsRuntime, arrayBuffer)) {
       return makeArrayBufferErrorResult(144, "ArrayBuffer has MutableBuffer-backed storage.");
     }
-#endif
     auto state = runtimeHandle->state();
     auto entry = std::make_shared<expo::dotnet::ArrayBufferEntry>(
       state,
@@ -1386,14 +1347,15 @@ expo_jsi_byte_span_result getArrayBufferBytes(expo_jsi_runtime_handle runtime,
     requireSameRuntime(handle->state(), runtimeHandle);
     auto &jsRuntime = runtimeHandle->runtime();
     auto &arrayBuffer = handle->entry()->buffer();
-    if (isArrayBufferDetached(jsRuntime, arrayBuffer)) {
+    if (expo::dotnet::detail::isArrayBufferDetached(jsRuntime, arrayBuffer)) {
       return makeByteSpanErrorResult(151, "ArrayBuffer is detached.");
     }
     auto length = checkedArrayBufferLength(arrayBuffer.size(jsRuntime));
     try {
-      validateArrayBufferSnapshot(isArrayBufferDetached(jsRuntime, arrayBuffer),
-                                  length,
-                                  checkedArrayBufferLength(handle->entry()->byteLength()));
+      validateArrayBufferSnapshot(
+        expo::dotnet::detail::isArrayBufferDetached(jsRuntime, arrayBuffer),
+        length,
+        checkedArrayBufferLength(handle->entry()->byteLength()));
     } catch (const std::invalid_argument &error) {
       return makeByteSpanErrorResult(152, error.what());
     }
@@ -1423,9 +1385,10 @@ expo_jsi_value_result arrayBufferAsValue(expo_jsi_runtime_handle runtime,
     auto &arrayBuffer = handle->entry()->buffer();
     auto length = checkedArrayBufferLength(arrayBuffer.size(jsRuntime));
     try {
-      validateArrayBufferSnapshot(isArrayBufferDetached(jsRuntime, arrayBuffer),
-                                  length,
-                                  checkedArrayBufferLength(handle->entry()->byteLength()));
+      validateArrayBufferSnapshot(
+        expo::dotnet::detail::isArrayBufferDetached(jsRuntime, arrayBuffer),
+        length,
+        checkedArrayBufferLength(handle->entry()->byteLength()));
     } catch (const std::invalid_argument &error) {
       return makeErrorResult(156, error.what());
     }
