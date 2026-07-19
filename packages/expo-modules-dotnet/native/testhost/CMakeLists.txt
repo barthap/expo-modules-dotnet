@@ -26,10 +26,11 @@ target_include_directories(
           "${ADAPTER_ROOT}/native/packages/jsi/src"
           "${CMAKE_CURRENT_LIST_DIR}/include")
 
-# The pinned Hermes prebuilt exposes the RN 0.86 ArrayBuffer extensions even though it is not
-# built through a React Native target with ReactNativeVersion.h.
+# The pinned Hermes prebuilt exposes the RN 0.86 ArrayBuffer extensions even
+# though it is not built through a React Native target with
+# ReactNativeVersion.h.
 target_compile_definitions(
-  expo_jsi_testhost
-  PRIVATE REACT_NATIVE_VERSION_MAJOR=0 REACT_NATIVE_VERSION_MINOR=86)
+  expo_jsi_testhost PRIVATE REACT_NATIVE_VERSION_MAJOR=0
+                            REACT_NATIVE_VERSION_MINOR=86)
 
 expo_configure_hermes_target(expo_jsi_testhost ROOT "${HERMES_PREBUILT_ROOT}")

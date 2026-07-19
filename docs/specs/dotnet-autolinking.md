@@ -220,21 +220,24 @@ idempotently add the helper `require` and
 - **AND** the pbxproj SHALL contain a `[CP-User] Link Expo .NET Modules`
   phase with no machine-local absolute paths
 
-### Requirement: Android Gradle Hook Runs Before App Prebuild
+### Requirement: Android Gradle Hook Runs Before Native Library Merges
 `packages/expo-modules-dotnet/android/build.gradle` SHALL expose an
 `expoDotnetLink` task that runs the autolinking CLI with
 `link --platform android --project-root <appRoot>`. The app root SHALL be
 resolved from the Gradle project layout and SHALL NOT use hardcoded machine
-paths. The task SHALL run before the app's native `preBuild` task. Loader
-selection SHALL come from a Gradle property or the `EXPO_DOTNET_LOADER`
-environment variable, and build configuration SHALL map from the Gradle build
-type to the CLI `--configuration` value.
+paths. The task SHALL declare the loader-owned
+`android/app/src/main/jniLibs/arm64-v8a` staging directory as an output and
+run before every application `merge*JniLibFolders` and `merge*NativeLibs` task
+that consumes that directory. Loader selection SHALL come from a Gradle
+property or the `EXPO_DOTNET_LOADER` environment variable, and build
+configuration SHALL map from the Gradle build type to the CLI `--configuration`
+value.
 
 #### Scenario: Gradle build stages the aggregator
 - **GIVEN** `./gradlew :app:assembleDebug` runs in `apps/mobile-app/android`
-- **WHEN** `:app:preBuild` executes
+- **WHEN** the JNI-folder and native-library merge tasks execute
 - **THEN** `libExpoDotnetHost.so` SHALL be present in the app's `jniLibs`
-- **AND** the APK SHALL package the staged native library
+- **AND** the APK SHALL package the current staged native library
 
 ### Requirement: Mobile Loaders Use The Aggregator
 The iOS installer SHALL `dlopen` `libExpoDotnetHost.dylib` from the app
