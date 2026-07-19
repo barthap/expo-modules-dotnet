@@ -303,6 +303,16 @@ the loader choice SHALL NOT change the C ABI shape passed into managed code.
 - **AND** call the resolved entry point with the same `expo_jsi_api` table and
   opaque runtime handle shape used by macOS
 
+#### Scenario: Windows bridge compiles against the app's React Native header lane
+- **GIVEN** a Windows app resolves `react-native-windows` and does not set
+  `ReactNativeDir` explicitly
+- **WHEN** `ExpoModulesDotnet` compiles the common JSI bridge for either
+  HostFXR or NativeAOT
+- **THEN** it SHALL resolve `ReactNativeDir` as the sibling `react-native`
+  package of `ReactNativeWindowsDir`
+- **AND** version-gated bridge code SHALL see the same React Native header lane
+  as the React Native Windows JSI headers
+
 #### Scenario: Desktop NativeAOT entry point uses the same registration ABI
 - **GIVEN** `apps/desktop-app` selects the `nativeaot` loader and stages a
   platform `ExpoDotnetHost` native library

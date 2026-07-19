@@ -18,4 +18,25 @@ describe('Windows MSBuild autolinking target', () => {
 
     expect(target).toContain('<Target Name="ExpoDotnetLink" BeforeTargets="PrepareForBuild">');
   });
+
+  it('resolves React Native beside the consuming React Native Windows package', () => {
+    const projectPath = path.resolve(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'expo-modules-dotnet',
+      'windows',
+      'ExpoModulesDotnet',
+      'ExpoModulesDotnet.vcxproj'
+    );
+    const project = fs.readFileSync(projectPath, 'utf8');
+
+    expect(project).toContain(
+      "<ReactNativeDir Condition=\"'$(ReactNativeDir)' == ''\">$(ReactNativeWindowsDir)..\\react-native\\</ReactNativeDir>"
+    );
+    expect(project).not.toContain(
+      "GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), 'node_modules\\react-native\\package.json')"
+    );
+  });
 });
