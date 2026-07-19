@@ -9,7 +9,8 @@
 namespace expo::dotnet::detail {
 
 template <typename Buffer>
-bool isArrayBufferDetached(facebook::jsi::Runtime &runtime, const Buffer &arrayBuffer)
+bool isArrayBufferDetached([[maybe_unused]] facebook::jsi::Runtime &runtime,
+                           [[maybe_unused]] const Buffer &arrayBuffer)
 {
   if constexpr (requires(const Buffer &candidate, facebook::jsi::Runtime &candidateRuntime) {
                   candidate.detached(candidateRuntime);
@@ -26,22 +27,18 @@ bool isArrayBufferDetached(facebook::jsi::Runtime &runtime, const Buffer &arrayB
       throw;
     }
   }
-  (void)runtime;
-  (void)arrayBuffer;
   return false;
 }
 
 template <typename Buffer>
 std::shared_ptr<facebook::jsi::MutableBuffer> tryGetArrayBufferMutableBuffer(
-  facebook::jsi::Runtime &runtime, Buffer &arrayBuffer)
+  [[maybe_unused]] facebook::jsi::Runtime &runtime, [[maybe_unused]] Buffer &arrayBuffer)
 {
   if constexpr (requires(Buffer &candidate, facebook::jsi::Runtime &candidateRuntime) {
                   candidate.tryGetMutableBuffer(candidateRuntime);
                 }) {
     return arrayBuffer.tryGetMutableBuffer(runtime);
   }
-  (void)runtime;
-  (void)arrayBuffer;
   return nullptr;
 }
 
