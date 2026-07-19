@@ -269,6 +269,16 @@ options.
   `packages/expo-modules-dotnet/windows`. Lifecycle teardown now follows
   `DotnetRuntimeContext`; remaining production work includes RNW CLI launch
   reliability and VS/PDB locking issues.
+- **P2 — Windows `ReactNativeDir` resolution**: The adapter currently relies
+  on RNW property sheets for the JSI and CallInvoker include paths. Future
+  Windows adapter work that needs `ReactNativeDir` must resolve the consuming
+  app's selected `react-native` package, not walk from the physical package
+  directory or assume it is a sibling of `react-native-windows`. Design an
+  app-scoped Node resolver/config-plugin or an RNW target-provided property
+  that works for pnpm monorepos, independently versioned desktop/mobile apps,
+  and direct MSBuild invocations. Context: commit
+  `3c64fb4d12466f281459672dda06cc519062b319` used the sibling-path workaround
+  that must not become the general resolver.
 - **P3 — View adapters**: Platform-specific native view creation, prop mapping,
   event routing. Platform-gated — no view concepts in the portable core.
 - **P3 — NativeAOT for iOS and Android**: The current example app lives under
