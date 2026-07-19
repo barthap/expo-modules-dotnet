@@ -5,3 +5,5 @@ global using ExpoJsiRuntimeHandle = System.IntPtr;
 global using ExpoJsiValueHandle = System.IntPtr;
 global using ExpoJsiPromiseHandle = System.IntPtr;
 global using ExpoJsiArgumentsHandle = System.IntPtr;
+global using ExpoJsiArrayBufferHandle = System.IntPtr;
+global using ExpoJsiMutableBufferHandle = System.IntPtr;

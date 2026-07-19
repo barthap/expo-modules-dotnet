@@ -116,6 +116,26 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
   /// </summary>
   public bool IsFunction => Kind == JavaScriptValueKind.Function;
 
+  /// <summary>Gets whether this value is a JavaScript ArrayBuffer.</summary>
+  public bool IsArrayBuffer => Kind == JavaScriptValueKind.ArrayBuffer;
+
+  /// <summary>Retains this value as an owned ArrayBuffer wrapper.</summary>
+  public JavaScriptArrayBuffer AsArrayBuffer()
+  {
+    ThrowIfDisposed();
+    JavaScriptHandleScope.CurrentFor(context);
+    if (!IsArrayBuffer)
+    {
+      throw new InvalidOperationException("Value is not a JavaScript ArrayBuffer.");
+    }
+    var result = Inner.RetainArrayBuffer();
+    if (!result.IsOk)
+    {
+      JsiContext.ThrowNativeError(result.Error, "Failed to retain JavaScript ArrayBuffer.");
+    }
+    return new JavaScriptArrayBuffer(context, result.ArrayBuffer, result.ByteLength);
+  }
+
   /// <summary>
   /// Converts this value to an owned JavaScript object wrapper.
   /// </summary>
@@ -212,14 +232,14 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
   /// </summary>
   public void Dispose()
   {
-    if (handle != 0)
+    var value = Interlocked.Exchange(ref handle, IntPtr.Zero);
+    if (value != 0)
     {
       unsafe
       {
-        context.Api->ReleaseValueHandle(context.RuntimeHandle, handle);
+        context.Api->ReleaseValueHandle(context.RuntimeHandle, value);
       }
     }
-    handle = 0;
   }
 
   /// <summary>
@@ -231,9 +251,8 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
   /// </remarks>
   public ExpoJsiValueHandle Detach()
   {
-    ThrowIfDisposed();
-    var detached = handle;
-    handle = 0;
+    var detached = Interlocked.Exchange(ref handle, IntPtr.Zero);
+    ObjectDisposedException.ThrowIf(detached == 0, this);
     return detached;
   }
 

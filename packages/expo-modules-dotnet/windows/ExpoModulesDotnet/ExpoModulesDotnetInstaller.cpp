@@ -163,9 +163,6 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
 
       tornDown = true;
       registered = false;
-      if (connector != nullptr) {
-        connector->invalidate();
-      }
       connectorToRelease = std::move(connector);
       managedRuntimeContextToTeardown = managedRuntimeContext;
       managedRuntimeContext = nullptr;
@@ -177,6 +174,12 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
       destroyedSubscription = nullptr;
     }
 
+    if (runtimeHandleToRelease != nullptr) {
+      expo::dotnet::prepareRuntimeHandleForInvalidation(runtimeHandleToRelease);
+    }
+    if (connectorToRelease != nullptr) {
+      connectorToRelease->invalidate();
+    }
     if (teardownRuntimeContextFn != nullptr && managedRuntimeContextToTeardown != nullptr) {
       teardownRuntimeContextFn(managedRuntimeContextToTeardown);
     }

@@ -8,12 +8,16 @@ class RuntimeHandle;
 class ValueHandle;
 class PromiseHandle;
 class ArgumentsHandle;
+class ArrayBufferHandle;
+class MutableBufferHandle;
 } // namespace expo::dotnet
 
 using expo_jsi_runtime_t = expo::dotnet::RuntimeHandle;
 using expo_jsi_value_t = expo::dotnet::ValueHandle;
 using expo_jsi_promise_t = expo::dotnet::PromiseHandle;
 using expo_jsi_arguments_t = expo::dotnet::ArgumentsHandle;
+using expo_jsi_array_buffer_t = expo::dotnet::ArrayBufferHandle;
+using expo_jsi_mutable_buffer_t = expo::dotnet::MutableBufferHandle;
 
 extern "C" {
 
@@ -21,11 +25,15 @@ typedef expo_jsi_runtime_t *expo_jsi_runtime_handle;
 typedef expo_jsi_value_t *expo_jsi_value_handle;
 typedef expo_jsi_promise_t *expo_jsi_promise_handle;
 typedef expo_jsi_arguments_t *expo_jsi_arguments_handle;
+typedef expo_jsi_array_buffer_t *expo_jsi_array_buffer_handle;
+typedef expo_jsi_mutable_buffer_t *expo_jsi_mutable_buffer_handle;
 #else
 typedef struct expo_jsi_runtime_t *expo_jsi_runtime_handle;
 typedef struct expo_jsi_value_t *expo_jsi_value_handle;
 typedef struct expo_jsi_promise_t *expo_jsi_promise_handle;
 typedef struct expo_jsi_arguments_t *expo_jsi_arguments_handle;
+typedef struct expo_jsi_array_buffer_t *expo_jsi_array_buffer_handle;
+typedef struct expo_jsi_mutable_buffer_t *expo_jsi_mutable_buffer_handle;
 #endif
 
 typedef enum expo_jsi_value_kind {
@@ -106,6 +114,28 @@ typedef struct expo_jsi_property_names_result {
   expo_jsi_release_property_names_fn release;
   expo_jsi_error error;
 } expo_jsi_property_names_result;
+
+typedef struct expo_jsi_array_buffer_result {
+  int32_t ok;
+  expo_jsi_array_buffer_handle array_buffer;
+  int32_t byte_length;
+  expo_jsi_error error;
+} expo_jsi_array_buffer_result;
+
+typedef struct expo_jsi_mutable_buffer_result {
+  int32_t ok;
+  int32_t found;
+  expo_jsi_mutable_buffer_handle mutable_buffer;
+  int32_t byte_length;
+  expo_jsi_error error;
+} expo_jsi_mutable_buffer_result;
+
+typedef struct expo_jsi_byte_span_result {
+  int32_t ok;
+  uint8_t *data;
+  int32_t length;
+  expo_jsi_error error;
+} expo_jsi_byte_span_result;
 
 // NativeState release callbacks may run during JavaScript object destruction,
 // entry replacement, explicit clear, or runtime teardown. They must not throw,
@@ -349,6 +379,39 @@ typedef uint8_t (*expo_jsi_strict_equals_fn)(expo_jsi_runtime_handle runtime,
                                              expo_jsi_value_handle right,
                                              expo_jsi_error *error);
 
+typedef expo_jsi_array_buffer_result (*expo_jsi_array_buffer_retain_fn)(
+  expo_jsi_runtime_handle runtime, expo_jsi_value_handle value);
+
+typedef expo_jsi_array_buffer_result (*expo_jsi_array_buffer_clone_handle_fn)(
+  expo_jsi_array_buffer_handle array_buffer);
+
+typedef expo_jsi_byte_span_result (*expo_jsi_array_buffer_get_bytes_fn)(
+  expo_jsi_runtime_handle runtime, expo_jsi_array_buffer_handle array_buffer);
+
+typedef expo_jsi_value_result (*expo_jsi_array_buffer_as_value_fn)(
+  expo_jsi_runtime_handle runtime, expo_jsi_array_buffer_handle array_buffer);
+
+typedef void (*expo_jsi_array_buffer_release_fn)(expo_jsi_array_buffer_handle array_buffer);
+
+typedef expo_jsi_mutable_buffer_result (*expo_jsi_array_buffer_try_get_mutable_buffer_fn)(
+  expo_jsi_runtime_handle runtime, expo_jsi_value_handle value);
+
+typedef expo_jsi_mutable_buffer_result (*expo_jsi_mutable_buffer_allocate_fn)(int32_t length);
+
+typedef expo_jsi_mutable_buffer_result (*expo_jsi_mutable_buffer_copy_fn)(const uint8_t *data,
+                                                                          int32_t length);
+
+typedef expo_jsi_mutable_buffer_result (*expo_jsi_mutable_buffer_clone_handle_fn)(
+  expo_jsi_mutable_buffer_handle mutable_buffer);
+
+typedef expo_jsi_byte_span_result (*expo_jsi_mutable_buffer_get_bytes_fn)(
+  expo_jsi_mutable_buffer_handle mutable_buffer);
+
+typedef expo_jsi_value_result (*expo_jsi_mutable_buffer_as_value_fn)(
+  expo_jsi_runtime_handle runtime, expo_jsi_mutable_buffer_handle mutable_buffer);
+
+typedef void (*expo_jsi_mutable_buffer_release_fn)(expo_jsi_mutable_buffer_handle mutable_buffer);
+
 typedef struct expo_jsi_api {
   uint32_t size;
   uint32_t version;
@@ -398,6 +461,18 @@ typedef struct expo_jsi_api {
   expo_jsi_object_get_native_state_fn object_get_native_state;
   expo_jsi_object_clear_native_state_fn object_clear_native_state;
   expo_jsi_create_host_object_fn create_host_object;
+  expo_jsi_array_buffer_retain_fn array_buffer_retain;
+  expo_jsi_array_buffer_clone_handle_fn array_buffer_clone_handle;
+  expo_jsi_array_buffer_get_bytes_fn array_buffer_get_bytes;
+  expo_jsi_array_buffer_as_value_fn array_buffer_as_value;
+  expo_jsi_array_buffer_release_fn array_buffer_release;
+  expo_jsi_array_buffer_try_get_mutable_buffer_fn array_buffer_try_get_mutable_buffer;
+  expo_jsi_mutable_buffer_allocate_fn mutable_buffer_allocate;
+  expo_jsi_mutable_buffer_copy_fn mutable_buffer_copy;
+  expo_jsi_mutable_buffer_clone_handle_fn mutable_buffer_clone_handle;
+  expo_jsi_mutable_buffer_get_bytes_fn mutable_buffer_get_bytes;
+  expo_jsi_mutable_buffer_as_value_fn mutable_buffer_as_value;
+  expo_jsi_mutable_buffer_release_fn mutable_buffer_release;
 } expo_jsi_api;
 
 #ifdef __cplusplus

@@ -11,6 +11,8 @@ set(REACT_NATIVE_DIR
 add_library(
   expo-modules-dotnet SHARED
   ExpoModulesDotnetBindingsInstaller.cpp
+  ${ADAPTER_ROOT}/native/packages/jsi/src/LongLivedObjectCollection.cpp
+  ${ADAPTER_ROOT}/native/packages/jsi/src/RuntimeState.cpp
   ${ADAPTER_ROOT}/native/packages/jsi/src/ExpoJsiBridge.cpp
   ${ADAPTER_ROOT}/native/packages/jsi/src/ReactNativeRuntimeConnector.cpp)
 

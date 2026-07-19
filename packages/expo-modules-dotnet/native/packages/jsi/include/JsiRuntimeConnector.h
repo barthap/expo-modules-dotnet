@@ -31,6 +31,10 @@ public:
   virtual void executeSync(std::function<void(jsi::Runtime &)> work) = 0;
 };
 
+// Host-owned adapter for the JSI runtime and its executor. Bridge runtime state
+// borrows a connector only until invalidation clears that borrow; the host must
+// invalidate it before destruction so later runtime/executor access fails
+// without dereferencing a destroyed host runtime.
 class JsiRuntimeConnector {
 public:
   virtual ~JsiRuntimeConnector() = default;

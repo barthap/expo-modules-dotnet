@@ -51,6 +51,14 @@ internal readonly unsafe struct JavaScriptValueInner
 
   public bool IsError => Context.Api->IsErrorValue(Context.RuntimeHandle, Handle);
 
+  public bool IsArrayBuffer => Kind == JavaScriptValueKind.ArrayBuffer;
+
+  public ExpoJsiArrayBufferResult RetainArrayBuffer() =>
+    Context.Api->RetainArrayBuffer(Context.RuntimeHandle, Handle);
+
+  public ExpoJsiMutableBufferResult TryGetMutableBuffer() =>
+    Context.Api->TryGetMutableBuffer(Context.RuntimeHandle, Handle);
+
   public ExpoJsiValueHandle AsObject()
   {
     var result = Context.Api->RetainValueAs(

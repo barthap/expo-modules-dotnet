@@ -62,6 +62,8 @@ public sealed unsafe class JavaScriptRuntime
     this.context = context;
   }
 
+  internal JsiContext Context => context;
+
   internal JavaScriptValue FromOwnedValueHandle(ExpoJsiValueHandle valueHandle)
   {
     if (valueHandle == 0)

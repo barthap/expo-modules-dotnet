@@ -7,6 +7,7 @@ internal readonly unsafe struct JsiContext
   public JsiContext(ExpoJsiApi* api, ExpoJsiRuntimeHandle runtimeHandle)
       : this(api, runtimeHandle, new NativeStateRegistry())
   {
+    NativeMutableBufferDispatch.SetDefault(api);
   }
 
   private JsiContext(
@@ -22,6 +23,9 @@ internal readonly unsafe struct JsiContext
   public ExpoJsiApi* Api { get; }
   public ExpoJsiRuntimeHandle RuntimeHandle { get; }
   public NativeStateRegistry NativeStates { get; }
+
+  internal bool IsSameRuntime(JsiContext other) =>
+      Api == other.Api && RuntimeHandle == other.RuntimeHandle;
 
   public void ThrowIfError(ExpoJsiError error, string fallback)
   {

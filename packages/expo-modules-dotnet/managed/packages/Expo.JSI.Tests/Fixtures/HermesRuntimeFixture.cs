@@ -92,6 +92,44 @@ public sealed unsafe class HermesRuntimeFixture : IDisposable
     NativeTestHost.SetSyncExecutionSupported(testHostRuntime, supported);
   }
 
+  public void PauseRuntimeExecutor() => NativeTestHost.PauseRuntimeExecutor(testHostRuntime);
+
+  public void ResumeRuntimeExecutor() => NativeTestHost.ResumeRuntimeExecutor(testHostRuntime);
+
+  public void DropNextRuntimeTask(JavaScriptTaskPriority priority) =>
+      NativeTestHost.DropNextRuntimeTask(testHostRuntime, priority);
+
+  public void WaitUntilRuntimeTaskQueued(JavaScriptTaskPriority priority) =>
+      NativeTestHost.WaitUntilRuntimeTaskQueued(testHostRuntime, priority);
+
+  public void WaitUntilRuntimeTasksQueued(JavaScriptTaskPriority priority, int count) =>
+      NativeTestHost.WaitUntilRuntimeTasksQueued(testHostRuntime, priority, count);
+
+  public void DropQueuedRuntimeTask(JavaScriptTaskPriority priority) =>
+      NativeTestHost.DropQueuedRuntimeTask(testHostRuntime, priority);
+
+  public void ReleaseBridgeRuntimeHandle() =>
+      NativeTestHost.ReleaseBridgeRuntimeHandle(testHostRuntime);
+
+  public void PoisonMutableBufferDispatchForTesting() =>
+      NativeTestHost.PoisonMutableBufferDispatch(testHostRuntime);
+
+  public void PrepareRuntimeForInvalidation() =>
+      NativeTestHost.PrepareRuntimeForInvalidation(testHostRuntime);
+
+  public void ValidateArrayBufferSnapshot(bool detached, int currentLength, int capturedLength) =>
+      NativeTestHost.ValidateArrayBufferSnapshot(
+          testHostRuntime,
+          detached,
+          currentLength,
+          capturedLength
+      );
+
+  public void ValidateArrayBufferLength(ulong length) =>
+      NativeTestHost.ValidateArrayBufferLength(testHostRuntime, length);
+
+  public void InvalidateRuntime() => NativeTestHost.InvalidateRuntime(testHostRuntime);
+
   public JavaScriptValue Evaluate(string source, string sourceUrl = "expo-jsi-test.js")
   {
     return TestRuntime.Evaluate(source, sourceUrl);

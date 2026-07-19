@@ -772,3 +772,39 @@ and idempotent; it SHALL NOT depend on finalizers or ordinary GC timing.
 - **AND** future use of that context SHALL fail loudly
 - **AND** later native JSI host-function release callbacks SHALL NOT double-free
   managed state
+
+### Requirement: Module-facing ArrayBuffer And Binary Codecs
+
+`Expo.ModulesCore.ArrayBuffer` SHALL be the universal module-facing binary
+abstraction with exactly two private backing forms: JavaScript-owned storage
+and native MutableBuffer-owned storage. `byte[]` and span support SHALL be
+convenience codecs, not additional backing kinds.
+
+#### Scenario: Module ArrayBuffer owns storage
+- **GIVEN** a module receives or creates an `ArrayBuffer`
+- **WHEN** it retains, copies, accesses, or disposes the value
+- **THEN** ownership SHALL remain explicit, disposal SHALL atomically relinquish
+  the backing lease, and duplicate disposal SHALL be idempotent
+- **AND** the wrapper SHALL remain single-owner: concurrent use and disposal
+  are unsupported, and a concurrent consumer SHALL receive a retained copy
+- **AND** `ByteLength` SHALL be available without entering JSI
+- **AND** `Copy`/`ToArray` operations SHALL produce independent storage
+
+#### Scenario: JavaScript and native backing are encoded
+- **GIVEN** a JavaScript-backed value is encoded into its originating runtime
+- **WHEN** the module returns it
+- **THEN** the original JavaScript object identity SHALL be preserved
+- **WHEN** a native-backed value is encoded into any live runtime
+- **THEN** the returned JavaScript object SHALL be distinct while sharing bytes
+
+#### Scenario: Byte arrays and spans cross the module boundary
+- **GIVEN** a generated method uses `byte[]`, `Span<byte>`, or
+  `ReadOnlySpan<byte>`
+- **WHEN** the method is generated
+- **THEN** byte arrays SHALL copy in both directions
+- **AND** one synchronous scoped span parameter MAY borrow bytes
+- **AND** asynchronous or multiple span parameters SHALL produce diagnostics
+- **AND** span return values SHALL be copied immediately
+- **AND** only rank-one `byte[]` parameters and returns SHALL use the byte-array
+  codec; multidimensional byte arrays SHALL produce unsupported-type diagnostics
+- **AND** the one-span limit SHALL not restrict `ArrayBuffer` or `byte[]` arity

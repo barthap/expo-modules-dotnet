@@ -5,11 +5,14 @@
 #include <exception>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
 #include "ExpoJsiBridge.h"
+#include "ExpoJsiBridgeTestHooks.h"
 #include "HermesConsoleRuntimeConnector.h"
+#include "HermesConsoleRuntimeTestControl.h"
 
 struct expo_jsi_testhost_runtime_t {
   expo::dotnet::HermesConsoleRuntimeConnector connector;
@@ -33,6 +36,24 @@ struct ErrorResultBuffer {
   std::string value;
 };
 
+std::optional<expo::dotnet::JsiRuntimeTaskPriority> testPriority(int32_t priority)
+{
+  switch (priority) {
+  case 1:
+    return expo::dotnet::JsiRuntimeTaskPriority::Immediate;
+  case 2:
+    return expo::dotnet::JsiRuntimeTaskPriority::UserBlocking;
+  case 3:
+    return expo::dotnet::JsiRuntimeTaskPriority::Normal;
+  case 4:
+    return expo::dotnet::JsiRuntimeTaskPriority::Low;
+  case 5:
+    return expo::dotnet::JsiRuntimeTaskPriority::Idle;
+  default:
+    return std::nullopt;
+  }
+}
+
 expo_jsi_error makeError(int32_t code, const char *message)
 {
   auto *buffer =
@@ -55,6 +76,41 @@ expo_jsi_value_result makeErrorResult(int32_t code, const char *message)
 {
   return expo_jsi_value_result{0, nullptr, makeError(code, message)};
 }
+
+expo_jsi_mutable_buffer_result poisonedMutableBufferResult()
+{
+  return expo_jsi_mutable_buffer_result{
+    0, 0, nullptr, 0, makeError(20, "MutableBuffer dispatch was poisoned.")};
+}
+
+expo_jsi_byte_span_result poisonedMutableBufferBytes(expo_jsi_mutable_buffer_handle)
+{
+  return expo_jsi_byte_span_result{
+    0, nullptr, 0, makeError(20, "MutableBuffer dispatch was poisoned.")};
+}
+
+expo_jsi_value_result poisonedMutableBufferAsValue(expo_jsi_runtime_handle,
+                                                   expo_jsi_mutable_buffer_handle)
+{
+  return makeErrorResult(20, "MutableBuffer dispatch was poisoned.");
+}
+
+expo_jsi_mutable_buffer_result poisonedMutableBufferAllocate(int32_t)
+{
+  return poisonedMutableBufferResult();
+}
+
+expo_jsi_mutable_buffer_result poisonedMutableBufferCopy(const uint8_t *, int32_t)
+{
+  return poisonedMutableBufferResult();
+}
+
+expo_jsi_mutable_buffer_result poisonedMutableBufferClone(expo_jsi_mutable_buffer_handle)
+{
+  return poisonedMutableBufferResult();
+}
+
+void poisonedMutableBufferRelease(expo_jsi_mutable_buffer_handle) {}
 
 struct CountedErrorReleaseContext {
   expo_jsi_testhost_runtime_t *testhost;
@@ -466,7 +522,16 @@ extern "C" expo_jsi_testhost_counters expo_jsi_testhost_get_counters(
   expo_jsi_testhost_runtime_handle testhostRuntime)
 {
   auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
-  return testhost == nullptr ? expo_jsi_testhost_counters{} : testhost->counters;
+  if (testhost == nullptr) {
+    return {};
+  }
+  auto counters = testhost->counters;
+  if (testhost->runtime != nullptr) {
+    expo::dotnet::getRuntimeArrayBufferCounters(testhost->runtime,
+                                                &counters.long_lived_array_buffers_released,
+                                                &counters.long_lived_array_buffers_abandoned);
+  }
+  return counters;
 }
 
 extern "C" void expo_jsi_testhost_reset_counters(expo_jsi_testhost_runtime_handle testhostRuntime)
@@ -474,6 +539,7 @@ extern "C" void expo_jsi_testhost_reset_counters(expo_jsi_testhost_runtime_handl
   auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
   if (testhost != nullptr) {
     testhost->counters = expo_jsi_testhost_counters{};
+    expo::dotnet::resetRuntimeArrayBufferCounters(testhost->runtime);
   }
 }
 
@@ -502,6 +568,79 @@ extern "C" expo_jsi_error expo_jsi_testhost_wait_until_idle(
   }
 }
 
+extern "C" void expo_jsi_testhost_pause_runtime_executor(
+  expo_jsi_testhost_runtime_handle testhostRuntime)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  if (testhost != nullptr) {
+    expo::dotnet::HermesConsoleRuntimeTestControl::pause(testhost->connector);
+  }
+}
+
+extern "C" void expo_jsi_testhost_resume_runtime_executor(
+  expo_jsi_testhost_runtime_handle testhostRuntime)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  if (testhost != nullptr) {
+    expo::dotnet::HermesConsoleRuntimeTestControl::resume(testhost->connector);
+  }
+}
+
+extern "C" void expo_jsi_testhost_drop_next_runtime_task(
+  expo_jsi_testhost_runtime_handle testhostRuntime, int32_t priority)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  auto taskPriority = testPriority(priority);
+  if (testhost != nullptr && taskPriority.has_value()) {
+    expo::dotnet::HermesConsoleRuntimeTestControl::dropNextTask(testhost->connector, *taskPriority);
+  }
+}
+
+extern "C" expo_jsi_error expo_jsi_testhost_wait_until_runtime_task_queued(
+  expo_jsi_testhost_runtime_handle testhostRuntime, int32_t priority)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  auto taskPriority = testPriority(priority);
+  if (testhost == nullptr || !taskPriority.has_value()) {
+    return makeError(12, "Invalid runtime task priority or testhost runtime.");
+  }
+  if (!expo::dotnet::HermesConsoleRuntimeTestControl::waitUntilTaskQueued(testhost->connector,
+                                                                          *taskPriority)) {
+    return makeError(13, "Runtime executor stopped before the task was queued.");
+  }
+  return makeOk();
+}
+
+extern "C" expo_jsi_error expo_jsi_testhost_wait_until_runtime_tasks_queued(
+  expo_jsi_testhost_runtime_handle testhostRuntime, int32_t priority, int32_t count)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  auto taskPriority = testPriority(priority);
+  if (testhost == nullptr || !taskPriority.has_value() || count < 0) {
+    return makeError(18, "Invalid runtime task count, priority, or testhost runtime.");
+  }
+  if (!expo::dotnet::HermesConsoleRuntimeTestControl::waitUntilTaskCount(
+        testhost->connector, *taskPriority, static_cast<size_t>(count))) {
+    return makeError(19, "Runtime executor stopped before enough tasks were queued.");
+  }
+  return makeOk();
+}
+
+extern "C" expo_jsi_error expo_jsi_testhost_drop_queued_runtime_task(
+  expo_jsi_testhost_runtime_handle testhostRuntime, int32_t priority)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  auto taskPriority = testPriority(priority);
+  if (testhost == nullptr || !taskPriority.has_value()) {
+    return makeError(14, "Invalid runtime task priority or testhost runtime.");
+  }
+  if (!expo::dotnet::HermesConsoleRuntimeTestControl::dropQueuedTask(testhost->connector,
+                                                                     *taskPriority)) {
+    return makeError(15, "No queued runtime task matched the requested priority.");
+  }
+  return makeOk();
+}
+
 extern "C" void expo_jsi_testhost_set_sync_execution_supported(
   expo_jsi_testhost_runtime_handle testhostRuntime, uint8_t supported)
 {
@@ -520,14 +659,80 @@ extern "C" void expo_jsi_testhost_invalidate_runtime(
   }
 }
 
+extern "C" void expo_jsi_testhost_prepare_runtime_for_invalidation(
+  expo_jsi_testhost_runtime_handle testhostRuntime)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  if (testhost != nullptr) {
+    expo::dotnet::prepareRuntimeHandleForInvalidation(testhost->runtime);
+  }
+}
+
+extern "C" expo_jsi_error expo_jsi_testhost_validate_array_buffer_snapshot(
+  expo_jsi_testhost_runtime_handle testhostRuntime,
+  uint8_t detached,
+  int32_t currentLength,
+  int32_t capturedLength)
+{
+  if (testhostRuntime == nullptr) {
+    return makeError(16, "Testhost runtime is null.");
+  }
+  return expo::dotnet::validateArrayBufferSnapshotForTesting(
+    detached, currentLength, capturedLength);
+}
+
+extern "C" expo_jsi_error expo_jsi_testhost_validate_array_buffer_length(
+  expo_jsi_testhost_runtime_handle testhostRuntime, uint64_t length)
+{
+  if (testhostRuntime == nullptr) {
+    return makeError(17, "Testhost runtime is null.");
+  }
+  return expo::dotnet::validateArrayBufferLengthForTesting(length);
+}
+
+extern "C" void expo_jsi_testhost_release_bridge_runtime_handle(
+  expo_jsi_testhost_runtime_handle testhostRuntime)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  if (testhost == nullptr || testhost->runtime == nullptr) {
+    return;
+  }
+  unregisterRuntimeForCounters(testhost->runtime);
+  expo::dotnet::releaseRuntimeHandleAndGetArrayBufferCounters(
+    testhost->runtime,
+    &testhost->counters.long_lived_array_buffers_released,
+    &testhost->counters.long_lived_array_buffers_abandoned);
+  testhost->runtime = nullptr;
+}
+
+extern "C" void expo_jsi_testhost_poison_mutable_buffer_dispatch(
+  expo_jsi_testhost_runtime_handle testhostRuntime)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  if (testhost == nullptr) {
+    return;
+  }
+  testhost->countedApi.mutable_buffer_allocate = poisonedMutableBufferAllocate;
+  testhost->countedApi.mutable_buffer_copy = poisonedMutableBufferCopy;
+  testhost->countedApi.mutable_buffer_clone_handle = poisonedMutableBufferClone;
+  testhost->countedApi.mutable_buffer_get_bytes = poisonedMutableBufferBytes;
+  testhost->countedApi.mutable_buffer_as_value = poisonedMutableBufferAsValue;
+  testhost->countedApi.mutable_buffer_release = poisonedMutableBufferRelease;
+}
+
 extern "C" void expo_jsi_testhost_release_runtime(expo_jsi_testhost_runtime_handle testhostRuntime)
 {
   auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
   if (testhost == nullptr) {
     return;
   }
-  unregisterRuntimeForCounters(testhost->runtime);
-  expo::dotnet::releaseRuntimeHandle(testhost->runtime);
+  // Fixture disposal deliberately models abrupt shutdown: queued managed work
+  // must fault without waiting for an active runtime callback. Lifetime tests
+  // that require a JSI-safe sweep call prepare_runtime_for_invalidation first.
+  if (testhost->runtime != nullptr) {
+    unregisterRuntimeForCounters(testhost->runtime);
+    expo::dotnet::releaseRuntimeHandle(testhost->runtime);
+  }
   testhost->runtime = nullptr;
   testhost->connector.invalidate();
   delete testhost;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -22,6 +23,7 @@ namespace jsi = facebook::jsi;
 #endif
 
 class HermesConsoleRuntimeConnector;
+class HermesConsoleRuntimeTestControl;
 
 class HermesConsoleRuntimeExecutor final : public JsiRuntimeExecutor {
 public:
@@ -66,6 +68,17 @@ public:
   void shutdown() noexcept;
 
 private:
+  friend class HermesConsoleRuntimeConnector;
+
+  // Test-only controls stay behind the connector's private companion so
+  // production users of the executor cannot depend on queue manipulation.
+  void pauseForTesting();
+  void resumeForTesting();
+  void dropNextTaskForTesting(JsiRuntimeTaskPriority priority);
+  bool waitUntilTaskQueuedForTesting(JsiRuntimeTaskPriority priority);
+  bool waitUntilTaskCountForTesting(JsiRuntimeTaskPriority priority, size_t count);
+  bool dropQueuedTaskForTesting(JsiRuntimeTaskPriority priority);
+
   enum class State {
     Created,
     Running,
@@ -119,6 +132,7 @@ private:
   mutable std::mutex mutex_;
   std::condition_variable workAvailable_;
   std::condition_variable idleChanged_;
+  std::condition_variable queueChanged_;
   std::deque<QueuedTask> queue_;
   std::thread runtimeThread_;
   std::unique_ptr<jsi::Runtime> runtime_;
@@ -127,6 +141,8 @@ private:
   // Counts executor-thread callbacks that have been popped from the queue but
   // have not yet completed their microtask checkpoint.
   uint32_t activeTasks_ = 0;
+  bool paused_ = false;
+  std::array<uint32_t, 6> dropNextTasks_{};
   // Executor-thread-only reentrancy marker. Nested executeSync calls run inline
   // and defer the microtask checkpoint to the outermost runtime task.
   bool isExecuting_ = false;
@@ -147,6 +163,14 @@ public:
 
 private:
   friend class HermesConsoleRuntimeExecutor;
+  friend class HermesConsoleRuntimeTestControl;
+
+  void pauseRuntimeExecutorForTesting();
+  void resumeRuntimeExecutorForTesting();
+  void dropNextRuntimeTaskForTesting(JsiRuntimeTaskPriority priority);
+  bool waitUntilRuntimeTaskQueuedForTesting(JsiRuntimeTaskPriority priority);
+  bool waitUntilRuntimeTaskCountForTesting(JsiRuntimeTaskPriority priority, size_t count);
+  bool dropQueuedRuntimeTaskForTesting(JsiRuntimeTaskPriority priority);
 
   HermesConsoleRuntimeExecutor runtimeExecutor_;
 };

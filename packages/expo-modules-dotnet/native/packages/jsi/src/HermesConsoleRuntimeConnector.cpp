@@ -1,5 +1,8 @@
 #include "HermesConsoleRuntimeConnector.h"
 
+#include "HermesConsoleRuntimeTestControl.h"
+
+#include <algorithm>
 #include <cstddef>
 #include <stdexcept>
 #include <thread>
@@ -69,6 +72,7 @@ void HermesConsoleRuntimeExecutor::executeAsync(JsiRuntimeTaskPriority priority,
       queue_.push_back(QueuedTask{priority, nextSequence_++, std::move(work), nullptr});
     }
     workAvailable_.notify_one();
+    queueChanged_.notify_all();
   } catch (...) {
     // executeAsync is noexcept; dropping the work releases captured managed state.
   }
@@ -100,6 +104,7 @@ void HermesConsoleRuntimeExecutor::executeSync(std::function<void(jsi::Runtime &
     });
   }
   workAvailable_.notify_one();
+  queueChanged_.notify_all();
 
   // Wait on SyncResult rather than mutex_ so the executor can acquire mutex_,
   // pop this task, run it, and publish completion without a lock cycle.
@@ -125,12 +130,97 @@ void HermesConsoleRuntimeExecutor::waitUntilIdle()
     lock, [this]() { return state_ == State::Stopped || (queue_.empty() && activeTasks_ == 0); });
 }
 
+void HermesConsoleRuntimeExecutor::pauseForTesting()
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  paused_ = true;
+}
+
+void HermesConsoleRuntimeExecutor::resumeForTesting()
+{
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    paused_ = false;
+  }
+  workAvailable_.notify_all();
+}
+
+void HermesConsoleRuntimeExecutor::dropNextTaskForTesting(JsiRuntimeTaskPriority priority)
+{
+  const auto index = static_cast<size_t>(priority);
+  if (index == 0 || index >= dropNextTasks_.size()) {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(mutex_);
+  dropNextTasks_[index]++;
+}
+
+bool HermesConsoleRuntimeExecutor::waitUntilTaskQueuedForTesting(JsiRuntimeTaskPriority priority)
+{
+  std::unique_lock<std::mutex> lock(mutex_);
+  queueChanged_.wait(lock, [this, priority]() {
+    if (state_ == State::Stopped) {
+      return true;
+    }
+    return std::any_of(queue_.begin(), queue_.end(), [priority](const QueuedTask &task) {
+      return task.priority == priority;
+    });
+  });
+  return std::any_of(queue_.begin(), queue_.end(), [priority](const QueuedTask &task) {
+    return task.priority == priority;
+  });
+}
+
+bool HermesConsoleRuntimeExecutor::waitUntilTaskCountForTesting(JsiRuntimeTaskPriority priority,
+                                                                size_t count)
+{
+  std::unique_lock<std::mutex> lock(mutex_);
+  auto countTasks = [this, priority]() {
+    return static_cast<size_t>(
+      std::count_if(queue_.begin(), queue_.end(), [priority](const QueuedTask &task) {
+        return task.priority == priority;
+      }));
+  };
+  queueChanged_.wait(lock, [this, count, &countTasks]() {
+    return state_ == State::Stopped || countTasks() >= count;
+  });
+  return countTasks() >= count;
+}
+
+bool HermesConsoleRuntimeExecutor::dropQueuedTaskForTesting(JsiRuntimeTaskPriority priority)
+{
+  QueuedTask dropped{};
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = std::find_if(queue_.begin(), queue_.end(), [priority](const QueuedTask &task) {
+      return task.priority == priority;
+    });
+    if (it == queue_.end()) {
+      return false;
+    }
+    dropped = std::move(*it);
+    queue_.erase(it);
+    if (dropped.syncResult != nullptr) {
+      std::lock_guard<std::mutex> resultLock(dropped.syncResult->mutex);
+      dropped.syncResult->cancelled = true;
+      dropped.syncResult->finished = true;
+    }
+  }
+  if (dropped.syncResult != nullptr) {
+    dropped.syncResult->condition.notify_one();
+  }
+  queueChanged_.notify_all();
+  idleChanged_.notify_all();
+  return true;
+}
+
 void HermesConsoleRuntimeExecutor::shutdown() noexcept
 {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (state_ != State::Stopped) {
       state_ = State::Stopping;
+      paused_ = false;
       // Queued work has not started, so it is released rather than invoked.
       // A running task is allowed to finish on the executor thread below.
       releaseQueuedTasksLocked();
@@ -173,8 +263,8 @@ void HermesConsoleRuntimeExecutor::threadMain()
       QueuedTask task{};
       {
         std::unique_lock<std::mutex> lock(mutex_);
-        workAvailable_.wait(lock,
-                            [this]() { return state_ == State::Stopping || !queue_.empty(); });
+        workAvailable_.wait(
+          lock, [this]() { return state_ == State::Stopping || (!queue_.empty() && !paused_); });
 
         // Shutdown drains the queue by release, not execution. Once the current
         // task is done and the queue is empty, the runtime can be destroyed on
@@ -193,18 +283,38 @@ void HermesConsoleRuntimeExecutor::threadMain()
         // activeTasks_ keeps drain()/WaitUntilIdle from observing idle between
         // queue pop and the task's post-callback microtask checkpoint.
         activeTasks_++;
+        queueChanged_.notify_all();
       }
 
-      try {
-        runTask(std::move(task.work));
-      } catch (...) {
+      const auto priorityIndex = static_cast<size_t>(task.priority);
+      bool dropped = false;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (priorityIndex < dropNextTasks_.size() && dropNextTasks_[priorityIndex] != 0) {
+          dropNextTasks_[priorityIndex]--;
+          dropped = true;
+        }
+      }
+
+      if (dropped) {
+        task.work = {};
         if (task.syncResult != nullptr) {
-          task.syncResult->exception = std::current_exception();
+          std::lock_guard<std::mutex> resultLock(task.syncResult->mutex);
+          task.syncResult->cancelled = true;
+          task.syncResult->finished = true;
+        }
+      } else {
+        try {
+          runTask(std::move(task.work));
+        } catch (...) {
+          if (task.syncResult != nullptr) {
+            task.syncResult->exception = std::current_exception();
+          }
         }
       }
 
       if (task.syncResult != nullptr) {
-        {
+        if (!dropped) {
           std::lock_guard<std::mutex> resultLock(task.syncResult->mutex);
           task.syncResult->finished = true;
         }
@@ -298,6 +408,7 @@ void HermesConsoleRuntimeExecutor::releaseQueuedTasksLocked()
     }
   }
   queue_.clear();
+  queueChanged_.notify_all();
 }
 
 void HermesConsoleRuntimeExecutor::notifyIdleIfNeededLocked()
@@ -335,6 +446,73 @@ bool HermesConsoleRuntimeConnector::isRuntimeValid() const
 void HermesConsoleRuntimeConnector::waitUntilIdle()
 {
   runtimeExecutor_.waitUntilIdle();
+}
+
+void HermesConsoleRuntimeConnector::pauseRuntimeExecutorForTesting()
+{
+  runtimeExecutor_.pauseForTesting();
+}
+
+void HermesConsoleRuntimeConnector::resumeRuntimeExecutorForTesting()
+{
+  runtimeExecutor_.resumeForTesting();
+}
+
+void HermesConsoleRuntimeConnector::dropNextRuntimeTaskForTesting(JsiRuntimeTaskPriority priority)
+{
+  runtimeExecutor_.dropNextTaskForTesting(priority);
+}
+
+bool HermesConsoleRuntimeConnector::waitUntilRuntimeTaskQueuedForTesting(
+  JsiRuntimeTaskPriority priority)
+{
+  return runtimeExecutor_.waitUntilTaskQueuedForTesting(priority);
+}
+
+bool HermesConsoleRuntimeConnector::waitUntilRuntimeTaskCountForTesting(
+  JsiRuntimeTaskPriority priority, size_t count)
+{
+  return runtimeExecutor_.waitUntilTaskCountForTesting(priority, count);
+}
+
+bool HermesConsoleRuntimeConnector::dropQueuedRuntimeTaskForTesting(JsiRuntimeTaskPriority priority)
+{
+  return runtimeExecutor_.dropQueuedTaskForTesting(priority);
+}
+
+void HermesConsoleRuntimeTestControl::pause(HermesConsoleRuntimeConnector &connector)
+{
+  connector.pauseRuntimeExecutorForTesting();
+}
+
+void HermesConsoleRuntimeTestControl::resume(HermesConsoleRuntimeConnector &connector)
+{
+  connector.resumeRuntimeExecutorForTesting();
+}
+
+void HermesConsoleRuntimeTestControl::dropNextTask(HermesConsoleRuntimeConnector &connector,
+                                                   JsiRuntimeTaskPriority priority)
+{
+  connector.dropNextRuntimeTaskForTesting(priority);
+}
+
+bool HermesConsoleRuntimeTestControl::waitUntilTaskQueued(HermesConsoleRuntimeConnector &connector,
+                                                          JsiRuntimeTaskPriority priority)
+{
+  return connector.waitUntilRuntimeTaskQueuedForTesting(priority);
+}
+
+bool HermesConsoleRuntimeTestControl::waitUntilTaskCount(HermesConsoleRuntimeConnector &connector,
+                                                         JsiRuntimeTaskPriority priority,
+                                                         size_t count)
+{
+  return connector.waitUntilRuntimeTaskCountForTesting(priority, count);
+}
+
+bool HermesConsoleRuntimeTestControl::dropQueuedTask(HermesConsoleRuntimeConnector &connector,
+                                                     JsiRuntimeTaskPriority priority)
+{
+  return connector.dropQueuedRuntimeTaskForTesting(priority);
 }
 
 void HermesConsoleRuntimeConnector::invalidate()

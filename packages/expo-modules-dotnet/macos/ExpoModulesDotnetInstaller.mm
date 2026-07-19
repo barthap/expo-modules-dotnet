@@ -64,6 +64,9 @@ public:
     }
 
     if (connector != nullptr) {
+      if (runtimeHandle != nullptr) {
+        expo::dotnet::prepareRuntimeHandleForInvalidation(runtimeHandle);
+      }
       connector->invalidate();
     }
     if (managedRuntimeContext != nullptr && teardownRuntimeContext != nullptr) {

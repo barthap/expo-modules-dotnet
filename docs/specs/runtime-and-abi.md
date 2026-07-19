@@ -430,14 +430,60 @@ storage, module objects, SharedObject semantics, or other ModulesCore behavior.
 - **AND** it SHALL NOT call JavaScript, touch JSI handles, schedule runtime
   work, block on runtime work, or throw across the unmanaged boundary
 
-### Requirement: ArrayBuffer Is Not Yet Wrapped
+### Requirement: Native runtime lifetime ownership
 
-The ABI value-kind enum MAY identify `ArrayBuffer`, but the managed package
-SHALL NOT be specified as supporting an ArrayBuffer wrapper until such a wrapper
-exists in `packages/expo-modules-dotnet/managed/packages/Expo.JSI`.
+The host SHALL own each `JsiRuntimeConnector`; the connector owns or borrows
+`jsi::Runtime` according to its host implementation. The opaque ABI
+`RuntimeHandle` SHALL own its shared `RuntimeState`. `RuntimeState` SHALL borrow
+the connector only while it is Active or Closing, and SHALL own the
+`LongLivedObjectCollection`. The collection SHALL own its entries; an entry MAY
+retain `RuntimeState` until collection erase, at which point that cycle SHALL be
+broken. A final entry release SHALL retain RuntimeState's connector coordination
+through executor enqueue; it SHALL NOT use an executor reference after that
+coordination is released.
 
-#### Scenario: Specs mention implemented wrappers
-- **GIVEN** a living spec lists current managed wrapper types
-- **WHEN** the spec names supported low-level wrappers
-- **THEN** it SHALL NOT imply implemented `JavaScriptArrayBuffer` support until
-  code and tests exist
+Production adapter teardown SHALL preserve this order while its connector can
+still use JSI:
+
+```text
+prepare runtime handle -> invalidate connector -> tear down managed context
+-> release runtime handle -> destroy connector
+```
+
+#### Scenario: Production adapter tears down a runtime with retained bridge objects
+- **GIVEN** a production adapter still owns a runtime handle and connector
+- **WHEN** the host begins teardown
+- **THEN** it SHALL prepare the runtime handle before invalidating the connector
+- **AND** preparation SHALL sweep JSI-backed long-lived entries on the runtime
+  executor when JSI remains valid
+- **AND** runtime-handle release after connector invalidation SHALL not
+  dereference the connector
+- **AND** the host SHALL destroy the connector only after releasing the runtime
+  handle
+
+### Requirement: Runtime-owned ArrayBuffer ABI
+
+The ABI SHALL expose ArrayBuffer and MutableBuffer storage through opaque
+handles and SHALL report version `22`. The native runtime state SHALL own a
+generic long-lived-object collection whose first consumer is JavaScript-backed
+ArrayBuffer storage. Successful handle results SHALL carry a checked `int32`
+logical byte length; managed callers SHALL never recover that length by a later
+JSI access. MutableBuffer ABI function targets SHALL remain callable for the
+lifetime of any retained managed MutableBuffer dispatch, even when the storage
+containing the original API table no longer exists.
+
+#### Scenario: ArrayBuffer handles cross the ABI
+- **GIVEN** native retains, allocates, copies, or clones ArrayBuffer storage
+- **WHEN** the operation returns
+- **THEN** it SHALL return an opaque handle and captured logical byte length
+- **AND** the managed API table SHALL validate every ArrayBuffer function
+  pointer before use
+- **AND** no JSI object layout or raw runtime pointer SHALL cross into C#
+
+#### Scenario: Runtime teardown has a JSI-safe phase
+- **GIVEN** a host can report invalidation while JSI remains usable
+- **WHEN** the host prepares runtime teardown
+- **THEN** the long-lived collection SHALL sweep retained JSI objects on the
+  runtime executor before connector invalidation
+- **AND** late invalidation SHALL abandon retained payloads without invoking JSI
+- **AND** each entry SHALL transition exactly once

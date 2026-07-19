@@ -59,9 +59,30 @@ public sealed class HermesRuntimeFixture : IDisposable
     NativeTestHost.SetSyncExecutionSupported(testHostRuntime, supported);
   }
 
+  public void PauseRuntimeExecutor() => NativeTestHost.PauseRuntimeExecutor(testHostRuntime);
+
+  public void ResumeRuntimeExecutor() => NativeTestHost.ResumeRuntimeExecutor(testHostRuntime);
+
+  public void DropNextRuntimeTask(JavaScriptTaskPriority priority) =>
+      NativeTestHost.DropNextRuntimeTask(testHostRuntime, priority);
+
+  public void WaitUntilRuntimeTaskQueued(JavaScriptTaskPriority priority) =>
+      NativeTestHost.WaitUntilRuntimeTaskQueued(testHostRuntime, priority);
+
+  public void DropQueuedRuntimeTask(JavaScriptTaskPriority priority) =>
+      NativeTestHost.DropQueuedRuntimeTask(testHostRuntime, priority);
+
+  public void ReleaseBridgeRuntimeHandle() =>
+      NativeTestHost.ReleaseBridgeRuntimeHandle(testHostRuntime);
+
   public void InvalidateRuntimeForTesting()
   {
     NativeTestHost.InvalidateRuntime(testHostRuntime);
+  }
+
+  public void PrepareRuntimeForInvalidation()
+  {
+    NativeTestHost.PrepareRuntimeForInvalidation(testHostRuntime);
   }
 
   public JavaScriptValue Evaluate(string source, string sourceUrl = "expo-jsi-test.js")

@@ -72,3 +72,17 @@ promise value.
 - **GIVEN** a `JavaScriptValue` is not a JavaScript Promise
 - **WHEN** managed code calls `AsPromiseValue`
 - **THEN** managed code SHALL throw `InvalidOperationException`
+
+### Requirement: Promise Settlement Can Abandon Owned Results
+
+Promise settlement results that own managed state SHALL use a claim-or-abandon
+guard. Successful runtime settlement claims the state exactly once; every
+other scheduler exit, including dropped settlement work, SHALL abandon it
+exactly once. Promise capability migration onto the generic runtime-owned
+long-lived collection is intentionally deferred to a focused follow-up.
+
+#### Scenario: Settlement work is dropped
+- **GIVEN** an owned promise result is queued for runtime settlement
+- **WHEN** the queued callable is destroyed without invocation
+- **THEN** the result state SHALL be abandoned exactly once
+- **AND** no managed continuation SHALL release it a second time

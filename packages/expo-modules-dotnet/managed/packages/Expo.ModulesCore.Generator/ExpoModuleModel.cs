@@ -34,7 +34,23 @@ internal sealed record ExpoFunctionModel(
     bool AsyncReturnsVoid,
     string AsyncResultType,
     string AsyncResultCodecExpression,
-    EquatableArray<ExpoParameterModel> Parameters);
+    EquatableArray<ExpoParameterModel> Parameters,
+    ExpoReturnPassingKind ReturnPassingKind = ExpoReturnPassingKind.Codec,
+    ExpoReturnPassingKind AsyncResultPassingKind = ExpoReturnPassingKind.Codec);
+
+internal enum ExpoParameterPassingKind
+{
+  Codec,
+  MutableByteSpan,
+  ReadOnlyByteSpan,
+}
+
+internal enum ExpoReturnPassingKind
+{
+  Codec,
+  MutableByteSpan,
+  ReadOnlyByteSpan,
+}
 
 internal sealed record ExpoObservingHookModel(
     string MethodName,
@@ -53,7 +69,8 @@ internal sealed record ExpoParameterModel(
     bool RequiresRuntimeContext,
     bool OwnsDecodedValue,
     bool HasDefaultValue,
-    string DefaultValueExpression);
+    string DefaultValueExpression,
+    ExpoParameterPassingKind PassingKind = ExpoParameterPassingKind.Codec);
 
 internal sealed record ExpoDiagnosticModel(
     string DescriptorId,

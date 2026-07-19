@@ -15,6 +15,7 @@ namespace jsi = facebook::jsi;
 class JsiRuntimeConnector;
 
 expo_jsi_runtime_handle createRuntimeHandle(JsiRuntimeConnector &connector);
+void prepareRuntimeHandleForInvalidation(expo_jsi_runtime_handle runtime);
 void releaseRuntimeHandle(expo_jsi_runtime_handle runtime);
 expo_jsi_value_handle createOwnedValueHandle(jsi::Value value);
 const expo_jsi_api *api();

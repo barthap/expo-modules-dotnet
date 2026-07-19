@@ -10,14 +10,17 @@ namespace Expo.JSI;
 public readonly struct JavaScriptPromiseResult
 {
   private readonly Func<JavaScriptRuntime, JavaScriptValue> createValue;
+  private readonly IOwnedResultState? ownedState;
 
   private JavaScriptPromiseResult(
       bool isRejected,
-      Func<JavaScriptRuntime, JavaScriptValue> createValue
+      Func<JavaScriptRuntime, JavaScriptValue> createValue,
+      IOwnedResultState? ownedState = null
   )
   {
     IsRejected = isRejected;
     this.createValue = createValue;
+    this.ownedState = ownedState;
   }
 
   internal bool IsRejected { get; }
@@ -50,12 +53,82 @@ public readonly struct JavaScriptPromiseResult
     return new JavaScriptPromiseResult(isRejected: true, createReason);
   }
 
+  /// <summary>
+  /// Creates an owned result whose state is disposed if settlement work is abandoned before it
+  /// reaches the JavaScript runtime.
+  /// </summary>
+  public static JavaScriptPromiseResult ResolveOwned<TState>(
+      TState state,
+      Func<JavaScriptRuntime, TState, JavaScriptValue> createValue,
+      Action<TState> abandon
+  ) where TState : class
+  {
+    ArgumentNullException.ThrowIfNull(state);
+    ArgumentNullException.ThrowIfNull(createValue);
+    ArgumentNullException.ThrowIfNull(abandon);
+    var owned = new OwnedResultState<TState>(state, createValue, abandon);
+    return new JavaScriptPromiseResult(
+        isRejected: false,
+        runtime => owned.CreateValue(runtime),
+        owned
+    );
+  }
+
   internal JavaScriptValue CreateValue(JavaScriptRuntime runtime)
   {
+    if (ownedState is not null)
+    {
+      return ownedState.CreateValue(runtime);
+    }
     if (createValue is null)
     {
       throw new InvalidOperationException("Promise result was not initialized.");
     }
     return createValue(runtime);
+  }
+
+  internal void Abandon() => ownedState?.Abandon();
+
+  private interface IOwnedResultState
+  {
+    JavaScriptValue CreateValue(JavaScriptRuntime runtime);
+    void Abandon();
+  }
+
+  private sealed class OwnedResultState<TState> : IOwnedResultState
+      where TState : class
+  {
+    private TState? state;
+    private readonly Func<JavaScriptRuntime, TState, JavaScriptValue> createValue;
+    private readonly Action<TState> abandon;
+
+    public OwnedResultState(
+        TState state,
+        Func<JavaScriptRuntime, TState, JavaScriptValue> createValue,
+        Action<TState> abandon)
+    {
+      this.state = state;
+      this.createValue = createValue;
+      this.abandon = abandon;
+    }
+
+    public JavaScriptValue CreateValue(JavaScriptRuntime runtime)
+    {
+      var claimed = Interlocked.Exchange(ref state, null);
+      if (claimed is null)
+      {
+        throw new InvalidOperationException("Owned promise result was already claimed or abandoned.");
+      }
+      return createValue(runtime, claimed);
+    }
+
+    public void Abandon()
+    {
+      var abandoned = Interlocked.Exchange(ref state, null);
+      if (abandoned is not null)
+      {
+        abandon(abandoned);
+      }
+    }
   }
 }

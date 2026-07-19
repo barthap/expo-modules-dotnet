@@ -47,6 +47,33 @@ Use these terms consistently:
 
 Do not say wrappers own JavaScript objects. They own bridge handles.
 
+## Native Runtime Lifetime
+
+For native lifetime work, establish this ownership map before changing code:
+
+```text
+Host owns Connector; Connector owns or borrows jsi::Runtime by host type.
+RuntimeHandle owns shared RuntimeState.
+RuntimeState borrows Connector only while Active or Closing.
+RuntimeState owns LongLivedObjectCollection.
+Collection owns entries; entries retain RuntimeState until collection erase.
+```
+
+The collection must erase entries on release or abandonment to break the
+entry/state cycle. A production adapter that still has JSI access tears down
+in this order:
+
+```text
+prepare runtime handle -> invalidate connector -> tear down managed context
+-> release runtime handle -> destroy connector
+```
+
+`JsiRuntimeConnector` remains host-owned. `RuntimeState` only borrows it; its
+invalidation path must clear that borrow before the connector is destroyed.
+When final long-lived release schedules executor work, retain RuntimeState's
+connector coordination through the enqueue itself; do not let an executor
+reference escape for later use.
+
 ## Handle Scope
 
 `JavaScriptHandleScope` is the lifetime fence for scoped refs and the

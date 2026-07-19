@@ -74,13 +74,13 @@ public sealed class JavaScriptPromise : IJavaScriptValueRepresentable, IDisposab
   /// </summary>
   public void Dispose()
   {
-    if (handle != 0)
+    var value = Interlocked.Exchange(ref handle, IntPtr.Zero);
+    if (value != 0)
     {
       unsafe
       {
-        context.Api->ReleasePromiseHandle(context.RuntimeHandle, handle);
+        context.Api->ReleasePromiseHandle(context.RuntimeHandle, value);
       }
-      handle = 0;
     }
   }
 

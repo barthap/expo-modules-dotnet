@@ -321,6 +321,19 @@ internal readonly unsafe struct ExpoJsiApi
     delegate* unmanaged[Cdecl]<nint, void>,
     ExpoJsiValueResult> CreateHostObject;
 
+  private readonly delegate* unmanaged[Cdecl]<ExpoJsiRuntimeHandle, ExpoJsiValueHandle, ExpoJsiArrayBufferResult> ArrayBufferRetain;
+  private readonly delegate* unmanaged[Cdecl]<ExpoJsiArrayBufferHandle, ExpoJsiArrayBufferResult> ArrayBufferCloneHandle;
+  private readonly delegate* unmanaged[Cdecl]<ExpoJsiRuntimeHandle, ExpoJsiArrayBufferHandle, ExpoJsiByteSpanResult> ArrayBufferGetBytes;
+  private readonly delegate* unmanaged[Cdecl]<ExpoJsiRuntimeHandle, ExpoJsiArrayBufferHandle, ExpoJsiValueResult> ArrayBufferAsValue;
+  private readonly delegate* unmanaged[Cdecl]<ExpoJsiArrayBufferHandle, void> ArrayBufferRelease;
+  private readonly delegate* unmanaged[Cdecl]<ExpoJsiRuntimeHandle, ExpoJsiValueHandle, ExpoJsiMutableBufferResult> ArrayBufferTryGetMutableBuffer;
+  private readonly delegate* unmanaged[Cdecl]<int, ExpoJsiMutableBufferResult> MutableBufferAllocate;
+  private readonly delegate* unmanaged[Cdecl]<byte*, int, ExpoJsiMutableBufferResult> MutableBufferCopy;
+  private readonly delegate* unmanaged[Cdecl]<ExpoJsiMutableBufferHandle, ExpoJsiMutableBufferResult> MutableBufferCloneHandle;
+  private readonly delegate* unmanaged[Cdecl]<ExpoJsiMutableBufferHandle, ExpoJsiByteSpanResult> MutableBufferGetBytes;
+  private readonly delegate* unmanaged[Cdecl]<ExpoJsiRuntimeHandle, ExpoJsiMutableBufferHandle, ExpoJsiValueResult> MutableBufferAsValue;
+  private readonly delegate* unmanaged[Cdecl]<ExpoJsiMutableBufferHandle, void> MutableBufferRelease;
+
   private static readonly UTF8Encoding StrictUtf8 = new(
     encoderShouldEmitUTF8Identifier: false,
     throwOnInvalidBytes: true
@@ -389,6 +402,18 @@ internal readonly unsafe struct ExpoJsiApi
       || this.ObjectGetNativeState is null
       || this.ObjectClearNativeState is null
       || this.CreateHostObject is null
+      || this.ArrayBufferRetain is null
+      || this.ArrayBufferCloneHandle is null
+      || this.ArrayBufferGetBytes is null
+      || this.ArrayBufferAsValue is null
+      || this.ArrayBufferRelease is null
+      || this.ArrayBufferTryGetMutableBuffer is null
+      || this.MutableBufferAllocate is null
+      || this.MutableBufferCopy is null
+      || this.MutableBufferCloneHandle is null
+      || this.MutableBufferGetBytes is null
+      || this.MutableBufferAsValue is null
+      || this.MutableBufferRelease is null
     )
     {
       throw new InvalidOperationException("Expo JSI API table is missing required functions.");
@@ -908,6 +933,55 @@ internal readonly unsafe struct ExpoJsiApi
     return RuntimeExecuteSync(runtimeHandle, callback, taskContext, releaseTaskContext);
   }
 
+  public ExpoJsiArrayBufferResult RetainArrayBuffer(
+      ExpoJsiRuntimeHandle runtimeHandle,
+      ExpoJsiValueHandle valueHandle
+  ) => ArrayBufferRetain(runtimeHandle, valueHandle);
+
+  public ExpoJsiArrayBufferResult CloneArrayBufferHandle(ExpoJsiArrayBufferHandle handle) =>
+    ArrayBufferCloneHandle(handle);
+
+  public ExpoJsiByteSpanResult GetArrayBufferBytes(
+      ExpoJsiRuntimeHandle runtimeHandle,
+      ExpoJsiArrayBufferHandle handle
+  ) => ArrayBufferGetBytes(runtimeHandle, handle);
+
+  public ExpoJsiValueResult ConvertArrayBufferToValue(
+      ExpoJsiRuntimeHandle runtimeHandle,
+      ExpoJsiArrayBufferHandle handle
+  ) => ArrayBufferAsValue(runtimeHandle, handle);
+
+  public void ReleaseArrayBuffer(ExpoJsiArrayBufferHandle handle) => ArrayBufferRelease(handle);
+
+  public ExpoJsiMutableBufferResult TryGetMutableBuffer(
+      ExpoJsiRuntimeHandle runtimeHandle,
+      ExpoJsiValueHandle valueHandle
+  ) => ArrayBufferTryGetMutableBuffer(runtimeHandle, valueHandle);
+
+  public ExpoJsiMutableBufferResult AllocateMutableBuffer(int byteLength) =>
+    MutableBufferAllocate(byteLength);
+
+  public ExpoJsiMutableBufferResult CopyMutableBuffer(ReadOnlySpan<byte> bytes)
+  {
+    fixed (byte* data = bytes)
+    {
+      return MutableBufferCopy(data, bytes.Length);
+    }
+  }
+
+  public ExpoJsiMutableBufferResult CloneMutableBuffer(ExpoJsiMutableBufferHandle handle) =>
+    MutableBufferCloneHandle(handle);
+
+  public ExpoJsiByteSpanResult GetMutableBufferBytes(ExpoJsiMutableBufferHandle handle) =>
+    MutableBufferGetBytes(handle);
+
+  public ExpoJsiValueResult ConvertMutableBufferToValue(
+      ExpoJsiRuntimeHandle runtimeHandle,
+      ExpoJsiMutableBufferHandle handle
+  ) => MutableBufferAsValue(runtimeHandle, handle);
+
+  public void ReleaseMutableBuffer(ExpoJsiMutableBufferHandle handle) => MutableBufferRelease(handle);
+
   public static uint ExpectedSize => (uint)sizeof(ExpoJsiApi);
-  public const uint ExpectedVersion = 21;
+  public const uint ExpectedVersion = 22;
 }

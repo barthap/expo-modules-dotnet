@@ -24,11 +24,18 @@ internal static class JavaScriptPromiseScheduler
       return;
     }
 
-    await runtime.ScheduleAsync(
-        js => SettlePromiseFromResultAndDispose(js, promise, result),
-        JavaScriptTaskPriority.Immediate,
-        CancellationToken.None
-    ).ConfigureAwait(false);
+    try
+    {
+      await runtime.ScheduleAsync(
+          js => SettlePromiseFromResultAndDispose(js, promise, result),
+          JavaScriptTaskPriority.Immediate,
+          CancellationToken.None
+      ).ConfigureAwait(false);
+    }
+    finally
+    {
+      result.Abandon();
+    }
   }
 
   private static void SettlePromiseFromResultAndDispose(

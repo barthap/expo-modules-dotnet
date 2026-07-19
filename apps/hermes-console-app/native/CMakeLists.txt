@@ -85,6 +85,8 @@ add_executable(
   hermes_console_app
   main.cpp
   ManagedProofLoader.cpp
+  "${REPO_ROOT}/packages/expo-modules-dotnet/native/packages/jsi/src/LongLivedObjectCollection.cpp"
+  "${REPO_ROOT}/packages/expo-modules-dotnet/native/packages/jsi/src/RuntimeState.cpp"
   "${REPO_ROOT}/packages/expo-modules-dotnet/native/packages/jsi/src/ExpoJsiBridge.cpp"
   "${REPO_ROOT}/packages/expo-modules-dotnet/native/packages/jsi/src/HermesConsoleRuntimeConnector.cpp"
 )

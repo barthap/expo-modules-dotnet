@@ -7,6 +7,23 @@ namespace Expo.JSI.Tests.Interop;
 public sealed class ExpoJsiApiTests
 {
   [Fact]
+  public unsafe void AbiVersionAndSizeIncludeArrayBufferTail()
+  {
+    Assert.Equal(22u, ExpoJsiApi.ExpectedVersion);
+    Assert.Equal((uint)sizeof(ExpoJsiApi), ExpoJsiApi.ExpectedSize);
+
+    var truncated = new FakeExpoJsiApi
+    {
+      Size = ExpoJsiApi.ExpectedSize - (uint)IntPtr.Size,
+      Version = ExpoJsiApi.ExpectedVersion,
+    };
+    var truncatedPointer = (nint)(&truncated);
+    Assert.Throws<InvalidOperationException>(() =>
+      JavaScriptRuntime.FromNative(truncatedPointer, 1)
+    );
+  }
+
+  [Fact]
   public unsafe void FromNativeReportsBothNativeAndManagedAbiVersions()
   {
     var api = new FakeExpoJsiApi

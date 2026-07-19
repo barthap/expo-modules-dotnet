@@ -9,7 +9,10 @@ Define the lifetime model for owned wrappers and scoped refs in `Expo.JSI`.
 ### Requirement: Owned Wrappers Release Handles
 
 Owned wrappers SHALL release their native handles exactly once unless ownership
-is explicitly detached for native return handling.
+is explicitly detached for native return handling. Disposal SHALL atomically
+relinquish the owned handle so duplicate `Dispose` calls are safe. This does not
+make disposal concurrent with member access safe: wrappers are single-owner, and
+code that needs independent concurrent ownership SHALL call `Retain` first.
 
 #### Scenario: Value wrapper is disposed
 - **GIVEN** a `JavaScriptValue` owns a native value handle
@@ -98,3 +101,25 @@ not raw managed object pointers.
 - **WHEN** the runtime context is disposed
 - **THEN** the registry SHALL invalidate all entries
 - **AND** stale native tokens SHALL no longer resolve to managed state
+
+### Requirement: Binary Borrowing And Ownership
+
+ArrayBuffer byte callbacks SHALL borrow native storage only for the duration
+of the synchronous callback. Managed `byte[]` values SHALL be copied at codec
+boundaries. Span return values SHALL be copied immediately because a span has
+no owner that JavaScript can retain. No arbitrary managed array SHALL be pinned
+for a long-lived or asynchronous operation.
+
+#### Scenario: A span is projected into a module call
+- **GIVEN** a generated synchronous method has one `Span<byte>` or
+  `ReadOnlySpan<byte>` parameter
+- **WHEN** the method is invoked
+- **THEN** the generator SHALL borrow bytes through one scoped callback
+- **AND** it SHALL reject asynchronous span parameters and more than one span
+  parameter with diagnostics
+
+#### Scenario: A native-backed wrapper is retained
+- **GIVEN** a module retains or returns a native-backed `ArrayBuffer`
+- **WHEN** the wrapper is copied
+- **THEN** the copy SHALL retain the shared MutableBuffer storage
+- **AND** mutation through either wrapper SHALL remain visible to the other

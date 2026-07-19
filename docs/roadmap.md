@@ -114,11 +114,19 @@ Completed scope:
 
 ### P2/P3: Richer Runtime Surface
 
-1. **ArrayBuffer / binary data**
-    - Add binary transfer wrappers and ABI support for file, camera, crypto,
-      WebSocket, and data-heavy modules.
+1. **ArrayBuffer / binary data** (complete)
+    - Opaque ABI storage, runtime-owned lifetime, low-level wrappers,
+      module-facing ArrayBuffer ownership, and generated `byte[]` / span
+      codecs are implemented. The approved delta is archived as provenance;
+      current behavior is defined by the living specs.
 
-2. **HostObject / NativeState / SharedObject**
+2. **Promise long-lived-state migration** (P2 follow-up)
+    - Unify retained Promise capability state with the runtime-owned
+      long-lived-state collection introduced by ArrayBuffer without changing
+      settlement scheduling. Cover unresolved-promise teardown,
+      settlement/teardown races, and idempotent late disposal.
+
+3. **HostObject / NativeState / SharedObject**
     - NativeState is complete as a generic, type-indexed object state primitive
       and backs ModulesCore EventEmitter identity.
     - HostObject is complete as a generic low-level property interceptor
@@ -127,7 +135,7 @@ Completed scope:
       class/prototype instances with hidden registry-backed native identity
       rather than HostObject-first objects.
 
-3. **Lazy module initialization**
+4. **Lazy module initialization**
     - Complete: `_expoDotnet.modules` is a one-stage HostObject registry.
       Generated default registration records lazy module definitions, and a
       module object plus authored module instance are created on first read of
@@ -151,6 +159,12 @@ Completed scope:
     - Keep priority advisory for hosts that cannot honor it; implement real
       priority only when a host scheduler exposes that capability.
 
+4. **Shared native bridge build composition**
+   - Define a reusable source-set mechanism for the portable JSI bridge across
+     Android CMake, Apple forward sources, testhost CMake, Hermes console CMake,
+     and Windows MSBuild. This is build-system cleanup only; it must not change
+     the ABI or runtime lifetime contract.
+
 ## Backlog: ABI Extensions
 
 These are planned ABI additions required for real module support. Each requires
@@ -162,8 +176,9 @@ managed wrapper surface.
   `JavaScriptFunction` calls and retained generated-module callbacks.
 - **P3 — Script evaluation**: `evaluate_javascript` — needed for dev tooling and
   dynamic code paths.
-- **P2/P3 — ArrayBuffer**: Wrapper and ABI for binary data transfer — needed by
-  camera, file system, crypto, WebSocket binary, and data-heavy modules.
+- **P2/P3 — ArrayBuffer**: complete. Opaque ABI handles, runtime-owned
+  lifetime, low-level wrappers, ModulesCore storage, and generated binary
+  codecs now cover the initial production slice.
 - **P2/P3 — HostObject**: complete. Property interceptor pattern backs lazy
   `_expoDotnet.modules` and future dynamic property access.
 - **P2/P3 — NativeState**: complete. Generic type-indexed object state supports
@@ -184,8 +199,9 @@ ABI support.
   primitives are supported through the generic number codec.
 - **P1 — Nullable types** (complete for value primitives): `T?` support exists
   for optional parameters and return values over supported value codecs.
-- **P2/P3 — `byte[]` / `ReadOnlyMemory<byte>`**: Binary data transfer (depends
-  on ArrayBuffer ABI).
+- **P2/P3 — binary codecs**: Plan 006 covers `ArrayBuffer`, `byte[]`,
+  `Span<byte>`, and `ReadOnlySpan<byte>`. `Memory<byte>` and
+  `ReadOnlyMemory<byte>` remain future work.
 - **P2/P3 — SharedObject references**: Typed handles to shared native state
   (depends on NativeState ABI).
 - **P2/P3 — Record shape extensions**: Custom field naming, non-positional
@@ -222,6 +238,11 @@ options.
 - **P3 — Mobile scheduler priority no-op**: `apps/mobile-app` routes
   through React Native `CallInvoker`, which has no priority lane, so
   `JsiRuntimeTaskPriority` is advisory/no-op for that example app.
+- **P2 — Promise long-lived JSI state**: ArrayBuffer plan 006 introduces a
+  runtime-owned long-lived-state collection. After it lands, migrate retained
+  Promise capability state onto that collection without changing settlement
+  scheduling. Cover unresolved-promise teardown, settlement/teardown races,
+  and idempotent late disposal.
 
 ## Backlog: Dev Tooling
 

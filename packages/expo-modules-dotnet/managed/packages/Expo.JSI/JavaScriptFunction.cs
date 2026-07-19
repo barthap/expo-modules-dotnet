@@ -168,13 +168,13 @@ public sealed class JavaScriptFunction : IJavaScriptValueRepresentable, IDisposa
   /// </summary>
   public void Dispose()
   {
-    if (handle != 0)
+    var value = Interlocked.Exchange(ref handle, IntPtr.Zero);
+    if (value != 0)
     {
       unsafe
       {
-        context.Api->ReleaseValueHandle(context.RuntimeHandle, handle);
+        context.Api->ReleaseValueHandle(context.RuntimeHandle, value);
       }
-      handle = 0;
     }
   }
 

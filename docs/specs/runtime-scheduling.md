@@ -135,3 +135,23 @@ and performs Hermes microtask checkpoints.
 - **WHEN** the headless runtime loop reaches an idle point
 - **THEN** it SHALL checkpoint microtasks so tests observe settled JavaScript
   promise behavior
+
+### Requirement: ArrayBuffer Async Access Uses Runtime Leases
+
+JavaScript-backed ArrayBuffer async access SHALL schedule byte access on the
+owning runtime and hold an independent native lease until the scheduled work
+reaches a terminal state. Native-backed access SHALL execute inline while
+converting cancellation and callback exceptions into completed Task states.
+
+#### Scenario: Async byte work is canceled or dropped
+- **GIVEN** async ArrayBuffer access has acquired its scheduling lease
+- **WHEN** the token is canceled before execution, the task is dropped, or the
+  callback throws
+- **THEN** the callback SHALL not run when work did not start
+- **AND** the lease SHALL be released or abandoned exactly once
+
+#### Scenario: Runtime invalidates during pending byte work
+- **GIVEN** JavaScript-backed byte work is pending during runtime teardown
+- **WHEN** teardown is early or late
+- **THEN** early teardown SHALL release the JSI payload on the runtime thread
+- **AND** late teardown SHALL abandon it without stale JSI access

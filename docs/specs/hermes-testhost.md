@@ -128,3 +128,34 @@ Module behavior tests SHALL live under `Expo.ModulesCore.Tests`.
 - **WHEN** the behavior is above low-level `Expo.JSI`
 - **THEN** coverage SHALL live under
   `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests`
+
+### Requirement: Deterministic Runtime Queue Controls
+
+The Hermes testhost SHALL expose test-only pause/resume, queue-observation,
+drop-next, drop-queued, and bridge-handle-release controls. These controls
+SHALL use condition-variable barriers rather than sleeps or polling so lifetime
+tests can force release-versus-teardown orderings. The testhost counters SHALL
+report ArrayBuffer release and abandonment separately from generic collection
+metrics.
+
+#### Scenario: A queued release is dropped
+- **GIVEN** the executor is paused and a release task is observed in its queue
+- **WHEN** the test drops that task without invoking it
+- **THEN** the copied callable SHALL be destroyed and its captured lifetime
+  token SHALL remain safe
+- **AND** the next valid runtime access SHALL drain deferred release work once
+
+#### Scenario: The bridge handle is released before queued work runs
+- **GIVEN** a queued callable retains only runtime-state tombstone ownership
+- **WHEN** the test releases the bridge handle before resuming the executor
+- **THEN** invocation or destruction of the callable SHALL abandon stale JSI
+  payloads without dereferencing the connector or runtime
+
+#### Scenario: Fixture disposal models abrupt scheduler shutdown
+- **GIVEN** an active runtime callback and queued managed work
+- **WHEN** the testhost fixture releases its runtime
+- **THEN** it SHALL invalidate the bridge handle and stop the executor without
+  waiting for a JSI-safe sweep
+- **AND** queued work SHALL fault or release its task context without running
+- **AND** tests that require a JSI-safe long-lived-object sweep SHALL call the
+  explicit prepare-for-invalidation control before connector invalidation

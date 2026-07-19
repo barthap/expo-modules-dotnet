@@ -16,7 +16,22 @@ internal static unsafe class NativeTestHost
   private static delegate* unmanaged[Cdecl]<nint, void> resetCounters;
   private static delegate* unmanaged[Cdecl]<nint, void> drainTasks;
   private static delegate* unmanaged[Cdecl]<nint, ExpoJsiError> waitUntilIdle;
+  private static delegate* unmanaged[Cdecl]<nint, void> pauseRuntimeExecutor;
+  private static delegate* unmanaged[Cdecl]<nint, void> resumeRuntimeExecutor;
+  private static delegate* unmanaged[Cdecl]<nint, int, void> dropNextRuntimeTask;
+  private static delegate* unmanaged[Cdecl]<nint, int, ExpoJsiError> waitUntilRuntimeTaskQueued;
+  private static delegate* unmanaged[Cdecl]<nint, int, int, ExpoJsiError>
+      waitUntilRuntimeTasksQueued;
+  private static delegate* unmanaged[Cdecl]<nint, int, ExpoJsiError> dropQueuedRuntimeTask;
+  private static delegate* unmanaged[Cdecl]<nint, void> releaseBridgeRuntimeHandle;
+  private static delegate* unmanaged[Cdecl]<nint, void> poisonMutableBufferDispatch;
   private static delegate* unmanaged[Cdecl]<nint, byte, void> setSyncExecutionSupported;
+  private static delegate* unmanaged[Cdecl]<nint, void> prepareRuntimeForInvalidation;
+  private static delegate* unmanaged[Cdecl]<nint, byte, int, int, ExpoJsiError>
+      validateArrayBufferSnapshot;
+  private static delegate* unmanaged[Cdecl]<nint, ulong, ExpoJsiError>
+      validateArrayBufferLength;
+  private static delegate* unmanaged[Cdecl]<nint, void> invalidateRuntime;
   private static delegate* unmanaged[Cdecl]<nint, void> releaseRuntime;
 
   private static bool initialized;
@@ -45,6 +60,8 @@ internal static unsafe class NativeTestHost
     public readonly uint DeprecatedBoolCreates;
     public readonly uint ReleasedNativeStates;
     public readonly uint ReleasedPromisesOffRuntimeThread;
+    public readonly uint LongLivedArrayBuffersReleased;
+    public readonly uint LongLivedArrayBuffersAbandoned;
   }
 
   internal static CreateResult CreateRuntime()
@@ -120,6 +137,118 @@ internal static unsafe class NativeTestHost
     setSyncExecutionSupported(testHostRuntime, supported ? (byte)1 : (byte)0);
   }
 
+  internal static void PauseRuntimeExecutor(nint testHostRuntime)
+  {
+    EnsureLoaded();
+    pauseRuntimeExecutor(testHostRuntime);
+  }
+
+  internal static void ResumeRuntimeExecutor(nint testHostRuntime)
+  {
+    EnsureLoaded();
+    resumeRuntimeExecutor(testHostRuntime);
+  }
+
+  internal static void DropNextRuntimeTask(nint testHostRuntime, JavaScriptTaskPriority priority)
+  {
+    EnsureLoaded();
+    dropNextRuntimeTask(testHostRuntime, (int)priority);
+  }
+
+  internal static void WaitUntilRuntimeTaskQueued(
+      nint testHostRuntime,
+      JavaScriptTaskPriority priority
+  )
+  {
+    EnsureLoaded();
+    var error = waitUntilRuntimeTaskQueued(testHostRuntime, (int)priority);
+    if (error.Code != 0)
+    {
+      ThrowNativeError(error, "Failed to observe queued runtime task.");
+    }
+  }
+
+  internal static void WaitUntilRuntimeTasksQueued(
+      nint testHostRuntime,
+      JavaScriptTaskPriority priority,
+      int count
+  )
+  {
+    EnsureLoaded();
+    var error = waitUntilRuntimeTasksQueued(testHostRuntime, (int)priority, count);
+    if (error.Code != 0)
+    {
+      ThrowNativeError(error, "Failed to observe queued runtime tasks.");
+    }
+  }
+
+  internal static void DropQueuedRuntimeTask(
+      nint testHostRuntime,
+      JavaScriptTaskPriority priority
+  )
+  {
+    EnsureLoaded();
+    var error = dropQueuedRuntimeTask(testHostRuntime, (int)priority);
+    if (error.Code != 0)
+    {
+      ThrowNativeError(error, "Failed to drop queued runtime task.");
+    }
+  }
+
+  internal static void ReleaseBridgeRuntimeHandle(nint testHostRuntime)
+  {
+    EnsureLoaded();
+    releaseBridgeRuntimeHandle(testHostRuntime);
+  }
+
+  internal static void PoisonMutableBufferDispatch(nint testHostRuntime)
+  {
+    EnsureLoaded();
+    poisonMutableBufferDispatch(testHostRuntime);
+  }
+
+  internal static void PrepareRuntimeForInvalidation(nint testHostRuntime)
+  {
+    EnsureLoaded();
+    prepareRuntimeForInvalidation(testHostRuntime);
+  }
+
+  internal static void ValidateArrayBufferSnapshot(
+      nint testHostRuntime,
+      bool detached,
+      int currentLength,
+      int capturedLength
+  )
+  {
+    EnsureLoaded();
+    var error = validateArrayBufferSnapshot(
+        testHostRuntime,
+        detached ? (byte)1 : (byte)0,
+        currentLength,
+        capturedLength
+    );
+    if (error.Code != 0)
+    {
+      ThrowNativeError(error, "ArrayBuffer snapshot validation failed.");
+    }
+  }
+
+  internal static void ValidateArrayBufferLength(nint testHostRuntime, ulong length)
+  {
+    EnsureLoaded();
+    var error = validateArrayBufferLength(testHostRuntime, length);
+    if (error.Code != 0)
+    {
+      ThrowNativeError(error, "ArrayBuffer length validation failed.");
+    }
+  }
+
+  internal static void InvalidateRuntime(nint testHostRuntime)
+  {
+    EnsureLoaded();
+    invalidateRuntime(testHostRuntime);
+  }
+
   internal static void ReleaseRuntime(nint testHostRuntime)
   {
     EnsureLoaded();
@@ -167,10 +296,70 @@ internal static unsafe class NativeTestHost
           library,
           "expo_jsi_testhost_wait_until_idle"
       );
+    pauseRuntimeExecutor =
+      (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
+          library,
+          "expo_jsi_testhost_pause_runtime_executor"
+      );
+    resumeRuntimeExecutor =
+      (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
+          library,
+          "expo_jsi_testhost_resume_runtime_executor"
+      );
+    dropNextRuntimeTask =
+      (delegate* unmanaged[Cdecl]<nint, int, void>)LoadExport(
+          library,
+          "expo_jsi_testhost_drop_next_runtime_task"
+      );
+    waitUntilRuntimeTaskQueued =
+      (delegate* unmanaged[Cdecl]<nint, int, ExpoJsiError>)LoadExport(
+          library,
+          "expo_jsi_testhost_wait_until_runtime_task_queued"
+      );
+    waitUntilRuntimeTasksQueued =
+      (delegate* unmanaged[Cdecl]<nint, int, int, ExpoJsiError>)LoadExport(
+          library,
+          "expo_jsi_testhost_wait_until_runtime_tasks_queued"
+      );
+    dropQueuedRuntimeTask =
+      (delegate* unmanaged[Cdecl]<nint, int, ExpoJsiError>)LoadExport(
+          library,
+          "expo_jsi_testhost_drop_queued_runtime_task"
+      );
+    releaseBridgeRuntimeHandle =
+      (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
+          library,
+          "expo_jsi_testhost_release_bridge_runtime_handle"
+      );
+    poisonMutableBufferDispatch =
+      (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
+          library,
+          "expo_jsi_testhost_poison_mutable_buffer_dispatch"
+      );
     setSyncExecutionSupported =
       (delegate* unmanaged[Cdecl]<nint, byte, void>)LoadExport(
           library,
           "expo_jsi_testhost_set_sync_execution_supported"
+      );
+    prepareRuntimeForInvalidation =
+      (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
+          library,
+          "expo_jsi_testhost_prepare_runtime_for_invalidation"
+      );
+    validateArrayBufferSnapshot =
+      (delegate* unmanaged[Cdecl]<nint, byte, int, int, ExpoJsiError>)LoadExport(
+          library,
+          "expo_jsi_testhost_validate_array_buffer_snapshot"
+      );
+    validateArrayBufferLength =
+      (delegate* unmanaged[Cdecl]<nint, ulong, ExpoJsiError>)LoadExport(
+          library,
+          "expo_jsi_testhost_validate_array_buffer_length"
+      );
+    invalidateRuntime =
+      (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
+          library,
+          "expo_jsi_testhost_invalidate_runtime"
       );
     releaseRuntime =
       (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(

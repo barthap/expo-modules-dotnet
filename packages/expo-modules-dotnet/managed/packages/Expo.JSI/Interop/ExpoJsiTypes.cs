@@ -195,3 +195,38 @@ internal readonly struct ExpoJsiNativeStateResult
   public bool IsOk => Ok != 0;
   public bool HasValue => IsOk && Found != 0;
 }
+
+[StructLayout(LayoutKind.Sequential)]
+internal readonly struct ExpoJsiArrayBufferResult
+{
+  public readonly int Ok;
+  public readonly ExpoJsiArrayBufferHandle ArrayBuffer;
+  public readonly int ByteLength;
+  public readonly ExpoJsiError Error;
+
+  public bool IsOk => Ok != 0 && ArrayBuffer != 0;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal readonly struct ExpoJsiMutableBufferResult
+{
+  public readonly int Ok;
+  public readonly int Found;
+  public readonly ExpoJsiMutableBufferHandle MutableBuffer;
+  public readonly int ByteLength;
+  public readonly ExpoJsiError Error;
+
+  public bool IsOk => Ok != 0;
+  public bool HasValue => IsOk && Found != 0 && MutableBuffer != 0;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal readonly unsafe struct ExpoJsiByteSpanResult
+{
+  public readonly int Ok;
+  public readonly byte* Data;
+  public readonly int Length;
+  public readonly ExpoJsiError Error;
+
+  public bool IsOk => Ok != 0;
+}

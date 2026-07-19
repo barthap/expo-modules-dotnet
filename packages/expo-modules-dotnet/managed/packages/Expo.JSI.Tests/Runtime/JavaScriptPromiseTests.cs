@@ -6,6 +6,84 @@ namespace Expo.JSI.Tests.Runtime;
 public sealed class JavaScriptPromiseTests
 {
   [Fact]
+  public void OwnedPromiseResultClaimsStateExactlyOnce()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var probe = new DisposableProbe();
+    var result = JavaScriptPromiseResult.ResolveOwned(
+        probe,
+        static (runtime, _) => runtime.CreateUndefined(),
+        static state => state.Dispose()
+    );
+
+    using var value = fixture.Runtime.Execute(runtime => result.CreateValue(runtime));
+    result.Abandon();
+
+    Assert.Equal(0, probe.DisposeCount);
+  }
+
+  [Fact]
+  public void OwnedPromiseResultAbandonsUnclaimedState()
+  {
+    var probe = new DisposableProbe();
+    var result = JavaScriptPromiseResult.ResolveOwned(
+        probe,
+        static (runtime, _) => runtime.CreateUndefined(),
+        static state => state.Dispose()
+    );
+
+    result.Abandon();
+    result.Abandon();
+
+    Assert.Equal(1, probe.DisposeCount);
+  }
+
+  [Fact]
+  public async Task DroppedSettlementAbandonsOwnedResult()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var abandoned = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously
+    );
+    var probe = new DisposableProbe(() => abandoned.TrySetResult());
+    var operation = new TaskCompletionSource<JavaScriptPromiseResult>(
+        TaskCreationOptions.RunContinuationsAsynchronously
+    );
+
+    using var promiseValue = fixture.Runtime.Execute(_ =>
+        fixture.Runtime.CreatePromise(_ => operation.Task)
+    );
+    fixture.PauseRuntimeExecutor();
+    operation.SetResult(JavaScriptPromiseResult.ResolveOwned(
+        probe,
+        static (runtime, _) => runtime.CreateUndefined(),
+        static state => state.Dispose()
+    ));
+    fixture.WaitUntilRuntimeTaskQueued(JavaScriptTaskPriority.Immediate);
+    fixture.DropQueuedRuntimeTask(JavaScriptTaskPriority.Immediate);
+
+    await abandoned.Task.WaitAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
+    fixture.ResumeRuntimeExecutor();
+    fixture.WaitUntilIdle();
+
+    Assert.Equal(1, probe.DisposeCount);
+  }
+
+  private sealed class DisposableProbe : IDisposable
+  {
+    private readonly Action? onDispose;
+
+    public DisposableProbe(Action? onDispose = null) => this.onDispose = onDispose;
+
+    public int DisposeCount { get; private set; }
+    public void Dispose()
+    {
+      DisposeCount++;
+      onDispose?.Invoke();
+    }
+  }
+
+  [Fact]
   public void CreatePromiseCreatesJavaScriptVisiblePromise()
   {
     using var fixture = HermesRuntimeFixture.Create();

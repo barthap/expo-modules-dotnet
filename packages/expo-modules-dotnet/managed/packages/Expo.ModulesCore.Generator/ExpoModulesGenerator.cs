@@ -19,6 +19,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
   private const string JSAttributeMetadataName = "Expo.ModulesCore.JSAttribute";
   private const string DotnetRuntimeContextMetadataName = "Expo.ModulesCore.DotnetRuntimeContext";
   private const string JavaScriptValueMetadataName = "Expo.JSI.JavaScriptValue";
+  private const string ArrayBufferMetadataName = "global::Expo.ModulesCore.ArrayBuffer";
 
   public void Initialize(IncrementalGeneratorInitializationContext context)
   {
@@ -518,7 +519,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       var isAsync = TryGetTaskResultType(member.ReturnType, out var asyncResultType);
       var asyncReturnsVoid = isAsync && asyncResultType is null;
       var asyncResultTypeName = asyncResultType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? string.Empty;
-      var asyncResultCodec = asyncResultType is null
+      var asyncResultPassingKind = GetReturnPassingKind(asyncResultType);
+      var asyncResultCodec = asyncResultType is null || asyncResultPassingKind != ExpoReturnPassingKind.Codec
           ? string.Empty
           : GetCodecExpression(
               asyncResultType,
@@ -527,7 +529,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
               member.GetReturnTypeAttributes()
           );
 
-      if (isAsync && !asyncReturnsVoid && asyncResultCodec is null)
+      if (isAsync && !asyncReturnsVoid && asyncResultPassingKind == ExpoReturnPassingKind.Codec && asyncResultCodec is null)
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedReturnType.Id,
@@ -545,7 +547,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 
       var returnsVoid = !isAsync &&
           (member.ReturnsVoid || member.ReturnType.SpecialType == SpecialType.System_Void);
-      var returnCodec = returnsVoid || isAsync
+      var returnPassingKind = returnsVoid || isAsync
+          ? ExpoReturnPassingKind.Codec
+          : GetReturnPassingKind(member.ReturnType);
+      var returnCodec = returnsVoid || isAsync || returnPassingKind != ExpoReturnPassingKind.Codec
           ? string.Empty
           : GetCodecExpression(
               member.ReturnType,
@@ -553,7 +558,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
               recordCodecs,
               member.GetReturnTypeAttributes()
           );
-      if (!isAsync && !returnsVoid && returnCodec is null)
+      if (!isAsync && !returnsVoid && returnPassingKind == ExpoReturnPassingKind.Codec && returnCodec is null)
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedReturnType.Id,
@@ -570,16 +575,56 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       }
 
       // Validate each generated argument path and preserve authored defaults.
+      var spanParameters = member.Parameters
+          .Select(parameter => (parameter, kind: GetParameterPassingKind(parameter.Type)))
+          .Where(item => item.kind != ExpoParameterPassingKind.Codec)
+          .ToArray();
+      if (isAsync && spanParameters.Length > 0)
+      {
+        foreach (var (parameter, kind) in spanParameters)
+        {
+          diagnostics.Add(new ExpoDiagnosticModel(
+              ExpoModulesDiagnostics.AsyncSpanParameter.Id,
+              parameter.Locations.FirstOrDefault(),
+              new EquatableArray<string>(new[]
+              {
+                  member.Name,
+                  parameter.Name,
+                  GetDiagnosticTypeName(parameter.Type),
+              })
+          ));
+        }
+        continue;
+      }
+      if (!isAsync && spanParameters.Length > 1)
+      {
+        // Multiple Span<byte>/ReadOnlySpan<byte> parameters need a grouped access
+        // primitive. Nesting the current callbacks would make the inner lambda capture
+        // the outer ref-struct parameter, which C# rejects with CS9108. Keep this
+        // diagnostic until one callback can receive all requested spans together.
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.MultipleSpanParameters.Id,
+            spanParameters[1].parameter.Locations.FirstOrDefault(),
+            new EquatableArray<string>(new[]
+            {
+                member.Name,
+                string.Join(", ", spanParameters.Select(item => item.parameter.Name)),
+            })
+        ));
+        continue;
+      }
+
       var parameters = new List<ExpoParameterModel>();
       foreach (var parameter in member.Parameters)
       {
+        var passingKind = GetParameterPassingKind(parameter.Type);
         var parameterCodec = GetCodecExpression(
             parameter.Type,
             diagnostics,
             recordCodecs,
             parameter.GetAttributes()
         );
-        if (parameterCodec is null)
+        if (passingKind == ExpoParameterPassingKind.Codec && parameterCodec is null)
         {
           var descriptor = IsJavaScriptCallbackType(parameter.Type)
               ? ExpoModulesDiagnostics.UnsupportedCallbackCodec
@@ -602,13 +647,14 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         parameters.Add(new ExpoParameterModel(
             parameter.Name,
             parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-            parameterCodec,
+            parameterCodec ?? string.Empty,
             IsJavaScriptCallbackType(parameter.Type),
-            parameterCodec == "JavaScriptValueCodec",
+            parameterCodec is "JavaScriptValueCodec" or "ArrayBufferCodec",
             parameter.HasExplicitDefaultValue,
             parameter.HasExplicitDefaultValue
                 ? GetDefaultValueExpression(parameter.Type, parameter.ExplicitDefaultValue)
-                : string.Empty
+                : string.Empty,
+            passingKind
         ));
       }
 
@@ -628,7 +674,9 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
           asyncReturnsVoid,
           asyncResultTypeName,
           asyncResultCodec ?? string.Empty,
-          new EquatableArray<ExpoParameterModel>(parameters)
+          new EquatableArray<ExpoParameterModel>(parameters),
+          returnPassingKind,
+          asyncResultPassingKind
       ));
     }
 
@@ -849,6 +897,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       "EXPOJSI009" => ExpoModulesDiagnostics.InvalidEventName,
       "EXPOJSI010" => ExpoModulesDiagnostics.InvalidObservingHook,
       "EXPOJSI011" => ExpoModulesDiagnostics.InvalidLifecycleHook,
+      "EXPOJSI012" => ExpoModulesDiagnostics.AsyncSpanParameter,
+      "EXPOJSI013" => ExpoModulesDiagnostics.MultipleSpanParameters,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());
@@ -880,6 +930,13 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       ExpoModuleModel module,
       ExpoFunctionModel function)
   {
+    if (!function.IsAsync && function.Parameters.Values.Any(parameter =>
+            parameter.PassingKind != ExpoParameterPassingKind.Codec))
+    {
+      EmitSpanHostFunction(builder, module, function);
+      return;
+    }
+
     builder.AppendLine();
     builder.AppendLine($"  private static global::Expo.JSI.JavaScriptValue {GetHostFunctionName(module, function)}(");
     var runtimeParameterName = function.IsAsync ? "jsRuntime" : "runtime";
@@ -894,7 +951,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       {
         if (function.Parameters.Values[index].OwnsDecodedValue)
         {
-          builder.AppendLine($"    global::Expo.JSI.JavaScriptValue? {GetParameterLocalName(index)} = null;");
+          builder.AppendLine($"    {function.Parameters.Values[index].TypeName}? {GetParameterLocalName(index)} = null;");
         }
       }
     }
@@ -959,10 +1016,24 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       else if (function.AsyncResultCodecExpression == "JavaScriptValueCodec")
       {
         builder.AppendLine($"{asyncIndent}var __expoResult = await __expoTask.ConfigureAwait(false);");
-        builder.AppendLine($"{asyncIndent}return global::Expo.JSI.JavaScriptPromiseResult.Resolve(runtime =>");
-        builder.AppendLine($"{asyncIndent}{{");
-        builder.AppendLine($"{asyncIndent}    return JavaScriptValueCodec.Encode(__expoResult, runtime);");
-        builder.AppendLine($"{asyncIndent}}});");
+        builder.AppendLine($"{asyncIndent}return global::Expo.JSI.JavaScriptPromiseResult.ResolveOwned(");
+        builder.AppendLine($"{asyncIndent}    __expoResult,");
+        builder.AppendLine($"{asyncIndent}    static (_, value) => value,");
+        builder.AppendLine($"{asyncIndent}    static value => value.Dispose()");
+        builder.AppendLine($"{asyncIndent});");
+      }
+      else if (function.AsyncResultCodecExpression == "ArrayBufferCodec")
+      {
+        builder.AppendLine($"{asyncIndent}var __expoResult = await __expoTask.ConfigureAwait(false);");
+        builder.AppendLine($"{asyncIndent}return global::Expo.JSI.JavaScriptPromiseResult.ResolveOwned(");
+        builder.AppendLine($"{asyncIndent}    __expoResult,");
+        builder.AppendLine($"{asyncIndent}    static (runtime, value) =>");
+        builder.AppendLine($"{asyncIndent}    {{");
+        builder.AppendLine($"{asyncIndent}      try {{ return ArrayBufferCodec.Encode(value, runtime); }}");
+        builder.AppendLine($"{asyncIndent}      finally {{ value.Dispose(); }}");
+        builder.AppendLine($"{asyncIndent}    }},");
+        builder.AppendLine($"{asyncIndent}    static value => value.Dispose()");
+        builder.AppendLine($"{asyncIndent});");
       }
       else
       {
@@ -998,7 +1069,16 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     }
     else
     {
-      if (function.ReturnCodecExpression == "JavaScriptValueCodec")
+      if (function.ReturnPassingKind != ExpoReturnPassingKind.Codec)
+      {
+        builder.AppendLine($"    return ArrayBufferCodec.EncodeCopy(module.{function.MethodName}({argumentList}), runtime);");
+      }
+      else if (function.ReturnCodecExpression == "ArrayBufferCodec")
+      {
+        builder.AppendLine($"    using var __expoResult = module.{function.MethodName}({argumentList});");
+        builder.AppendLine("    return ArrayBufferCodec.Encode(__expoResult, runtime);");
+      }
+      else if (function.ReturnCodecExpression == "JavaScriptValueCodec")
       {
         builder.AppendLine($"    return JavaScriptValueCodec.Encode(module.{function.MethodName}({argumentList}), runtime);");
       }
@@ -1007,6 +1087,70 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         builder.AppendLine($"    return {function.ReturnCodecExpression}.Encode(module.{function.MethodName}({argumentList}), runtime);");
       }
     }
+    builder.AppendLine("  }");
+  }
+
+  private static void EmitSpanHostFunction(
+      StringBuilder builder,
+      ExpoModuleModel module,
+      ExpoFunctionModel function)
+  {
+    var spanParameter = function.Parameters.Values.Single(parameter =>
+        parameter.PassingKind != ExpoParameterPassingKind.Codec);
+    var spanIndex = Enumerable.Range(0, function.Parameters.Values.Count)
+        .Single(index => ReferenceEquals(function.Parameters.Values[index], spanParameter));
+    var spanBuffer = $"__expoSpanBuffer{spanIndex}";
+    var spanMethod = spanParameter.PassingKind == ExpoParameterPassingKind.MutableByteSpan
+        ? "WithBytes"
+        : "WithReadOnlyBytes";
+
+    builder.AppendLine();
+    builder.AppendLine($"  private static global::Expo.JSI.JavaScriptValue {GetHostFunctionName(module, function)}(");
+    builder.AppendLine("      global::Expo.JSI.JavaScriptRuntime runtime,");
+    builder.AppendLine("      global::Expo.JSI.JavaScriptValueRef thisValue,");
+    builder.AppendLine("      global::Expo.JSI.JavaScriptArguments arguments,");
+    builder.AppendLine("      object context)");
+    builder.AppendLine("  {");
+    builder.AppendLine($"    GeneratedFunction.RequireArgumentCount(\"{EscapeString(module.ModuleName)}.{EscapeString(function.JavaScriptName)}\", arguments, {GetRequiredParameterCount(function)}, {function.Parameters.Values.Count});");
+    builder.AppendLine($"    var module = ({module.FullyQualifiedTypeName})context;");
+    for (var index = 0; index < function.Parameters.Values.Count; index++)
+    {
+      var parameter = function.Parameters.Values[index];
+      if (parameter.PassingKind != ExpoParameterPassingKind.Codec)
+      {
+        continue;
+      }
+      var declaration = parameter.OwnsDecodedValue ? "using var" : "var";
+      builder.AppendLine($"    {declaration} {GetParameterLocalName(index)} = {GetParameterExpression(parameter, index, "runtime")};");
+    }
+    builder.AppendLine($"    using var {spanBuffer} = ArrayBufferCodec.Decode(arguments.GetValue({spanIndex}), runtime);");
+    builder.AppendLine($"    return {spanBuffer}.{spanMethod}(__expoArg{spanIndex} =>");
+    builder.AppendLine("    {");
+    var argumentList = string.Join(", ", function.Parameters.Values.Select((_, index) => GetParameterLocalName(index)));
+    var invocation = $"module.{function.MethodName}({argumentList})";
+    if (function.ReturnsVoid)
+    {
+      builder.AppendLine($"      {invocation};");
+      builder.AppendLine("      return runtime.CreateUndefined();");
+    }
+    else if (function.ReturnPassingKind != ExpoReturnPassingKind.Codec)
+    {
+      builder.AppendLine($"      return ArrayBufferCodec.EncodeCopy({invocation}, runtime);");
+    }
+    else if (function.ReturnCodecExpression == "ArrayBufferCodec")
+    {
+      builder.AppendLine($"      using var __expoResult = {invocation};");
+      builder.AppendLine("      return ArrayBufferCodec.Encode(__expoResult, runtime);");
+    }
+    else if (function.ReturnCodecExpression == "JavaScriptValueCodec")
+    {
+      builder.AppendLine($"      return JavaScriptValueCodec.Encode({invocation}, runtime);");
+    }
+    else
+    {
+      builder.AppendLine($"      return {function.ReturnCodecExpression}.Encode({invocation}, runtime);");
+    }
+    builder.AppendLine("    });");
     builder.AppendLine("  }");
   }
 
@@ -1200,6 +1344,16 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       return callbackCodec;
     }
 
+    if (typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == ArrayBufferMetadataName)
+    {
+      return "ArrayBufferCodec";
+    }
+
+    if (typeSymbol is IArrayTypeSymbol { Rank: 1, ElementType.SpecialType: SpecialType.System_Byte })
+    {
+      return "ByteArrayCodec";
+    }
+
     if (typeSymbol.ToDisplayString() == JavaScriptValueMetadataName)
     {
       return "JavaScriptValueCodec";
@@ -1243,6 +1397,49 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       SpecialType.System_Double => GetNumberCodecExpression(typeSymbol),
       _ => TryGetReadOnlyListCodec(typeSymbol, diagnostics, recordCodecs) ??
           TryGetDictionaryCodec(typeSymbol, diagnostics, recordCodecs),
+    };
+  }
+
+  private static ExpoParameterPassingKind GetParameterPassingKind(ITypeSymbol typeSymbol)
+  {
+    var displayName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    if (displayName == "global::System.Span<byte>")
+    {
+      return ExpoParameterPassingKind.MutableByteSpan;
+    }
+    if (displayName == "global::System.ReadOnlySpan<byte>")
+    {
+      return ExpoParameterPassingKind.ReadOnlyByteSpan;
+    }
+    if (typeSymbol is not INamedTypeSymbol namedType)
+    {
+      return ExpoParameterPassingKind.Codec;
+    }
+
+    if (namedType.ContainingNamespace.ToDisplayString() != "System")
+    {
+      return ExpoParameterPassingKind.Codec;
+    }
+    if (namedType.TypeArguments.Length != 1 ||
+        namedType.TypeArguments[0].SpecialType != SpecialType.System_Byte)
+    {
+      return ExpoParameterPassingKind.Codec;
+    }
+    return namedType.Name switch
+    {
+      "Span" => ExpoParameterPassingKind.MutableByteSpan,
+      "ReadOnlySpan" => ExpoParameterPassingKind.ReadOnlyByteSpan,
+      _ => ExpoParameterPassingKind.Codec,
+    };
+  }
+
+  private static ExpoReturnPassingKind GetReturnPassingKind(ITypeSymbol? typeSymbol)
+  {
+    return typeSymbol is null ? ExpoReturnPassingKind.Codec : GetParameterPassingKind(typeSymbol) switch
+    {
+      ExpoParameterPassingKind.MutableByteSpan => ExpoReturnPassingKind.MutableByteSpan,
+      ExpoParameterPassingKind.ReadOnlyByteSpan => ExpoReturnPassingKind.ReadOnlyByteSpan,
+      _ => ExpoReturnPassingKind.Codec,
     };
   }
 

@@ -6,6 +6,170 @@ namespace Expo.ModulesCore.Generator.Tests;
 public sealed class ExpoModulesGeneratorTests
 {
   [Fact]
+  public void GeneratorEmitsBinaryCodecOwnershipAndSingleSpanCallbacks()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+        using System;
+        using System.Threading.Tasks;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class BinaryModule
+        {
+          [JS]
+          public ArrayBuffer Echo(ArrayBuffer value) => value.Retain();
+
+          [JS]
+          public byte[] EchoBytes(byte[] value) => value;
+
+          [JS]
+          public int Sum(ReadOnlySpan<byte> value) => value.Length;
+
+          [JS]
+          public ArrayBuffer Transform(ReadOnlySpan<byte> value) => ArrayBuffer.CopyFrom(value);
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains("using var __expoArg0 = ArrayBufferCodec.Decode", source);
+    Assert.Contains("ByteArrayCodec.Decode", source);
+    Assert.Contains("__expoSpanBuffer0.WithReadOnlyBytes(__expoArg0 =>", source);
+    Assert.Contains("module.Sum(__expoArg0)", source);
+    Assert.Contains("using var __expoResult = module.Echo(__expoArg0);", source);
+    Assert.Contains("using var __expoResult = module.Transform(__expoArg0);", source);
+    Assert.Contains("return ArrayBufferCodec.Encode(__expoResult, runtime);", source);
+    Assert.DoesNotContain("__expoResult.Dispose();", source);
+    Assert.DoesNotContain("__expoSpanBuffer1", source);
+  }
+
+  [Fact]
+  public void GeneratorReportsMultidimensionalByteArrayParameter()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class BinaryModule
+        {
+          [JS]
+          public int Sum(byte[,] value) => value.Length;
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI001");
+    Assert.Contains("value", diagnostic.GetMessage());
+    Assert.Contains("byte[", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorReportsMultidimensionalByteArrayReturn()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class BinaryModule
+        {
+          [JS]
+          public byte[,] Create() => new byte[1, 1];
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI002");
+    Assert.Contains("Create", diagnostic.GetMessage());
+    Assert.Contains("byte[", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorReportsMultipleSpanParameters()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+        using System;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class BinaryModule
+        {
+          [JS]
+          public int Combine(Span<byte> first, ReadOnlySpan<byte> second) => first.Length + second.Length;
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI013");
+    Assert.Contains("Combine", diagnostic.GetMessage());
+    Assert.Contains("first", diagnostic.GetMessage());
+    Assert.Contains("second", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorReportsAsyncSpanParameter()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+        using System;
+        using System.Threading.Tasks;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class BinaryModule
+        {
+          [JS]
+          public Task<int> SumAsync(ReadOnlySpan<byte> value) => Task.FromResult(value.Length);
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI012");
+    Assert.Contains("SumAsync", diagnostic.GetMessage());
+    Assert.Contains("value", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorUsesClaimOrAbandonForAsyncArrayBufferResults()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+        using System.Threading.Tasks;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class BinaryModule
+        {
+          [JS]
+          public Task<ArrayBuffer> EchoAsync(ArrayBuffer value) => Task.FromResult(value.Retain());
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains("JavaScriptPromiseResult.ResolveOwned(", source);
+    Assert.Contains("ArrayBufferCodec.Encode(value, runtime)", source);
+    Assert.Contains("static value => value.Dispose()", source);
+  }
+
+  [Fact]
   public void GeneratorEmitsDeterministicProviderForAssembly()
   {
     var result = GeneratorTestHost.Run(

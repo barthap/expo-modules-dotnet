@@ -5,6 +5,7 @@
 #include <cstring>
 #include <exception>
 #include <functional>
+#include <limits>
 #include <list>
 #include <memory>
 #include <optional>
@@ -14,40 +15,73 @@
 #include <unordered_map>
 #include <vector>
 
+#if __has_include(<cxxreact/ReactNativeVersion.h>)
+#include <cxxreact/ReactNativeVersion.h>
+#endif
+
+#include "ArrayBufferHandles.h"
+#include "ExpoJsiBridgeTestHooks.h"
 #include "JsiRuntimeConnector.h"
+#include "RuntimeState.h"
 
 namespace expo::dotnet {
 
+// RN 0.86 introduced ArrayBuffer detached-state and MutableBuffer APIs. Keep this gate in
+// lockstep with ExpoModulesJSI's JSIUtils.h so older RN headers never see those members.
+#if defined(REACT_NATIVE_VERSION_MAJOR) && defined(REACT_NATIVE_VERSION_MINOR) &&                  \
+  (REACT_NATIVE_VERSION_MAJOR > 0 || REACT_NATIVE_VERSION_MINOR >= 86)
+#define EXPO_DOTNET_HAS_ARRAY_BUFFER_INTROSPECTION 1
+#else
+#define EXPO_DOTNET_HAS_ARRAY_BUFFER_INTROSPECTION 0
+#endif
+
+// Opaque ABI owner of shared RuntimeState. The host owns the connector and its
+// JSI runtime; RuntimeState only borrows that connector until invalidation.
 class RuntimeHandle final {
 public:
   explicit RuntimeHandle(JsiRuntimeConnector &connector)
-    : connector_(&connector)
+    : state_(RuntimeState::create(connector))
   {
   }
 
   jsi::Runtime &runtime()
   {
-    if (connector_ == nullptr || !connector_->isRuntimeValid()) {
-      throw std::runtime_error("Runtime connector is invalid.");
-    }
-    return connector_->runtime();
+    return state_->runtime();
   }
 
   JsiRuntimeExecutor &runtimeExecutor()
   {
-    if (connector_ == nullptr || !connector_->isRuntimeValid()) {
-      throw std::runtime_error("Runtime connector is invalid.");
-    }
-    return connector_->runtimeExecutor();
+    return state_->executor();
   }
 
   bool isRuntimeValid() const
   {
-    return connector_ != nullptr && connector_->isRuntimeValid();
+    return state_->isValid();
+  }
+
+  bool isActive() const
+  {
+    return state_->isActive();
+  }
+  void drainDeferredReleases(jsi::Runtime &runtime)
+  {
+    state_->drainDeferredReleases(runtime);
+  }
+  void prepareForInvalidation()
+  {
+    state_->prepareForInvalidation();
+  }
+  void invalidateWithoutRuntime() noexcept
+  {
+    state_->invalidateWithoutRuntime();
+  }
+  std::shared_ptr<RuntimeState> state() const noexcept
+  {
+    return state_;
   }
 
 private:
-  JsiRuntimeConnector *connector_;
+  std::shared_ptr<RuntimeState> state_;
 };
 
 class ValueHandle final {
@@ -176,13 +210,38 @@ private:
   std::vector<std::unique_ptr<ValueHandle>> borrowedValues_;
 };
 
+ArrayBufferHandle::~ArrayBufferHandle()
+{
+  if (entry_ == nullptr || !entry_->releaseLease()) {
+    return;
+  }
+
+  if (state_ == nullptr) {
+    return;
+  }
+
+  state_->releaseLongLivedObject(entryId_);
+}
+
+std::unique_ptr<ArrayBufferHandle> ArrayBufferHandle::clone() const
+{
+  if (entry_ == nullptr || !entry_->tryRetainLease()) {
+    throw std::runtime_error("ArrayBuffer storage is no longer valid.");
+  }
+  if (!entry_->isLive()) {
+    entry_->releaseLease();
+    throw std::runtime_error("ArrayBuffer storage is no longer valid.");
+  }
+  return std::make_unique<ArrayBufferHandle>(state_, entry_, entryId_);
+}
+
 } // namespace expo::dotnet
 
 namespace {
 
 namespace jsi = facebook::jsi;
 
-constexpr uint32_t kApiVersion = 21;
+constexpr uint32_t kApiVersion = 22;
 
 struct ErrorResultBuffer {
   explicit ErrorResultBuffer(std::string value)
@@ -520,7 +579,8 @@ expo::dotnet::RuntimeHandle *tryRuntimeHandle(expo_jsi_runtime_handle runtime,
     return nullptr;
   }
   try {
-    (void)handle->runtime();
+    auto &runtimeRef = handle->runtime();
+    handle->drainDeferredReleases(runtimeRef);
   } catch (const std::exception &ex) {
     writeError(error, 2, ex.what());
     return nullptr;
@@ -536,7 +596,7 @@ expo::dotnet::RuntimeHandle *tryRuntimeHandleWithoutAccess(expo_jsi_runtime_hand
     writeError(error, 1, "Runtime handle is null.");
     return nullptr;
   }
-  if (!handle->isRuntimeValid()) {
+  if (!handle->isActive() || !handle->isRuntimeValid()) {
     writeError(error, 2, "Runtime connector is invalid.");
     return nullptr;
   }
@@ -621,6 +681,43 @@ expo_jsi_property_names_result makePropertyNamesErrorResult(int32_t code, const 
   return expo_jsi_property_names_result{0, nullptr, 0, nullptr, nullptr, makeError(code, message)};
 }
 
+expo_jsi_array_buffer_result makeArrayBufferResult(
+  std::unique_ptr<expo::dotnet::ArrayBufferHandle> handle, int32_t byteLength)
+{
+  return expo_jsi_array_buffer_result{1, handle.release(), byteLength, makeOk()};
+}
+
+expo_jsi_array_buffer_result makeArrayBufferErrorResult(int32_t code, const char *message)
+{
+  return expo_jsi_array_buffer_result{0, nullptr, 0, makeError(code, message)};
+}
+
+expo_jsi_mutable_buffer_result makeMutableBufferResult(
+  std::unique_ptr<expo::dotnet::MutableBufferHandle> handle, int32_t byteLength)
+{
+  return expo_jsi_mutable_buffer_result{1, 1, handle.release(), byteLength, makeOk()};
+}
+
+expo_jsi_mutable_buffer_result makeMutableBufferNotFoundResult(int32_t byteLength)
+{
+  return expo_jsi_mutable_buffer_result{1, 0, nullptr, byteLength, makeOk()};
+}
+
+expo_jsi_mutable_buffer_result makeMutableBufferErrorResult(int32_t code, const char *message)
+{
+  return expo_jsi_mutable_buffer_result{0, 0, nullptr, 0, makeError(code, message)};
+}
+
+expo_jsi_byte_span_result makeByteSpanResult(uint8_t *data, int32_t length)
+{
+  return expo_jsi_byte_span_result{1, data, length, makeOk()};
+}
+
+expo_jsi_byte_span_result makeByteSpanErrorResult(int32_t code, const char *message)
+{
+  return expo_jsi_byte_span_result{0, nullptr, 0, makeError(code, message)};
+}
+
 jsi::Object checkedObject(jsi::Runtime &runtime, expo_jsi_value_handle value)
 {
   if (value == nullptr) {
@@ -660,6 +757,68 @@ jsi::Function checkedFunction(jsi::Runtime &runtime, expo_jsi_value_handle value
     throw std::invalid_argument("Value is not a function.");
   }
   return object.asFunction(runtime);
+}
+
+jsi::ArrayBuffer checkedArrayBuffer(jsi::Runtime &runtime, expo_jsi_value_handle value)
+{
+  if (value == nullptr) {
+    throw std::invalid_argument("Value handle is null.");
+  }
+  if (!value->value().isObject()) {
+    throw std::invalid_argument("Value is not an ArrayBuffer.");
+  }
+  auto object = value->value().asObject(runtime);
+  if (!object.isArrayBuffer(runtime)) {
+    throw std::invalid_argument("Value is not an ArrayBuffer.");
+  }
+  return object.getArrayBuffer(runtime);
+}
+
+int32_t checkedArrayBufferLength(size_t length)
+{
+  if (length > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+    throw std::overflow_error("ArrayBuffer length exceeds the managed ABI limit.");
+  }
+  return static_cast<int32_t>(length);
+}
+
+void validateArrayBufferSnapshot(bool detached, int32_t currentLength, int32_t capturedLength)
+{
+  if (detached) {
+    throw std::invalid_argument("ArrayBuffer is detached.");
+  }
+  if (currentLength < 0 || capturedLength < 0 || currentLength != capturedLength) {
+    throw std::invalid_argument("ArrayBuffer byte length changed.");
+  }
+}
+
+bool isArrayBufferDetached(jsi::Runtime &runtime, const jsi::ArrayBuffer &arrayBuffer)
+{
+#if EXPO_DOTNET_HAS_ARRAY_BUFFER_INTROSPECTION
+  try {
+    return arrayBuffer.detached(runtime);
+  } catch (const std::exception &error) {
+    // The pinned Hermes test runtime exposes the JSI method but reports that detachment is not
+    // implemented. Treat that capability gap as "not detached"; engines that support the check
+    // still get the strict validation required by the bridge contract.
+    if (std::string_view(error.what()).find("not supported") != std::string_view::npos) {
+      return false;
+    }
+    throw;
+  }
+#else
+  (void)runtime;
+  (void)arrayBuffer;
+  return false;
+#endif
+}
+
+void requireSameRuntime(const std::shared_ptr<expo::dotnet::RuntimeState> &expected,
+                        const expo::dotnet::RuntimeHandle *actual)
+{
+  if (expected == nullptr || actual == nullptr || expected != actual->state()) {
+    throw std::invalid_argument("ArrayBuffer belongs to a different JavaScript runtime.");
+  }
 }
 
 std::vector<jsi::Value> copyCallArguments(jsi::Runtime &runtime,
@@ -1125,6 +1284,256 @@ uint8_t strictEquals(expo_jsi_runtime_handle runtime,
     writeError(error, 131, "Unknown native exception while comparing values.");
     return 0;
   }
+}
+
+expo_jsi_mutable_buffer_result tryGetMutableBuffer(expo_jsi_runtime_handle runtime,
+                                                   expo_jsi_value_handle value)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_mutable_buffer_result{0, 0, nullptr, 0, error};
+  }
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto arrayBuffer = checkedArrayBuffer(jsRuntime, value);
+#if EXPO_DOTNET_HAS_ARRAY_BUFFER_INTROSPECTION
+    if (isArrayBufferDetached(jsRuntime, arrayBuffer)) {
+      return makeMutableBufferErrorResult(140, "ArrayBuffer is detached.");
+    }
+    auto byteLength = checkedArrayBufferLength(arrayBuffer.size(jsRuntime));
+    auto mutableBuffer = arrayBuffer.tryGetMutableBuffer(jsRuntime);
+    if (mutableBuffer == nullptr) {
+      return makeMutableBufferNotFoundResult(0);
+    }
+    return makeMutableBufferResult(
+      std::make_unique<expo::dotnet::MutableBufferHandle>(std::move(mutableBuffer)), byteLength);
+#else
+    (void)arrayBuffer;
+    return makeMutableBufferNotFoundResult(0);
+#endif
+  } catch (const std::exception &ex) {
+    return makeMutableBufferErrorResult(141, ex.what());
+  } catch (...) {
+    return makeMutableBufferErrorResult(142,
+                                        "Unknown native exception while reading MutableBuffer.");
+  }
+}
+
+expo_jsi_array_buffer_result retainArrayBuffer(expo_jsi_runtime_handle runtime,
+                                               expo_jsi_value_handle value)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_array_buffer_result{0, nullptr, 0, error};
+  }
+  try {
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto arrayBuffer = checkedArrayBuffer(jsRuntime, value);
+    if (isArrayBufferDetached(jsRuntime, arrayBuffer)) {
+      return makeArrayBufferErrorResult(143, "ArrayBuffer is detached.");
+    }
+    auto byteLength = checkedArrayBufferLength(arrayBuffer.size(jsRuntime));
+#if EXPO_DOTNET_HAS_ARRAY_BUFFER_INTROSPECTION
+    if (arrayBuffer.tryGetMutableBuffer(jsRuntime) != nullptr) {
+      return makeArrayBufferErrorResult(144, "ArrayBuffer has MutableBuffer-backed storage.");
+    }
+#endif
+    auto state = runtimeHandle->state();
+    auto entry = std::make_shared<expo::dotnet::ArrayBufferEntry>(
+      state,
+      std::make_unique<jsi::ArrayBuffer>(std::move(arrayBuffer)),
+      static_cast<size_t>(byteLength));
+    auto entryId = state->longLivedObjects().add(entry);
+    return makeArrayBufferResult(
+      std::make_unique<expo::dotnet::ArrayBufferHandle>(state, std::move(entry), entryId),
+      byteLength);
+  } catch (const std::exception &ex) {
+    return makeArrayBufferErrorResult(145, ex.what());
+  } catch (...) {
+    return makeArrayBufferErrorResult(146, "Unknown native exception while retaining ArrayBuffer.");
+  }
+}
+
+expo_jsi_array_buffer_result cloneArrayBufferHandle(expo_jsi_array_buffer_handle handle)
+{
+  if (handle == nullptr) {
+    return makeArrayBufferErrorResult(147, "ArrayBuffer handle is null.");
+  }
+  try {
+    return makeArrayBufferResult(handle->clone(),
+                                 checkedArrayBufferLength(handle->entry()->byteLength()));
+  } catch (const std::exception &ex) {
+    return makeArrayBufferErrorResult(148, ex.what());
+  } catch (...) {
+    return makeArrayBufferErrorResult(149, "Unknown native exception while cloning ArrayBuffer.");
+  }
+}
+
+expo_jsi_byte_span_result getArrayBufferBytes(expo_jsi_runtime_handle runtime,
+                                              expo_jsi_array_buffer_handle handle)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_byte_span_result{0, nullptr, 0, error};
+  }
+  if (handle == nullptr) {
+    return makeByteSpanErrorResult(150, "ArrayBuffer handle is null.");
+  }
+  try {
+    requireSameRuntime(handle->state(), runtimeHandle);
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto &arrayBuffer = handle->entry()->buffer();
+    if (isArrayBufferDetached(jsRuntime, arrayBuffer)) {
+      return makeByteSpanErrorResult(151, "ArrayBuffer is detached.");
+    }
+    auto length = checkedArrayBufferLength(arrayBuffer.size(jsRuntime));
+    try {
+      validateArrayBufferSnapshot(isArrayBufferDetached(jsRuntime, arrayBuffer),
+                                  length,
+                                  checkedArrayBufferLength(handle->entry()->byteLength()));
+    } catch (const std::invalid_argument &error) {
+      return makeByteSpanErrorResult(152, error.what());
+    }
+    return makeByteSpanResult(arrayBuffer.data(jsRuntime), length);
+  } catch (const std::exception &ex) {
+    return makeByteSpanErrorResult(153, ex.what());
+  } catch (...) {
+    return makeByteSpanErrorResult(154,
+                                   "Unknown native exception while reading ArrayBuffer bytes.");
+  }
+}
+
+expo_jsi_value_result arrayBufferAsValue(expo_jsi_runtime_handle runtime,
+                                         expo_jsi_array_buffer_handle handle)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_value_result{0, nullptr, error};
+  }
+  if (handle == nullptr) {
+    return makeErrorResult(155, "ArrayBuffer handle is null.");
+  }
+  try {
+    requireSameRuntime(handle->state(), runtimeHandle);
+    auto &jsRuntime = runtimeHandle->runtime();
+    auto &arrayBuffer = handle->entry()->buffer();
+    auto length = checkedArrayBufferLength(arrayBuffer.size(jsRuntime));
+    try {
+      validateArrayBufferSnapshot(isArrayBufferDetached(jsRuntime, arrayBuffer),
+                                  length,
+                                  checkedArrayBufferLength(handle->entry()->byteLength()));
+    } catch (const std::invalid_argument &error) {
+      return makeErrorResult(156, error.what());
+    }
+    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, arrayBuffer)));
+  } catch (const std::exception &ex) {
+    return makeErrorResult(157, ex.what());
+  } catch (...) {
+    return makeErrorResult(158, "Unknown native exception while converting ArrayBuffer.");
+  }
+}
+
+void releaseArrayBuffer(expo_jsi_array_buffer_handle handle)
+{
+  delete handle;
+}
+
+expo_jsi_mutable_buffer_result allocateMutableBuffer(int32_t length)
+{
+  if (length < 0) {
+    return makeMutableBufferErrorResult(159, "MutableBuffer length is negative.");
+  }
+  try {
+    auto buffer = std::make_shared<expo::dotnet::OwnedMutableBuffer>(static_cast<size_t>(length));
+    return makeMutableBufferResult(
+      std::make_unique<expo::dotnet::MutableBufferHandle>(std::move(buffer)), length);
+  } catch (const std::exception &ex) {
+    return makeMutableBufferErrorResult(160, ex.what());
+  } catch (...) {
+    return makeMutableBufferErrorResult(161,
+                                        "Unknown native exception while allocating MutableBuffer.");
+  }
+}
+
+expo_jsi_mutable_buffer_result copyMutableBuffer(const uint8_t *data, int32_t length)
+{
+  if (length < 0 || (data == nullptr && length > 0)) {
+    return makeMutableBufferErrorResult(162, "MutableBuffer source is invalid.");
+  }
+  try {
+    auto bytes = std::span<const uint8_t>(data, static_cast<size_t>(length));
+    auto buffer = std::make_shared<expo::dotnet::OwnedMutableBuffer>(bytes);
+    return makeMutableBufferResult(
+      std::make_unique<expo::dotnet::MutableBufferHandle>(std::move(buffer)), length);
+  } catch (const std::exception &ex) {
+    return makeMutableBufferErrorResult(163, ex.what());
+  } catch (...) {
+    return makeMutableBufferErrorResult(164,
+                                        "Unknown native exception while copying MutableBuffer.");
+  }
+}
+
+expo_jsi_mutable_buffer_result cloneMutableBuffer(expo_jsi_mutable_buffer_handle handle)
+{
+  if (handle == nullptr) {
+    return makeMutableBufferErrorResult(165, "MutableBuffer handle is null.");
+  }
+  try {
+    return makeMutableBufferResult(
+      std::make_unique<expo::dotnet::MutableBufferHandle>(handle->buffer()),
+      checkedArrayBufferLength(handle->size()));
+  } catch (const std::exception &ex) {
+    return makeMutableBufferErrorResult(166, ex.what());
+  } catch (...) {
+    return makeMutableBufferErrorResult(167,
+                                        "Unknown native exception while cloning MutableBuffer.");
+  }
+}
+
+expo_jsi_byte_span_result getMutableBufferBytes(expo_jsi_mutable_buffer_handle handle)
+{
+  if (handle == nullptr) {
+    return makeByteSpanErrorResult(168, "MutableBuffer handle is null.");
+  }
+  try {
+    return makeByteSpanResult(handle->buffer()->data(), checkedArrayBufferLength(handle->size()));
+  } catch (const std::exception &ex) {
+    return makeByteSpanErrorResult(169, ex.what());
+  } catch (...) {
+    return makeByteSpanErrorResult(170,
+                                   "Unknown native exception while reading MutableBuffer bytes.");
+  }
+}
+
+expo_jsi_value_result mutableBufferAsValue(expo_jsi_runtime_handle runtime,
+                                           expo_jsi_mutable_buffer_handle handle)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_value_result{0, nullptr, error};
+  }
+  if (handle == nullptr) {
+    return makeErrorResult(171, "MutableBuffer handle is null.");
+  }
+  try {
+    auto arrayBuffer = jsi::ArrayBuffer(runtimeHandle->runtime(), handle->buffer());
+    return makeValueResult(expo::dotnet::ValueHandle::owned(
+      jsi::Value(runtimeHandle->runtime(), std::move(arrayBuffer))));
+  } catch (const std::exception &ex) {
+    return makeErrorResult(172, ex.what());
+  } catch (...) {
+    return makeErrorResult(173, "Unknown native exception while converting MutableBuffer.");
+  }
+}
+
+void releaseMutableBuffer(expo_jsi_mutable_buffer_handle handle)
+{
+  delete handle;
 }
 
 expo_jsi_value_result valueRetainAs(expo_jsi_runtime_handle runtime,
@@ -2272,6 +2681,18 @@ const expo_jsi_api kApi{
   objectGetNativeState,
   objectClearNativeState,
   createHostObject,
+  retainArrayBuffer,
+  cloneArrayBufferHandle,
+  getArrayBufferBytes,
+  arrayBufferAsValue,
+  releaseArrayBuffer,
+  tryGetMutableBuffer,
+  allocateMutableBuffer,
+  copyMutableBuffer,
+  cloneMutableBuffer,
+  getMutableBufferBytes,
+  mutableBufferAsValue,
+  releaseMutableBuffer,
 };
 
 } // namespace
@@ -2283,9 +2704,95 @@ expo_jsi_runtime_handle createRuntimeHandle(JsiRuntimeConnector &connector)
   return new RuntimeHandle(connector);
 }
 
+void prepareRuntimeHandleForInvalidation(expo_jsi_runtime_handle runtime)
+{
+  if (runtime != nullptr) {
+    runtime->prepareForInvalidation();
+  }
+}
+
+void getRuntimeArrayBufferCounters(expo_jsi_runtime_handle runtime,
+                                   uint32_t *released,
+                                   uint32_t *abandoned) noexcept
+{
+  if (released != nullptr) {
+    *released = 0;
+  }
+  if (abandoned != nullptr) {
+    *abandoned = 0;
+  }
+  if (runtime == nullptr) {
+    return;
+  }
+  auto state = runtime->state();
+  if (released != nullptr) {
+    *released = state->arrayBuffersReleased();
+  }
+  if (abandoned != nullptr) {
+    *abandoned = state->arrayBuffersAbandoned();
+  }
+}
+
+void resetRuntimeArrayBufferCounters(expo_jsi_runtime_handle runtime) noexcept
+{
+  if (runtime != nullptr) {
+    runtime->state()->resetArrayBufferCounters();
+  }
+}
+
+expo_jsi_error validateArrayBufferSnapshotForTesting(uint8_t detached,
+                                                     int32_t currentLength,
+                                                     int32_t capturedLength) noexcept
+{
+  try {
+    validateArrayBufferSnapshot(detached != 0, currentLength, capturedLength);
+    return makeOk();
+  } catch (const std::exception &error) {
+    return makeError(174, error.what());
+  } catch (...) {
+    return makeError(175, "Unknown ArrayBuffer snapshot validation error.");
+  }
+}
+
+expo_jsi_error validateArrayBufferLengthForTesting(uint64_t length) noexcept
+{
+  try {
+    (void)checkedArrayBufferLength(static_cast<size_t>(length));
+    return makeOk();
+  } catch (const std::exception &error) {
+    return makeError(176, error.what());
+  } catch (...) {
+    return makeError(177, "Unknown ArrayBuffer length validation error.");
+  }
+}
+
+void releaseRuntimeHandleAndGetArrayBufferCounters(expo_jsi_runtime_handle runtime,
+                                                   uint32_t *released,
+                                                   uint32_t *abandoned) noexcept
+{
+  if (released != nullptr) {
+    *released = 0;
+  }
+  if (abandoned != nullptr) {
+    *abandoned = 0;
+  }
+  if (runtime == nullptr) {
+    return;
+  }
+  auto state = runtime->state();
+  runtime->invalidateWithoutRuntime();
+  if (released != nullptr) {
+    *released = state->arrayBuffersReleased();
+  }
+  if (abandoned != nullptr) {
+    *abandoned = state->arrayBuffersAbandoned();
+  }
+  delete runtime;
+}
+
 void releaseRuntimeHandle(expo_jsi_runtime_handle runtime)
 {
-  delete runtime;
+  releaseRuntimeHandleAndGetArrayBufferCounters(runtime, nullptr, nullptr);
 }
 
 expo_jsi_value_handle createOwnedValueHandle(jsi::Value value)

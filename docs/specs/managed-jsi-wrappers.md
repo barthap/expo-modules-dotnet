@@ -211,3 +211,68 @@ module glue passes or receives owned value wrappers.
 - **AND** authored module code SHALL NOT dispose the wrapper after returning it
 - **AND** authored module code that needs to keep an original wrapper SHALL
   return a retained copy instead
+
+### Requirement: Low-Level ArrayBuffer Wrappers
+
+`Expo.JSI` SHALL expose owned `JavaScriptArrayBuffer` and runtime-neutral
+`JavaScriptMutableBuffer` wrappers. `ByteLength` SHALL be the immutable length
+captured when the handle is acquired. Byte callbacks SHALL expose borrowed
+`Span<byte>` or `ReadOnlySpan<byte>` values only for the synchronous callback;
+async access SHALL retain a scheduling lease and release it on success,
+failure, cancellation, dropped work, or teardown. Each wrapper SHALL own one
+lease, atomically relinquish it during `Dispose`, and tolerate duplicate
+`Dispose` calls. It SHALL NOT support concurrent member access and disposal;
+callers that need independent concurrent ownership SHALL call `Retain`.
+Neither wrapper SHALL have a finalizer or SafeHandle backing. An undisposed
+JavaScript-backed wrapper SHALL leak its raw native handle; runtime teardown
+can only release the tracked JSI storage during an early sweep or abandon it
+after late invalidation. An
+undisposed runtime-neutral MutableBuffer handle also leaks because it is not
+owned by runtime teardown.
+
+#### Scenario: Mutable storage outlives its originating runtime
+- **GIVEN** a `JavaScriptMutableBuffer` created through an API table whose
+  storage belongs to a JavaScript runtime or host
+- **WHEN** that originating runtime or host is destroyed while the mutable
+  buffer remains owned by managed code
+- **THEN** `Retain`, byte access, and `Dispose` SHALL remain valid without
+  dereferencing the destroyed API-table storage
+- **AND** later `Allocate` and `CopyFrom` calls SHALL use the retained
+  MutableBuffer dispatch after one runtime has initialized it
+
+#### Scenario: JavaScript-backed access is validated
+- **GIVEN** a retained JavaScript ArrayBuffer wrapper
+- **WHEN** managed code accesses bytes or encodes it
+- **THEN** managed code SHALL require an active matching runtime access scope
+- **AND** native SHALL validate runtime affinity, detachment, and unchanged
+  byte length on that operation
+- **AND** a disposed or invalidated wrapper SHALL fail before exposing bytes
+
+#### Scenario: JavaScript storage has a changed current length
+- **GIVEN** a retained JavaScript ArrayBuffer wrapper
+- **WHEN** its current logical length differs from the retained snapshot because
+  it grew or shrank
+- **THEN** the wrapper SHALL reject `WithBytes` and `WithReadOnlyBytes` access
+
+#### Scenario: The host lacks detached-state or MutableBuffer introspection
+- **GIVEN** the host engine exposes `ArrayBuffer::detached` but reports that
+  the capability is unsupported, or the bridge is compiled against React
+  Native earlier than 0.86 where `ArrayBuffer::detached` and
+  `ArrayBuffer::tryGetMutableBuffer` do not exist
+- **WHEN** managed code accesses a JavaScript-backed buffer
+- **THEN** the bridge SHALL retain the capability limitation rather than claim
+  detached-state coverage
+- **AND** when compiled against React Native earlier than 0.86, the bridge
+  SHALL NOT compile calls to either unavailable API and
+  `TryGetMutableBuffer` SHALL report no native backing
+- **AND** it SHALL still reject any changed logical byte length
+- **AND** the testhost snapshot-validation hook SHALL cover detached, resize,
+  and managed ABI-overflow predicates independently of engine support
+
+#### Scenario: Mutable storage is encoded into a runtime
+- **GIVEN** a `JavaScriptMutableBuffer` wrapper and an active access scope for
+  any live JavaScript runtime
+- **WHEN** managed code calls `AsValue`
+- **THEN** native SHALL create a distinct ArrayBuffer object over the shared
+  MutableBuffer storage
+- **AND** mutations through either object SHALL observe the same bytes

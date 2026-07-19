@@ -102,4 +102,22 @@ internal static class ExpoModulesDiagnostics
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true
   );
+
+  public static readonly DiagnosticDescriptor AsyncSpanParameter = new(
+      id: "EXPOJSI012",
+      title: "Async Expo module methods cannot borrow spans",
+      messageFormat: "Method '{0}' parameter '{1}' uses '{2}', which is supported only by synchronous Expo module methods",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor MultipleSpanParameters = new(
+      id: "EXPOJSI013",
+      title: "Expo module method has multiple span parameters",
+      messageFormat: "Method '{0}' declares multiple span parameters ({1}); at most one Span<byte> or ReadOnlySpan<byte> parameter is supported",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
 }

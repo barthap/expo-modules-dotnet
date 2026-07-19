@@ -88,6 +88,19 @@ public readonly ref struct JavaScriptValueRef
   /// </summary>
   public bool IsFunction => Kind == JavaScriptValueKind.Function;
 
+  /// <summary>Gets whether this value is a JavaScript ArrayBuffer.</summary>
+  public bool IsArrayBuffer => Kind == JavaScriptValueKind.ArrayBuffer;
+
+  /// <summary>Converts this value to a scoped ArrayBuffer ref.</summary>
+  public JavaScriptArrayBufferRef AsArrayBuffer()
+  {
+    if (!IsArrayBuffer)
+    {
+      throw new InvalidOperationException("Value is not a JavaScript ArrayBuffer.");
+    }
+    return JavaScriptArrayBufferRef.FromBorrowedRoot(Scope, Inner);
+  }
+
   /// <summary>
   /// Converts this value ref to a scoped object ref.
   /// </summary>
