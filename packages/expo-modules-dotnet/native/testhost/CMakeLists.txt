@@ -19,18 +19,25 @@ add_library(
   "${ADAPTER_ROOT}/native/packages/jsi/src/ExpoJsiBridge.cpp"
   "${ADAPTER_ROOT}/native/packages/jsi/src/HermesConsoleRuntimeConnector.cpp")
 
+add_library(expo_jsi_array_buffer_capabilities_legacy_compile_test OBJECT
+            src/ArrayBufferCapabilitiesLegacyCompileTest.cpp)
+
+target_include_directories(
+  expo_jsi_array_buffer_capabilities_legacy_compile_test BEFORE
+  PRIVATE "${CMAKE_CURRENT_LIST_DIR}/legacy-jsi"
+          "${ADAPTER_ROOT}/native/packages/jsi/src")
+
+target_compile_features(expo_jsi_array_buffer_capabilities_legacy_compile_test
+                        PRIVATE cxx_std_20)
+
+add_dependencies(expo_jsi_testhost
+                 expo_jsi_array_buffer_capabilities_legacy_compile_test)
+
 target_include_directories(
   expo_jsi_testhost
   PRIVATE "${ADAPTER_ROOT}/native/include"
           "${ADAPTER_ROOT}/native/packages/jsi/include"
           "${ADAPTER_ROOT}/native/packages/jsi/src"
           "${CMAKE_CURRENT_LIST_DIR}/include")
-
-# The pinned Hermes prebuilt exposes the RN 0.86 ArrayBuffer extensions even
-# though it is not built through a React Native target with
-# ReactNativeVersion.h.
-target_compile_definitions(
-  expo_jsi_testhost PRIVATE REACT_NATIVE_VERSION_MAJOR=0
-                            REACT_NATIVE_VERSION_MINOR=86)
 
 expo_configure_hermes_target(expo_jsi_testhost ROOT "${HERMES_PREBUILT_ROOT}")
