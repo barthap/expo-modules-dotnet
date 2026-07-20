@@ -11,4 +11,8 @@ class MutableBuffer {};
 
 class ArrayBuffer {};
 
+class Object {};
+
+class Value {};
+
 } // namespace facebook::jsi

@@ -28,20 +28,31 @@ namespace Expo.ModulesCore;
 /// </summary>
 public sealed class DotnetRuntimeContext : IDisposable
 {
+  private enum LifecycleState
+  {
+    Active,
+    Disposing,
+    Disposed,
+  }
+
   private readonly object gate = new();
   private readonly List<GeneratedHostFunctionRegistration> hostFunctionRegistrations = [];
   private readonly List<IDisposable> retainedCallbacks = [];
+  private readonly JavaScriptRuntime runtime;
   private readonly ModuleRegistry moduleRegistry;
   private readonly JavaScriptObjectFactory objects;
   private readonly ModuleEventEmitter events;
-  private bool disposed;
+  private readonly SharedObjectRegistry sharedObjects;
+  private LifecycleState state = LifecycleState.Active;
+  private int disposingThreadId;
 
-  public DotnetRuntimeContext(JavaScriptRuntime runtime)
+  public DotnetRuntimeContext(JavaScriptRuntime runtimeArgument)
   {
-    Runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
-    objects = new JavaScriptObjectFactory(Runtime);
+    runtime = runtimeArgument ?? throw new ArgumentNullException(nameof(runtimeArgument));
+    objects = new JavaScriptObjectFactory(runtime);
     events = new ModuleEventEmitter(this);
     moduleRegistry = new ModuleRegistry(this, objects);
+    sharedObjects = new SharedObjectRegistry(runtime);
   }
 
   /// <summary>
@@ -54,14 +65,27 @@ public sealed class DotnetRuntimeContext : IDisposable
   /// wrappers created from this runtime must be disposed according to their ownership contracts and
   /// must not be used after this context is disposed or the host tears the runtime down.
   /// </remarks>
-  public JavaScriptRuntime Runtime { get; }
+  public JavaScriptRuntime Runtime
+  {
+    get
+    {
+      lock (gate)
+      {
+        ThrowIfNotActiveLocked();
+        return runtime;
+      }
+    }
+  }
 
   public JavaScriptObjectFactory Objects
   {
     get
     {
-      ThrowIfDisposed();
-      return objects;
+      lock (gate)
+      {
+        ThrowIfNotActiveLocked();
+        return objects;
+      }
     }
   }
 
@@ -69,8 +93,11 @@ public sealed class DotnetRuntimeContext : IDisposable
   {
     get
     {
-      ThrowIfDisposed();
-      return moduleRegistry;
+      lock (gate)
+      {
+        ThrowIfNotActiveLocked();
+        return moduleRegistry;
+      }
     }
   }
 
@@ -78,8 +105,23 @@ public sealed class DotnetRuntimeContext : IDisposable
   {
     get
     {
-      ThrowIfDisposed();
-      return events;
+      lock (gate)
+      {
+        ThrowIfNotActiveLocked();
+        return events;
+      }
+    }
+  }
+
+  internal SharedObjectRegistry SharedObjects
+  {
+    get
+    {
+      lock (gate)
+      {
+        ThrowIfNotActiveLocked();
+        return sharedObjects;
+      }
     }
   }
 
@@ -94,7 +136,7 @@ public sealed class DotnetRuntimeContext : IDisposable
     {
       try
       {
-        ThrowIfDisposedLocked();
+        ThrowIfNotActiveLocked();
         hostFunctionRegistrations.Add(registration);
       }
       catch
@@ -115,7 +157,7 @@ public sealed class DotnetRuntimeContext : IDisposable
     {
       try
       {
-        ThrowIfDisposedLocked();
+        ThrowIfNotActiveLocked();
         retainedCallbacks.Add(callback);
       }
       catch
@@ -135,12 +177,25 @@ public sealed class DotnetRuntimeContext : IDisposable
 
     lock (gate)
     {
-      if (disposed)
+      if (state == LifecycleState.Disposed)
       {
         return;
       }
+      if (state == LifecycleState.Disposing)
+      {
+        if (disposingThreadId == Environment.CurrentManagedThreadId)
+        {
+          return;
+        }
+        while (state == LifecycleState.Disposing)
+        {
+          Monitor.Wait(gate);
+        }
+        return;
+      }
 
-      disposed = true;
+      state = LifecycleState.Disposing;
+      disposingThreadId = Environment.CurrentManagedThreadId;
       registrations = [.. hostFunctionRegistrations];
       hostFunctionRegistrations.Clear();
       callbacks = [.. retainedCallbacks];
@@ -148,26 +203,37 @@ public sealed class DotnetRuntimeContext : IDisposable
     }
 
     List<Exception>? exceptions = null;
-
-    foreach (var registration in registrations)
+    try
     {
-      DisposeAndCapture(registration, ref exceptions);
+      DisposeAndCapture(sharedObjects, ref exceptions);
+      foreach (var registration in registrations)
+      {
+        DisposeAndCapture(registration, ref exceptions);
+      }
+      foreach (var callback in callbacks)
+      {
+        if (callback is IRuntimeContextRetainedCallback retainedCallback)
+        {
+          DisposeAndCapture(retainedCallback.DisposeFromRuntimeContext, ref exceptions);
+        }
+        else
+        {
+          DisposeAndCapture(callback, ref exceptions);
+        }
+      }
+      DisposeAndCapture(moduleRegistry.Dispose, ref exceptions);
+      DisposeAndCapture(events, ref exceptions);
+      DisposeAndCapture(objects, ref exceptions);
     }
-    foreach (var callback in callbacks)
+    finally
     {
-      if (callback is IRuntimeContextRetainedCallback retainedCallback)
+      lock (gate)
       {
-        DisposeAndCapture(retainedCallback.DisposeFromRuntimeContext, ref exceptions);
-      }
-      else
-      {
-        DisposeAndCapture(callback, ref exceptions);
+        state = LifecycleState.Disposed;
+        disposingThreadId = 0;
+        Monitor.PulseAll(gate);
       }
     }
-
-    DisposeAndCapture(moduleRegistry.Dispose, ref exceptions);
-    DisposeAndCapture(events, ref exceptions);
-    DisposeAndCapture(objects, ref exceptions);
 
     if (exceptions is not null)
     {
@@ -194,13 +260,11 @@ public sealed class DotnetRuntimeContext : IDisposable
     }
   }
 
-  private void ThrowIfDisposed()
+  private void ThrowIfNotActiveLocked()
   {
-    ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed), typeof(DotnetRuntimeContext));
-  }
-
-  private void ThrowIfDisposedLocked()
-  {
-    ObjectDisposedException.ThrowIf(disposed, typeof(DotnetRuntimeContext));
+    if (state != LifecycleState.Active)
+    {
+      throw new ObjectDisposedException(typeof(DotnetRuntimeContext).Name);
+    }
   }
 }

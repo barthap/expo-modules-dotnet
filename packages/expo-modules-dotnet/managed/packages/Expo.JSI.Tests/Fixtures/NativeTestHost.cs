@@ -16,6 +16,7 @@ internal static unsafe class NativeTestHost
   private static delegate* unmanaged[Cdecl]<nint, void> resetCounters;
   private static delegate* unmanaged[Cdecl]<nint, void> drainTasks;
   private static delegate* unmanaged[Cdecl]<nint, ExpoJsiError> waitUntilIdle;
+  private static delegate* unmanaged[Cdecl]<nint, ExpoJsiError> collectGarbage;
   private static delegate* unmanaged[Cdecl]<nint, void> pauseRuntimeExecutor;
   private static delegate* unmanaged[Cdecl]<nint, void> resumeRuntimeExecutor;
   private static delegate* unmanaged[Cdecl]<nint, int, void> dropNextRuntimeTask;
@@ -62,6 +63,9 @@ internal static unsafe class NativeTestHost
     public readonly uint ReleasedPromisesOffRuntimeThread;
     public readonly uint LongLivedArrayBuffersReleased;
     public readonly uint LongLivedArrayBuffersAbandoned;
+    public readonly uint LongLivedWeakObjectsReleased;
+    public readonly uint LongLivedWeakObjectsAbandoned;
+    public readonly uint LongLivedObjectsRemaining;
   }
 
   internal static CreateResult CreateRuntime()
@@ -128,6 +132,16 @@ internal static unsafe class NativeTestHost
     if (error.Code != 0)
     {
       ThrowNativeError(error, "Failed to wait for Hermes runtime idle.");
+    }
+  }
+
+  internal static void CollectGarbageForTesting(nint testHostRuntime)
+  {
+    EnsureLoaded();
+    var error = collectGarbage(testHostRuntime);
+    if (error.Code != 0)
+    {
+      ThrowNativeError(error, "Failed to collect Hermes garbage.");
     }
   }
 
@@ -295,6 +309,11 @@ internal static unsafe class NativeTestHost
       (delegate* unmanaged[Cdecl]<nint, ExpoJsiError>)LoadExport(
           library,
           "expo_jsi_testhost_wait_until_idle"
+      );
+    collectGarbage =
+      (delegate* unmanaged[Cdecl]<nint, ExpoJsiError>)LoadExport(
+          library,
+          "expo_jsi_testhost_collect_garbage"
       );
     pauseRuntimeExecutor =
       (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(

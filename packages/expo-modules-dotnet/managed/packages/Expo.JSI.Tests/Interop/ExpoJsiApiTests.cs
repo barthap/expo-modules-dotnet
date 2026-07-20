@@ -7,9 +7,9 @@ namespace Expo.JSI.Tests.Interop;
 public sealed class ExpoJsiApiTests
 {
   [Fact]
-  public unsafe void AbiVersionAndSizeIncludeArrayBufferTail()
+  public unsafe void AbiVersionAndSizeIncludeWeakObjectTail()
   {
-    Assert.Equal(22u, ExpoJsiApi.ExpectedVersion);
+    Assert.Equal(23u, ExpoJsiApi.ExpectedVersion);
     Assert.Equal((uint)sizeof(ExpoJsiApi), ExpoJsiApi.ExpectedSize);
 
     var truncated = new FakeExpoJsiApi

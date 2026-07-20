@@ -45,6 +45,7 @@ public:
   void sweep(jsi::Runtime &runtime) noexcept;
   void invalidateWithoutRuntime() noexcept;
   bool empty() const noexcept;
+  uint32_t size() const noexcept;
 
 private:
   struct Entry {

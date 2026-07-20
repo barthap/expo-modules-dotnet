@@ -116,4 +116,14 @@ internal readonly unsafe struct JavaScriptObjectInner
     }
     return result.Value;
   }
+
+  public ExpoJsiWeakObjectHandle CreateWeak()
+  {
+    var result = Context.Api->CreateWeakObject(Context.RuntimeHandle, Handle);
+    if (!result.IsOk)
+    {
+      JsiContext.ThrowNativeError(result.Error, "Failed to create JavaScript weak object.");
+    }
+    return result.WeakObject;
+  }
 }

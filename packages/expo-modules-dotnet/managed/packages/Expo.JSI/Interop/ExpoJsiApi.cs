@@ -333,6 +333,15 @@ internal readonly unsafe struct ExpoJsiApi
   private readonly delegate* unmanaged[Cdecl]<ExpoJsiMutableBufferHandle, ExpoJsiByteSpanResult> MutableBufferGetBytes;
   private readonly delegate* unmanaged[Cdecl]<ExpoJsiRuntimeHandle, ExpoJsiMutableBufferHandle, ExpoJsiValueResult> MutableBufferAsValue;
   private readonly delegate* unmanaged[Cdecl]<ExpoJsiMutableBufferHandle, void> MutableBufferRelease;
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiValueHandle,
+    ExpoJsiWeakObjectResult> ObjectCreateWeak;
+  private readonly delegate* unmanaged[Cdecl]<
+    ExpoJsiRuntimeHandle,
+    ExpoJsiWeakObjectHandle,
+    ExpoJsiWeakObjectLockResult> WeakObjectLock;
+  private readonly delegate* unmanaged[Cdecl]<ExpoJsiWeakObjectHandle, void> WeakObjectRelease;
 
   private static readonly UTF8Encoding StrictUtf8 = new(
     encoderShouldEmitUTF8Identifier: false,
@@ -414,6 +423,9 @@ internal readonly unsafe struct ExpoJsiApi
       || this.MutableBufferGetBytes is null
       || this.MutableBufferAsValue is null
       || this.MutableBufferRelease is null
+      || this.ObjectCreateWeak is null
+      || this.WeakObjectLock is null
+      || this.WeakObjectRelease is null
     )
     {
       throw new InvalidOperationException("Expo JSI API table is missing required functions.");
@@ -953,6 +965,18 @@ internal readonly unsafe struct ExpoJsiApi
 
   public void ReleaseArrayBuffer(ExpoJsiArrayBufferHandle handle) => ArrayBufferRelease(handle);
 
+  public ExpoJsiWeakObjectResult CreateWeakObject(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiValueHandle valueHandle
+  ) => ObjectCreateWeak(runtimeHandle, valueHandle);
+
+  public ExpoJsiWeakObjectLockResult LockWeakObject(
+    ExpoJsiRuntimeHandle runtimeHandle,
+    ExpoJsiWeakObjectHandle handle
+  ) => WeakObjectLock(runtimeHandle, handle);
+
+  public void ReleaseWeakObject(ExpoJsiWeakObjectHandle handle) => WeakObjectRelease(handle);
+
   public ExpoJsiMutableBufferResult TryGetMutableBuffer(
       ExpoJsiRuntimeHandle runtimeHandle,
       ExpoJsiValueHandle valueHandle
@@ -983,5 +1007,5 @@ internal readonly unsafe struct ExpoJsiApi
   public void ReleaseMutableBuffer(ExpoJsiMutableBufferHandle handle) => MutableBufferRelease(handle);
 
   public static uint ExpectedSize => (uint)sizeof(ExpoJsiApi);
-  public const uint ExpectedVersion = 22;
+  public const uint ExpectedVersion = 23;
 }

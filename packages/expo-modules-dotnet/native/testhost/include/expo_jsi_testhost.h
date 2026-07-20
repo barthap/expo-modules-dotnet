@@ -38,6 +38,9 @@ typedef struct expo_jsi_testhost_counters {
   uint32_t released_promises_off_runtime_thread;
   uint32_t long_lived_array_buffers_released;
   uint32_t long_lived_array_buffers_abandoned;
+  uint32_t long_lived_weak_objects_released;
+  uint32_t long_lived_weak_objects_abandoned;
+  uint32_t long_lived_objects_remaining;
 } expo_jsi_testhost_counters;
 
 EXPO_JSI_TESTHOST_EXPORT expo_jsi_testhost_create_result expo_jsi_testhost_create_runtime(void);
@@ -60,6 +63,9 @@ EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_drain_tasks(
 
 EXPO_JSI_TESTHOST_EXPORT expo_jsi_error
 expo_jsi_testhost_wait_until_idle(expo_jsi_testhost_runtime_handle testhost_runtime);
+
+EXPO_JSI_TESTHOST_EXPORT expo_jsi_error
+expo_jsi_testhost_collect_garbage(expo_jsi_testhost_runtime_handle testhost_runtime);
 
 EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_pause_runtime_executor(
   expo_jsi_testhost_runtime_handle testhost_runtime);

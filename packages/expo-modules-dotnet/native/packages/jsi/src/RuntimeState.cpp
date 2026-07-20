@@ -165,4 +165,35 @@ void RuntimeState::resetArrayBufferCounters() noexcept
   abandoned_.store(0, std::memory_order_relaxed);
 }
 
+void RuntimeState::noteWeakObjectReleased() noexcept
+{
+  weakReleased_.fetch_add(1, std::memory_order_relaxed);
+}
+
+void RuntimeState::noteWeakObjectAbandoned() noexcept
+{
+  weakAbandoned_.fetch_add(1, std::memory_order_relaxed);
+}
+
+uint32_t RuntimeState::weakObjectsReleased() const noexcept
+{
+  return weakReleased_.load(std::memory_order_relaxed);
+}
+
+uint32_t RuntimeState::weakObjectsAbandoned() const noexcept
+{
+  return weakAbandoned_.load(std::memory_order_relaxed);
+}
+
+void RuntimeState::resetWeakObjectCounters() noexcept
+{
+  weakReleased_.store(0, std::memory_order_relaxed);
+  weakAbandoned_.store(0, std::memory_order_relaxed);
+}
+
+uint32_t RuntimeState::longLivedObjectCount() const noexcept
+{
+  return longLivedObjects_.size();
+}
+
 } // namespace expo::dotnet

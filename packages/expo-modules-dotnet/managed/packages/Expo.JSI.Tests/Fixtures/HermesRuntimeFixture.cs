@@ -67,6 +67,12 @@ public sealed unsafe class HermesRuntimeFixture : IDisposable
     return api->GetObjectProperty(runtimeHandle, targetValue.Handle, name);
   }
 
+  internal ExpoJsiWeakObjectResult CreateWeakObjectRaw(nint value) =>
+      api->CreateWeakObject(runtimeHandle, value);
+
+  internal ExpoJsiWeakObjectLockResult LockWeakObjectRaw(nint weakObject) =>
+      api->LockWeakObject(runtimeHandle, weakObject);
+
   public void ResetCounters()
   {
     NativeTestHost.ResetCounters(testHostRuntime);
@@ -81,6 +87,8 @@ public sealed unsafe class HermesRuntimeFixture : IDisposable
   {
     NativeTestHost.WaitUntilIdle(testHostRuntime);
   }
+
+  public void CollectGarbageForTesting() => NativeTestHost.CollectGarbageForTesting(testHostRuntime);
 
   public void DisableSyncExecutionForTesting()
   {

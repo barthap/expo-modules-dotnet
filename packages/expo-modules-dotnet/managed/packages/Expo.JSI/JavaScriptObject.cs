@@ -115,6 +115,22 @@ public sealed class JavaScriptObject : IJavaScriptValueRepresentable, IDisposabl
   public JavaScriptValue AsValue() =>
     JavaScriptValue.FromOwnedHandle(context, Inner.AsValue());
 
+  /// <summary>Creates an opaque weak reference to this JavaScript object.</summary>
+  /// <remarks>
+  /// This operation requires an active access frame for this object's originating runtime. The
+  /// returned wrapper is owned by the caller and must be disposed. It neither keeps the JavaScript
+  /// object alive nor transfers ownership of this object wrapper.
+  /// </remarks>
+  /// <exception cref="ObjectDisposedException">
+  /// Thrown when this object wrapper has already been disposed.
+  /// </exception>
+  public JavaScriptWeakObject CreateWeak()
+  {
+    ThrowIfDisposed();
+    JavaScriptHandleScope.CurrentFor(context);
+    return new JavaScriptWeakObject(context, Inner.CreateWeak());
+  }
+
   /// <summary>
   /// Releases the owned native object value handle.
   /// </summary>

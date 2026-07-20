@@ -276,3 +276,28 @@ owned by runtime teardown.
 - **THEN** native SHALL create a distinct ArrayBuffer object over the shared
   MutableBuffer storage
 - **AND** mutations through either object SHALL observe the same bytes
+
+### Requirement: Weak Object Wrapper
+
+`JavaScriptObject.CreateWeak()` SHALL return an owned, opaque,
+runtime-affine `JavaScriptWeakObject`. It SHALL require an active access frame
+for the originating runtime and shall not keep the JavaScript object alive.
+`JavaScriptWeakObject.Lock()` SHALL require the same access frame and return a
+fresh owned `JavaScriptObject` or `null` when the referent was collected.
+
+`JavaScriptWeakObject.Dispose()` SHALL atomically detach and release only its
+opaque bridge handle. It SHALL be idempotent, require neither an access frame
+nor JSI access, and SHALL NOT synchronously schedule runtime work. A disposed
+weak wrapper SHALL fail loudly before `Lock()` reaches the ABI.
+
+#### Scenario: Weak locks are independent
+- **GIVEN** a live weak wrapper
+- **WHEN** managed code locks it more than once
+- **THEN** each successful lock SHALL return an independently owned object
+  wrapper for the same JavaScript object
+
+#### Scenario: Weak wrapper crosses a runtime boundary
+- **GIVEN** a weak wrapper created for runtime `A`
+- **WHEN** code tries to create or lock it through runtime `B`, or after its
+  runtime is invalidated
+- **THEN** the operation SHALL fail loudly without dereferencing invalid JSI

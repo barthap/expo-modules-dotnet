@@ -8,16 +8,21 @@ namespace expo::dotnet {
 
 // Private testhost-only observability and validation hooks. Production hosts
 // include ExpoJsiBridge.h instead and do not depend on these test controls.
-void getRuntimeArrayBufferCounters(expo_jsi_runtime_handle runtime,
-                                   uint32_t *released,
-                                   uint32_t *abandoned) noexcept;
-void resetRuntimeArrayBufferCounters(expo_jsi_runtime_handle runtime) noexcept;
+struct RuntimeLongLivedCounters {
+  uint32_t arrayBuffersReleased = 0;
+  uint32_t arrayBuffersAbandoned = 0;
+  uint32_t weakObjectsReleased = 0;
+  uint32_t weakObjectsAbandoned = 0;
+  uint32_t remaining = 0;
+};
+
+RuntimeLongLivedCounters getRuntimeLongLivedCounters(expo_jsi_runtime_handle runtime) noexcept;
+void resetRuntimeLongLivedCounters(expo_jsi_runtime_handle runtime) noexcept;
 expo_jsi_error validateArrayBufferSnapshotForTesting(uint8_t detached,
                                                      int32_t currentLength,
                                                      int32_t capturedLength) noexcept;
 expo_jsi_error validateArrayBufferLengthForTesting(uint64_t length) noexcept;
-void releaseRuntimeHandleAndGetArrayBufferCounters(expo_jsi_runtime_handle runtime,
-                                                   uint32_t *released,
-                                                   uint32_t *abandoned) noexcept;
+RuntimeLongLivedCounters releaseRuntimeHandleAndGetLongLivedCounters(
+  expo_jsi_runtime_handle runtime) noexcept;
 
 } // namespace expo::dotnet

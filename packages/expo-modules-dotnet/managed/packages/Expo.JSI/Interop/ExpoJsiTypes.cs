@@ -221,6 +221,28 @@ internal readonly struct ExpoJsiMutableBufferResult
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal readonly struct ExpoJsiWeakObjectResult
+{
+  public readonly int Ok;
+  public readonly ExpoJsiWeakObjectHandle WeakObject;
+  public readonly ExpoJsiError Error;
+
+  public bool IsOk => Ok != 0 && WeakObject != 0;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal readonly struct ExpoJsiWeakObjectLockResult
+{
+  public readonly int Ok;
+  public readonly int Found;
+  public readonly ExpoJsiValueHandle Value;
+  public readonly ExpoJsiError Error;
+
+  public bool IsOk => Ok != 0;
+  public bool HasValue => IsOk && Found != 0 && Value != 0;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal readonly unsafe struct ExpoJsiByteSpanResult
 {
   public readonly int Ok;

@@ -1,4 +1,5 @@
 #include <expo_jsi_testhost.h>
+#include <jsi/instrumentation.h>
 #include <jsi/jsilib.h>
 
 #include <cstring>
@@ -527,9 +528,12 @@ extern "C" expo_jsi_testhost_counters expo_jsi_testhost_get_counters(
   }
   auto counters = testhost->counters;
   if (testhost->runtime != nullptr) {
-    expo::dotnet::getRuntimeArrayBufferCounters(testhost->runtime,
-                                                &counters.long_lived_array_buffers_released,
-                                                &counters.long_lived_array_buffers_abandoned);
+    auto longLived = expo::dotnet::getRuntimeLongLivedCounters(testhost->runtime);
+    counters.long_lived_array_buffers_released = longLived.arrayBuffersReleased;
+    counters.long_lived_array_buffers_abandoned = longLived.arrayBuffersAbandoned;
+    counters.long_lived_weak_objects_released = longLived.weakObjectsReleased;
+    counters.long_lived_weak_objects_abandoned = longLived.weakObjectsAbandoned;
+    counters.long_lived_objects_remaining = longLived.remaining;
   }
   return counters;
 }
@@ -539,7 +543,7 @@ extern "C" void expo_jsi_testhost_reset_counters(expo_jsi_testhost_runtime_handl
   auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
   if (testhost != nullptr) {
     testhost->counters = expo_jsi_testhost_counters{};
-    expo::dotnet::resetRuntimeArrayBufferCounters(testhost->runtime);
+    expo::dotnet::resetRuntimeLongLivedCounters(testhost->runtime);
   }
 }
 
@@ -565,6 +569,27 @@ extern "C" expo_jsi_error expo_jsi_testhost_wait_until_idle(
     return makeError(10, ex.what());
   } catch (...) {
     return makeError(11, "Unknown native exception while waiting for Hermes runtime idle.");
+  }
+}
+
+extern "C" expo_jsi_error expo_jsi_testhost_collect_garbage(
+  expo_jsi_testhost_runtime_handle testhostRuntime)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  if (testhost == nullptr) {
+    return makeError(20, "Testhost runtime is null.");
+  }
+
+  try {
+    testhost->connector.runtimeExecutor().executeSync(
+      [](jsi::Runtime &runtime) { runtime.instrumentation().collectGarbage("expo-jsi-testhost"); });
+    return makeOk();
+  } catch (const jsi::JSError &error) {
+    return makeError(21, error.what());
+  } catch (const std::exception &error) {
+    return makeError(22, error.what());
+  } catch (...) {
+    return makeError(23, "Unknown native exception while collecting Hermes garbage.");
   }
 }
 
@@ -698,10 +723,12 @@ extern "C" void expo_jsi_testhost_release_bridge_runtime_handle(
     return;
   }
   unregisterRuntimeForCounters(testhost->runtime);
-  expo::dotnet::releaseRuntimeHandleAndGetArrayBufferCounters(
-    testhost->runtime,
-    &testhost->counters.long_lived_array_buffers_released,
-    &testhost->counters.long_lived_array_buffers_abandoned);
+  auto longLived = expo::dotnet::releaseRuntimeHandleAndGetLongLivedCounters(testhost->runtime);
+  testhost->counters.long_lived_array_buffers_released = longLived.arrayBuffersReleased;
+  testhost->counters.long_lived_array_buffers_abandoned = longLived.arrayBuffersAbandoned;
+  testhost->counters.long_lived_weak_objects_released = longLived.weakObjectsReleased;
+  testhost->counters.long_lived_weak_objects_abandoned = longLived.weakObjectsAbandoned;
+  testhost->counters.long_lived_objects_remaining = longLived.remaining;
   testhost->runtime = nullptr;
 }
 

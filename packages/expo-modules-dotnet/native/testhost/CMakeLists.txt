@@ -22,6 +22,9 @@ add_library(
 add_library(expo_jsi_array_buffer_capabilities_legacy_compile_test OBJECT
             src/ArrayBufferCapabilitiesLegacyCompileTest.cpp)
 
+add_library(expo_jsi_weak_object_capabilities_legacy_compile_test OBJECT
+            src/WeakObjectCapabilitiesLegacyCompileTest.cpp)
+
 target_include_directories(
   expo_jsi_array_buffer_capabilities_legacy_compile_test BEFORE
   PRIVATE "${CMAKE_CURRENT_LIST_DIR}/legacy-jsi"
@@ -30,8 +33,19 @@ target_include_directories(
 target_compile_features(expo_jsi_array_buffer_capabilities_legacy_compile_test
                         PRIVATE cxx_std_20)
 
+target_include_directories(
+  expo_jsi_weak_object_capabilities_legacy_compile_test BEFORE
+  PRIVATE "${CMAKE_CURRENT_LIST_DIR}/legacy-jsi"
+          "${ADAPTER_ROOT}/native/packages/jsi/include"
+          "${ADAPTER_ROOT}/native/packages/jsi/src")
+
+target_compile_features(expo_jsi_weak_object_capabilities_legacy_compile_test
+                        PRIVATE cxx_std_20)
+
 add_dependencies(expo_jsi_testhost
                  expo_jsi_array_buffer_capabilities_legacy_compile_test)
+add_dependencies(expo_jsi_testhost
+                 expo_jsi_weak_object_capabilities_legacy_compile_test)
 
 target_include_directories(
   expo_jsi_testhost

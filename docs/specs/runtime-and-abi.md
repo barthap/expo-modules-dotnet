@@ -513,3 +513,27 @@ containing the original API table no longer exists.
   runtime executor before connector invalidation
 - **AND** late invalidation SHALL abandon retained payloads without invoking JSI
 - **AND** each entry SHALL transition exactly once
+
+### Requirement: Opaque Weak Object ABI
+
+The ABI SHALL report version `23` and expose weak JavaScript-object references
+only through an opaque weak-object handle. Native code owns the JSI weak
+reference; managed code receives structured create and lock results plus an
+idempotent opaque-handle release operation.
+
+#### Scenario: Weak object is created and locked
+- **GIVEN** managed code has an object value belonging to runtime `R`
+- **WHEN** it creates and then locks an opaque weak-object handle in a valid
+  access frame for `R`
+- **THEN** the lock result SHALL contain a new owned object value handle when
+  the referent is live
+- **AND** it SHALL report no value when the referent has been collected
+
+#### Scenario: Weak object reaches teardown
+- **GIVEN** a weak-object handle has queued runtime-affine release work
+- **WHEN** the host prepares teardown while JSI remains valid
+- **THEN** native SHALL release the weak JSI payload on the runtime executor
+- **AND** remove its long-lived collection entry
+- **WHEN** connector invalidation has already made JSI unavailable
+- **THEN** native SHALL abandon the payload without dereferencing JSI and
+  remove that same collection entry

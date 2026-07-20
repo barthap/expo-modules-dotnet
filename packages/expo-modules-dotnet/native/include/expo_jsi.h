@@ -10,6 +10,7 @@ class PromiseHandle;
 class ArgumentsHandle;
 class ArrayBufferHandle;
 class MutableBufferHandle;
+class WeakObjectHandle;
 } // namespace expo::dotnet
 
 using expo_jsi_runtime_t = expo::dotnet::RuntimeHandle;
@@ -18,6 +19,7 @@ using expo_jsi_promise_t = expo::dotnet::PromiseHandle;
 using expo_jsi_arguments_t = expo::dotnet::ArgumentsHandle;
 using expo_jsi_array_buffer_t = expo::dotnet::ArrayBufferHandle;
 using expo_jsi_mutable_buffer_t = expo::dotnet::MutableBufferHandle;
+using expo_jsi_weak_object_t = expo::dotnet::WeakObjectHandle;
 
 extern "C" {
 
@@ -27,6 +29,7 @@ typedef expo_jsi_promise_t *expo_jsi_promise_handle;
 typedef expo_jsi_arguments_t *expo_jsi_arguments_handle;
 typedef expo_jsi_array_buffer_t *expo_jsi_array_buffer_handle;
 typedef expo_jsi_mutable_buffer_t *expo_jsi_mutable_buffer_handle;
+typedef expo_jsi_weak_object_t *expo_jsi_weak_object_handle;
 #else
 typedef struct expo_jsi_runtime_t *expo_jsi_runtime_handle;
 typedef struct expo_jsi_value_t *expo_jsi_value_handle;
@@ -34,6 +37,7 @@ typedef struct expo_jsi_promise_t *expo_jsi_promise_handle;
 typedef struct expo_jsi_arguments_t *expo_jsi_arguments_handle;
 typedef struct expo_jsi_array_buffer_t *expo_jsi_array_buffer_handle;
 typedef struct expo_jsi_mutable_buffer_t *expo_jsi_mutable_buffer_handle;
+typedef struct expo_jsi_weak_object_t *expo_jsi_weak_object_handle;
 #endif
 
 typedef enum expo_jsi_value_kind {
@@ -136,6 +140,19 @@ typedef struct expo_jsi_byte_span_result {
   int32_t length;
   expo_jsi_error error;
 } expo_jsi_byte_span_result;
+
+typedef struct expo_jsi_weak_object_result {
+  int32_t ok;
+  expo_jsi_weak_object_handle weak_object;
+  expo_jsi_error error;
+} expo_jsi_weak_object_result;
+
+typedef struct expo_jsi_weak_object_lock_result {
+  int32_t ok;
+  int32_t found;
+  expo_jsi_value_handle value;
+  expo_jsi_error error;
+} expo_jsi_weak_object_lock_result;
 
 // NativeState release callbacks may run during JavaScript object destruction,
 // entry replacement, explicit clear, or runtime teardown. They must not throw,
@@ -412,6 +429,14 @@ typedef expo_jsi_value_result (*expo_jsi_mutable_buffer_as_value_fn)(
 
 typedef void (*expo_jsi_mutable_buffer_release_fn)(expo_jsi_mutable_buffer_handle mutable_buffer);
 
+typedef expo_jsi_weak_object_result (*expo_jsi_object_create_weak_fn)(
+  expo_jsi_runtime_handle runtime, expo_jsi_value_handle value);
+
+typedef expo_jsi_weak_object_lock_result (*expo_jsi_weak_object_lock_fn)(
+  expo_jsi_runtime_handle runtime, expo_jsi_weak_object_handle weak_object);
+
+typedef void (*expo_jsi_weak_object_release_fn)(expo_jsi_weak_object_handle weak_object);
+
 typedef struct expo_jsi_api {
   uint32_t size;
   uint32_t version;
@@ -473,6 +498,9 @@ typedef struct expo_jsi_api {
   expo_jsi_mutable_buffer_get_bytes_fn mutable_buffer_get_bytes;
   expo_jsi_mutable_buffer_as_value_fn mutable_buffer_as_value;
   expo_jsi_mutable_buffer_release_fn mutable_buffer_release;
+  expo_jsi_object_create_weak_fn object_create_weak;
+  expo_jsi_weak_object_lock_fn weak_object_lock;
+  expo_jsi_weak_object_release_fn weak_object_release;
 } expo_jsi_api;
 
 #ifdef __cplusplus

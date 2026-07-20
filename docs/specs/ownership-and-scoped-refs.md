@@ -123,3 +123,18 @@ for a long-lived or asynchronous operation.
 - **WHEN** the wrapper is copied
 - **THEN** the copy SHALL retain the shared MutableBuffer storage
 - **AND** mutation through either wrapper SHALL remain visible to the other
+
+### Requirement: Weak Object Handles Are Opaque Owned Wrappers
+
+`JavaScriptWeakObject` SHALL own a bridge handle, not its JavaScript referent.
+The handle SHALL be disposed exactly once or transferred only within the
+native bridge. Locking it produces a separate owned `JavaScriptObject` wrapper
+whose caller must dispose or transfer it independently.
+
+#### Scenario: Weak release races with teardown
+- **GIVEN** managed code disposes a weak wrapper while release work is queued
+- **WHEN** the runtime remains valid
+- **THEN** native may release the weak payload on the runtime executor
+- **WHEN** JSI is no longer safe
+- **THEN** native SHALL abandon the payload without JSI access
+- **AND** both terminal paths SHALL erase the long-lived collection entry

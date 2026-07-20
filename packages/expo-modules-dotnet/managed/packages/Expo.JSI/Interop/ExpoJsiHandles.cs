@@ -7,3 +7,4 @@ global using ExpoJsiPromiseHandle = System.IntPtr;
 global using ExpoJsiArgumentsHandle = System.IntPtr;
 global using ExpoJsiArrayBufferHandle = System.IntPtr;
 global using ExpoJsiMutableBufferHandle = System.IntPtr;
+global using ExpoJsiWeakObjectHandle = System.IntPtr;

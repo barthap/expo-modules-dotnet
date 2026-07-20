@@ -32,6 +32,12 @@ public:
   uint32_t arrayBuffersReleased() const noexcept;
   uint32_t arrayBuffersAbandoned() const noexcept;
   void resetArrayBufferCounters() noexcept;
+  void noteWeakObjectReleased() noexcept;
+  void noteWeakObjectAbandoned() noexcept;
+  uint32_t weakObjectsReleased() const noexcept;
+  uint32_t weakObjectsAbandoned() const noexcept;
+  void resetWeakObjectCounters() noexcept;
+  uint32_t longLivedObjectCount() const noexcept;
 
 private:
   enum class State { Active, Closing, Invalid };
@@ -44,6 +50,8 @@ private:
   LongLivedObjectCollection longLivedObjects_;
   std::atomic<uint32_t> released_{0};
   std::atomic<uint32_t> abandoned_{0};
+  std::atomic<uint32_t> weakReleased_{0};
+  std::atomic<uint32_t> weakAbandoned_{0};
 };
 
 } // namespace expo::dotnet

@@ -808,3 +808,54 @@ convenience codecs, not additional backing kinds.
 - **AND** only rank-one `byte[]` parameters and returns SHALL use the byte-array
   codec; multidimensional byte arrays SHALL produce unsupported-type diagnostics
 - **AND** the one-span limit SHALL not restrict `ArrayBuffer` or `byte[]` arity
+
+### Requirement: Internal Shared-Object Identity Registry
+
+Each `DotnetRuntimeContext` SHALL own one internal `SharedObjectRegistry` for
+the runtime. The registry SHALL map a managed internal lifetime-contract
+instance to one live JavaScript object entry by reference identity, and map a
+private entry id back to that same instance. Each entry may retain only its
+managed lifetime state, NativeState token, and opaque `JavaScriptWeakObject`;
+it SHALL NOT retain an ordinary object, function, value, or prototype wrapper
+after conversion returns.
+
+#### Scenario: Internal identity round trip
+- **GIVEN** an active entry for one managed lifetime-contract instance
+- **WHEN** it is converted to JavaScript twice or decoded through its private
+  NativeState token
+- **THEN** both JavaScript conversions SHALL be strictly equal
+- **AND** decoding SHALL return the original managed instance
+
+#### Scenario: Terminal shared entry
+- **GIVEN** JavaScript release, deterministic collection, NativeState cleanup,
+  or runtime-context disposal reaches an entry
+- **WHEN** the first terminal source removes it from both maps
+- **THEN** the registry SHALL dispose the opaque weak wrapper and run the
+  managed lifetime action exactly once outside both registry and weak-wrapper
+  locks
+- **AND** later release sources SHALL be no-ops
+- **AND** the same managed instance SHALL not form a replacement pair
+
+#### Scenario: NativeState callback re-enters registry work
+- **GIVEN** NativeState cleanup occurs while the registry gate is held
+- **WHEN** its callback identifies a terminal entry
+- **THEN** it SHALL defer terminal work until the registry gate has been
+  released
+- **AND** it SHALL not use an access frame, ordinary JSI wrapper operation,
+  blocking runtime scheduling, a raw managed pointer, or a JavaScript-visible
+  identifier
+
+#### Scenario: Context teardown owns shared entries first
+- **GIVEN** a context is being disposed while its runtime is still valid
+- **WHEN** it drains owned state
+- **THEN** it SHALL drain the shared-object registry before generated host
+  registrations, retained callbacks, module registry, event state, and object
+  factory
+- **AND** it SHALL continue later cleanup after a failure and report aggregate
+  failures only after reaching the terminal context state
+
+This is an internal identity proof only. It SHALL NOT be read as implementing a
+public `SharedObject`, `[ExpoSharedObject]`, generator binding, `SharedRef`,
+TypeScript facade, shared-object event, cross-runtime pairing, or
+`JavaScriptObject` codec. `JavaScriptValue` remains the existing advanced
+module convertible; a `JavaScriptObject` codec is a separate future slice.

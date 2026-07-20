@@ -20,6 +20,7 @@
 #include "ExpoJsiBridgeTestHooks.h"
 #include "JsiRuntimeConnector.h"
 #include "RuntimeState.h"
+#include "WeakObjectHandles.h"
 
 namespace expo::dotnet {
 
@@ -229,7 +230,7 @@ namespace {
 
 namespace jsi = facebook::jsi;
 
-constexpr uint32_t kApiVersion = 22;
+constexpr uint32_t kApiVersion = 23;
 
 struct ErrorResultBuffer {
   explicit ErrorResultBuffer(std::string value)
@@ -678,6 +679,33 @@ expo_jsi_array_buffer_result makeArrayBufferResult(
 expo_jsi_array_buffer_result makeArrayBufferErrorResult(int32_t code, const char *message)
 {
   return expo_jsi_array_buffer_result{0, nullptr, 0, makeError(code, message)};
+}
+
+expo_jsi_weak_object_result makeWeakObjectResult(
+  std::unique_ptr<expo::dotnet::WeakObjectHandle> handle)
+{
+  return expo_jsi_weak_object_result{1, handle.release(), makeOk()};
+}
+
+expo_jsi_weak_object_result makeWeakObjectErrorResult(int32_t code, const char *message)
+{
+  return expo_jsi_weak_object_result{0, nullptr, makeError(code, message)};
+}
+
+expo_jsi_weak_object_lock_result makeWeakObjectLockNotFoundResult()
+{
+  return expo_jsi_weak_object_lock_result{1, 0, nullptr, makeOk()};
+}
+
+expo_jsi_weak_object_lock_result makeWeakObjectLockResult(
+  std::unique_ptr<expo::dotnet::ValueHandle> handle)
+{
+  return expo_jsi_weak_object_lock_result{1, 1, handle.release(), makeOk()};
+}
+
+expo_jsi_weak_object_lock_result makeWeakObjectLockErrorResult(int32_t code, const char *message)
+{
+  return expo_jsi_weak_object_lock_result{0, 0, nullptr, makeError(code, message)};
 }
 
 expo_jsi_mutable_buffer_result makeMutableBufferResult(
@@ -1403,6 +1431,59 @@ expo_jsi_value_result arrayBufferAsValue(expo_jsi_runtime_handle runtime,
 void releaseArrayBuffer(expo_jsi_array_buffer_handle handle)
 {
   delete handle;
+}
+
+expo_jsi_weak_object_result createWeakObject(expo_jsi_runtime_handle runtime,
+                                             expo_jsi_value_handle value)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_weak_object_result{0, nullptr, error};
+  }
+  try {
+    auto object = checkedObject(runtimeHandle->runtime(), value);
+    return makeWeakObjectResult(expo::dotnet::createWeakObjectHandle(
+      runtimeHandle->runtime(), runtimeHandle->state(), std::move(object)));
+  } catch (const std::exception &ex) {
+    return makeWeakObjectErrorResult(178, ex.what());
+  } catch (...) {
+    return makeWeakObjectErrorResult(179, "Unknown native exception while creating WeakObject.");
+  }
+}
+
+expo_jsi_weak_object_lock_result lockWeakObject(expo_jsi_runtime_handle runtime,
+                                                expo_jsi_weak_object_handle weakObject)
+{
+  expo_jsi_error error{};
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
+    return expo_jsi_weak_object_lock_result{0, 0, nullptr, error};
+  }
+  if (weakObject == nullptr) {
+    return makeWeakObjectLockErrorResult(180, "WeakObject handle is null.");
+  }
+  try {
+    if (weakObject->state() != runtimeHandle->state()) {
+      return makeWeakObjectLockErrorResult(181,
+                                           "WeakObject belongs to a different JavaScript runtime.");
+    }
+    auto object = weakObject->entry()->lock(runtimeHandle->runtime());
+    if (!object.has_value()) {
+      return makeWeakObjectLockNotFoundResult();
+    }
+    return makeWeakObjectLockResult(
+      expo::dotnet::ValueHandle::owned(jsi::Value(runtimeHandle->runtime(), std::move(*object))));
+  } catch (const std::exception &ex) {
+    return makeWeakObjectLockErrorResult(182, ex.what());
+  } catch (...) {
+    return makeWeakObjectLockErrorResult(183, "Unknown native exception while locking WeakObject.");
+  }
+}
+
+void releaseWeakObject(expo_jsi_weak_object_handle weakObject)
+{
+  delete weakObject;
 }
 
 expo_jsi_mutable_buffer_result allocateMutableBuffer(int32_t length)
@@ -2656,6 +2737,9 @@ const expo_jsi_api kApi{
   getMutableBufferBytes,
   mutableBufferAsValue,
   releaseMutableBuffer,
+  createWeakObject,
+  lockWeakObject,
+  releaseWeakObject,
 };
 
 } // namespace
@@ -2674,32 +2758,27 @@ void prepareRuntimeHandleForInvalidation(expo_jsi_runtime_handle runtime)
   }
 }
 
-void getRuntimeArrayBufferCounters(expo_jsi_runtime_handle runtime,
-                                   uint32_t *released,
-                                   uint32_t *abandoned) noexcept
+RuntimeLongLivedCounters getRuntimeLongLivedCounters(expo_jsi_runtime_handle runtime) noexcept
 {
-  if (released != nullptr) {
-    *released = 0;
-  }
-  if (abandoned != nullptr) {
-    *abandoned = 0;
-  }
   if (runtime == nullptr) {
-    return;
+    return {};
   }
   auto state = runtime->state();
-  if (released != nullptr) {
-    *released = state->arrayBuffersReleased();
-  }
-  if (abandoned != nullptr) {
-    *abandoned = state->arrayBuffersAbandoned();
-  }
+  return RuntimeLongLivedCounters{
+    state->arrayBuffersReleased(),
+    state->arrayBuffersAbandoned(),
+    state->weakObjectsReleased(),
+    state->weakObjectsAbandoned(),
+    state->longLivedObjectCount(),
+  };
 }
 
-void resetRuntimeArrayBufferCounters(expo_jsi_runtime_handle runtime) noexcept
+void resetRuntimeLongLivedCounters(expo_jsi_runtime_handle runtime) noexcept
 {
   if (runtime != nullptr) {
-    runtime->state()->resetArrayBufferCounters();
+    auto state = runtime->state();
+    state->resetArrayBufferCounters();
+    state->resetWeakObjectCounters();
   }
 }
 
@@ -2729,33 +2808,21 @@ expo_jsi_error validateArrayBufferLengthForTesting(uint64_t length) noexcept
   }
 }
 
-void releaseRuntimeHandleAndGetArrayBufferCounters(expo_jsi_runtime_handle runtime,
-                                                   uint32_t *released,
-                                                   uint32_t *abandoned) noexcept
+RuntimeLongLivedCounters releaseRuntimeHandleAndGetLongLivedCounters(
+  expo_jsi_runtime_handle runtime) noexcept
 {
-  if (released != nullptr) {
-    *released = 0;
-  }
-  if (abandoned != nullptr) {
-    *abandoned = 0;
-  }
   if (runtime == nullptr) {
-    return;
+    return {};
   }
-  auto state = runtime->state();
   runtime->invalidateWithoutRuntime();
-  if (released != nullptr) {
-    *released = state->arrayBuffersReleased();
-  }
-  if (abandoned != nullptr) {
-    *abandoned = state->arrayBuffersAbandoned();
-  }
+  auto counters = getRuntimeLongLivedCounters(runtime);
   delete runtime;
+  return counters;
 }
 
 void releaseRuntimeHandle(expo_jsi_runtime_handle runtime)
 {
-  releaseRuntimeHandleAndGetArrayBufferCounters(runtime, nullptr, nullptr);
+  (void)releaseRuntimeHandleAndGetLongLivedCounters(runtime);
 }
 
 expo_jsi_value_handle createOwnedValueHandle(jsi::Value value)

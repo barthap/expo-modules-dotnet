@@ -159,3 +159,26 @@ metrics.
 - **AND** queued work SHALL fault or release its task context without running
 - **AND** tests that require a JSI-safe long-lived-object sweep SHALL call the
   explicit prepare-for-invalidation control before connector invalidation
+
+### Requirement: Deterministic Garbage Collection And Weak Counters
+
+The testhost SHALL expose a synchronous test-only Hermes garbage-collection
+control that runs on its runtime executor. Its counters SHALL report weak
+object releases and abandonments separately, together with the number of
+remaining long-lived entries.
+
+#### Scenario: Test collects a weak referent
+- **GIVEN** no JavaScript or managed strong reference keeps a weak referent
+  alive
+- **WHEN** a test requests collection and waits for the executor to become
+  idle
+- **THEN** locking the weak reference SHALL report no object without relying
+  on elapsed time
+
+#### Scenario: Test proves prepared teardown
+- **GIVEN** long-lived weak work is pending
+- **WHEN** a test needs the JSI-safe teardown proof
+- **THEN** it SHALL use `prepare -> invalidate -> managed teardown`
+- **AND** assert zero remaining entries after release or abandonment
+- **AND** it SHALL treat bare invalidation as abrupt shutdown only, not as a
+  production-order proof

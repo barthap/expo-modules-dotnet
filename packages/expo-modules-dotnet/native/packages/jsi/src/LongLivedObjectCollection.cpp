@@ -131,6 +131,12 @@ bool LongLivedObjectCollection::empty() const noexcept
   return entries_.empty();
 }
 
+uint32_t LongLivedObjectCollection::size() const noexcept
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  return static_cast<uint32_t>(entries_.size());
+}
+
 std::shared_ptr<RuntimeState> LongLivedObjectCollection::runtimeState() const noexcept
 {
   std::lock_guard<std::mutex> lock(mutex_);
