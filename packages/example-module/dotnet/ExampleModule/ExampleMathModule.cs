@@ -1,10 +1,8 @@
 using Expo.ModulesCore;
-using Expo.ModulesCore.Codecs;
 
 namespace ExampleModule;
 
 [ExpoModule("ExampleModule")]
-[Events("onStatus")]
 public sealed partial class ExampleMathModule : Module
 {
   public ExampleMathModule(DotnetRuntimeContext context)
@@ -55,10 +53,10 @@ public sealed partial class ExampleMathModule : Module
   }
 
   [JS]
-  public Task EmitStatusAsync(string label)
-  {
-    return SendEventAsync<StringCodec, string>("onStatus", $"C# event: {label}");
-  }
+  public Task EmitStatusAsync(string label) => OnStatus($"C# event: {label}");
+
+  [Event]
+  public partial Func<string, Task> OnStatus { get; }
 }
 
 public readonly record struct ExampleUser(string Name, int Age);

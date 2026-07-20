@@ -7,7 +7,10 @@ namespace Expo.ModulesCore.Generator.Tests;
 
 internal static class GeneratorTestHost
 {
-  public static GeneratorRunResult Run(string source, string assemblyName = "Expo.TestModules")
+  public static GeneratorRunResult Run(
+      string source,
+      string assemblyName = "Expo.TestModules",
+      bool allowUnsafe = false)
   {
     var parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest);
     var syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);
@@ -17,7 +20,7 @@ internal static class GeneratorTestHost
         assemblyName,
         new[] { syntaxTree },
         references,
-        new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
+        new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary).WithAllowUnsafe(allowUnsafe)
     );
 
     var generator = new ExpoModulesGenerator();

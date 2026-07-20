@@ -336,3 +336,58 @@ public sealed partial class GeneratedEventsModule : Module
   [JS]
   public string ReadStopped() => stopped;
 }
+
+public readonly record struct TypedProgress(int Percent);
+
+[ExpoModule("GeneratedTypedEvents")]
+[Events("onLegacy")]
+public sealed partial class GeneratedTypedEventsModule : Module
+{
+  public GeneratedTypedEventsModule(DotnetRuntimeContext context)
+      : base(context)
+  {
+    try
+    {
+      _ = OnReady;
+    }
+    catch (InvalidOperationException exception)
+    {
+      ConstructorEventError = exception.Message;
+    }
+  }
+
+  [Event]
+  public partial Func<Task> OnReady { get; }
+
+  [Event]
+  public partial Func<string, Task> OnChange { get; }
+
+  [Event]
+  public partial Func<TypedProgress, Task> OnProgress { get; }
+
+  [Event]
+  public partial Func<JavaScriptValue, Task> OnValue { get; }
+
+  [Event]
+  public partial Func<ArrayBuffer, Task> OnBuffer { get; }
+
+  public string? ConstructorEventError { get; }
+
+  public Delegate? ReadySeenOnCreate { get; private set; }
+
+  public string Started { get; private set; } = string.Empty;
+
+  public string Stopped { get; private set; } = string.Empty;
+
+  [OnCreate]
+  public void Create() => ReadySeenOnCreate = OnReady;
+
+  [OnStartObserving("onChange")]
+  public void Start() => Started = "onChange";
+
+  [OnStopObserving("onChange")]
+  public void Stop() => Stopped = "onChange";
+
+  public Task EmitLegacyAsync(string value) =>
+      SendEventAsync<StringCodec, string>("onLegacy", value);
+}

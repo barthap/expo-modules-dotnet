@@ -213,24 +213,55 @@ capability is settled.
 
 ## 5. Events
 
-Declare the events a module can emit with `[Events("name1", "name2", ...)]` on
-the module class. The list must be non-empty and non-duplicated. Emit an event
-with `SendEventAsync` (inherited from the `Module` base class) or directly
-through `RuntimeContext.Events`:
+Use a typed `[Event]` member for new events. It declares both the JavaScript
+event name and its one payload type, then the generator supplies one cached,
+awaitable delegate per module instance. Declare a payload-less event as
+`Func<Task>` and a one-payload event as `Func<T, Task>`:
 
 ```csharp
 [ExpoModule("ExampleModule")]
-[Events("onStatus")]
 public sealed partial class ExampleMathModule : Module
 {
+  [Event]
+  public partial Func<string, Task> OnStatus { get; }
+
   [JS]
   public Task EmitStatusAsync(string label) =>
-      SendEventAsync<StringCodec, string>("onStatus", $"C# event: {label}");
+      OnStatus($"C# event: {label}");
 }
 ```
 
-Emitting an event name outside the declared list fails loudly; an async `[JS]`
-caller observes this as a rejected Promise.
+`[Event]` lowercases only the first character of the C# property name, so
+`OnStatus` emits `onStatus`; it does not strip the `On` prefix. Use
+`[Event("StatusChanged")]` when JavaScript must receive an explicit name
+verbatim. The delegate returns the real dispatch task. Await it when the
+calling code needs to observe target lookup, payload encoding, scheduling, or
+teardown failures; a `[JS]` method returning that task exposes the result as a
+JavaScript Promise.
+
+Generated registration initializes typed event members before `[OnCreate]`
+runs. Reading one from an authored constructor fails with a clear
+`InvalidOperationException`, because registration has not initialized it yet.
+`[OnCreate]` can read and invoke the member, although dispatch there can still
+fail if JavaScript has not attached the event target yet.
+
+### Event payload ownership
+
+For ordinary payloads, keep mutable payload state stable until the event task
+completes. Direct `ArrayBuffer` and `JavaScriptValue` payloads have different
+lifetime rules:
+
+- An `ArrayBuffer` original may be disposed after event invocation returns, but
+  it must not race that invocation. The dispatcher retains its own lease before
+  returning the task.
+- A `JavaScriptValue` original stays alive until the event task completes. Its
+  invocation copy can only be retained while running on the owning JavaScript
+  runtime.
+
+Nested owned wrappers, including `JavaScriptValue` and `ArrayBuffer`, and
+callback payloads are rejected for typed events. `JavaScriptObject` is not
+currently a generated module codec, but remains a possible future advanced
+convertible.
 
 To react when JavaScript adds or removes listeners, declare hook methods with
 `[OnStartObserving]` / `[OnStopObserving]` (optionally naming a specific event,
@@ -244,11 +275,11 @@ public void Start(string eventName) { /* first listener for eventName added */ }
 public void Stop() { /* last listener for onChange removed */ }
 ```
 
-Modules that declare `[Events]` are registered as `_expoDotnet.NativeModule`
-instances so the inherited `EventEmitter`/`addListener` JavaScript methods work
-through the prototype chain; you don't need (and can't declare) `[JS]`
-members named `startObserving` or `stopObserving` — those names are reserved
-for the generated observing hooks.
+Typed events are registered as `_expoDotnet.NativeModule` instances, so the
+inherited `EventEmitter`/`addListener` JavaScript methods work through the
+prototype chain. You don't need (and can't declare) `[JS]` members named
+`startObserving` or `stopObserving` — those names are reserved for generated
+observing hooks.
 
 On the JS facade side, subscribe with `addListener`:
 
@@ -258,6 +289,30 @@ export function addStatusListener(listener: (payload: string) => void) {
   return nativeModule.addListener('onStatus', listener);
 }
 ```
+
+The JavaScript listener facade and its event map do not change when moving to a
+typed C# event member.
+
+### Legacy `[Events]` and `SendEventAsync`
+
+`[Events("name1", "name2", ...)]` and the inherited `SendEventAsync` methods
+remain supported for migration and interop. The event list must be non-empty
+and non-duplicated:
+
+```csharp
+[ExpoModule("ExampleModule")]
+[Events("onStatus")]
+public sealed partial class ExampleMathModule : Module
+{
+  [JS]
+  public Task EmitStatusAsync(string label) =>
+      SendEventAsync<StringCodec, string>("onStatus", $"C# event: {label}");
+}
+```
+
+Emitting a name outside the declared list fails loudly; an async `[JS]` caller
+observes that failure as a rejected Promise. Prefer typed `[Event]` members for
+new events so the name and payload type are checked at compile time.
 
 ## 6. Lifecycle
 

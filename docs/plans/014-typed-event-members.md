@@ -1,5 +1,14 @@
 # Plan 014: Typed `[Event]` members replacing string-based event declaration
 
+> **Execution note (2026-07-19):** The `Action` / `Action<T>` design below is
+> superseded by the approved awaitable design in
+> `docs/changes/2026-07-19-typed-event-members/spec.md` and its implementation
+> plan. The runtime has no failure sink that can make discarded asynchronous
+> event tasks reliable, and blocking a void delegate can deadlock an async-only
+> scheduler. Execute the change-package plan, which uses `Func<Task>` /
+> `Func<T, Task>`, instead of Steps 1-6 in this advisor artifact. This file is
+> retained as the original improve-plan rationale and inventory.
+
 > **Executor instructions**: Follow this plan step by step. Run every
 > verification command and confirm the expected result before moving to the
 > next step. If anything in the "STOP conditions" section occurs, stop and

@@ -4,18 +4,47 @@ namespace Expo.ModulesCore.Generator;
 
 internal sealed record ExpoModuleModel(
     string FullyQualifiedTypeName,
+    string Namespace,
+    string SimpleTypeName,
+    string Accessibility,
     string ModuleName,
     Location? Location,
     ExpoModuleConstructorStrategy ConstructorStrategy,
     ExpoLifecycleHookModel? OnCreateHook,
     ExpoLifecycleHookModel? OnDestroyHook,
     EquatableArray<string> EventNames,
+    EquatableArray<ExpoEventModel> Events,
     EquatableArray<ExpoObservingHookModel> StartObservingHooks,
     EquatableArray<ExpoObservingHookModel> StopObservingHooks,
     EquatableArray<ExpoFunctionModel> Functions,
     EquatableArray<ExpoPropertyModel> Properties,
     EquatableArray<ExpoGeneratedRecordCodecModel> RecordCodecs,
     EquatableArray<ExpoDiagnosticModel> Diagnostics);
+
+internal enum ExpoEventPayloadKind
+{
+  None,
+  Codec,
+  JavaScriptValue,
+  ArrayBuffer,
+}
+
+internal sealed record ExpoEventModel(
+    string PropertyName,
+    string JavaScriptName,
+    string Accessibility,
+    string DeclarationModifiers,
+    string GetterAccessor,
+    string SetterAccessor,
+    bool IsStatic,
+    bool HasSetter,
+    string DelegateTypeName,
+    string PayloadTypeName,
+    ExpoEventPayloadKind PayloadKind,
+    string CodecExpression,
+    Location? Location,
+    bool IsShapeValid,
+    bool IsDispatchable);
 
 internal enum ExpoModuleConstructorStrategy
 {

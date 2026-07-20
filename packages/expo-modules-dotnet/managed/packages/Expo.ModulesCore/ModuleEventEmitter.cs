@@ -76,14 +76,63 @@ public sealed class ModuleEventEmitter : IDisposable
     ArgumentException.ThrowIfNullOrWhiteSpace(eventName);
 
     await ExecuteEventAsync(
+        runtime => Emit(runtime, module, eventName),
+        cancellationToken
+    ).ConfigureAwait(false);
+  }
+
+  /// <summary>
+  /// Emits a declared module event with an existing JavaScript value.
+  /// </summary>
+  /// <remarks>
+  /// The caller retains ownership of <paramref name="payload" /> and must keep it alive until the
+  /// returned task completes. The emitter retains and releases a separate invocation copy while
+  /// running on the payload's runtime.
+  /// </remarks>
+  public async Task EmitAsync(
+      object module,
+      string eventName,
+      JavaScriptValue payload,
+      CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(module);
+    ArgumentException.ThrowIfNullOrWhiteSpace(eventName);
+    ArgumentNullException.ThrowIfNull(payload);
+
+    await ExecuteEventAsync(
         runtime =>
         {
-          using var target = GetTarget(module, eventName);
-          using var eventNameValue = runtime.CreateString(eventName);
-          using var emitValue = target.Target.GetProperty("emit");
-          using var emit = emitValue.AsFunction();
-          using var result = emit.CallWithThis(target.Target, eventNameValue);
-          return true;
+          using var invocationPayload = payload.Ref.Retain();
+          return Emit(runtime, module, eventName, invocationPayload);
+        },
+        cancellationToken
+    ).ConfigureAwait(false);
+  }
+
+  /// <summary>
+  /// Emits a declared module event with an existing binary buffer.
+  /// </summary>
+  /// <remarks>
+  /// The emitter retains an invocation lease before scheduling runtime work, so the caller may
+  /// dispose <paramref name="payload" /> after this method returns. The lease is released when
+  /// the returned task completes.
+  /// </remarks>
+  public async Task EmitAsync(
+      object module,
+      string eventName,
+      ArrayBuffer payload,
+      CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(module);
+    ArgumentException.ThrowIfNullOrWhiteSpace(eventName);
+    ArgumentNullException.ThrowIfNull(payload);
+
+    using var invocationPayload = payload.Retain();
+    await ExecuteEventAsync(
+        runtime =>
+        {
+          using var eventValue = invocationPayload.Encode(runtime);
+          return Emit(runtime, module, eventName, eventValue);
         },
         cancellationToken
     ).ConfigureAwait(false);
@@ -102,13 +151,8 @@ public sealed class ModuleEventEmitter : IDisposable
     await ExecuteEventAsync(
         runtime =>
         {
-          using var target = GetTarget(module, eventName);
-          using var eventNameValue = runtime.CreateString(eventName);
           using var payloadValue = TCodec.Encode(payload, runtime);
-          using var emitValue = target.Target.GetProperty("emit");
-          using var emit = emitValue.AsFunction();
-          using var result = emit.CallWithThis(target.Target, eventNameValue, payloadValue);
-          return true;
+          return Emit(runtime, module, eventName, payloadValue);
         },
         cancellationToken
     ).ConfigureAwait(false);
@@ -167,25 +211,55 @@ public sealed class ModuleEventEmitter : IDisposable
       Func<JavaScriptRuntime, bool> emit,
       CancellationToken cancellationToken)
   {
-    if (context.Runtime.HasExclusiveRuntimeAccess)
+    lock (gate)
+    {
+      ThrowIfDisposedLocked();
+    }
+
+    var runtime = context.Runtime;
+    if (runtime.HasExclusiveRuntimeAccess)
     {
       // Event emission from an async module may resume later and need scheduling. Event emission
       // from a synchronous generated function is different: the current call already owns runtime
       // access, so dispatch the inherited JS `emit` method directly instead of re-entering the host
       // sync scheduler.
       cancellationToken.ThrowIfCancellationRequested();
-      emit(context.Runtime);
+      emit(runtime);
       return Task.CompletedTask;
     }
 
-    if (context.Runtime.CanExecuteSync)
+    if (runtime.CanExecuteSync)
     {
       cancellationToken.ThrowIfCancellationRequested();
-      context.Runtime.Execute(emit);
+      runtime.Execute(emit);
       return Task.CompletedTask;
     }
 
-    return context.Runtime.ExecuteAsync(emit, cancellationToken: cancellationToken);
+    return runtime.ExecuteAsync(emit, cancellationToken: cancellationToken);
+  }
+
+  private bool Emit(JavaScriptRuntime runtime, object module, string eventName)
+  {
+    using var target = GetTarget(module, eventName);
+    using var eventNameValue = runtime.CreateString(eventName);
+    using var emitValue = target.Target.GetProperty("emit");
+    using var emit = emitValue.AsFunction();
+    using var result = emit.CallWithThis(target.Target, eventNameValue);
+    return true;
+  }
+
+  private bool Emit(
+      JavaScriptRuntime runtime,
+      object module,
+      string eventName,
+      JavaScriptValue payload)
+  {
+    using var target = GetTarget(module, eventName);
+    using var eventNameValue = runtime.CreateString(eventName);
+    using var emitValue = target.Target.GetProperty("emit");
+    using var emit = emitValue.AsFunction();
+    using var result = emit.CallWithThis(target.Target, eventNameValue, payload);
+    return true;
   }
 
   private sealed class EventTarget : IDisposable

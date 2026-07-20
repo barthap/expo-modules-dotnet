@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 
@@ -11,6 +12,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 {
   private const string ExpoModuleAttributeMetadataName = "Expo.ModulesCore.ExpoModuleAttribute";
   private const string EventsAttributeMetadataName = "Expo.ModulesCore.EventsAttribute";
+  private const string EventAttributeMetadataName = "Expo.ModulesCore.EventAttribute";
   private const string OnCreateAttributeMetadataName = "Expo.ModulesCore.OnCreateAttribute";
   private const string OnDestroyAttributeMetadataName = "Expo.ModulesCore.OnDestroyAttribute";
   private const string OnStartObservingAttributeMetadataName = "Expo.ModulesCore.OnStartObservingAttribute";
@@ -18,7 +20,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
   private const string JSEnumAttributeMetadataName = "Expo.ModulesCore.JSEnumAttribute";
   private const string JSAttributeMetadataName = "Expo.ModulesCore.JSAttribute";
   private const string DotnetRuntimeContextMetadataName = "Expo.ModulesCore.DotnetRuntimeContext";
-  private const string JavaScriptValueMetadataName = "Expo.JSI.JavaScriptValue";
+  private const string JavaScriptValueMetadataName = "global::Expo.JSI.JavaScriptValue";
   private const string ArrayBufferMetadataName = "global::Expo.ModulesCore.ArrayBuffer";
 
   public void Initialize(IncrementalGeneratorInitializationContext context)
@@ -82,6 +84,9 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     }
 
     var recordCodecs = new List<ExpoGeneratedRecordCodecModel>();
+    var typedEvents = GetTypedEvents(typeSymbol, moduleName, diagnostics, recordCodecs);
+    var legacyEventNames = GetEventNames(typeSymbol, moduleName, diagnostics).ToList();
+    var eventNames = MergeEventNames(moduleName, legacyEventNames, typedEvents, diagnostics);
     var onCreateHook = GetLifecycleHook(
         typeSymbol,
         moduleName,
@@ -96,7 +101,6 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         OnDestroyAttributeMetadataName,
         diagnostics
     );
-    var eventNames = GetEventNames(typeSymbol, moduleName, diagnostics);
     var eventNameSet = new HashSet<string>(eventNames, StringComparer.Ordinal);
     var startObservingHooks = GetObservingHooks(
         typeSymbol,
@@ -129,12 +133,16 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 
     return new ExpoModuleModel(
         typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+        typeSymbol.ContainingNamespace.IsGlobalNamespace ? string.Empty : typeSymbol.ContainingNamespace.ToDisplayString(),
+        typeSymbol.Name,
+        typeSymbol.DeclaredAccessibility == Accessibility.Public ? "public" : "internal",
         moduleName,
         typeSymbol.Locations.FirstOrDefault(),
         constructorStrategy,
         onCreateHook,
         onDestroyHook,
         new EquatableArray<string>(eventNames),
+        new EquatableArray<ExpoEventModel>(typedEvents),
         new EquatableArray<ExpoObservingHookModel>(startObservingHooks),
         new EquatableArray<ExpoObservingHookModel>(stopObservingHooks),
         new EquatableArray<ExpoFunctionModel>(functions),
@@ -207,6 +215,365 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 
     return new[] { argument.Value as string };
   }
+
+  private static List<ExpoEventModel> GetTypedEvents(
+      INamedTypeSymbol typeSymbol,
+      string moduleName,
+      List<ExpoDiagnosticModel> diagnostics,
+      List<ExpoGeneratedRecordCodecModel> recordCodecs)
+  {
+    var events = new List<ExpoEventModel>();
+    var containerReason = GetUnsupportedEventContainerShape(typeSymbol);
+    foreach (var property in typeSymbol.GetMembers().OfType<IPropertySymbol>()
+                 .OrderBy(member => member.Locations.FirstOrDefault()?.SourceSpan.Start ?? int.MaxValue))
+    {
+      var eventAttribute = property.GetAttributes().FirstOrDefault(attribute =>
+          attribute.AttributeClass?.ToDisplayString() == EventAttributeMetadataName);
+      if (eventAttribute is null)
+      {
+        continue;
+      }
+
+      var declaration = property.DeclaringSyntaxReferences
+          .Select(reference => reference.GetSyntax())
+          .OfType<PropertyDeclarationSyntax>()
+          .FirstOrDefault();
+      var propertyReason = containerReason ?? GetUnsupportedEventPropertyShape(property, declaration);
+      var canReproduce = containerReason is null && CanReproduceEventProperty(property, declaration);
+      var javaScriptName = LowerCamel(property.Name);
+      ITypeSymbol? payloadType = null;
+      var hasUnsupportedPayload = false;
+      if (eventAttribute.ConstructorArguments.Length == 1)
+      {
+        var explicitName = eventAttribute.ConstructorArguments[0].Value as string;
+        if (string.IsNullOrWhiteSpace(explicitName))
+        {
+          propertyReason ??= explicitName is null ? "a null explicit name" : "an empty or blank explicit name";
+        }
+        else
+        {
+          javaScriptName = explicitName!;
+        }
+      }
+
+      var payloadKind = ExpoEventPayloadKind.None;
+      var payloadTypeName = string.Empty;
+      var codecExpression = string.Empty;
+      if (propertyReason is null && !TryGetEventDelegatePayload(
+              property.Type,
+              out payloadType,
+              out payloadKind,
+              out var delegateReason))
+      {
+        propertyReason = delegateReason;
+      }
+
+      if (payloadType is not null)
+      {
+        payloadTypeName = payloadType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+      }
+
+      if (propertyReason is null && payloadType is not null && payloadKind == ExpoEventPayloadKind.Codec)
+      {
+        var payloadReason = GetUnsupportedEventPayload(payloadType);
+        if (payloadReason is not null)
+        {
+          diagnostics.Add(CreateUnsupportedEventPayload(moduleName, property, payloadType, payloadReason));
+          hasUnsupportedPayload = true;
+          propertyReason = "an unsupported payload";
+        }
+        else
+        {
+          var scratchRecordCodecs = recordCodecs.ToList();
+          var scratchDiagnostics = new List<ExpoDiagnosticModel>();
+          codecExpression = GetCodecExpression(payloadType, scratchDiagnostics, scratchRecordCodecs) ?? string.Empty;
+          if (codecExpression.Length == 0)
+          {
+            diagnostics.Add(CreateUnsupportedEventPayload(
+                moduleName,
+                property,
+                payloadType,
+                "no encode-capable codec is available"
+            ));
+            hasUnsupportedPayload = true;
+            propertyReason = "an unsupported payload";
+          }
+          else
+          {
+            recordCodecs.Clear();
+            recordCodecs.AddRange(scratchRecordCodecs);
+          }
+        }
+      }
+      else if (propertyReason is null && payloadType is not null)
+      {
+        var payloadReason = GetUnsupportedEventPayload(payloadType);
+        if (payloadReason is not null)
+        {
+          diagnostics.Add(CreateUnsupportedEventPayload(moduleName, property, payloadType, payloadReason));
+          hasUnsupportedPayload = true;
+          propertyReason = "an unsupported payload";
+        }
+      }
+
+      if (propertyReason is not null && !hasUnsupportedPayload)
+      {
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.UnsupportedEventProperty.Id,
+            property.Locations.FirstOrDefault(),
+            new EquatableArray<string>(new[] { moduleName, property.Name, propertyReason })
+        ));
+      }
+
+      events.Add(new ExpoEventModel(
+          property.Name,
+          javaScriptName,
+          GetAccessibilityText(property.DeclaredAccessibility),
+          GetEventDeclarationModifiers(declaration, property),
+          GetEventAccessorText(declaration, SyntaxKind.GetAccessorDeclaration),
+          GetEventAccessorText(declaration, SyntaxKind.SetAccessorDeclaration, SyntaxKind.InitAccessorDeclaration),
+          property.IsStatic,
+          property.SetMethod is not null,
+          property.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+          payloadTypeName,
+          payloadKind,
+          codecExpression,
+          property.Locations.FirstOrDefault(),
+          canReproduce,
+          propertyReason is null
+      ));
+    }
+
+    return events;
+  }
+
+  private static IReadOnlyList<string> MergeEventNames(
+      string moduleName,
+      List<string> legacyEventNames,
+      List<ExpoEventModel> typedEvents,
+      List<ExpoDiagnosticModel> diagnostics)
+  {
+    var names = new List<string>(legacyEventNames);
+    var seen = new HashSet<string>(legacyEventNames, StringComparer.Ordinal);
+    for (var index = 0; index < typedEvents.Count; index++)
+    {
+      var typedEvent = typedEvents[index];
+      if (!typedEvent.IsDispatchable)
+      {
+        continue;
+      }
+      if (!seen.Add(typedEvent.JavaScriptName))
+      {
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.DuplicateEventName.Id,
+            typedEvent.Location,
+            new EquatableArray<string>(new[] { moduleName, typedEvent.PropertyName, typedEvent.JavaScriptName })
+        ));
+        typedEvents[index] = typedEvent with { IsDispatchable = false };
+        continue;
+      }
+      names.Add(typedEvent.JavaScriptName);
+    }
+    return names;
+  }
+
+  private static ExpoDiagnosticModel CreateUnsupportedEventPayload(
+      string moduleName,
+      IPropertySymbol property,
+      ITypeSymbol payloadType,
+      string reason) =>
+      new(
+          ExpoModulesDiagnostics.UnsupportedEventPayload.Id,
+          payloadType.Locations.FirstOrDefault() ?? property.Locations.FirstOrDefault(),
+          new EquatableArray<string>(new[] { moduleName, property.Name, GetDiagnosticTypeName(payloadType), reason })
+      );
+
+  private static bool TryGetEventDelegatePayload(
+      ITypeSymbol delegateType,
+      out ITypeSymbol? payloadType,
+      out ExpoEventPayloadKind payloadKind,
+      out string reason)
+  {
+    payloadType = null;
+    payloadKind = ExpoEventPayloadKind.None;
+    reason = "a non-awaitable delegate; events must use Func<Task> or Func<T, Task>";
+    if (delegateType is not INamedTypeSymbol namedDelegate ||
+        namedDelegate.DelegateInvokeMethod is null)
+    {
+      return false;
+    }
+
+    var definition = namedDelegate.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    if (definition == "global::System.Func<TResult>" &&
+        IsTaskType(namedDelegate.TypeArguments.Single()))
+    {
+      return true;
+    }
+    if (definition == "global::System.Func<T, TResult>" &&
+        IsTaskType(namedDelegate.TypeArguments[1]))
+    {
+      payloadType = namedDelegate.TypeArguments[0];
+      var payloadName = payloadType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+      payloadKind = payloadName == JavaScriptValueMetadataName
+          ? ExpoEventPayloadKind.JavaScriptValue
+          : payloadName == ArrayBufferMetadataName
+              ? ExpoEventPayloadKind.ArrayBuffer
+              : ExpoEventPayloadKind.Codec;
+      return true;
+    }
+    return false;
+  }
+
+  private static bool IsTaskType(ITypeSymbol typeSymbol) =>
+      typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ==
+      "global::System.Threading.Tasks.Task";
+
+  private static string? GetUnsupportedEventPayload(ITypeSymbol payloadType) =>
+      GetUnsupportedEventPayload(payloadType, true, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default));
+
+  private static string? GetUnsupportedEventPayload(
+      ITypeSymbol typeSymbol,
+      bool isTopLevel,
+      HashSet<ITypeSymbol> visitedTypes)
+  {
+    if (!visitedTypes.Add(typeSymbol))
+    {
+      return "it contains a recursive record codec";
+    }
+    try
+    {
+      if (IsJavaScriptCallbackType(typeSymbol)) return "it contains JavaScriptCallback, which is decode-only";
+      var typeName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+      if (typeName is JavaScriptValueMetadataName or ArrayBufferMetadataName)
+        return isTopLevel ? null : "it contains a nested transfer-sensitive wrapper";
+      if (typeSymbol is not INamedTypeSymbol namedType) return null;
+      if (namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
+        return GetUnsupportedEventPayload(namedType.TypeArguments.Single(), false, visitedTypes);
+      if (namedType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ==
+          "global::System.Collections.Generic.IReadOnlyList<T>")
+        return GetUnsupportedEventPayload(namedType.TypeArguments.Single(), false, visitedTypes);
+      var definition = namedType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+      if (definition is "global::System.Collections.Generic.Dictionary<TKey, TValue>" or
+          "global::System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>")
+        return namedType.TypeArguments[0].SpecialType == SpecialType.System_String
+            ? GetUnsupportedEventPayload(namedType.TypeArguments[1], false, visitedTypes)
+            : null;
+      if (!namedType.IsRecord) return null;
+      var constructor = GetRecordCodecConstructor(namedType);
+      return constructor is null
+          ? null
+          : constructor.Parameters.Select(parameter => GetUnsupportedEventPayload(parameter.Type, false, visitedTypes))
+              .FirstOrDefault(reason => reason is not null);
+    }
+    finally
+    {
+      visitedTypes.Remove(typeSymbol);
+    }
+  }
+
+  private static string? GetUnsupportedEventContainerShape(INamedTypeSymbol typeSymbol)
+  {
+    if (typeSymbol.ContainingType is not null) return "declared in a nested module container";
+    if (typeSymbol.TypeParameters.Length != 0) return "declared in a generic module container";
+    if (typeSymbol.DeclaringSyntaxReferences.Any(reference =>
+            reference.GetSyntax() is ClassDeclarationSyntax declaration &&
+            declaration.Modifiers.Any(SyntaxKind.FileKeyword)))
+    {
+      return "declared in a file-local module container";
+    }
+    if (typeSymbol.DeclaringSyntaxReferences.Any(reference =>
+            reference.GetSyntax() is ClassDeclarationSyntax declaration &&
+            !declaration.Modifiers.Any(SyntaxKind.PartialKeyword)))
+    {
+      return "declared in a non-partial module container";
+    }
+    return null;
+  }
+
+  private static string? GetUnsupportedEventPropertyShape(
+      IPropertySymbol property,
+      PropertyDeclarationSyntax? declaration)
+  {
+    if (property.IsStatic) return "static";
+    if (property.IsIndexer) return "indexed";
+    if (property.ExplicitInterfaceImplementations.Length != 0 || declaration?.ExplicitInterfaceSpecifier is not null)
+      return "an explicit-interface property";
+    if (property.RefKind != RefKind.None) return "a ref-return property";
+    if (declaration is null || !declaration.Modifiers.Any(SyntaxKind.PartialKeyword)) return "non-partial";
+    if (property.SetMethod is not null) return "a setter";
+    if (HasAuthoredPartialImplementation(property)) return "an authored implementation";
+    if (declaration.ExpressionBody is not null || declaration.AccessorList?.Accessors.Any(accessor =>
+            accessor.Body is not null || accessor.ExpressionBody is not null) == true)
+      return "an authored implementation";
+    if (property.GetMethod is null) return "getter-less";
+    if (property.DeclaredAccessibility is not (Accessibility.Public or Accessibility.Internal))
+      return "not public or internal";
+    foreach (var modifier in declaration.Modifiers)
+    {
+      if (modifier.IsKind(SyntaxKind.PartialKeyword) ||
+          modifier.IsKind(SyntaxKind.PublicKeyword) ||
+          modifier.IsKind(SyntaxKind.InternalKeyword))
+      {
+        continue;
+      }
+      return $"modified with '{modifier.Text}'";
+    }
+    if (property.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString() == JSAttributeMetadataName))
+      return "also marked [JS]";
+    return null;
+  }
+
+  private static bool CanReproduceEventProperty(
+      IPropertySymbol property,
+      PropertyDeclarationSyntax? declaration)
+  {
+    if (HasAuthoredPartialImplementation(property) ||
+        property.IsIndexer ||
+        property.ExplicitInterfaceImplementations.Length != 0 ||
+        property.RefKind != RefKind.None ||
+        declaration is null ||
+        !declaration.Modifiers.Any(SyntaxKind.PartialKeyword) ||
+        declaration.ExpressionBody is not null ||
+        declaration.AccessorList?.Accessors.Any(accessor =>
+            accessor.Body is not null || accessor.ExpressionBody is not null) != false)
+    {
+      return false;
+    }
+
+    return !declaration.Modifiers.Any(modifier =>
+        modifier.IsKind(SyntaxKind.AbstractKeyword) || modifier.IsKind(SyntaxKind.ExternKeyword));
+  }
+
+  private static bool HasAuthoredPartialImplementation(IPropertySymbol property) =>
+      property.PartialImplementationPart is not null ||
+      property.PartialDefinitionPart?.PartialImplementationPart is not null;
+
+  private static string GetEventDeclarationModifiers(
+      PropertyDeclarationSyntax? declaration,
+      IPropertySymbol property) => declaration is null
+      ? $"{GetAccessibilityText(property.DeclaredAccessibility)} partial"
+      : string.Join(" ", declaration.Modifiers.Select(modifier => modifier.Text));
+
+  private static string GetEventAccessorText(
+      PropertyDeclarationSyntax? declaration,
+      params SyntaxKind[] kinds)
+  {
+    var accessor = declaration?.AccessorList?.Accessors.FirstOrDefault(item => kinds.Contains(item.Kind()));
+    return accessor is null
+        ? string.Empty
+        : string.Join(" ", accessor.Modifiers.Select(modifier => modifier.Text).Append(accessor.Keyword.Text));
+  }
+
+  private static string GetAccessibilityText(Accessibility accessibility) => accessibility switch
+  {
+    Accessibility.Public => "public",
+    Accessibility.Internal => "internal",
+    Accessibility.Private => "private",
+    Accessibility.Protected => "protected",
+    Accessibility.ProtectedOrInternal => "protected internal",
+    Accessibility.ProtectedAndInternal => "private protected",
+    _ => "private",
+  };
 
   private static IEnumerable<ExpoObservingHookModel> GetObservingHooks(
       INamedTypeSymbol typeSymbol,
@@ -472,7 +839,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 
       var jsAttribute = member.GetAttributes().FirstOrDefault(attribute =>
           attribute.AttributeClass?.ToDisplayString() == JSAttributeMetadataName);
-      if (jsAttribute is null)
+      if (jsAttribute is null || member.GetAttributes().Any(attribute =>
+              attribute.AttributeClass?.ToDisplayString() == EventAttributeMetadataName))
       {
         continue;
       }
@@ -739,7 +1107,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     {
       var jsAttribute = member.GetAttributes().FirstOrDefault(attribute =>
           attribute.AttributeClass?.ToDisplayString() == JSAttributeMetadataName);
-      if (jsAttribute is null)
+      if (jsAttribute is null || member.GetAttributes().Any(attribute =>
+              attribute.AttributeClass?.ToDisplayString() == EventAttributeMetadataName))
       {
         continue;
       }
@@ -908,6 +1277,11 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       context.ReportDiagnostic(ToDiagnostic(diagnostic));
     }
 
+    foreach (var module in moduleModels)
+    {
+      EmitEventPartial(context, module);
+    }
+
     foreach (var group in moduleModels.GroupBy(module => module.ModuleName))
     {
       var duplicateModules = group.ToArray();
@@ -974,6 +1348,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     }
     foreach (var module in moduleModels)
     {
+      EmitTypedEventProviderHelpers(builder, module);
+    }
+    foreach (var module in moduleModels)
+    {
       foreach (var function in module.Functions.Values)
       {
         EmitHostFunction(builder, module, function);
@@ -1005,7 +1383,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     var moduleVariable = $"module_{SanitizeIdentifier(module.ModuleName)}";
     var moduleInstanceVariable = $"instance_{SanitizeIdentifier(module.ModuleName)}";
     var hasEvents = module.EventNames.Values.Count > 0;
-    var factoryExpression = module.ConstructorStrategy == ExpoModuleConstructorStrategy.RuntimeContext
+    var typedEvents = module.Events.Values.Where(@event => @event.IsDispatchable).ToArray();
+    var factoryExpression = typedEvents.Length > 0
+        ? $"() => {GetEventFactoryName(module)}(context)"
+        : module.ConstructorStrategy == ExpoModuleConstructorStrategy.RuntimeContext
         ? $"() => new {module.FullyQualifiedTypeName}(context)"
         : $"static () => new {module.FullyQualifiedTypeName}()";
     var onCreateExpression = GetLifecycleHookExpression(module.OnCreateHook);
@@ -1024,6 +1405,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine(module.OnCreateHook is null && module.OnDestroyHook is null
         ? $"      var {moduleInstanceVariable} = context.ModuleRegistry.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", {factoryExpression});"
         : $"      var {moduleInstanceVariable} = context.ModuleRegistry.GetOrCreateModule(\"{EscapeString(module.ModuleName)}\", {factoryExpression}, {onCreateExpression}, {onDestroyExpression});");
+    if (typedEvents.Length > 0)
+    {
+      builder.AppendLine($"      {GetEventInitializerName(module)}(context, {moduleInstanceVariable});");
+    }
     if (hasEvents)
     {
       builder.AppendLine(
@@ -1074,6 +1459,155 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine("  }");
   }
 
+  private static void EmitEventPartial(SourceProductionContext context, ExpoModuleModel module)
+  {
+    var events = module.Events.Values.Where(@event => @event.IsShapeValid).ToArray();
+    if (events.Length == 0)
+    {
+      return;
+    }
+
+    var dispatchableEvents = events.Where(@event => @event.IsDispatchable).ToArray();
+    var builder = new StringBuilder();
+    builder.AppendLine("// <auto-generated/>");
+    builder.AppendLine("#nullable enable");
+    if (module.Namespace.Length > 0)
+    {
+      builder.AppendLine($"namespace {module.Namespace};");
+      builder.AppendLine();
+    }
+    builder.AppendLine($"{module.Accessibility} partial class {EscapeIdentifier(module.SimpleTypeName)}");
+    builder.AppendLine("{");
+    if (dispatchableEvents.Length > 0)
+    {
+      builder.AppendLine("  private readonly object __expoEventInitializationGate = new();");
+      builder.AppendLine("  private global::Expo.ModulesCore.DotnetRuntimeContext? __expoEventContext;");
+    }
+    foreach (var @event in dispatchableEvents)
+    {
+      builder.AppendLine($"  private {(@event.IsStatic ? "static " : string.Empty)}{@event.DelegateTypeName}? {GetEventBackingFieldName(@event)};");
+    }
+    foreach (var @event in events)
+    {
+      builder.AppendLine();
+      builder.AppendLine($"  {@event.DeclarationModifiers} {@event.DelegateTypeName} {EscapeIdentifier(@event.PropertyName)}");
+      builder.AppendLine("  {");
+      if (@event.GetterAccessor.Length > 0)
+      {
+        var getterExpression = @event.IsDispatchable
+            ? $"{GetEventBackingFieldName(@event)} ?? throw new global::System.InvalidOperationException(\"Event member '{module.SimpleTypeName}.{@event.PropertyName}' is unavailable before module registration.\")"
+            : $"throw new global::System.InvalidOperationException(\"Event member '{module.SimpleTypeName}.{@event.PropertyName}' cannot be used because its declaration is invalid.\")";
+        builder.AppendLine($"    {@event.GetterAccessor} => {getterExpression};");
+      }
+      if (@event.SetterAccessor.Length > 0)
+      {
+        builder.AppendLine($"    {@event.SetterAccessor} => throw new global::System.InvalidOperationException(\"Event member '{module.SimpleTypeName}.{@event.PropertyName}' cannot be assigned.\");");
+      }
+      builder.AppendLine("  }");
+    }
+    if (dispatchableEvents.Length > 0)
+    {
+      builder.AppendLine();
+      builder.AppendLine("  internal void __ExpoModulesCoreInitializeEvents(");
+      builder.AppendLine("      global::Expo.ModulesCore.DotnetRuntimeContext context,");
+      for (var index = 0; index < dispatchableEvents.Length; index++)
+      {
+        var @event = dispatchableEvents[index];
+        builder.AppendLine($"      {@event.DelegateTypeName} {GetEventParameterName(@event)}{(index == dispatchableEvents.Length - 1 ? ")" : ",")}");
+      }
+      builder.AppendLine("  {");
+      builder.AppendLine("    lock (__expoEventInitializationGate)");
+      builder.AppendLine("    {");
+      builder.AppendLine("      if (__expoEventContext is not null)");
+      builder.AppendLine("      {");
+      builder.AppendLine("        if (!global::System.Object.ReferenceEquals(__expoEventContext, context))");
+      builder.AppendLine("          throw new global::System.InvalidOperationException(\"Module event members cannot be rebound to a different runtime context.\");");
+      builder.AppendLine("        return;");
+      builder.AppendLine("      }");
+      foreach (var @event in dispatchableEvents)
+      {
+        builder.AppendLine($"      {GetEventBackingFieldName(@event)} = {GetEventParameterName(@event)} ?? throw new global::System.ArgumentNullException(nameof({GetEventParameterName(@event)}));");
+      }
+      builder.AppendLine("      __expoEventContext = context ?? throw new global::System.ArgumentNullException(nameof(context));");
+      builder.AppendLine("    }");
+      builder.AppendLine("  }");
+    }
+    builder.AppendLine("}");
+    context.AddSource(GetEventHintName(module), SourceText.From(builder.ToString(), Encoding.UTF8));
+  }
+
+  private static void EmitTypedEventProviderHelpers(StringBuilder builder, ExpoModuleModel module)
+  {
+    var events = module.Events.Values.Where(@event => @event.IsDispatchable).ToArray();
+    if (events.Length == 0)
+    {
+      return;
+    }
+    builder.AppendLine();
+    builder.AppendLine($"  private static {module.FullyQualifiedTypeName} {GetEventFactoryName(module)}(global::Expo.ModulesCore.DotnetRuntimeContext context)");
+    builder.AppendLine("  {");
+    var creation = module.ConstructorStrategy == ExpoModuleConstructorStrategy.RuntimeContext
+        ? $"new {module.FullyQualifiedTypeName}(context)"
+        : $"new {module.FullyQualifiedTypeName}()";
+    builder.AppendLine($"    var module = {creation};");
+    builder.AppendLine($"    {GetEventInitializerName(module)}(context, module);");
+    builder.AppendLine("    return module;");
+    builder.AppendLine("  }");
+    builder.AppendLine();
+    builder.AppendLine($"  private static void {GetEventInitializerName(module)}(");
+    builder.AppendLine("      global::Expo.ModulesCore.DotnetRuntimeContext context,");
+    builder.AppendLine($"      {module.FullyQualifiedTypeName} module)");
+    builder.AppendLine("  {");
+    builder.AppendLine("    var emitter = context.Events;");
+    builder.AppendLine("    module.__ExpoModulesCoreInitializeEvents(");
+    builder.AppendLine("        context,");
+    for (var index = 0; index < events.Length; index++)
+    {
+      var @event = events[index];
+      builder.AppendLine($"        {GetEventDelegateExpression(@event)}{(index == events.Length - 1 ? ");" : ",")}");
+    }
+    builder.AppendLine("  }");
+  }
+
+  private static string GetEventDelegateExpression(ExpoEventModel @event) => @event.PayloadKind switch
+  {
+    ExpoEventPayloadKind.None => $"() => emitter.EmitAsync(module, \"{EscapeString(@event.JavaScriptName)}\")",
+    ExpoEventPayloadKind.Codec => $"{GetEventValueParameterName(@event)} => emitter.EmitAsync<{@event.CodecExpression}, {@event.PayloadTypeName}>(module, \"{EscapeString(@event.JavaScriptName)}\", {GetEventValueParameterName(@event)})",
+    ExpoEventPayloadKind.JavaScriptValue or ExpoEventPayloadKind.ArrayBuffer =>
+        $"{GetEventValueParameterName(@event)} => emitter.EmitAsync(module, \"{EscapeString(@event.JavaScriptName)}\", {GetEventValueParameterName(@event)})",
+    _ => throw new InvalidOperationException($"Unknown event payload kind: {@event.PayloadKind}"),
+  };
+
+  private static string GetEventFactoryName(ExpoModuleModel module) =>
+      $"Create{SanitizeIdentifier(module.ModuleName)}";
+
+  private static string GetEventInitializerName(ExpoModuleModel module) =>
+      $"Initialize{SanitizeIdentifier(module.ModuleName)}Events";
+
+  private static string GetEventBackingFieldName(ExpoEventModel @event) =>
+      $"__expoEvent_{SanitizeIdentifier(@event.PropertyName)}";
+
+  private static string GetEventParameterName(ExpoEventModel @event) =>
+      $"on{SanitizeIdentifier(@event.PropertyName)}";
+
+  private static string GetEventValueParameterName(ExpoEventModel @event) =>
+      $"{LowerCamel(SanitizeIdentifier(@event.PropertyName))}Value";
+
+  private static string GetEventHintName(ExpoModuleModel module) =>
+      $"{SanitizeIdentifier(module.FullyQualifiedTypeName)}_{GetStableHash(module.FullyQualifiedTypeName):X8}.Events.g.cs";
+
+  private static uint GetStableHash(string value)
+  {
+    const uint offsetBasis = 2166136261;
+    const uint prime = 16777619;
+    var hash = offsetBasis;
+    foreach (var character in value)
+    {
+      hash = (hash ^ character) * prime;
+    }
+    return hash;
+  }
+
   private static Diagnostic ToDiagnostic(ExpoDiagnosticModel model)
   {
     var descriptor = model.DescriptorId switch
@@ -1095,6 +1629,9 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       "EXPOJSI015" => ExpoModulesDiagnostics.UnsupportedJSPropertyType,
       "EXPOJSI016" => ExpoModulesDiagnostics.DuplicateJavaScriptMemberName,
       "EXPOJSI017" => ExpoModulesDiagnostics.ReservedObservingPropertyName,
+      "EXPOJSI018" => ExpoModulesDiagnostics.UnsupportedEventProperty,
+      "EXPOJSI019" => ExpoModulesDiagnostics.UnsupportedEventPayload,
+      "EXPOJSI020" => ExpoModulesDiagnostics.DuplicateEventName,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());
@@ -1466,9 +2003,9 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine("      var obj = value.AsObject();");
     foreach (var field in codec.Fields.Values)
     {
-      builder.AppendLine($"      var {field.ParameterName} = {field.CodecExpression}.Decode(obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\"), runtime);");
+      builder.AppendLine($"      var {GetRecordFieldLocalName(field)} = {field.CodecExpression}.Decode(obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\"), runtime);");
     }
-    builder.AppendLine($"      return new {codec.RecordTypeName}({string.Join(", ", codec.Fields.Values.Select(field => field.ParameterName))});");
+    builder.AppendLine($"      return new {codec.RecordTypeName}({string.Join(", ", codec.Fields.Values.Select(GetRecordFieldLocalName))});");
     builder.AppendLine("    }");
     builder.AppendLine();
     builder.AppendLine($"    public static {codec.RecordTypeName} Decode(global::Expo.JSI.JavaScriptValue value, global::Expo.JSI.JavaScriptRuntime runtime)");
@@ -1477,9 +2014,9 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     foreach (var field in codec.Fields.Values)
     {
       builder.AppendLine($"      using var {field.ParameterName}Value = obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\");");
-      builder.AppendLine($"      var {field.ParameterName} = {field.CodecExpression}.Decode({field.ParameterName}Value, runtime);");
+      builder.AppendLine($"      var {GetRecordFieldLocalName(field)} = {field.CodecExpression}.Decode({field.ParameterName}Value, runtime);");
     }
-    builder.AppendLine($"      return new {codec.RecordTypeName}({string.Join(", ", codec.Fields.Values.Select(field => field.ParameterName))});");
+    builder.AppendLine($"      return new {codec.RecordTypeName}({string.Join(", ", codec.Fields.Values.Select(GetRecordFieldLocalName))});");
     builder.AppendLine("    }");
     builder.AppendLine();
     builder.AppendLine($"    public static global::Expo.JSI.JavaScriptValue Encode({codec.RecordTypeName} value, global::Expo.JSI.JavaScriptRuntime runtime)");
@@ -1487,8 +2024,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine("      using var obj = runtime.CreateObject();");
     foreach (var field in codec.Fields.Values)
     {
-      builder.AppendLine($"      using var {field.ParameterName} = {field.CodecExpression}.Encode(value.{field.CSharpPropertyName}, runtime);");
-      builder.AppendLine($"      obj.SetProperty(\"{EscapeString(field.JavaScriptName)}\", {field.ParameterName});");
+      builder.AppendLine($"      using var {GetRecordFieldLocalName(field)} = {field.CodecExpression}.Encode(value.{field.CSharpPropertyName}, runtime);");
+      builder.AppendLine($"      obj.SetProperty(\"{EscapeString(field.JavaScriptName)}\", {GetRecordFieldLocalName(field)});");
     }
     builder.AppendLine("      return obj.AsValue();");
     builder.AppendLine("    }");
@@ -1520,6 +2057,9 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 
   private static string GetObservingHookFunctionName(ExpoModuleModel module, string javaScriptName) =>
       $"{SanitizeIdentifier(module.ModuleName)}_{SanitizeIdentifier(javaScriptName)}_HostFunction";
+
+  private static string GetRecordFieldLocalName(ExpoGeneratedRecordFieldModel field) =>
+      field.ParameterName == "value" ? "__expoValue" : field.ParameterName;
 
   private static int GetRequiredParameterCount(ExpoFunctionModel function) =>
       function.Parameters.Values.Count(parameter => !parameter.HasDefaultValue);
@@ -1614,7 +2154,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       return "ByteArrayCodec";
     }
 
-    if (typeSymbol.ToDisplayString() == JavaScriptValueMetadataName)
+    if (typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == JavaScriptValueMetadataName)
     {
       return "JavaScriptValueCodec";
     }
@@ -2122,6 +2662,35 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
   private static string LowerCamel(string value) =>
       value.Length == 0 ? value : char.ToLowerInvariant(value[0]) + value.Substring(1);
 
-  private static string EscapeString(string value) =>
-      value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+  private static string EscapeString(string value)
+  {
+    var builder = new StringBuilder(value.Length);
+    foreach (var character in value)
+    {
+      builder.Append(character switch
+      {
+        '\\' => "\\\\",
+        '\"' => "\\\"",
+        '\n' => "\\n",
+        '\r' => "\\r",
+        '\t' => "\\t",
+        '\0' => "\\0",
+        '\b' => "\\b",
+        '\f' => "\\f",
+        '\v' => "\\v",
+        '\u2028' => "\\u2028",
+        '\u2029' => "\\u2029",
+        _ when char.IsSurrogate(character) => $"\\u{(int)character:X4}",
+        _ when char.IsControl(character) => $"\\u{(int)character:X4}",
+        _ => character.ToString(),
+      });
+    }
+    return builder.ToString();
+  }
+
+  private static string EscapeIdentifier(string value) =>
+      SyntaxFacts.GetKeywordKind(value) != SyntaxKind.None ||
+      SyntaxFacts.GetContextualKeywordKind(value) != SyntaxKind.None
+          ? "@" + value
+          : value;
 }

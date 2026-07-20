@@ -557,8 +557,9 @@ generated facades.
 
 ### Requirement: Event Modules Use NativeModule Objects
 
-`Expo.ModulesCore` SHALL expose event declaration syntax through generated
-bindings. Modules that declare events SHALL be registered as
+`Expo.ModulesCore` SHALL expose legacy `[Events]` and typed `[Event]`
+declaration syntax through generated bindings. Modules that declare either kind
+of event SHALL be registered as
 `_expoDotnet.NativeModule` instances so listener behavior comes from the
 JavaScript prototype chain. `JavaScriptObjectFactory` SHALL install
 `globalThis._expoDotnet.EventEmitter` and
@@ -569,7 +570,8 @@ inherited event methods. The ModulesCore-owned class hierarchy SHALL live under
 `globalThis.expo`.
 
 #### Scenario: Event module is registered
-- **GIVEN** an authored module declares `[Events]` with one or more event names
+- **GIVEN** an authored module declares `[Events]` or `[Event]` with one or
+  more event names
 - **WHEN** generated registration installs the module
 - **THEN** `ModuleRegistry` SHALL define the JavaScript module object as an
   `_expoDotnet.NativeModule` instance
@@ -584,6 +586,18 @@ inherited event methods. The ModulesCore-owned class hierarchy SHALL live under
 - **THEN** the generator SHALL report a diagnostic
 - **AND** generated registration SHALL NOT silently create a plain module for
   inert event syntax
+
+#### Scenario: Typed and legacy names merge for registration and hooks
+- **GIVEN** a module declares typed `[Event]` members and legacy `[Events]`
+  names
+- **WHEN** the generator registers the module
+- **THEN** it SHALL merge their distinct names before choosing the
+  `NativeModule` prototype, attaching declared events, reserving observing-hook
+  names, and validating observing hooks
+- **AND** legacy `[Events]` declarations and `SendEventAsync` SHALL retain
+  their existing behavior
+- **AND** a duplicate between typed members or between typed and legacy
+  declarations SHALL fail compilation instead of being resolved by source order
 
 #### Scenario: Module emits an event
 - **GIVEN** generated registration attached an authored module instance to its
@@ -657,6 +671,187 @@ inherited event methods. The ModulesCore-owned class hierarchy SHALL live under
 - **AND** NativeState release for `EventEmitterNativeState` SHALL NOT dispose
   JavaScript handles or call into JSI
 
+### Requirement: Typed Event Members Are Awaitable Generated Properties
+
+`[Event]` SHALL be valid only on an instance, getter-only partial property of
+exactly `Func<Task>` or `Func<T, Task>`, where `T` has an event-safe
+compile-time codec. The containing module SHALL be a top-level, non-generic
+partial class. The generated implementation SHALL return one cached delegate
+per module instance. `Action`, `Action<T>`, and other delegate shapes SHALL
+not be supported because they would discard the dispatch task.
+
+The implicit JavaScript event name SHALL lowercase only the first C# property
+character. `[Event(name)]` SHALL use its explicit name verbatim, and the
+generator SHALL NOT strip an `On` prefix.
+
+#### Scenario: Typed payload and payload-less events are generated
+- **GIVEN** a module declares `[Event] public partial Func<Task> OnReady { get; }`
+  and `[Event] public partial Func<ProgressEvent, Task> OnProgress { get; }`
+- **WHEN** generated registration creates the module
+- **THEN** each property SHALL return a cached delegate
+- **AND** awaiting `OnReady()` SHALL dispatch `onReady` without a payload
+- **AND** awaiting `OnProgress(value)` SHALL dispatch `onProgress` with its
+  generated `ProgressEvent` codec
+
+#### Scenario: Explicit typed event name is preserved
+- **GIVEN** a module declares
+  `[Event("StatusChanged")] public partial Func<string, Task> OnStatus { get; }`
+- **WHEN** generated registration declares the event
+- **THEN** JavaScript SHALL observe `StatusChanged` verbatim
+- **AND** it SHALL NOT receive `onStatus` as an alias
+
+### Requirement: Typed Event Tasks Carry Dispatch Outcomes
+
+Generated typed-event delegates SHALL dispatch through `ModuleEventEmitter` and
+return its completion task. They SHALL dispatch inline during current runtime
+access, use existing synchronous scheduling when available, and otherwise use
+the existing asynchronous runtime-task path. They SHALL NOT block waiting for
+asynchronous scheduling or discard the task.
+
+The task SHALL complete only after target lookup, payload encoding, listener
+iteration, and generated payload cleanup finish. Target lookup, encoding,
+scheduling, disposed-context, and teardown failures SHALL fault or cancel that
+task instead of being swallowed or escaping directly from `Func.Invoke`.
+After initialization, every delegate invocation SHALL return a non-null task.
+Listener exceptions retain the existing isolation rule: they SHALL not fault
+the dispatch task or prevent later listeners from running.
+
+#### Scenario: Off-runtime typed event is awaited
+- **GIVEN** authored managed code invokes an initialized typed-event delegate
+  without owning runtime access
+- **WHEN** the host requires asynchronous runtime scheduling
+- **THEN** the returned task SHALL represent the scheduled operation
+- **AND** awaiting it SHALL expose its success, failure, or cancellation
+
+#### Scenario: Immediate typed-event validation fails
+- **GIVEN** an initialized typed-event delegate receives a disposed direct
+  payload or its runtime context is already disposed
+- **WHEN** authored code invokes the delegate without awaiting it yet
+- **THEN** invocation SHALL return a non-null faulted or canceled task
+- **AND** the failure SHALL NOT escape synchronously from `Func.Invoke`
+
+#### Scenario: Typed event listener throws
+- **GIVEN** one JavaScript listener throws while handling a typed event
+- **WHEN** the existing `EventEmitter` iterates listeners
+- **THEN** later listeners SHALL still run
+- **AND** the listener exception SHALL NOT fault the returned dispatch task
+
+#### Scenario: Cached typed delegate survives context teardown
+- **GIVEN** authored code retains a generated typed-event delegate
+- **WHEN** its `DotnetRuntimeContext` is disposed before a later invocation
+- **THEN** awaiting that invocation SHALL fail or cancel loudly
+- **AND** it SHALL not access a disposed target or stale JSI handle
+
+### Requirement: Typed Event Members Initialize Before Lifecycle Hooks
+
+Generated registration SHALL initialize typed-event delegates with the owning
+`DotnetRuntimeContext` before a newly created module's `OnCreate` hook runs.
+Both parameterless and `DotnetRuntimeContext` constructor strategies SHALL use
+the same generated initialization, including modules that do not inherit
+`Module`. The provider SHALL create and inject the dispatch delegates; the
+generated module partial SHALL store and expose them but SHALL NOT reference
+provider-private generated record codecs.
+
+Initialization SHALL be idempotent for one module/context pair. Repeated
+same-context initialization SHALL preserve delegate identity. Binding the same
+module instance to another context SHALL fail.
+
+#### Scenario: Lifecycle hook reads an initialized event member
+- **GIVEN** a module declares a typed event and an `OnCreate` hook
+- **WHEN** generated registration constructs the module
+- **THEN** typed-event initialization SHALL finish before `OnCreate` runs
+- **AND** the hook SHALL receive the same cached delegate later returned by the
+  property
+
+#### Scenario: Constructor reads an event member too early
+- **GIVEN** an authored constructor accesses a generated typed-event property
+  before registration can initialize it
+- **WHEN** the getter runs
+- **THEN** it SHALL throw a clear `InvalidOperationException`
+- **AND** it SHALL NOT return `null` or an unbound delegate
+
+### Requirement: Typed Event Payload Ownership Is Explicit
+
+Generated typed-event dispatch SHALL capture no scoped ref. For ordinary
+payloads, authors SHALL keep mutable captured state stable until the returned
+task completes.
+
+For a direct `ArrayBuffer`, generated glue SHALL synchronously retain an
+invocation-owned lease before returning the task. The original remains
+caller-owned, and the caller MAY dispose it after invocation returns. The lease
+SHALL remain alive until dispatch reaches a terminal state and release exactly
+once on success, failure, or cancellation.
+
+For a direct `JavaScriptValue`, generated glue SHALL retain and encode an
+invocation copy only while executing on the owning runtime. The caller SHALL
+keep the original wrapper alive until the returned task completes. Generated
+glue SHALL dispose only its invocation copy and SHALL NOT consume the original.
+
+Records, lists, and dictionaries containing nested `JavaScriptValue` or
+`ArrayBuffer`, and any payload containing `JavaScriptCallback`, SHALL be
+rejected in this slice. Event-safety classification SHALL run before general
+codec resolution can mutate generated-record-codec state, and SHALL inspect
+only encoded inputs such as selected record-constructor parameters, list
+elements, dictionary values, and nullable-value inner types. A rejected payload
+SHALL not leave callback `Encode` source or secondary compiler errors behind.
+`JavaScriptObject` remains a possible future optional advanced convertible; it
+is not a current generated module codec.
+
+#### Scenario: Direct JavaScriptValue ownership is runtime-affine
+- **GIVEN** authored code invokes a typed event with an owned `JavaScriptValue`
+- **WHEN** dispatch is scheduled for later runtime execution
+- **THEN** the caller SHALL keep the original wrapper alive until task
+  completion
+- **AND** generated glue SHALL retain and encode only an invocation copy during
+  runtime access
+- **AND** the original SHALL remain usable after successful dispatch
+
+#### Scenario: Direct ArrayBuffer owns a scheduling lease
+- **GIVEN** authored code invokes a typed event with an owned `ArrayBuffer`
+- **WHEN** dispatch is scheduled for later runtime execution
+- **THEN** generated glue SHALL retain an independent lease before returning
+- **AND** the caller MAY dispose the original after invocation returns
+- **AND** terminal cleanup SHALL release the retained lease exactly once
+
+### Requirement: Invalid Typed Events Are Build Diagnostics
+
+Typed-event validation SHALL use `EXPOJSI018` for invalid event-property
+shapes, `EXPOJSI019` for unsupported event payloads, and `EXPOJSI020` for
+typed/typed or typed/legacy duplicate names. `EXPOJSI018` covers null, empty,
+or blank explicit names; unsupported static, indexed, non-partial, implemented,
+setter, explicit-interface, ref-return, `[JS]`, or modifier shapes; unsupported
+delegate types; and file-local, nested, generic, or non-partial containers.
+`EXPOJSI019` covers payloads with no encode-capable event codec, a callback
+codec, or a nested transfer-sensitive wrapper. Legacy-only invalid or duplicate
+`[Events]` declarations SHALL continue to use `EXPOJSI009`.
+
+When a rejected member's partial-property declaration can be reproduced safely,
+the generator SHALL emit an inert matching implementation so the consuming
+compilation receives the Expo diagnostic without a secondary generated-C#
+error. It SHALL not attempt a declaration for shapes that cannot be reproduced
+safely.
+
+#### Scenario: Invalid typed event shape is reported
+- **GIVEN** a module declares `[Event] public partial Action<string> OnStatus { get; }`
+- **WHEN** the generator analyzes the property
+- **THEN** it SHALL report `EXPOJSI018` and explain that an awaitable
+  `Func<T, Task>` is required
+
+#### Scenario: Typed event payload is unsupported
+- **GIVEN** a valid-shaped typed event has an unsupported payload, a callback,
+  or a nested direct wrapper
+- **WHEN** the generator analyzes the event
+- **THEN** it SHALL report `EXPOJSI019`
+- **AND** it SHALL not emit reflection, dynamic conversion, callback `Encode`
+  source, or a secondary compiler error
+
+#### Scenario: Typed and legacy event names collide
+- **GIVEN** `[Events("onStatus")]` and `[Event] ... OnStatus` occur on one
+  module
+- **WHEN** the generator analyzes the module
+- **THEN** it SHALL report `EXPOJSI020`
+- **AND** it SHALL not silently merge the duplicate declarations
+
 ### Requirement: Event Observing Hooks Use Module Object Functions
 
 Generated observing hooks SHALL be ordinary JavaScript functions on the module
@@ -686,7 +881,7 @@ those functions when listener counts transition for an event.
 #### Scenario: Observing hook shape is invalid
 - **GIVEN** an authored observing hook is static, generic, returns a value, uses
   unsupported parameters, names an undeclared event, or appears on a module
-  without `[Events]`
+  without any typed or legacy event declarations
 - **WHEN** the generator analyzes the module
 - **THEN** it SHALL report an observing-hook diagnostic
 

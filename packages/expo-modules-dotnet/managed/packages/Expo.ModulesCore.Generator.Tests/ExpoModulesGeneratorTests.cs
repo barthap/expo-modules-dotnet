@@ -267,7 +267,9 @@ public sealed class ExpoModulesGeneratorTests
         """
         using Expo.ModulesCore;
         using System;
+        using System.Diagnostics.CodeAnalysis;
         using System.Threading.Tasks;
+        using System.Diagnostics.CodeAnalysis;
 
         namespace Expo.TestModules;
 
@@ -1488,4 +1490,740 @@ public sealed class ExpoModulesGeneratorTests
     var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI011");
     Assert.Contains("duplicate destroy lifecycle hook", diagnostic.GetMessage());
   }
+
+  [Fact]
+  public void TypedEventPropertiesGenerateCachedDelegatesAndProviderInitialization()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using System.Threading.Tasks;
+        using Expo.JSI;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public sealed record Progress(int Value);
+
+        [ExpoModule("Device")]
+        [Events("legacy")]
+        public sealed partial class DeviceModule
+        {
+          public DeviceModule(DotnetRuntimeContext context) {}
+
+          [OnCreate]
+          internal void Initialize() {}
+
+          [Event]
+          public partial Func<Task> OnReady { get; }
+
+          [Event("StatusChanged")]
+          internal partial Func<Progress, Task> OnProgress { get; }
+
+          [Event]
+          public partial Func<string, Task> OnText { get; }
+
+          [Event]
+          public partial Func<JavaScriptValue, Task> OnValue { get; }
+
+          [Event]
+          public partial Func<ArrayBuffer, Task> OnBuffer { get; }
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    Assert.Equal(2, result.GeneratedSources.Count);
+    var provider = Assert.Single(result.GeneratedSources, source => source.HintName.Contains("Provider"));
+    var partial = Assert.Single(result.GeneratedSources, source => source.HintName.Contains("Events"));
+    Assert.Contains("private static global::Expo.TestModules.DeviceModule CreateDevice", provider.Text);
+    Assert.Contains("InitializeDeviceEvents(context, module);", provider.Text);
+    Assert.Contains("var emitter = context.Events;", provider.Text);
+    Assert.Contains("() => emitter.EmitAsync(module, \"onReady\")", provider.Text);
+    Assert.Contains("emitter.EmitAsync<ProgressCodec, global::Expo.TestModules.Progress>(module, \"StatusChanged\", onProgressValue)", provider.Text);
+    Assert.Contains("emitter.EmitAsync(module, \"onValue\", onValueValue)", provider.Text);
+    Assert.Contains("emitter.EmitAsync(module, \"onBuffer\", onBufferValue)", provider.Text);
+    Assert.Contains("GetOrCreateModule(\"Device\", () => CreateDevice(context), static module => module.Initialize(), null)", provider.Text);
+    Assert.Contains("InitializeDeviceEvents(context, instance_Device);", provider.Text);
+    Assert.True(
+        provider.Text.IndexOf("() => CreateDevice(context)", StringComparison.Ordinal) <
+        provider.Text.IndexOf("static module => module.Initialize()", StringComparison.Ordinal)
+    );
+    Assert.Contains("new[] { \"legacy\", \"onReady\", \"StatusChanged\", \"onText\", \"onValue\", \"onBuffer\" }", provider.Text);
+    Assert.Contains("private global::System.Func<global::System.Threading.Tasks.Task>? __expoEvent_OnReady;", partial.Text);
+    Assert.Contains("Event member 'DeviceModule.OnReady' is unavailable before module registration.", partial.Text);
+    Assert.Contains("public partial global::System.Func<global::System.Threading.Tasks.Task> OnReady", partial.Text);
+    Assert.Contains("internal partial global::System.Func<global::Expo.TestModules.Progress, global::System.Threading.Tasks.Task> OnProgress", partial.Text);
+    Assert.DoesNotContain("ProgressCodec", partial.Text);
+  }
+
+  [Theory]
+  [InlineData("[Event(null!)] public partial Func<Task> OnReady { get; }", "null")]
+  [InlineData("[Event(\"\")] public partial Func<Task> OnReady { get; }", "empty")]
+  [InlineData("[Event(\" \")] public partial Func<Task> OnReady { get; }", "blank")]
+  [InlineData("[Event] public partial Action OnReady { get; }", "Func<Task>")]
+  [InlineData("[Event] public partial Func<string> OnReady { get; }", "Func<Task>")]
+  [InlineData("[Event] [JS] public partial Func<Task> OnReady { get; }", "[JS]")]
+  public void TypedEventPropertyShapeFailuresRemainCompilable(string property, string reason)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class DeviceModule
+        {
+          {{property}}
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI018");
+    Assert.Contains("OnReady", diagnostic.GetMessage());
+    Assert.Contains(reason, diagnostic.GetMessage(), StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+    Assert.Contains("partial", GeneratedText(result));
+  }
+
+  [Theory]
+  [InlineData("[Event] public static partial Func<Task> OnReady { get; }", "static")]
+  [InlineData("[Event] public partial Func<Task> this[int index] { get; }", "indexed")]
+  [InlineData("[Event] public Func<Task> OnReady { get; }", "non-partial")]
+  [InlineData("[Event] public partial Func<Task> OnReady { get; set; }", "setter")]
+  [InlineData("[Event] public partial Func<Task> OnReady => null!;", "implementation")]
+  [InlineData("[Event] public virtual partial Func<Task> OnReady { get; }", "virtual")]
+  public void TypedEventUnsupportedSyntaxReportsEventPropertyDiagnostic(string property, string reason)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class DeviceModule
+        {
+          {{property}}
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI018");
+    Assert.Contains(reason, diagnostic.GetMessage(), StringComparison.OrdinalIgnoreCase);
+  }
+
+  [Fact]
+  public void TypedEventWithAuthoredPartialImplementationIsRejectedWithoutGeneratedEventPartial()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class DeviceModule
+        {
+          [Event] public partial Func<Task> OnReady { get; }
+
+          public partial Func<Task> OnReady { get => static () => Task.CompletedTask; }
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI018");
+    Assert.Contains("implementation", diagnostic.GetMessage(), StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+    Assert.DoesNotContain("__expoEvent_OnReady", GeneratedText(result));
+  }
+
+  [Theory]
+  [InlineData("JavaScriptCallback<string>")]
+  [InlineData("System.Collections.Generic.IReadOnlyList<JavaScriptCallback<string>>")]
+  [InlineData("System.Collections.Generic.Dictionary<string, JavaScriptCallback<string>>")]
+  [InlineData("System.Collections.Generic.IReadOnlyList<JavaScriptValue>")]
+  public void TypedEventPayloadFailuresDoNotGenerateCallbackCodecs(string payloadType)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.JSI;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class DeviceModule
+        {
+          [Event] public partial Func<{{payloadType}}, Task> OnPayload { get; }
+        }
+        """
+    );
+
+    Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI019");
+    Assert.DoesNotContain("JavaScriptCallbackCodec", GeneratedText(result));
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void TypedEventJavaScriptObjectPayloadIsRejectedWithoutCodecOrEventState()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using System.Threading.Tasks;
+        using Expo.JSI;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class DeviceModule
+        {
+          [Event] public partial Func<JavaScriptObject, Task> OnPayload { get; }
+        }
+        """
+    );
+
+    Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI019");
+    Assert.DoesNotContain("JavaScriptObjectCodec", GeneratedText(result));
+    Assert.DoesNotContain("__expoEvent_OnPayload", GeneratedText(result));
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void TypedEventRecordPayloadInspectsOnlySelectedConstructorParameters()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public sealed record SafePayload(string Value)
+        {
+          public JavaScriptCallback<string>? Ignored => null;
+        }
+
+        public sealed record UnsafePayload(JavaScriptCallback<string> Callback);
+
+        [ExpoModule]
+        public sealed partial class DeviceModule
+        {
+          [Event] public partial Func<SafePayload, Task> OnSafe { get; }
+          [Event] public partial Func<UnsafePayload, Task> OnUnsafe { get; }
+        }
+        """
+    );
+
+    Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI019");
+    var generated = GeneratedText(result);
+    Assert.Contains("SafePayloadCodec", generated);
+    Assert.DoesNotContain("JavaScriptCallbackCodec", generated);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Theory]
+  [InlineData("[Event] public partial Func<Task> OnReady { get; }\n[Event(\"onReady\")] public partial Func<Task> OnReadyAgain { get; }")]
+  [InlineData("[Event(\"legacy\")] public partial Func<Task> OnReady { get; }")]
+  public void TypedEventDuplicateNamesUseTypedEventDiagnostics(string properties)
+  {
+    var legacy = properties.Contains("legacy", StringComparison.Ordinal) ? "[Events(\"legacy\")]" : string.Empty;
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        {{legacy}}
+        public sealed partial class DeviceModule
+        {
+          {{properties}}
+        }
+        """
+    );
+
+    Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI020");
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void TypedEventRecursiveRecordPayloadIsRejectedBeforeCodecGeneration()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public sealed record Node(Branch Next);
+        public sealed record Branch(Node Parent);
+
+        [ExpoModule]
+        public sealed partial class DeviceModule
+        {
+          [Event] public partial Func<Node, Task> OnNode { get; }
+        }
+        """
+    );
+
+    Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI019");
+    Assert.DoesNotContain("NodeCodec", GeneratedText(result));
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void TypedEventRepeatedNonrecursiveRecordPayloadsRemainSupported()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public sealed record Leaf(string Value);
+        public sealed record Pair(Leaf First, Leaf Second);
+
+        [ExpoModule]
+        public sealed partial class DeviceModule
+        {
+          [Event] public partial Func<Pair, Task> OnPair { get; }
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, item => item.Severity == DiagnosticSeverity.Error);
+    Assert.Contains("PairCodec", GeneratedText(result));
+    Assert.Contains("LeafCodec", GeneratedText(result));
+  }
+
+  [Fact]
+  public void TypedEventPartialsUseQualifiedHintNamesAndEscapeAuthoredIdentifiers()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Other")]
+        public sealed partial class @class
+        {
+          [Event("line\nbreak")] public partial Func<Task> @event { get; }
+        }
+
+        [ExpoModule("Same")]
+        public sealed partial class OtherModule
+        {
+          [Event] public partial Func<Task> OnReady { get; }
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, item => item.Severity == DiagnosticSeverity.Error);
+    Assert.Equal(3, result.GeneratedSources.Count);
+    var partial = Assert.Single(result.GeneratedSources, source => source.Text.Contains("partial class @class"));
+    Assert.Contains("partial global::System.Func<global::System.Threading.Tasks.Task> @event", partial.Text);
+    Assert.Contains("line\\nbreak", GeneratedText(result));
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void TypedEventDuplicateModuleNamesStillEmitDistinctPartialHints()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Same")] public sealed partial class FirstModule { [Event] public partial Func<Task> OnFirst { get; } }
+        [ExpoModule("Same")] public sealed partial class SecondModule { [Event] public partial Func<Task> OnSecond { get; } }
+        """
+    );
+
+    Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI006");
+    Assert.Equal(3, result.GeneratedSources.Count);
+    Assert.Equal(2, result.GeneratedSources.Count(source => source.HintName.EndsWith(".Events.g.cs", StringComparison.Ordinal)));
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Theory]
+  [InlineData("public partial Func<Task> OnReady { get; set; }", "get", "set")]
+  [InlineData("public partial Func<Task> OnReady { get; private set; }", "get", "private set")]
+  [InlineData("public partial Func<Task> OnReady { get; init; }", "get", "init")]
+  [InlineData("public partial Func<Task> OnReady { set; }", "", "set")]
+  [InlineData("public partial Func<Task> OnReady { private get; set; }", "private get", "set")]
+  public void TypedEventInertPartialPreservesAuthoredAccessorSyntax(string property, string getter, string setter)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public partial class DeviceModule
+        {
+          [Event] {{property}}
+        }
+        """
+    );
+
+    Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI018");
+    var partial = Assert.Single(result.GeneratedSources, source => source.HintName.EndsWith(".Events.g.cs", StringComparison.Ordinal));
+    if (getter.Length > 0) Assert.Contains(getter + " =>", partial.Text);
+    else Assert.DoesNotContain("get =>", partial.Text);
+    Assert.Contains(setter + " =>", partial.Text);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void TypedEventHintsRemainUniqueForSanitizedQualifiedTypeCollisions()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace A { [ExpoModule] public partial class B_C { [Event] public partial Func<Task> OnReady { get; } } }
+        namespace A_B { [ExpoModule] public partial class C { [Event] public partial Func<Task> OnReady { get; } } }
+        """
+    );
+
+    var hints = result.GeneratedSources.Where(source => source.HintName.EndsWith(".Events.g.cs", StringComparison.Ordinal)).ToArray();
+    Assert.Equal(2, hints.Length);
+    Assert.NotEqual(hints[0].HintName, hints[1].HintName);
+    Assert.DoesNotContain(result.Diagnostics, item => item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void TypedEventExplicitNamesEscapeControlAndSurrogateCharacters()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class DeviceModule
+        {
+          [Event("line\nbreak")] public partial Func<Task> OnNewline { get; }
+          [Event("line\u2028break")] public partial Func<Task> OnLineSeparator { get; }
+          [Event("line\u2029break")] public partial Func<Task> OnParagraphSeparator { get; }
+          [Event("\uD800")] public partial Func<Task> OnSurrogate { get; }
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, item => item.Severity == DiagnosticSeverity.Error);
+    var provider = Assert.Single(result.GeneratedSources, source => source.HintName.Contains("Provider"));
+    Assert.Contains("line\\nbreak", provider.Text);
+    Assert.Contains("line\\u2028break", provider.Text);
+    Assert.Contains("line\\u2029break", provider.Text);
+    Assert.Contains("\\uD800", provider.Text);
+  }
+
+  [Fact]
+  public void TypedEventUnsupportedOrdinaryCodecUsesEventPayloadDiagnostic()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class DeviceModule
+        {
+          [Event] public partial Func<decimal, Task> OnAmount { get; }
+        }
+        """
+    );
+
+    Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI019");
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void TypedEventParameterlessConstructorUsesCreateAndInitializeHelper()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class DeviceModule
+        {
+          public DeviceModule() {}
+          [OnCreate] internal void Initialize() {}
+          [Event] public partial Func<Task> OnReady { get; }
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, item => item.Severity == DiagnosticSeverity.Error);
+    var provider = Assert.Single(result.GeneratedSources, source => source.HintName.Contains("Provider"));
+    Assert.Contains("var module = new global::Expo.TestModules.DeviceModule();", provider.Text);
+    Assert.Contains("InitializeDeviceEvents(context, module);", provider.Text);
+    Assert.True(provider.Text.IndexOf("() => CreateDevice(context)", StringComparison.Ordinal) <
+        provider.Text.IndexOf("static module => module.Initialize()", StringComparison.Ordinal));
+  }
+
+  [Theory]
+  [InlineData("abstract")]
+  [InlineData("extern")]
+  public void TypedEventBodylessModifiersReportOnlyEventDiagnosticWithoutGeneratedPartial(string modifier)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public abstract partial class DeviceModule
+        {
+          [Event] public {{modifier}} partial Func<Task> OnReady { get; }
+        }
+        """
+    );
+
+    Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI018");
+    Assert.DoesNotContain("__expoEvent_OnReady", GeneratedText(result));
+  }
+
+  [Theory]
+  [InlineData("virtual")]
+  [InlineData("abstract")]
+  [InlineData("override")]
+  [InlineData("sealed")]
+  [InlineData("required")]
+  [InlineData("extern")]
+  public void TypedEventUnsupportedModifierMatrixReportsEventDiagnostic(string modifier)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public partial class DeviceModule
+        {
+          [Event] public {{modifier}} partial Func<Task> OnReady { get; }
+        }
+        """
+    );
+
+    Assert.Contains(result.Diagnostics, item => item.Id == "EXPOJSI018");
+  }
+
+  [Theory]
+  [InlineData("new", false)]
+  [InlineData("unsafe", true)]
+  public void TypedEventNewAndUnsafeModifiersReceiveMatchingInertImplementations(string modifier, bool allowUnsafe)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public partial class DeviceModule
+        {
+          [Event] public {{modifier}} partial Func<Task> OnReady { get; }
+        }
+        """,
+        assemblyName: "Expo.TestModules",
+        allowUnsafe: allowUnsafe
+    );
+
+    Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI018");
+    var partial = Assert.Single(result.GeneratedSources, source => source.HintName.EndsWith(".Events.g.cs", StringComparison.Ordinal));
+    Assert.Contains($"public {modifier} partial", partial.Text);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Theory]
+  [InlineData("""
+    public interface IEvents { Func<Task> OnReady { get; } }
+    [ExpoModule] public partial class DeviceModule : IEvents { [Event] Func<Task> IEvents.OnReady { get; } }
+    """)]
+  [InlineData("""
+    [ExpoModule] public partial class DeviceModule { [Event] public ref Func<Task> OnReady => throw null!; }
+    """)]
+  [InlineData("""
+    [ExpoModule] file partial class DeviceModule { [Event] public partial Func<Task> OnReady { get; } }
+    """)]
+  [InlineData("""
+    public partial class Outer { [ExpoModule] public partial class DeviceModule { [Event] public partial Func<Task> OnReady { get; } } }
+    """)]
+  [InlineData("""
+    [ExpoModule] public partial class DeviceModule<T> { [Event] public partial Func<Task> OnReady { get; } }
+    """)]
+  [InlineData("""
+    [ExpoModule] public class DeviceModule { [Event] public partial Func<Task> OnReady { get; } }
+    """)]
+  public void TypedEventNonreproducibleShapesReportDiagnosticWithoutGeneratedPartial(string declaration)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        {{declaration}}
+        """
+    );
+
+    Assert.Contains(result.Diagnostics, item => item.Id == "EXPOJSI018");
+    Assert.DoesNotContain("__expoEvent_OnReady", GeneratedText(result));
+  }
+
+  [Theory]
+  [InlineData("override")]
+  [InlineData("sealed override")]
+  public void TypedEventOverridingModifiersReceiveMatchingInertImplementations(string modifier)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public abstract class BaseModule
+        {
+          public virtual Func<Task> OnReady => null!;
+        }
+
+        [ExpoModule]
+        public partial class DeviceModule : BaseModule
+        {
+          [Event] public {{modifier}} partial Func<Task> OnReady { get; }
+        }
+        """
+    );
+
+    Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI018");
+    var partial = Assert.Single(result.GeneratedSources, source => source.HintName.EndsWith(".Events.g.cs", StringComparison.Ordinal));
+    Assert.Contains($"public {modifier} partial", partial.Text);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void TypedEventRequiredModifierReceivesMatchingInertImplementation()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using System.Threading.Tasks;
+        using System.Diagnostics.CodeAnalysis;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public partial class DeviceModule
+        {
+          [SetsRequiredMembers] public DeviceModule() {}
+          [Event] public required partial Func<Task> OnReady { get; set; }
+        }
+        """
+    );
+
+    Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI018");
+    Assert.Contains("public required partial", GeneratedText(result));
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Theory]
+  [InlineData("[Event] public static partial Func<Task> OnStatic { get; }")]
+  [InlineData("[Event] public partial Func<Task> OnSetter { get; private set; }")]
+  [InlineData("[Event] public virtual partial Func<Task> OnVirtual { get; }")]
+  public void TypedEventReproducibleRejectedPropertiesReceiveInertMatchingImplementations(string property)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public partial class DeviceModule
+        {
+          {{property}}
+        }
+        """
+    );
+
+    Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI018");
+    Assert.Contains("partial", GeneratedText(result));
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  private static string GeneratedText(GeneratorRunResult result) =>
+      string.Join("\n", result.GeneratedSources.Select(source => source.Text));
 }

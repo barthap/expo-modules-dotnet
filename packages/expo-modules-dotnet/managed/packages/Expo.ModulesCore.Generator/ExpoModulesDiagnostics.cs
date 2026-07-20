@@ -156,4 +156,31 @@ internal static class ExpoModulesDiagnostics
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true
   );
+
+  public static readonly DiagnosticDescriptor UnsupportedEventProperty = new(
+      id: "EXPOJSI018",
+      title: "Unsupported Expo module event property",
+      messageFormat: "Module '{0}' event property '{1}' is unsupported because it is {2}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor UnsupportedEventPayload = new(
+      id: "EXPOJSI019",
+      title: "Unsupported Expo module event payload",
+      messageFormat: "Module '{0}' event property '{1}' uses unsupported payload type '{2}': {3}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor DuplicateEventName = new(
+      id: "EXPOJSI020",
+      title: "Duplicate Expo module event name",
+      messageFormat: "Module '{0}' event property '{1}' resolves to duplicate event name '{2}'",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
 }
