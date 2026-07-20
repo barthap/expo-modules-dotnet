@@ -688,6 +688,45 @@ aggregation and staging instead of legacy per-module adapter-owned staging.
 - **AND** it SHALL return `globalThis._expoDotnet.modules[name]` when present
 - **AND** it SHALL throw a plain JavaScript `Error` when the module is missing
 
+### Requirement: Typed JavaScript Facades Remain Registry-Owned
+
+`expo-modules-dotnet` SHALL export `EventsMap`, `EventSubscription`,
+`DotnetEventEmitter`, and `DotnetModule` for typed JavaScript module facades.
+`DotnetModule` SHALL extend `DotnetEventEmitter`; both exports SHALL be real
+JavaScript class values only so TypeScript can use them in heritage clauses.
+
+#### Scenario: Author declares a typed module facade
+- **GIVEN** an author defines an explicit map from supported event names to
+  listener signatures
+- **WHEN** it declares an internal `declare class` that extends
+  `DotnetModule<Events>` and exports a public type alias for that class
+- **THEN** `addListener`, `removeListener`, `removeAllListeners`, `emit`, and
+  `listenerCount` SHALL use the selected event-map name and listener or
+  argument types
+- **AND** `addListener` SHALL return an `EventSubscription` whose `remove()`
+  method releases the listener registration
+- **AND** the author MAY obtain the facade with the unconstrained
+  `requireDotnetModule<T>` generic
+- **AND** existing plain-object facade types SHALL remain compatible
+
+#### Scenario: Facade classes are not module constructors
+- **GIVEN** JavaScript imports `DotnetEventEmitter` or `DotnetModule`
+- **WHEN** it directly constructs either class
+- **THEN** the constructor SHALL throw and direct the caller to
+  `requireDotnetModule`
+- **AND** a native registry module object SHALL NOT be guaranteed to be an
+  `instanceof` either facade class
+
+#### Scenario: Modern event facade excludes runtime hooks
+- **GIVEN** an author uses the typed JavaScript event facade
+- **WHEN** it registers or removes a listener
+- **THEN** it SHALL use `addListener` and `EventSubscription.remove()`
+- **AND** `removeSubscription`, `startObserving`, and `stopObserving` SHALL
+  NOT be members of the modern facade
+- **AND** `emit` SHALL remain typed because the installed native prototype
+  exposes it, but ordinary JavaScript facades SHALL treat it as primarily
+  runtime-internal
+
 #### Scenario: Desktop app stages HostFXR artifacts through the CLI
 - **GIVEN** the React Native macOS or Windows example app uses the `hostfxr`
   loader

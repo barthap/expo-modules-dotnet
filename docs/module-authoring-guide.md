@@ -263,19 +263,32 @@ and wraps it in an ergonomic public API:
 
 ```ts
 // packages/example-module/src/index.ts
-import { requireDotnetModule } from 'expo-modules-dotnet';
+import {
+  DotnetModule,
+  requireDotnetModule,
+  type EventSubscription,
+} from 'expo-modules-dotnet';
 
-const nativeModule = requireDotnetModule<ExampleModule>('ExampleModule');
-
-export type ExampleModule = {
-  add(a: number, b: number): number;
-  addListener(eventName: 'onStatus', listener: (payload: string) => void): EventSubscription;
-  getMessageAsync(): Promise<string>;
-  // ...
+type ExampleModuleEvents = {
+  onStatus(payload: string): void;
 };
+
+declare class ExampleModuleType extends DotnetModule<ExampleModuleEvents> {
+  add(a: number, b: number): number;
+  getMessageAsync(): Promise<string>;
+}
+
+export type ExampleModule = ExampleModuleType;
+export type { EventSubscription } from 'expo-modules-dotnet';
+
+const nativeModule = requireDotnetModule<ExampleModuleType>('ExampleModule');
 
 export function add(a: number, b: number): number {
   return nativeModule.add(a, b);
+}
+
+export function addStatusListener(listener: (payload: string) => void): EventSubscription {
+  return nativeModule.addListener('onStatus', listener);
 }
 ```
 
@@ -286,10 +299,12 @@ C# (see `ExampleUser`/`ExampleUserSummary` above, whose JS-facing shape uses
 `Age`/`Name`/`Summary` to match the C# record's property names); the facade is
 a good place to translate those into idiomatic camelCase JS types.
 
-Dedicated facade base types — upstream-Expo-style `NativeModule`/`EventEmitter`
-classes with a typed events map that module facade declarations extend — are a
-planned direction for `expo-modules-dotnet`. Until then, typing the native
-module as a plain object as shown above is the interim approach.
+`DotnetModule` and `DotnetEventEmitter` are type bases, not usable JavaScript
+module constructors. Obtain module objects through `requireDotnetModule`, and
+do not use `instanceof` with either base because native registry objects do not
+inherit their JavaScript prototypes. The event map is explicit until generated
+event declarations provide a different authoring input. Release a listener
+with the returned subscription's `remove()` method.
 
 ## 9. Platform matrix
 

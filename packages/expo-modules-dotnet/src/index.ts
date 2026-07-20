@@ -39,3 +39,6 @@ export function requireDotnetModule<T>(name: string): T {
 
   return module as T;
 }
+
+export { DotnetEventEmitter, DotnetModule } from './ts-declarations/DotnetEventEmitter';
+export type { EventSubscription, EventsMap } from './ts-declarations/DotnetEventEmitter';

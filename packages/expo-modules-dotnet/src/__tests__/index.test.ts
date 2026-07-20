@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { DotnetEventEmitter, DotnetModule } from '../index';
+
 const mockNative = vi.hoisted(() => ({
   installer: {
     installModules: vi.fn(),
@@ -70,5 +72,48 @@ describe('requireDotnetModule', () => {
       'expo-modules-dotnet native installer failed: ' +
         'Expo JSI ABI version mismatch: native=21 managed=22.'
     );
+  });
+});
+
+describe('typed facade base classes', () => {
+  it.each([
+    [
+      'DotnetEventEmitter',
+      DotnetEventEmitter,
+      'DotnetEventEmitter instances are created by the native module registry. Use requireDotnetModule() to obtain a module.',
+    ],
+    [
+      'DotnetModule',
+      DotnetModule,
+      'DotnetModule instances are created by the native module registry. Use requireDotnetModule() to obtain a module.',
+    ],
+  ])('%s is an exported value whose constructor directs callers to module lookup', (_, Facade, message) => {
+    expect(typeof Facade).toBe('function');
+    expect(() => new Facade()).toThrow(message);
+  });
+
+  it('keeps only the five modern event methods on the event-emitter prototype', () => {
+    expect(Object.getOwnPropertyNames(DotnetEventEmitter.prototype).sort()).toEqual(
+      [
+        'addListener',
+        'constructor',
+        'emit',
+        'listenerCount',
+        'removeAllListeners',
+        'removeListener',
+      ].sort()
+    );
+    expect(Object.getOwnPropertyNames(DotnetModule.prototype)).toEqual(['constructor']);
+
+    expect(DotnetEventEmitter.prototype.addListener).toHaveLength(2);
+    expect(DotnetEventEmitter.prototype.removeListener).toHaveLength(2);
+    expect(DotnetEventEmitter.prototype.removeAllListeners).toHaveLength(1);
+    expect(DotnetEventEmitter.prototype.emit).toHaveLength(1);
+    expect(DotnetEventEmitter.prototype.listenerCount).toHaveLength(1);
+
+    for (const name of ['removeSubscription', 'startObserving', 'stopObserving', 'unavailable']) {
+      expect(DotnetEventEmitter.prototype).not.toHaveProperty(name);
+      expect(DotnetModule.prototype).not.toHaveProperty(name);
+    }
   });
 });

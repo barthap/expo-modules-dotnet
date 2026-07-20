@@ -1,4 +1,10 @@
-import { requireDotnetModule } from 'expo-modules-dotnet';
+import {
+  DotnetModule,
+  requireDotnetModule,
+  type EventSubscription,
+} from 'expo-modules-dotnet';
+
+export type { EventSubscription } from 'expo-modules-dotnet';
 
 const nativeModule = requireDotnetModule<ExampleModule>('ExampleModule');
 
@@ -11,13 +17,12 @@ export type ExampleUserSummary = ExampleUser & {
   summary: string;
 };
 
-export type EventSubscription = {
-  remove(): void;
+type ExampleModuleEvents = {
+  onStatus(payload: string): void;
 };
 
-export type ExampleModule = {
+declare class ExampleModuleType extends DotnetModule<ExampleModuleEvents> {
   add(a: number, b: number): number;
-  addListener(eventName: 'onStatus', listener: (payload: string) => void): EventSubscription;
   describeUser(user: { Age: number; Name: string }): {
     Age: number;
     Name: string;
@@ -25,11 +30,10 @@ export type ExampleModule = {
   };
   emitStatusAsync(label: string): Promise<void>;
   getMessageAsync(): Promise<string>;
-  transformWithCallback(
-    value: string,
-    callback: (value: string) => string
-  ): string;
-};
+  transformWithCallback(value: string, callback: (value: string) => string): string;
+}
+
+export type ExampleModule = ExampleModuleType;
 
 export function add(a: number, b: number): number {
   return nativeModule.add(a, b);
