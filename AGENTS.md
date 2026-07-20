@@ -13,6 +13,15 @@ C# owns module logic.
 A C ABI with opaque handles connects them.
 ```
 
+## Maturity
+
+This is production-ready software. Do not plan or run spikes, proofs of
+concept, or design-only prototypes anymore; the exploratory phase is over.
+Anything planned is planned to ship: complete, polished features only.
+No partial features, no temporary shortcuts, and no "simple
+hardcoding/shortcut is sufficient for this slice" compromises — if a
+shortcut looks necessary, stop and raise it instead of shipping it.
+
 ## Before Working
 
 Read:
@@ -93,14 +102,3 @@ repo-selected pnpm install command. For mobile JavaScript changes, run
 Before finishing code changes, run `scripts/format.sh --check --all`. If it
 fails because files need formatting, run `scripts/format.sh` and then repeat
 the check.
-
-Each spike must record:
-
-- hypothesis
-- commands run
-- expected result
-- actual result
-- artifacts
-- ownership/lifetime findings
-- scheduler findings
-- stop/go decision

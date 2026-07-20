@@ -94,6 +94,12 @@ Completed scope:
    - Complete: `expo_jsi_error` messages are self-contained and released through
      explicit callbacks instead of pointing into `thread_local` storage.
 
+5. **camelCase JS naming defaults and `[JS]` properties** (complete)
+   - `[JS]` members and record fields default to lower-camel JavaScript names
+     (explicit `[JS("name")]` overrides); `[JS]` on an instance property
+     exposes a JavaScript accessor property, writable when the C# property has
+     a setter.
+
 ### P2: Interactive Module Capabilities
 
 1. **Function calling from C#** (complete)
@@ -109,10 +115,17 @@ Completed scope:
       cross-host scheduler semantics are known.
 
 3. **Events / EventEmitter** (complete)
-    - Module-to-JS event emission ships via `Module.SendEventAsync` (with a
-      generic, codec-based payload overload) and the `[Events]` attribute
-      declaring the events a module can emit, built on function calling,
-      async scheduling, and lifecycle-safe teardown.
+    - Module-to-JS event emission ships via typed `[Event]` partial properties
+      (`Func<Task>` / `Func<T, Task>`, awaitable dispatch that surfaces codec,
+      scheduling, and teardown failures), built on function calling, async
+      scheduling, and lifecycle-safe teardown. The string-based `[Events]`
+      attribute and `Module.SendEventAsync` remain as the migration/interop
+      path.
+
+4. **Typed JS facade base classes** (complete)
+    - `DotnetModule` / `DotnetEventEmitter` typed base classes (plus
+      `EventsMap` / `EventSubscription` types) are exported from
+      `expo-modules-dotnet` for module facades to extend.
 
 ### P2/P3: Richer Runtime Surface
 
@@ -133,9 +146,14 @@ Completed scope:
       and backs ModulesCore EventEmitter identity.
     - HostObject is complete as a generic low-level property interceptor
       primitive in `Expo.JSI`.
-    - SharedObject and SharedRef remain future work. Direction: follow upstream
-      class/prototype instances with hidden registry-backed native identity
-      rather than HostObject-first objects.
+    - The SharedObject design spike is complete (GO): opaque weak-object ABI
+      handles, deterministic Hermes GC evidence, and an internal per-context
+      `SharedObjectRegistry` with reference-identity round trips and
+      exactly-once terminal release are implemented and specced. The public
+      authoring surface (`SharedObject`, `[ExpoSharedObject]`, generator
+      bindings, `SharedRef`, TypeScript facade) is the remaining follow-up
+      slice, following upstream class/prototype instances with hidden
+      registry-backed native identity.
 
 4. **Lazy module initialization**
     - Complete: `_expoDotnet.modules` is a one-stage HostObject registry.
@@ -186,8 +204,8 @@ managed wrapper surface.
 - **P2/P3 — NativeState**: complete. Generic type-indexed object state supports
   hidden managed state identity without exposing raw JSI layouts or managed
   object pointers.
-- **P2 — Events / EventEmitter**: Module-to-JS event emission — needed by nearly
-  every interactive module, but lower priority than generated async methods.
+- **P2 — Events / EventEmitter**: complete. Typed `[Event]` members and the
+  legacy `[Events]` / `SendEventAsync` path cover module-to-JS event emission.
 - **P2/P3 — `instanceof` checks**: Generalized beyond current Promise/Error —
   needed for type-safe record deserialization and custom class detection.
 
@@ -204,10 +222,13 @@ ABI support.
 - **P2/P3 — binary codecs**: Plan 006 covers `ArrayBuffer`, `byte[]`,
   `Span<byte>`, and `ReadOnlySpan<byte>`. `Memory<byte>` and
   `ReadOnlyMemory<byte>` remain future work.
-- **P2/P3 — SharedObject references**: Typed handles to shared native state
-  (depends on NativeState ABI).
-- **P2/P3 — Record shape extensions**: Custom field naming, non-positional
-  constructors, unknown-field validation, and cyclic record graphs.
+- **P2/P3 — SharedObject references**: Typed handles to shared native state.
+  The internal identity registry spike is GO; the codec/generator surface is
+  the follow-up slice.
+- **P2/P3 — Record shape extensions**: Record fields now default to
+  lower-camel JavaScript names. Remaining: explicit per-field naming,
+  non-positional constructors, unknown-field validation, and cyclic record
+  graphs.
 
 ## Backlog: Module System
 
