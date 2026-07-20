@@ -120,6 +120,92 @@ public sealed partial class GeneratedValuesModule : Module, IDisposable
   }
 }
 
+[ExpoModule("GeneratedProperties")]
+public sealed partial class GeneratedPropertiesModule : IDisposable
+{
+  private JavaScriptValue? storedValue;
+  private ArrayBuffer? storedBuffer;
+  private bool privateSetterValue = true;
+  private int privateSetterCallCount;
+  private int count;
+  private int countSetterCallCount;
+
+  [JS]
+  public bool Ready { get; set; }
+
+  [JS]
+  public bool IsReadOnly => true;
+
+  [JS]
+  public bool PrivateSetter
+  {
+    get => privateSetterValue;
+    private set
+    {
+      privateSetterCallCount++;
+      privateSetterValue = value;
+    }
+  }
+
+  [JS]
+  public int PrivateSetterCallCount => privateSetterCallCount;
+
+  [JS]
+  internal string InternalGetter { get; private set; } = "internal";
+
+  [JS("isReady")]
+  public bool ReadyWithExplicitName => Ready;
+
+  [JS]
+  public string ThrowingGetter => throw new InvalidOperationException("getter failed");
+
+  [JS]
+  public int Count
+  {
+    get => count;
+    set
+    {
+      countSetterCallCount++;
+      count = value;
+    }
+  }
+
+  [JS]
+  public int CountSetterCallCount => countSetterCallCount;
+
+  [JS]
+  public JavaScriptValue Value
+  {
+    get => storedValue?.Retain() ?? throw new InvalidOperationException("No value.");
+    set
+    {
+      var retained = value.Retain();
+      storedValue?.Dispose();
+      storedValue = retained;
+    }
+  }
+
+  [JS]
+  public ArrayBuffer Buffer
+  {
+    get => storedBuffer?.Retain() ?? throw new InvalidOperationException("No buffer.");
+    set
+    {
+      var retained = value.Retain();
+      storedBuffer?.Dispose();
+      storedBuffer = retained;
+    }
+  }
+
+  public void Dispose()
+  {
+    storedValue?.Dispose();
+    storedValue = null;
+    storedBuffer?.Dispose();
+    storedBuffer = null;
+  }
+}
+
 [ExpoModule("GeneratedArray")]
 public sealed partial class GeneratedArrayModule
 {
@@ -181,6 +267,8 @@ public enum CodecRecordStatus
 
 public record CodecUserWithAddress(string Name, CodecAddress Address, CodecRecordStatus Status);
 
+public record CodecNullableUser(string Name, int? LuckyNumber);
+
 [ExpoModule("GeneratedRecords")]
 public sealed partial class GeneratedRecordsModule
 {
@@ -201,6 +289,9 @@ public sealed partial class GeneratedRecordsModule
         Address = user.Address with { City = user.Address.City + "!" },
         Status = CodecRecordStatus.Published,
       };
+
+  [JS("renameNullable")]
+  public CodecNullableUser RenameNullable(CodecNullableUser user) => user;
 }
 
 [ExpoModule("GeneratedEvents")]

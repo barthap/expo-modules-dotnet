@@ -18,11 +18,11 @@ public sealed class GeneratedBinaryModuleTests
       using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
       using var result = fixture.Evaluate(
-          "const b = globalThis._expoDotnet.modules.Binary.Allocate(3); " +
+          "const b = globalThis._expoDotnet.modules.Binary.allocate(3); " +
           "new Uint8Array(b).set([1, 2, 3]); " +
-          "const copied = globalThis._expoDotnet.modules.Binary.EchoBytes(b); " +
+          "const copied = globalThis._expoDotnet.modules.Binary.echoBytes(b); " +
           "new Uint8Array(b)[0] = 9; " +
-          "[b.byteLength, new Uint8Array(globalThis._expoDotnet.modules.Binary.Echo(b))[1], " +
+          "[b.byteLength, new Uint8Array(globalThis._expoDotnet.modules.Binary.echo(b))[1], " +
           "new Uint8Array(copied)[0]]",
           "binary-round-trip.js"
       );
@@ -49,11 +49,11 @@ public sealed class GeneratedBinaryModuleTests
       using var result = fixture.Evaluate(
           "const b = new ArrayBuffer(3); " +
           "new Uint8Array(b).set([1, 2, 3]); " +
-          "globalThis._expoDotnet.modules.Binary.Fill(b); " +
-          "const transformed = globalThis._expoDotnet.modules.Binary.Transform(b); " +
-          "const first = globalThis._expoDotnet.modules.Binary.ReturnView(); " +
-          "const second = globalThis._expoDotnet.modules.Binary.ReturnView(); " +
-          "[globalThis._expoDotnet.modules.Binary.Sum(b), first === second, " +
+          "globalThis._expoDotnet.modules.Binary.fill(b); " +
+          "const transformed = globalThis._expoDotnet.modules.Binary.transform(b); " +
+          "const first = globalThis._expoDotnet.modules.Binary.returnView(); " +
+          "const second = globalThis._expoDotnet.modules.Binary.returnView(); " +
+          "[globalThis._expoDotnet.modules.Binary.sum(b), first === second, " +
           "new Uint8Array(first)[0], new Uint8Array(second)[0], " +
           "new Uint8Array(transformed)[0]]",
           "binary-span.js"
@@ -88,7 +88,7 @@ public sealed class GeneratedBinaryModuleTests
           "globalThis.asyncInput = input; " +
           "globalThis.asyncSame = false; " +
           "globalThis.asyncFirst = -1; " +
-          "globalThis._expoDotnet.modules.Binary.EchoAsync(input).then(value => { " +
+          "globalThis._expoDotnet.modules.Binary.echoAsync(input).then(value => { " +
           "globalThis.asyncSame = value === globalThis.asyncInput; " +
           "globalThis.asyncFirst = new Uint8Array(value)[0]; " +
           "});",

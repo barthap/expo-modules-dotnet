@@ -13,6 +13,7 @@ internal sealed record ExpoModuleModel(
     EquatableArray<ExpoObservingHookModel> StartObservingHooks,
     EquatableArray<ExpoObservingHookModel> StopObservingHooks,
     EquatableArray<ExpoFunctionModel> Functions,
+    EquatableArray<ExpoPropertyModel> Properties,
     EquatableArray<ExpoGeneratedRecordCodecModel> RecordCodecs,
     EquatableArray<ExpoDiagnosticModel> Diagnostics);
 
@@ -37,6 +38,16 @@ internal sealed record ExpoFunctionModel(
     EquatableArray<ExpoParameterModel> Parameters,
     ExpoReturnPassingKind ReturnPassingKind = ExpoReturnPassingKind.Codec,
     ExpoReturnPassingKind AsyncResultPassingKind = ExpoReturnPassingKind.Codec);
+
+internal sealed record ExpoPropertyModel(
+    string PropertyName,
+    string JavaScriptName,
+    Location? Location,
+    string TypeName,
+    string CodecExpression,
+    bool HasSetter,
+    bool OwnsDecodedValue,
+    bool RequiresRuntimeContext);
 
 internal enum ExpoParameterPassingKind
 {
@@ -85,7 +96,8 @@ internal sealed record ExpoGeneratedRecordCodecModel(
 
 internal sealed record ExpoGeneratedRecordFieldModel(
     string ParameterName,
-    string PropertyName,
+    string CSharpPropertyName,
+    string JavaScriptName,
     string TypeName,
     string CodecExpression,
     Location? Location);

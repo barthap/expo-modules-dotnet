@@ -77,7 +77,7 @@ public sealed class GeneratedCodecExpansionModuleTests
       using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
       using var result = fixture.Evaluate(
-          "globalThis._expoDotnet.modules.GeneratedRecords.rename({ Name: 'Ada', Age: 37 }).Name",
+          "globalThis._expoDotnet.modules.GeneratedRecords.rename({ name: 'Ada', age: 37 }).name",
           "record-user.js"
       );
 
@@ -96,11 +96,11 @@ public sealed class GeneratedCodecExpansionModuleTests
       using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
       using var classResult = fixture.Evaluate(
-          "globalThis._expoDotnet.modules.GeneratedRecords.renameClass({ Name: 'Grace', Age: 40 }).Name",
+          "globalThis._expoDotnet.modules.GeneratedRecords.renameClass({ name: 'Grace', age: 40 }).name",
           "record-class.js"
       );
       using var structResult = fixture.Evaluate(
-          "globalThis._expoDotnet.modules.GeneratedRecords.renameStruct({ Name: 'Katherine', Age: 42 }).Name",
+          "globalThis._expoDotnet.modules.GeneratedRecords.renameStruct({ name: 'Katherine', age: 42 }).name",
           "record-struct.js"
       );
 
@@ -120,11 +120,56 @@ public sealed class GeneratedCodecExpansionModuleTests
       using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
       using var result = fixture.Evaluate(
-          "const user = globalThis._expoDotnet.modules.GeneratedRecords.moveNested({ Name: 'Ada', Address: { City: 'London' }, Status: 'Draft' }); user.Address.City + ':' + user.Status",
+          "const user = globalThis._expoDotnet.modules.GeneratedRecords.moveNested({ name: 'Ada', address: { city: 'London' }, status: 'Draft' }); user.address.city + ':' + user.status",
           "record-nested.js"
       );
 
       Assert.Equal("London!:Published", result.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void GeneratedProviderRejectsStalePascalCaseForRequiredRecordField()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+      using var result = fixture.Evaluate(
+          """
+          try {
+            globalThis._expoDotnet.modules.GeneratedRecords.rename({ Name: 'Ada', Age: 37 });
+            false;
+          } catch (error) {
+            error instanceof Error;
+          }
+          """,
+          "record-stale-pascal-required.js"
+      );
+
+      Assert.True(result.AsBool());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void GeneratedProviderDoesNotReadStalePascalCaseForNullableRecordField()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+      using var result = fixture.Evaluate(
+          "globalThis._expoDotnet.modules.GeneratedRecords.renameNullable({ name: 'Ada', LuckyNumber: 42 }).luckyNumber === null",
+          "record-stale-pascal-nullable.js"
+      );
+
+      Assert.True(result.AsBool());
       return true;
     });
   }

@@ -41,9 +41,9 @@ public sealed class ExampleModuleShowcaseTests
           );
 
           globalThis.__exampleShowcase.add = module.add(20, 22);
-          const record = module.describeUser({ Name: 'Ada', Age: 37 });
+          const record = module.describeUser({ name: 'Ada', age: 37 });
           globalThis.__exampleShowcase.recordSummary =
-            `${record.Name}:${record.Age}:${record.Summary}`;
+            `${record.name}:${record.age}:${record.summary}`;
           globalThis.__exampleShowcase.callbackResult =
             module.transformWithCallback('JS', value => `callback(${value})`);
 

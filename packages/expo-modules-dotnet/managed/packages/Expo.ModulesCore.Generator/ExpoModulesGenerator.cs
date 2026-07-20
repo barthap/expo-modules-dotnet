@@ -117,7 +117,15 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     HashSet<string> reservedJavaScriptNames = eventNameSet.Count == 0
         ? []
         : new HashSet<string>(["startObserving", "stopObserving"], StringComparer.Ordinal);
-    var functions = GetFunctions(typeSymbol, diagnostics, recordCodecs, reservedJavaScriptNames);
+    var functionCollection = GetFunctions(typeSymbol, diagnostics, recordCodecs, reservedJavaScriptNames);
+    var functions = functionCollection.Functions;
+    var properties = GetProperties(typeSymbol, diagnostics, recordCodecs, reservedJavaScriptNames);
+    properties = RemoveCollidingProperties(
+        typeSymbol,
+        functionCollection.ValidJavaScriptNames,
+        properties,
+        diagnostics
+    );
 
     return new ExpoModuleModel(
         typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
@@ -130,6 +138,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         new EquatableArray<ExpoObservingHookModel>(startObservingHooks),
         new EquatableArray<ExpoObservingHookModel>(stopObservingHooks),
         new EquatableArray<ExpoFunctionModel>(functions),
+        new EquatableArray<ExpoPropertyModel>(properties),
         new EquatableArray<ExpoGeneratedRecordCodecModel>(recordCodecs),
         new EquatableArray<ExpoDiagnosticModel>(diagnostics)
     );
@@ -445,13 +454,14 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       constructor.DeclaredAccessibility == Accessibility.Public ||
       constructor.DeclaredAccessibility == Accessibility.Internal;
 
-  private static IEnumerable<ExpoFunctionModel> GetFunctions(
+  private static (List<ExpoFunctionModel> Functions, HashSet<string> ValidJavaScriptNames) GetFunctions(
       INamedTypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
       List<ExpoGeneratedRecordCodecModel> recordCodecs,
       HashSet<string> reservedJavaScriptNames)
   {
     var functions = new List<ExpoFunctionModel>();
+    var validJavaScriptNames = new HashSet<string>(StringComparer.Ordinal);
 
     foreach (var member in typeSymbol.GetMembers().OfType<IMethodSymbol>())
     {
@@ -499,7 +509,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         continue;
       }
 
-      var javaScriptName = member.Name;
+      var javaScriptName = LowerCamel(member.Name);
       if (jsAttribute.ConstructorArguments.Length == 1 &&
           jsAttribute.ConstructorArguments[0].Value is string explicitName)
       {
@@ -663,6 +673,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         continue;
       }
 
+      validJavaScriptNames.Add(javaScriptName);
+
       functions.Add(new ExpoFunctionModel(
           member.Name,
           javaScriptName,
@@ -709,13 +721,172 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         StringComparer.Ordinal
     );
 
-    foreach (var function in functions)
+    return (
+        functions.Where(function => !duplicateNames.Contains(function.JavaScriptName)).ToList(),
+        validJavaScriptNames
+    );
+  }
+
+  private static List<ExpoPropertyModel> GetProperties(
+      INamedTypeSymbol typeSymbol,
+      List<ExpoDiagnosticModel> diagnostics,
+      List<ExpoGeneratedRecordCodecModel> recordCodecs,
+      HashSet<string> reservedJavaScriptNames)
+  {
+    var properties = new List<ExpoPropertyModel>();
+
+    foreach (var member in typeSymbol.GetMembers().OfType<IPropertySymbol>())
     {
-      if (!duplicateNames.Contains(function.JavaScriptName))
+      var jsAttribute = member.GetAttributes().FirstOrDefault(attribute =>
+          attribute.AttributeClass?.ToDisplayString() == JSAttributeMetadataName);
+      if (jsAttribute is null)
       {
-        yield return function;
+        continue;
       }
+
+      var unsupportedShape = GetUnsupportedPropertyShape(member);
+      if (unsupportedShape is not null)
+      {
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.UnsupportedJSPropertyShape.Id,
+            member.Locations.FirstOrDefault(),
+            new EquatableArray<string>(new[] { member.Name, unsupportedShape })
+        ));
+        continue;
+      }
+
+      if (ContainsJavaScriptCallback(member.Type))
+      {
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.UnsupportedJSPropertyType.Id,
+            member.Type.Locations.FirstOrDefault() ?? member.Locations.FirstOrDefault(),
+            new EquatableArray<string>(new[] { member.Name, GetDiagnosticTypeName(member.Type) })
+        ));
+        continue;
+      }
+
+      var codecExpression = GetCodecExpression(member.Type, diagnostics, recordCodecs, member.GetAttributes());
+      if (codecExpression is null)
+      {
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.UnsupportedJSPropertyType.Id,
+            member.Type.Locations.FirstOrDefault() ?? member.Locations.FirstOrDefault(),
+            new EquatableArray<string>(new[] { member.Name, GetDiagnosticTypeName(member.Type) })
+        ));
+        continue;
+      }
+
+      var javaScriptName = GetJavaScriptName(member.Name, jsAttribute);
+      if (reservedJavaScriptNames.Contains(javaScriptName))
+      {
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.ReservedObservingPropertyName.Id,
+            member.Locations.FirstOrDefault(),
+            new EquatableArray<string>(new[] { member.Name, javaScriptName })
+        ));
+        continue;
+      }
+
+      properties.Add(new ExpoPropertyModel(
+          member.Name,
+          javaScriptName,
+          member.Locations.FirstOrDefault(),
+          member.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+          codecExpression,
+          IsSupportedPropertySetter(member.SetMethod),
+          codecExpression is "JavaScriptValueCodec" or "ArrayBufferCodec",
+          IsJavaScriptCallbackType(member.Type)
+      ));
     }
+
+    return properties;
+  }
+
+  private static List<ExpoPropertyModel> RemoveCollidingProperties(
+      INamedTypeSymbol typeSymbol,
+      HashSet<string> validMethodJavaScriptNames,
+      List<ExpoPropertyModel> properties,
+      List<ExpoDiagnosticModel> diagnostics)
+  {
+    var collidingProperties = new HashSet<string>(StringComparer.Ordinal);
+    foreach (var group in properties.GroupBy(property => property.JavaScriptName))
+    {
+      if (group.Count() <= 1)
+      {
+        continue;
+      }
+
+      var duplicate = group.Skip(1).First();
+      diagnostics.Add(new ExpoDiagnosticModel(
+          ExpoModulesDiagnostics.DuplicateJavaScriptMemberName.Id,
+          duplicate.Location,
+          new EquatableArray<string>(new[] { typeSymbol.Name, group.Key })
+      ));
+      collidingProperties.Add(group.Key);
+    }
+
+    foreach (var property in properties)
+    {
+      if (!validMethodJavaScriptNames.Contains(property.JavaScriptName))
+      {
+        continue;
+      }
+
+      diagnostics.Add(new ExpoDiagnosticModel(
+          ExpoModulesDiagnostics.DuplicateJavaScriptMemberName.Id,
+          property.Location,
+          new EquatableArray<string>(new[] { typeSymbol.Name, property.JavaScriptName })
+      ));
+      collidingProperties.Add(property.JavaScriptName);
+    }
+
+    return properties
+        .Where(property => !collidingProperties.Contains(property.JavaScriptName))
+        .ToList();
+  }
+
+  private static string? GetUnsupportedPropertyShape(IPropertySymbol property)
+  {
+    if (property.IsStatic)
+    {
+      return "static";
+    }
+    if (property.IsIndexer)
+    {
+      return "indexed";
+    }
+    if (property.GetMethod is null)
+    {
+      return "setter-only";
+    }
+    if (!IsSupportedPropertyAccessibility(property.GetMethod))
+    {
+      return "an inaccessible getter";
+    }
+    if (property.SetMethod?.IsInitOnly == true)
+    {
+      return "an init accessor";
+    }
+    return null;
+  }
+
+  private static bool IsSupportedPropertyAccessibility(IMethodSymbol accessor) =>
+      accessor.DeclaredAccessibility == Accessibility.Public ||
+      accessor.DeclaredAccessibility == Accessibility.Internal;
+
+  private static bool IsSupportedPropertySetter(IMethodSymbol? accessor) =>
+      accessor is not null &&
+      !accessor.IsInitOnly &&
+      IsSupportedPropertyAccessibility(accessor);
+
+  private static string GetJavaScriptName(string memberName, AttributeData jsAttribute)
+  {
+    if (jsAttribute.ConstructorArguments.Length == 1 &&
+        jsAttribute.ConstructorArguments[0].Value is string explicitName)
+    {
+      return explicitName;
+    }
+    return LowerCamel(memberName);
   }
 
   private static void EmitProvider(
@@ -807,6 +978,14 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       {
         EmitHostFunction(builder, module, function);
       }
+      foreach (var property in module.Properties.Values)
+      {
+        EmitPropertyGetter(builder, module, property);
+        if (property.HasSetter)
+        {
+          EmitPropertySetter(builder, module, property);
+        }
+      }
       if (module.StartObservingHooks.Values.Count > 0)
       {
         EmitObservingHookFunction(builder, module, "startObserving", module.StartObservingHooks.Values);
@@ -872,6 +1051,19 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       builder.AppendLine($"          {moduleInstanceVariable}");
       builder.AppendLine("      );");
     }
+    foreach (var property in module.Properties.Values)
+    {
+      builder.AppendLine("      GeneratedProperty.Define(");
+      builder.AppendLine("          context,");
+      builder.AppendLine($"          {moduleVariable},");
+      builder.AppendLine($"          \"{EscapeString(property.JavaScriptName)}\",");
+      builder.AppendLine($"          {GetPropertyGetterFunctionName(module, property)},");
+      builder.AppendLine(property.HasSetter
+          ? $"          {GetPropertySetterFunctionName(module, property)},"
+          : "          null,");
+      builder.AppendLine($"          {moduleInstanceVariable}");
+      builder.AppendLine("      );");
+    }
     builder.AppendLine($"      return {moduleVariable};");
     builder.AppendLine("    }");
     builder.AppendLine("    catch");
@@ -899,6 +1091,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       "EXPOJSI011" => ExpoModulesDiagnostics.InvalidLifecycleHook,
       "EXPOJSI012" => ExpoModulesDiagnostics.AsyncSpanParameter,
       "EXPOJSI013" => ExpoModulesDiagnostics.MultipleSpanParameters,
+      "EXPOJSI014" => ExpoModulesDiagnostics.UnsupportedJSPropertyShape,
+      "EXPOJSI015" => ExpoModulesDiagnostics.UnsupportedJSPropertyType,
+      "EXPOJSI016" => ExpoModulesDiagnostics.DuplicateJavaScriptMemberName,
+      "EXPOJSI017" => ExpoModulesDiagnostics.ReservedObservingPropertyName,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());
@@ -1090,6 +1286,64 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine("  }");
   }
 
+  private static void EmitPropertyGetter(
+      StringBuilder builder,
+      ExpoModuleModel module,
+      ExpoPropertyModel property)
+  {
+    builder.AppendLine();
+    builder.AppendLine($"  private static global::Expo.JSI.JavaScriptValue {GetPropertyGetterFunctionName(module, property)}(");
+    builder.AppendLine("      global::Expo.JSI.JavaScriptRuntime runtime,");
+    builder.AppendLine("      global::Expo.JSI.JavaScriptValueRef thisValue,");
+    builder.AppendLine("      global::Expo.JSI.JavaScriptArguments arguments,");
+    builder.AppendLine("      object context)");
+    builder.AppendLine("  {");
+    builder.AppendLine($"    GeneratedFunction.RequireArgumentCount(\"{EscapeString(module.ModuleName)}.{EscapeString(property.JavaScriptName)}\", arguments, 0);");
+    builder.AppendLine($"    var module = ({module.FullyQualifiedTypeName})context;");
+    if (property.CodecExpression == "ArrayBufferCodec")
+    {
+      builder.AppendLine($"    using var __expoResult = module.{property.PropertyName};");
+      builder.AppendLine("    return ArrayBufferCodec.Encode(__expoResult, runtime);");
+    }
+    else if (property.CodecExpression == "JavaScriptValueCodec")
+    {
+      builder.AppendLine($"    return JavaScriptValueCodec.Encode(module.{property.PropertyName}, runtime);");
+    }
+    else
+    {
+      builder.AppendLine($"    return {property.CodecExpression}.Encode(module.{property.PropertyName}, runtime);");
+    }
+    builder.AppendLine("  }");
+  }
+
+  private static void EmitPropertySetter(
+      StringBuilder builder,
+      ExpoModuleModel module,
+      ExpoPropertyModel property)
+  {
+    builder.AppendLine();
+    builder.AppendLine($"  private static global::Expo.JSI.JavaScriptValue {GetPropertySetterFunctionName(module, property)}(");
+    builder.AppendLine("      global::Expo.JSI.JavaScriptRuntime runtime,");
+    builder.AppendLine("      global::Expo.JSI.JavaScriptValueRef thisValue,");
+    builder.AppendLine("      global::Expo.JSI.JavaScriptArguments arguments,");
+    builder.AppendLine("      object context)");
+    builder.AppendLine("  {");
+    builder.AppendLine($"    GeneratedFunction.RequireArgumentCount(\"{EscapeString(module.ModuleName)}.{EscapeString(property.JavaScriptName)}\", arguments, 1);");
+    builder.AppendLine($"    var module = ({module.FullyQualifiedTypeName})context;");
+    var decode = GetDecodeExpression(
+        property.CodecExpression,
+        0,
+        "runtime",
+        property.RequiresRuntimeContext
+    );
+    builder.AppendLine(property.OwnsDecodedValue
+        ? $"    using var __expoValue = {decode};"
+        : $"    var __expoValue = {decode};");
+    builder.AppendLine($"    module.{property.PropertyName} = __expoValue;");
+    builder.AppendLine("    return runtime.CreateUndefined();");
+    builder.AppendLine("  }");
+  }
+
   private static void EmitSpanHostFunction(
       StringBuilder builder,
       ExpoModuleModel module,
@@ -1212,7 +1466,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine("      var obj = value.AsObject();");
     foreach (var field in codec.Fields.Values)
     {
-      builder.AppendLine($"      var {field.ParameterName} = {field.CodecExpression}.Decode(obj.GetProperty(\"{EscapeString(field.PropertyName)}\"), runtime);");
+      builder.AppendLine($"      var {field.ParameterName} = {field.CodecExpression}.Decode(obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\"), runtime);");
     }
     builder.AppendLine($"      return new {codec.RecordTypeName}({string.Join(", ", codec.Fields.Values.Select(field => field.ParameterName))});");
     builder.AppendLine("    }");
@@ -1222,7 +1476,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine("      using var obj = value.AsObject();");
     foreach (var field in codec.Fields.Values)
     {
-      builder.AppendLine($"      using var {field.ParameterName}Value = obj.GetProperty(\"{EscapeString(field.PropertyName)}\");");
+      builder.AppendLine($"      using var {field.ParameterName}Value = obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\");");
       builder.AppendLine($"      var {field.ParameterName} = {field.CodecExpression}.Decode({field.ParameterName}Value, runtime);");
     }
     builder.AppendLine($"      return new {codec.RecordTypeName}({string.Join(", ", codec.Fields.Values.Select(field => field.ParameterName))});");
@@ -1233,8 +1487,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine("      using var obj = runtime.CreateObject();");
     foreach (var field in codec.Fields.Values)
     {
-      builder.AppendLine($"      using var {field.ParameterName} = {field.CodecExpression}.Encode(value.{field.PropertyName}, runtime);");
-      builder.AppendLine($"      obj.SetProperty(\"{EscapeString(field.PropertyName)}\", {field.ParameterName});");
+      builder.AppendLine($"      using var {field.ParameterName} = {field.CodecExpression}.Encode(value.{field.CSharpPropertyName}, runtime);");
+      builder.AppendLine($"      obj.SetProperty(\"{EscapeString(field.JavaScriptName)}\", {field.ParameterName});");
     }
     builder.AppendLine("      return obj.AsValue();");
     builder.AppendLine("    }");
@@ -1254,6 +1508,12 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 
   private static string GetHostFunctionName(ExpoModuleModel module, ExpoFunctionModel function) =>
       $"{SanitizeIdentifier(module.ModuleName)}_{SanitizeIdentifier(function.JavaScriptName)}_HostFunction";
+
+  private static string GetPropertyGetterFunctionName(ExpoModuleModel module, ExpoPropertyModel property) =>
+      $"{SanitizeIdentifier(module.ModuleName)}_{SanitizeIdentifier(property.PropertyName)}_Getter";
+
+  private static string GetPropertySetterFunctionName(ExpoModuleModel module, ExpoPropertyModel property) =>
+      $"{SanitizeIdentifier(module.ModuleName)}_{SanitizeIdentifier(property.PropertyName)}_Setter";
 
   private static string GetModuleRegistrationFunctionName(ExpoModuleModel module) =>
       $"Register{SanitizeIdentifier(module.ModuleName)}";
@@ -1453,6 +1713,59 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     return namedType.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
         is "global::Expo.ModulesCore.JavaScriptCallback<TResult>"
         or "global::Expo.ModulesCore.JavaScriptCallback<TArgs, TResult>";
+  }
+
+  private static bool ContainsJavaScriptCallback(ITypeSymbol typeSymbol) =>
+      ContainsJavaScriptCallback(typeSymbol, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default));
+
+  private static bool ContainsJavaScriptCallback(
+      ITypeSymbol typeSymbol,
+      HashSet<ITypeSymbol> visitedTypes)
+  {
+    if (!visitedTypes.Add(typeSymbol))
+    {
+      return false;
+    }
+
+    if (IsJavaScriptCallbackType(typeSymbol))
+    {
+      return true;
+    }
+
+    if (typeSymbol is not INamedTypeSymbol namedType)
+    {
+      return false;
+    }
+
+    if (namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
+    {
+      return ContainsJavaScriptCallback(namedType.TypeArguments.Single(), visitedTypes);
+    }
+
+    if (namedType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ==
+        "global::System.Collections.Generic.IReadOnlyList<T>")
+    {
+      return ContainsJavaScriptCallback(namedType.TypeArguments.Single(), visitedTypes);
+    }
+
+    var constructedType = namedType.ConstructedFrom.ToDisplayString(
+        SymbolDisplayFormat.FullyQualifiedFormat
+    );
+    if (constructedType is "global::System.Collections.Generic.Dictionary<TKey, TValue>" or
+        "global::System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>")
+    {
+      return namedType.TypeArguments[0].SpecialType == SpecialType.System_String &&
+          ContainsJavaScriptCallback(namedType.TypeArguments[1], visitedTypes);
+    }
+
+    if (!namedType.IsRecord)
+    {
+      return false;
+    }
+
+    var constructor = GetRecordCodecConstructor(namedType);
+    return constructor is not null && constructor.Parameters.Any(parameter =>
+        ContainsJavaScriptCallback(parameter.Type, visitedTypes));
   }
 
   private static string? TryGetJavaScriptCallbackCodec(
@@ -1747,12 +2060,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       return existing.CodecTypeName;
     }
 
-    var constructor = typeSymbol.InstanceConstructors
-        .Where(item =>
-            item.Parameters.Length > 0 &&
-            item.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal)
-        .OrderByDescending(item => item.Parameters.Length)
-        .FirstOrDefault();
+    var constructor = GetRecordCodecConstructor(typeSymbol);
     if (constructor is null)
     {
       return null;
@@ -1786,6 +2094,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       fields.Add(new ExpoGeneratedRecordFieldModel(
           LowerCamel(parameter.Name),
           property.Name,
+          LowerCamel(property.Name),
           parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
           fieldCodec,
           parameter.Locations.FirstOrDefault()
@@ -1801,6 +2110,14 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     recordCodecs.Add(codec);
     return codec.CodecTypeName;
   }
+
+  private static IMethodSymbol? GetRecordCodecConstructor(INamedTypeSymbol typeSymbol) =>
+      typeSymbol.InstanceConstructors
+          .Where(item =>
+              item.Parameters.Length > 0 &&
+              item.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal)
+          .OrderByDescending(item => item.Parameters.Length)
+          .FirstOrDefault();
 
   private static string LowerCamel(string value) =>
       value.Length == 0 ? value : char.ToLowerInvariant(value[0]) + value.Substring(1);

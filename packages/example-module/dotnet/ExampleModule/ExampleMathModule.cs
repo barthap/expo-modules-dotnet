@@ -24,26 +24,29 @@ public sealed partial class ExampleMathModule : Module
     Console.WriteLine("ExampleModule destroyed");
   }
 
-  [JS("add")]
+  [JS]
   public double Add(double a, double b)
   {
     return a + b;
   }
 
-  [JS("getMessageAsync")]
+  [JS]
+  public bool Ready => true;
+
+  [JS]
   public async Task<string> GetMessageAsync()
   {
     await Task.Yield();
     return "Hello from async C#";
   }
 
-  [JS("describeUser")]
+  [JS]
   public ExampleUserSummary DescribeUser(ExampleUser user)
   {
     return new ExampleUserSummary(user.Name, user.Age, $"{user.Name} is {user.Age}");
   }
 
-  [JS("transformWithCallback")]
+  [JS]
   public string TransformWithCallback(
       string value,
       JavaScriptCallback<ValueTuple<string>, string> callback)
@@ -51,7 +54,7 @@ public sealed partial class ExampleMathModule : Module
     return callback.Invoke(ValueTuple.Create($"C# sent {value}"));
   }
 
-  [JS("emitStatusAsync")]
+  [JS]
   public Task EmitStatusAsync(string label)
   {
     return SendEventAsync<StringCodec, string>("onStatus", $"C# event: {label}");

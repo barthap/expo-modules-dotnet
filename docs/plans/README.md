@@ -21,7 +21,7 @@ fully before starting, honor its STOP conditions, and update your row when done.
 | 010 | Darwin installer lifecycle locking | P1 | M | — | DONE — managed suite, desktop typecheck, Darwin smokes, and formatting pass. |
 | 011 | Publish Hermes prebuilts as downloadable artifacts (keyed by `hermes-ref.txt`) instead of Actions cache | P3 | M | 008 | BACKLOG — nice-to-have; removes per-`hermes-ref`-bump cold builds and warms fresh clones/local dev. Not urgent (cache handles steady state once `main` is seeded). |
 | 012 | Typed JS facade base classes (`DotnetModule`, `DotnetEventEmitter`) | P2 | M | 005 | DONE — adapter runtime tests, adapter/mobile/desktop typechecks, 341 managed tests, formatting, and privacy scans pass. |
-| 013 | camelCase JS naming defaults + `[JS]` property support (Expo Modules 2.0 alignment) | P2 | M | — | TODO — operator-requested 2026-07-19; breaking record-field rename approved; delta spec required (living-spec workflow). |
+| 013 | camelCase JS naming defaults + `[JS]` property support (Expo Modules 2.0 alignment) | P2 | M | — | DONE — completed 2026-07-19; implicit lower-camel method/record names, direct accessor properties, diagnostics, and lifetime coverage landed. |
 | 014 | Typed `[Event]` partial-property members (Expo Modules 2.0 alignment) | P2 | M | 013 | TODO — operator-requested 2026-07-19; `[Events]` strings stay as migration path; delta spec required (living-spec workflow). |
 
 Status values: TODO | IN PROGRESS | DONE | OPEN (follow-up) | BACKLOG (nice-to-have) | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)

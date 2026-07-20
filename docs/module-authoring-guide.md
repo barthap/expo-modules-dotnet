@@ -89,12 +89,15 @@ public sealed partial class ExampleMathModule : Module
 {
   public ExampleMathModule(DotnetRuntimeContext context) : base(context) { }
 
-  [JS("add")]
+  [JS]
   public double Add(double a, double b) => a + b;
 
-  [JS("describeUser")]
+  [JS]
   public ExampleUserSummary DescribeUser(ExampleUser user) =>
       new(user.Name, user.Age, $"{user.Name} is {user.Age}");
+
+  [JS]
+  public bool Ready => true;
 }
 
 public readonly record struct ExampleUser(string Name, int Age);
@@ -104,7 +107,10 @@ public readonly record struct ExampleUserSummary(string Name, int Age, string Su
 The Roslyn generator (`Expo.ModulesCore.Generator`) reads these attributes at
 compile time and emits direct-call dispatch glue; there is no runtime
 reflection on the hot path. The module class must be `partial` so the
-generator can add its registration members.
+generator can add its registration members. With parameterless `[JS]`, the
+JavaScript name lowercases the first C# character: `Add` becomes `add`,
+`DescribeUser` becomes `describeUser`, and `Ready` becomes `ready`. Use
+`[JS("ExactName")]` only when JavaScript should receive that exact name.
 
 Supported parameter and return types, decoded/encoded through generated
 compile-time codecs (`Expo.ModulesCore.Codecs`):
@@ -116,8 +122,11 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
   `TimeSpan` — encoded/decoded as JavaScript strings; invalid input throws a
   managed exception that surfaces to JavaScript as a catchable `Error`.
 - Positional `record` / `record class` / `record struct` types (including
-  simple nested records), mapped to/from plain JavaScript objects by field
-  name, as `ExampleUser` and `ExampleUserSummary` show above.
+  simple nested records), mapped to/from plain JavaScript objects with
+  lower-camel field names. For example, `ExampleUser.Name` and
+  `ExampleUser.Age` map to `name` and `age`. Decode reads only those
+  lower-camel names; there is no PascalCase compatibility fallback. A missing
+  field follows its existing codec's `undefined` behavior.
 - `Dictionary<string, T>` / `IReadOnlyDictionary<string, T>` where `T` has a
   generated codec, mapped to/from a plain JavaScript object.
 - C# `enum` values — encoded as JavaScript strings by default; annotate with
@@ -131,8 +140,48 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
 - `JavaScriptCallback<TResult>` / `JavaScriptCallback<TArgs, TResult>` for
   JS function arguments (see Callbacks below).
 
-Unsupported parameter/return/constructor/method shapes and duplicate exported
-names are reported as generator build diagnostics, not runtime failures.
+Unsupported parameter, return, constructor, method, and property shapes and
+duplicate exported names are reported as generator build diagnostics, not
+runtime failures.
+
+### Properties
+
+Annotate an instance property with `[JS]` to expose an own JavaScript accessor:
+
+```csharp
+[JS]
+public bool Ready { get; set; }
+
+[JS]
+public bool IsReadOnly => true;
+
+[JS("isReady")]
+public bool ReadyWithExplicitName => Ready;
+```
+
+JavaScript reads and writes these as properties, not functions:
+
+```ts
+nativeModule.ready = true;
+console.log(nativeModule.ready);
+console.log(nativeModule.isReadOnly);
+```
+
+The property must be an instance, non-indexed property with a public or
+internal getter and a supported codec. `init` accessors are not supported. A
+public or internal ordinary setter makes it writable; no setter or an
+inaccessible setter makes it read-only. In strict-mode JavaScript, assigning a
+getter-only property throws `TypeError`. Getter exceptions and setter codec
+failures surface as catchable JavaScript errors.
+
+`JavaScriptValue` properties use the same explicit ownership rule as methods.
+The setter receives an invocation-owned wrapper: do not dispose or store that
+wrapper. Call `Retain()` if the module needs a copy after the setter returns,
+then dispose the retained copy when the module no longer needs it. A getter
+transfers its returned wrapper to generated glue, so return `stored.Retain()`
+when the module keeps ownership of `stored`. `JavaScriptObject` may become an
+optional advanced module convertible in a separate future change, but it does
+not have a generated module codec today.
 
 ## 4. Async methods
 
@@ -140,7 +189,7 @@ A `[JS]` method returning `Task` or `Task<T>` is generated as a
 promise-returning JavaScript function instead of a direct-call one:
 
 ```csharp
-[JS("getMessageAsync")]
+[JS]
 public async Task<string> GetMessageAsync()
 {
   await Task.Yield();
@@ -174,7 +223,7 @@ through `RuntimeContext.Events`:
 [Events("onStatus")]
 public sealed partial class ExampleMathModule : Module
 {
-  [JS("emitStatusAsync")]
+  [JS]
   public Task EmitStatusAsync(string label) =>
       SendEventAsync<StringCodec, string>("onStatus", $"C# event: {label}");
 }
@@ -198,7 +247,7 @@ public void Stop() { /* last listener for onChange removed */ }
 Modules that declare `[Events]` are registered as `_expoDotnet.NativeModule`
 instances so the inherited `EventEmitter`/`addListener` JavaScript methods work
 through the prototype chain; you don't need (and can't declare) `[JS]`
-functions named `startObserving` or `stopObserving` — those names are reserved
+members named `startObserving` or `stopObserving` — those names are reserved
 for the generated observing hooks.
 
 On the JS facade side, subscribe with `addListener`:
@@ -240,7 +289,7 @@ runtime); a second runtime gets its own instance.
 let a `[JS]` method accept a JavaScript function and call back into it:
 
 ```csharp
-[JS("transformWithCallback")]
+[JS]
 public string TransformWithCallback(
     string value,
     JavaScriptCallback<ValueTuple<string>, string> callback)
@@ -275,7 +324,9 @@ type ExampleModuleEvents = {
 
 declare class ExampleModuleType extends DotnetModule<ExampleModuleEvents> {
   add(a: number, b: number): number;
+  describeUser(user: ExampleUser): ExampleUserSummary;
   getMessageAsync(): Promise<string>;
+  readonly ready: boolean;
 }
 
 export type ExampleModule = ExampleModuleType;
@@ -294,10 +345,10 @@ export function addStatusListener(listener: (payload: string) => void): EventSub
 
 `requireDotnetModule` is the dotnet-backed counterpart of Expo's
 `requireNativeModule` — it looks up the module by the name passed to
-`[ExpoModule("...")]`. Record field names cross the boundary as declared in
-C# (see `ExampleUser`/`ExampleUserSummary` above, whose JS-facing shape uses
-`Age`/`Name`/`Summary` to match the C# record's property names); the facade is
-a good place to translate those into idiomatic camelCase JS types.
+`[ExpoModule("...")]`. Record fields already cross the boundary with
+lower-camel JavaScript names, so the facade should declare `name`, `age`, and
+`summary` directly. Do not add a PascalCase translation object or rely on a
+PascalCase decode fallback.
 
 `DotnetModule` and `DotnetEventEmitter` are type bases, not usable JavaScript
 module constructors. Obtain module objects through `requireDotnetModule`, and

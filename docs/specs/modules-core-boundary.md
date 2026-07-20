@@ -144,6 +144,54 @@ current compilation.
 - **WHEN** generated registration instantiates that module
 - **THEN** it SHALL prefer the `DotnetRuntimeContext` constructor
 
+### Requirement: Generated JavaScript Member Names Are Lower Camel
+
+Generated synchronous and asynchronous `[JS]` methods SHALL default to the
+lower-camel form of the authored C# method name. The mapping SHALL lowercase
+only the first character invariantly. An explicit `[JS(name)]` name SHALL be
+exported verbatim.
+
+#### Scenario: Implicit method name is lower camel
+- **GIVEN** a module declares `[JS] public double Add(double a, double b)`
+- **WHEN** generated registration installs the method
+- **THEN** JavaScript SHALL receive an `add` function
+- **AND** it SHALL NOT receive an `Add` compatibility alias
+
+#### Scenario: Explicit method name is preserved
+- **GIVEN** a module declares `[JS("ExactName")] public void Add()`
+- **WHEN** generated registration installs the method
+- **THEN** JavaScript SHALL receive `ExactName` verbatim
+- **AND** generated registration SHALL NOT transform the explicit name
+
+### Requirement: Generated Record Codecs Use Lower-Camel JavaScript Fields
+
+Generated record codecs SHALL model the authored C# property name separately
+from its JavaScript field name. Encoding and decoding SHALL use only the
+lower-camel JavaScript name, while generated direct C# access SHALL continue to
+use the authored C# name. Decoding SHALL NOT probe or fall back to a PascalCase
+JavaScript field. A missing lower-camel field SHALL follow the existing codec's
+behavior for JavaScript `undefined`.
+
+#### Scenario: Record is encoded for JavaScript
+- **GIVEN** a supported C# record has `Name`, `Age`, and `Summary` properties
+- **WHEN** generated glue encodes the record
+- **THEN** the JavaScript object SHALL have `name`, `age`, and `summary` own
+  properties
+- **AND** generated C# access SHALL still use `Name`, `Age`, and `Summary`
+
+#### Scenario: Record is decoded from JavaScript
+- **GIVEN** a supported record expects a `Name` property in C#
+- **WHEN** generated glue decodes a JavaScript object
+- **THEN** it SHALL read only the `name` JavaScript property
+- **AND** it SHALL NOT read or fall back to `Name`
+
+#### Scenario: Lower-camel record field is missing
+- **GIVEN** a JavaScript object supplies only a stale PascalCase field
+- **WHEN** generated glue reads the absent lower-camel field as `undefined`
+- **THEN** a required codec that rejects `undefined` SHALL fail through the
+  normal catchable JavaScript error path
+- **AND** a nullable codec MAY decode `undefined` as `null`
+
 ### Requirement: Runtime Context Owns Module Instances
 
 `DotnetRuntimeContext` SHALL own runtime-scoped authored module instances
@@ -298,6 +346,128 @@ directly, and encode return values through typed helpers.
 - **THEN** `Expo.ModulesCore` SHALL reuse the existing JavaScript object instead
   of replacing the `expo.modules` property
 - **AND** generated `[JS]` functions SHALL be defined on that existing object
+
+### Requirement: `[JS]` Instance Properties Are JavaScript Accessors
+
+`[JS]` SHALL support instance properties that have a public or internal
+getter, are not static or indexed, do not have an `init` accessor, and have a
+compile-time supported codec. A public or internal ordinary setter SHALL make
+the JavaScript property writable. An absent or inaccessible setter SHALL make
+it read-only. The JavaScript property name SHALL use the same lower-camel
+default and verbatim explicit-name rule as generated methods.
+
+Generated registration SHALL install the member as an own, enumerable,
+configurable accessor property. Its getter SHALL have arity zero. A writable
+setter SHALL have arity one; a read-only descriptor SHALL omit `set`.
+
+#### Scenario: Read-write property is installed
+- **GIVEN** a module declares `[JS] public bool Ready { get; set; }`
+- **WHEN** generated registration installs the member
+- **THEN** the module object SHALL have an own `ready` accessor property
+- **AND** its descriptor SHALL be enumerable and configurable
+- **AND** reading and assigning `module.ready` SHALL directly read and update
+  the authored property
+
+#### Scenario: Getter-only or inaccessible-setter property is read-only
+- **GIVEN** a `[JS]` property has a readable getter and no public or internal
+  ordinary setter
+- **WHEN** generated registration installs the member
+- **THEN** the descriptor SHALL have a zero-argument getter and no setter
+- **AND** strict-mode assignment SHALL throw `TypeError`
+- **AND** assignment SHALL NOT invoke authored module code
+
+#### Scenario: Explicit property name is preserved
+- **GIVEN** a module declares `[JS("isReady")] public bool Ready { get; }`
+- **WHEN** generated registration installs the member
+- **THEN** JavaScript SHALL expose `isReady` verbatim
+- **AND** it SHALL NOT also expose `ready`
+
+#### Scenario: Property access fails
+- **GIVEN** an authored property getter throws or a setter codec rejects its
+  assigned value
+- **WHEN** JavaScript reads or assigns the property
+- **THEN** the host-function boundary SHALL expose a catchable JavaScript
+  `Error`
+- **AND** a failed setter decode SHALL NOT invoke the authored setter
+
+### Requirement: Generated Property Access Uses Direct Typed Glue
+
+Generated property glue SHALL use compile-time codecs and direct C# property
+access. It SHALL NOT use runtime reflection, dynamic invocation, thread
+scheduling, or an ABI extension. Generated consumer assemblies SHALL install
+accessors through the public generated-glue-only `GeneratedProperty` entry
+point in `Expo.ModulesCore`; ordinary module author code SHALL NOT need to
+construct JSI descriptors or host functions.
+
+#### Scenario: Getter returns a module-convertible value
+- **GIVEN** a generated property getter returns a type with a supported codec
+- **WHEN** JavaScript reads the accessor
+- **THEN** generated glue SHALL encode the result through that codec
+- **AND** an owned returned wrapper SHALL transfer to the host-function bridge
+  under the same rule as a synchronous `[JS]` method return
+
+#### Scenario: Setter receives JavaScriptValue
+- **GIVEN** a generated property setter accepts `JavaScriptValue`
+- **WHEN** JavaScript assigns the property
+- **THEN** generated glue SHALL retain and own the decoded wrapper for the
+  synchronous setter invocation
+- **AND** it SHALL dispose that invocation-owned wrapper after the authored
+  setter returns or throws
+- **AND** authored code SHALL NOT dispose or store the invocation-owned wrapper
+- **AND** authored code that needs the value later SHALL store and eventually
+  dispose an explicit retained copy
+
+#### Scenario: Getter returns a retained JavaScriptValue copy
+- **GIVEN** authored module state owns a stored `JavaScriptValue`
+- **WHEN** a generated property getter exposes that value
+- **THEN** the getter SHALL return an explicit retained copy whose ownership
+  transfers to generated glue
+- **AND** the module SHALL keep ownership of its original stored wrapper
+
+`JavaScriptValue` is the existing advanced module convertible.
+`JavaScriptObject` MAY become an optional advanced module convertible in a
+separate future change, but this property support does not add its codec.
+
+### Requirement: Generated Accessor Lifetimes Are Context-Owned
+
+The runtime context SHALL own every generated property getter and setter
+callback through `GeneratedHostFunctionRegistration`. Accessor installation
+SHALL dispose every temporary owned wrapper used to construct and synchronously
+pass the descriptor to `Object.defineProperty`, whether installation succeeds
+or throws. The installed JavaScript descriptor SHALL retain its host-function
+values independently. Callback `this` values and arguments SHALL remain scoped
+to the host-function call.
+
+#### Scenario: Descriptor installation completes
+- **GIVEN** generated registration constructs a property descriptor and its
+  host functions
+- **WHEN** `Object.defineProperty` returns synchronously
+- **THEN** generated glue SHALL dispose all temporary global, object,
+  descriptor, function, and value wrappers
+- **AND** the installed accessor SHALL remain callable through the JavaScript
+  descriptor
+
+#### Scenario: Descriptor installation fails
+- **GIVEN** the runtime context has registered accessor callbacks
+- **WHEN** `Object.defineProperty` throws
+- **THEN** all temporary wrappers SHALL still be disposed
+- **AND** all callback registrations SHALL remain owned and bounded by the
+  runtime context until deterministic teardown
+
+#### Scenario: Accessor is replaced
+- **GIVEN** an accessor is already installed in an active runtime context
+- **WHEN** registration installs the configurable property again
+- **THEN** ordinary lookup SHALL use the replacement accessor
+- **AND** a previously captured accessor function MAY remain callable while
+  the context is active
+- **AND** both old and current registrations SHALL remain context-owned
+
+#### Scenario: Runtime context tears down after property installation
+- **GIVEN** JavaScript retains a current or replaced accessor function
+- **WHEN** the owning runtime context is disposed
+- **THEN** teardown SHALL invalidate each accessor registration exactly once
+- **AND** later accessor use SHALL fail loudly without touching released state
+- **AND** later native release callbacks SHALL NOT double-free managed state
 
 ### Requirement: One-Stage Lazy Dotnet Module Registry
 
@@ -622,6 +792,12 @@ dispatch failures, authored-method failures, faulted tasks, and canceled tasks.
 Unsupported generated function signatures SHALL fail at build time with
 actionable diagnostics. Unsupported shapes SHALL fail the consuming compilation
 instead of silently skipping affected modules or emitting invalid generated C#.
+Invalid property shapes SHALL use `EXPOJSI014`; unsupported readable property
+types SHALL use `EXPOJSI015`; duplicate JavaScript names involving at least one
+property SHALL use `EXPOJSI016`; and property use of a reserved observing-hook
+name SHALL use `EXPOJSI017`. Method-only meanings SHALL remain stable:
+`EXPOJSI004` covers unsupported or reserved method shapes, and `EXPOJSI005`
+covers duplicate method names.
 
 #### Scenario: Unsupported parameter type is used
 - **GIVEN** a `[JS]` method has an unsupported parameter type
@@ -657,6 +833,36 @@ instead of silently skipping affected modules or emitting invalid generated C#.
 - **THEN** the generator SHALL report a diagnostic naming the method and
   unsupported shape
 - **AND** generated source SHALL NOT emit a fallback dispatch path
+
+#### Scenario: Unsupported property shape is used
+- **GIVEN** a `[JS]` property is static, indexed, lacks a public or internal
+  getter, is setter-only, or has an `init` accessor
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report `EXPOJSI014` naming the property and
+  unsupported shape
+- **AND** generated source SHALL NOT omit the member silently
+
+#### Scenario: Unsupported property type is used
+- **GIVEN** a readable `[JS]` property has no generated codec for its type
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report `EXPOJSI015` naming the property and type
+- **AND** generated source SHALL NOT emit reflection or dynamic conversion
+
+#### Scenario: Property export name collides
+- **GIVEN** two properties, or one property and one method, resolve to the same
+  JavaScript name
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report `EXPOJSI016` naming the module and
+  duplicate JavaScript member name
+- **AND** it SHALL NOT resolve the collision by declaration order
+
+#### Scenario: Property uses a reserved observing-hook name
+- **GIVEN** an event-capable module has a `[JS]` property that resolves to
+  `startObserving` or `stopObserving`
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report `EXPOJSI017` naming the property and
+  reserved hook name
+- **AND** it SHALL NOT generate the conflicting accessor
 
 #### Scenario: Duplicate exported names are used
 - **GIVEN** two generated modules have the same exported module name, or two

@@ -23,13 +23,10 @@ type ExampleModuleEvents = {
 
 declare class ExampleModuleType extends DotnetModule<ExampleModuleEvents> {
   add(a: number, b: number): number;
-  describeUser(user: { Age: number; Name: string }): {
-    Age: number;
-    Name: string;
-    Summary: string;
-  };
+  describeUser(user: ExampleUser): ExampleUserSummary;
   emitStatusAsync(label: string): Promise<void>;
   getMessageAsync(): Promise<string>;
+  readonly ready: boolean;
   transformWithCallback(value: string, callback: (value: string) => string): string;
 }
 
@@ -44,12 +41,7 @@ export function addStatusListener(listener: (payload: string) => void): EventSub
 }
 
 export function describeUser(user: ExampleUser): ExampleUserSummary {
-  const result = nativeModule.describeUser({ Age: user.age, Name: user.name });
-  return {
-    age: result.Age,
-    name: result.Name,
-    summary: result.Summary,
-  };
+  return nativeModule.describeUser(user);
 }
 
 export function emitStatusAsync(label: string): Promise<void> {

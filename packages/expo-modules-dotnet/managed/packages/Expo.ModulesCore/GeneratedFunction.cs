@@ -105,7 +105,7 @@ public static class GeneratedFunction
     return promiseValue.AsValue();
   }
 
-  private static JavaScriptValue InvokeGeneratedHostFunction(
+  internal static JavaScriptValue InvokeGeneratedHostFunction(
       JavaScriptRuntime runtime,
       JavaScriptValueRef thisValue,
       JavaScriptArguments arguments,

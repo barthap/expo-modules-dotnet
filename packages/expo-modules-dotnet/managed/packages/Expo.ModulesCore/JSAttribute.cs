@@ -1,6 +1,15 @@
 namespace Expo.ModulesCore;
 
-[AttributeUsage(AttributeTargets.Method, Inherited = false)]
+/// <summary>
+/// Marks a generated JavaScript method or instance accessor property on an Expo module.
+/// </summary>
+/// <remarks>
+/// Unnamed members use the generated lower-camel JavaScript name; an explicit name is used
+/// verbatim. Readable properties become JavaScript getters and public or internal ordinary
+/// setters become JavaScript setters. Use an attributed module declaration for authored APIs;
+/// generated binding helpers are not an authoring surface.
+/// </remarks>
+[AttributeUsage(AttributeTargets.Method | AttributeTargets.Property, Inherited = false)]
 public sealed class JSAttribute : Attribute
 {
   public JSAttribute()

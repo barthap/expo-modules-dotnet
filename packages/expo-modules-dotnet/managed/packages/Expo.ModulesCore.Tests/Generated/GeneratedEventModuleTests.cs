@@ -12,7 +12,7 @@ public sealed class GeneratedEventModuleTests
   {
     var outcome = await EvaluateEventOutcomeAsync(
         "events.addListener('onChange', value => { seen = value; });",
-        "events.EmitChangeAsync('payload')",
+        "events.emitChangeAsync('payload')",
         "seen"
     );
 
@@ -24,7 +24,7 @@ public sealed class GeneratedEventModuleTests
   {
     var outcome = await EvaluateEventOutcomeAsync(
         "events.addListener('onChange', value => { seen = value; });",
-        "events.EmitChangeAsync('payload')",
+        "events.emitChangeAsync('payload')",
         "seen",
         disableSyncExecutionBeforeEvaluate: true
     );
@@ -37,7 +37,7 @@ public sealed class GeneratedEventModuleTests
   {
     var outcome = await EvaluateEventOutcomeAsync(
         "events.addListener('onReady', () => { seen = 'ready'; });",
-        "events.EmitReadyAsync()",
+        "events.emitReadyAsync()",
         "seen"
     );
 
@@ -49,7 +49,7 @@ public sealed class GeneratedEventModuleTests
   {
     var outcome = await EvaluateEventOutcomeAsync(
         "",
-        "events.EmitUndeclaredAsync().then(() => 'fulfilled', error => error.message)",
+        "events.emitUndeclaredAsync().then(() => 'fulfilled', error => error.message)",
         "seen"
     );
 
@@ -62,9 +62,9 @@ public sealed class GeneratedEventModuleTests
     var outcome = await EvaluateEventOutcomeAsync(
         """
         const sub = events.addListener('onChange', () => {});
-        seen = events.ReadStarted();
+        seen = events.readStarted();
         sub.remove();
-        seen = seen + ':' + events.ReadStopped();
+        seen = seen + ':' + events.readStopped();
         """,
         "Promise.resolve()",
         "seen"

@@ -120,4 +120,40 @@ internal static class ExpoModulesDiagnostics
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true
   );
+
+  public static readonly DiagnosticDescriptor UnsupportedJSPropertyShape = new(
+      id: "EXPOJSI014",
+      title: "Unsupported Expo module property shape",
+      messageFormat: "Property '{0}' cannot be exported to JavaScript because it is {1}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor UnsupportedJSPropertyType = new(
+      id: "EXPOJSI015",
+      title: "Unsupported Expo module property type",
+      messageFormat: "Property '{0}' uses unsupported type '{1}'",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor DuplicateJavaScriptMemberName = new(
+      id: "EXPOJSI016",
+      title: "Duplicate Expo module JavaScript member name",
+      messageFormat: "Module '{0}' exports duplicate JavaScript member name '{1}'",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor ReservedObservingPropertyName = new(
+      id: "EXPOJSI017",
+      title: "Reserved Expo module property name",
+      messageFormat: "Property '{0}' cannot be exported to JavaScript because '{1}' is a reserved observing hook name",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
 }

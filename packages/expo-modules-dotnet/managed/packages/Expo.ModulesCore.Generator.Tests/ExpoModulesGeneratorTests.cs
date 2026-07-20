@@ -5,6 +5,261 @@ namespace Expo.ModulesCore.Generator.Tests;
 
 public sealed class ExpoModulesGeneratorTests
 {
+  [Theory]
+  [InlineData("[JS] public JavaScriptCallback<string> Direct { get; } = null!;", "Direct")]
+  [InlineData("[JS] public System.Collections.Generic.IReadOnlyList<JavaScriptCallback<string>> Nested { get; } = null!;", "Nested")]
+  public void GeneratorRejectsReadableCallbackPropertyTypes(string property, string propertyName)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class PropertiesModule
+        {
+          {{property}}
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI015");
+    Assert.Contains(propertyName, diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorAllowsRecordPropertyWithUnencodedCallbackMember()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public sealed record Value(string Name)
+        {
+          public JavaScriptCallback<string>? Callback => null;
+        }
+
+        [ExpoModule]
+        public sealed partial class PropertiesModule
+        {
+          [JS] public Value Current { get; } = new("value");
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void GeneratorUsesPropertySymbolNamesForAccessorCallbacks()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Properties")]
+        public sealed partial class PropertiesModule
+        {
+          [JS("a-b")] public bool First { get; }
+          [JS("a_b")] public bool Second { get; }
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains("\"a-b\"", source);
+    Assert.Contains("\"a_b\"", source);
+    Assert.Contains("Properties_First_Getter", source);
+    Assert.Contains("Properties_Second_Getter", source);
+  }
+
+  [Fact]
+  public void GeneratorEmitsAccessorPropertiesWithLowerCamelAndExplicitNames()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Properties")]
+        public sealed partial class PropertiesModule
+        {
+          [JS] public bool Ready { get; set; }
+          [JS] public bool IsReadOnly => true;
+          [JS("isReady")] public bool ReadyWithExplicitName => true;
+          [JS] internal string InternalGetter { get; private set; } = "internal";
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains("GeneratedProperty.Define(", source);
+    Assert.Contains("\"ready\"", source);
+    Assert.Contains("\"isReadOnly\"", source);
+    Assert.Contains("\"isReady\"", source);
+    Assert.Contains("Properties_Ready_Getter", source);
+    Assert.Contains("Properties_Ready_Setter", source);
+    Assert.Contains("GeneratedFunction.RequireArgumentCount(\"Properties.ready\", arguments, 0);", source);
+    Assert.Contains("GeneratedFunction.RequireArgumentCount(\"Properties.ready\", arguments, 1);", source);
+    Assert.DoesNotContain("Properties_IsReadOnly_Setter", source);
+    Assert.DoesNotContain("Properties_InternalGetter_Setter", source);
+  }
+
+  [Theory]
+  [InlineData("[JS] public static bool Ready { get; } = true;", "Ready", "static")]
+  [InlineData("[JS] public bool this[int index] => true;", "this[]", "indexed")]
+  [InlineData("[JS] public bool Ready { private get; set; }", "Ready", "getter")]
+  [InlineData("[JS] public bool Ready { set { } }", "Ready", "setter-only")]
+  [InlineData("[JS] public bool Ready { get; init; }", "Ready", "init")]
+  public void GeneratorReportsUnsupportedJSPropertyShape(string property, string name, string shape)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class PropertiesModule
+        {
+          {{property}}
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI014");
+    Assert.Contains(name, diagnostic.GetMessage());
+    Assert.Contains(shape, diagnostic.GetMessage(), StringComparison.OrdinalIgnoreCase);
+  }
+
+  [Theory]
+  [InlineData("decimal", "System.Decimal")]
+  [InlineData("System.Span<byte>", "Span")]
+  [InlineData("System.ReadOnlySpan<byte>", "ReadOnlySpan")]
+  public void GeneratorReportsUnsupportedJSPropertyCodec(string type, string expectedType)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class PropertiesModule
+        {
+          [JS] public {{type}} Value { get; set; }
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI015");
+    Assert.Contains("Value", diagnostic.GetMessage());
+    Assert.Contains(expectedType, diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorReportsDuplicateJavaScriptPropertyName()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Properties")]
+        public sealed partial class PropertiesModule
+        {
+          [JS] public bool IsReady => true;
+          [JS("isReady")] public bool Ready => true;
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI016");
+    Assert.Contains("Properties", diagnostic.GetMessage());
+    Assert.Contains("isReady", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorReportsMethodAndPropertyJavaScriptNameCollision()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Properties")]
+        public sealed partial class PropertiesModule
+        {
+          [JS] public bool GetReady() => true;
+          [JS("getReady")] public bool Ready => true;
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI016");
+    Assert.Contains("Properties", diagnostic.GetMessage());
+    Assert.Contains("getReady", diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorRejectsPropertyThatCollidesWithDuplicateMethodName()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Properties")]
+        public sealed partial class PropertiesModule
+        {
+          [JS("same")] public bool First() => true;
+          [JS("same")] public bool Second() => true;
+          [JS("same")] public bool Value => true;
+        }
+        """
+    );
+
+    Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI005");
+    var collision = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI016");
+    Assert.Contains("Properties", collision.GetMessage());
+    Assert.Contains("same", collision.GetMessage());
+    Assert.DoesNotContain("GeneratedProperty.Define(", Assert.Single(result.GeneratedSources).Text);
+  }
+
+  [Fact]
+  public void GeneratorReportsReservedObservingPropertyName()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Properties")]
+        [Events("change")]
+        public sealed partial class PropertiesModule
+        {
+          [JS] public bool StartObserving => true;
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI017");
+    Assert.Contains("StartObserving", diagnostic.GetMessage());
+    Assert.Contains("startObserving", diagnostic.GetMessage());
+  }
+
   [Fact]
   public void GeneratorEmitsBinaryCodecOwnershipAndSingleSpanCallbacks()
   {
@@ -225,7 +480,10 @@ public sealed class ExpoModulesGeneratorTests
           [JS]
           public double Add(double a, double b) => a + b;
 
-          [JS("addOne")]
+          [JS]
+          public string GetMessageAsync() => "message";
+
+          [JS("ExactName")]
           public double Increment(double value) => value + 1.0;
         }
         """
@@ -237,9 +495,12 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Contains("context.ModuleRegistry.GetOrCreateModule(\"Math\", static () => new global::Expo.TestModules.InternalMathModule())", source);
     Assert.Contains("GeneratedFunction.DefineSync(", source);
     Assert.Contains("module_Math", source);
-    Assert.Contains("\"Add\"", source);
-    Assert.Contains("\"addOne\"", source);
+    Assert.Contains("\"add\"", source);
+    Assert.Contains("\"getMessageAsync\"", source);
+    Assert.Contains("\"ExactName\"", source);
+    Assert.DoesNotContain("\"Add\"", source);
     Assert.Contains("module.Add(__expoArg0, __expoArg1)", source);
+    Assert.Contains("module.GetMessageAsync()", source);
     Assert.Contains("module.Increment(__expoArg0)", source);
   }
 
@@ -309,8 +570,8 @@ public sealed class ExpoModulesGeneratorTests
 
     var source = Assert.Single(result.GeneratedSources).Text;
     Assert.Contains("GeneratedFunction.DefineAsync(", source);
-    Assert.Contains("Async_CompleteAsync_HostFunction", source);
-    Assert.Contains("Async_GetValueAsync_HostFunction", source);
+    Assert.Contains("Async_completeAsync_HostFunction", source);
+    Assert.Contains("Async_getValueAsync_HostFunction", source);
     Assert.Contains("JavaScriptPromiseResult.Resolve", source);
     Assert.Contains("runtime.CreateUndefined()", source);
     Assert.Contains("NumberCodec<int>.Encode", source);
@@ -848,6 +1109,7 @@ public sealed class ExpoModulesGeneratorTests
         public record User(string Name, int Age);
         public record class UserClass(string Name, int Age);
         public readonly record struct UserStruct(string Name, int Age);
+        public record NullableUser(string Name, int? LuckyNumber);
 
         [ExpoModule("Records")]
         public sealed partial class RecordsModule
@@ -860,6 +1122,9 @@ public sealed class ExpoModulesGeneratorTests
 
           [JS]
           public UserStruct RoundTripUserStruct(UserStruct user) => user;
+
+          [JS]
+          public NullableUser RoundTripNullableUser(NullableUser user) => user;
         }
         """
     );
@@ -872,6 +1137,13 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Contains("return new global::Expo.TestModules.User(name, age);", source);
     Assert.Contains("return new global::Expo.TestModules.UserClass(name, age);", source);
     Assert.Contains("return new global::Expo.TestModules.UserStruct(name, age);", source);
+    Assert.Contains("StringCodec.Decode(obj.GetProperty(\"name\"), runtime)", source);
+    Assert.Contains("StringCodec.Encode(value.Name, runtime)", source);
+    Assert.Contains("obj.SetProperty(\"name\", name);", source);
+    Assert.Contains("obj.GetProperty(\"luckyNumber\")", source);
+    Assert.Contains("obj.SetProperty(\"luckyNumber\", luckyNumber);", source);
+    Assert.DoesNotContain("obj.GetProperty(\"Name\")", source);
+    Assert.DoesNotContain("obj.GetProperty(\"LuckyNumber\")", source);
   }
 
   [Fact]
@@ -905,10 +1177,12 @@ public sealed class ExpoModulesGeneratorTests
     var source = Assert.Single(result.GeneratedSources).Text;
     Assert.Contains("private readonly struct AddressCodec : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.Address>", source);
     Assert.Contains("private readonly struct UserCodec : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.User>", source);
-    Assert.Contains("var address = AddressCodec.Decode(obj.GetProperty(\"Address\"), runtime);", source);
-    Assert.Contains("var status = StringEnumCodec<global::Expo.TestModules.Status>.Decode(obj.GetProperty(\"Status\"), runtime);", source);
+    Assert.Contains("var address = AddressCodec.Decode(obj.GetProperty(\"address\"), runtime);", source);
+    Assert.Contains("var status = StringEnumCodec<global::Expo.TestModules.Status>.Decode(obj.GetProperty(\"status\"), runtime);", source);
     Assert.Contains("using var address = AddressCodec.Encode(value.Address, runtime);", source);
     Assert.Contains("using var status = StringEnumCodec<global::Expo.TestModules.Status>.Encode(value.Status, runtime);", source);
+    Assert.Contains("obj.SetProperty(\"address\", address);", source);
+    Assert.Contains("obj.SetProperty(\"status\", status);", source);
     Assert.Contains("return new global::Expo.TestModules.User(name, address, status);", source);
   }
 
