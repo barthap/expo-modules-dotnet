@@ -108,9 +108,11 @@ Completed scope:
     - Generate promise-returning bindings for `Task` / `Task<T>` methods after
       cross-host scheduler semantics are known.
 
-3. **Events / EventEmitter**
-    - Build module-to-JS event emission on top of function calling, async
-      scheduling, and lifecycle-safe teardown.
+3. **Events / EventEmitter** (complete)
+    - Module-to-JS event emission ships via `Module.SendEventAsync` (with a
+      generic, codec-based payload overload) and the `[Events]` attribute
+      declaring the events a module can emit, built on function calling,
+      async scheduling, and lifecycle-safe teardown.
 
 ### P2/P3: Richer Runtime Surface
 

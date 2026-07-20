@@ -16,6 +16,19 @@ adapter package, an authored .NET example module, and runnable apps. It is still
 early production-readiness work, not a published SDK, but the package boundaries
 now match the direction of the project.
 
+## Platform support
+
+| Platform | HostFXR (dev loader) | NativeAOT | Mono AOT |
+|---|---|---|---|
+| Windows | yes | yes | no |
+| macOS | yes | yes | no |
+| Android | no | yes | planned |
+| iOS | no | yes | planned |
+
+HostFXR is a development-time loader; production builds on every platform
+currently use NativeAOT, with Mono AOT planned as a future option for the
+mobile platforms.
+
 ## Repository Shape
 
 - `packages/expo-modules-dotnet` is the public Expo adapter package. It owns the

@@ -1,4 +1,4 @@
-# Plan 005: Mark Events/EventEmitter complete in the roadmap, add an autolinking CLI README, add platform table to root README
+# Plan 005: Mark Events/EventEmitter complete in the roadmap, add an autolinking CLI README, add platform table to root README, write the module authoring guide
 
 > **Executor instructions**: Follow this plan step by step. Run every
 > verification command and confirm the expected result before moving to the
@@ -20,6 +20,12 @@
 - **Depends on**: none
 - **Category**: docs
 - **Planned at**: commit `0f6fc760`, 2026-07-08
+- **Amended**: 2026-07-19 at `6b7fefff` — scope extended with the module
+  authoring guide (operator request; previously deferred). Drift re-checked:
+  the five CLI commands and the roadmap Events entry (now at
+  `docs/roadmap.md:111`) still match the excerpts below; `SendEventAsync`
+  evidence confirmed at `Module.cs:32`/`:38` and `ExampleMathModule.cs:7`/`:57`.
+  Effort is now M (the guide dominates).
 
 ## Why this matters
 
@@ -84,14 +90,16 @@ orientation is a dense 200+ line living spec.
 - `packages/expo-modules-dotnet-autolinking/README.md` (create)
 - Root `README.md` — add the platform support table (Step 3 content is
   operator-provided, 2026-07-08; do not invent additional rows)
+- `docs/module-authoring-guide.md` (create — Step 4)
+- `docs/README.md` — one link line pointing at the new guide, nothing else
 - `docs/plans/README.md` (status row)
 
 **Out of scope** (do NOT touch):
 - Other roadmap entries (ArrayBuffer, SharedObject, Lazy init, etc.) — their
   status is the operator's call, not this plan's.
-- `docs/specs/*` — no spec changes; the README links, not duplicates.
-- Any code, `package.json`, or the general module-authoring guide (a separate
-  direction item, deliberately not in this plan).
+- `docs/specs/*` — no spec changes; the README and the guide link, not
+  duplicate.
+- Any code or `package.json`.
 
 ## Git workflow
 
@@ -134,22 +142,93 @@ Add a "Platform support" section to the root `README.md` (place it near the
 top, after the project description — read the README first and match its
 heading style). Content is operator-specified:
 
-| Platform | HostFXR (dev loader) | NativeAOT |
-|---|---|---|
-| Windows | yes | yes |
-| macOS | yes | yes |
-| Android | no | yes |
-| iOS | no | yes |
+| Platform | HostFXR (dev loader) | NativeAOT | Mono AOT |
+|---|---|---|---|
+| Windows | yes | yes | no |
+| macOS | yes | yes | no |
+| Android | no | yes | planned |
+| iOS | no | yes | planned |
 
-With a note: Mono AOT support for Android/iOS is planned for the future, and
-HostFXR is a development-time loader (per `docs/specs/runtime-and-abi.md`
-positioning). Adjust wording to the README's voice; keep the facts exactly as
-in the table.
+(Mono AOT column added by operator 2026-07-19.) With a note: HostFXR is a
+development-time loader (per `docs/specs/runtime-and-abi.md` positioning).
+Adjust wording to the README's voice; keep the facts exactly as in the table.
+The same table appears in the authoring guide's platform matrix (Step 4) —
+keep both in sync.
 
 **Verify**: `rg -n "Platform support" README.md` → section exists;
 table renders (4 platform rows).
 
-### Step 4: Docs checklist
+### Step 4: Write the module authoring guide
+
+Create `docs/module-authoring-guide.md` — a practical guide for writing a
+.NET-backed Expo module in this repo. Audience: a developer who knows C# and
+Expo basics but has never seen this repo. Reference implementation to link
+throughout: `packages/example-module` (files:
+`expo-module.config.json`, `dotnet/ExampleModule/ExampleMathModule.cs`,
+`dotnet/ExampleModule/ExampleModule.csproj`, `src/index.ts`, `package.json`).
+
+Structure inspiration: the upstream Expo Modules API docs
+(`docs/pages/modules/` in the `expo/expo` repo — the dispatcher will give you
+a local read-only path). Read `get-started.mdx`, `native-module-tutorial.mdx`,
+and `module-api.mdx` for tone and structure only: tutorial-style progression,
+minimal-working-example first, then an API reference section. Do NOT copy
+Swift/Kotlin content or upstream API names that don't exist here — every API
+statement in the guide must be verified against this repo's source or specs.
+
+The guide is complete when it covers all eleven items (operator's checklist):
+
+1. Project setup: minimal csproj referencing `Expo.ModulesCore`, where the
+   module lives in a package (`packages/<name>/dotnet/...` layout).
+2. Autolinking metadata: `expo-module.config.json` shape and how discovery
+   finds the module.
+3. Module definition: `[ExpoModule]` class, `[JS]` methods, supported
+   parameter/return types and their codecs, enum handling.
+4. Async: `Task`/`Task<T>` methods → promises; threading/scheduling caveats
+   module authors must know (what thread callbacks run on).
+5. Events: `[Events]` attribute, `SendEventAsync`, JS-side subscription,
+   `OnStartObserving`/`OnStopObserving`.
+6. Lifecycle: `OnCreate`/`OnDestroy` hooks and teardown guarantees.
+7. Callbacks: `JavaScriptCallback<T>` parameters and their lifetime rules.
+8. JS facade: the TypeScript side (`src/`), typing the native module.
+9. Platform matrix: which platforms, HostFXR (dev) vs NativeAOT (prod)
+   loader story, NativeAOT constraints authors must respect (no reflection).
+10. Verification: how to run the module's tests locally
+    (`scripts/test-managed.sh`), example-module as the reference.
+11. Troubleshooting: common autolinking/staging failures and where the CLI
+    puts artifacts.
+
+Sources of truth to verify against before asserting anything (attribute
+names, method signatures, threading semantics):
+`packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/` (module
+base class, attributes), `docs/specs/modules-core-boundary.md`,
+`docs/specs/promises.md`, `docs/specs/runtime-scheduling.md`,
+`docs/specs/dotnet-autolinking.md`, `docs/specs/runtime-and-abi.md`, and
+`packages/example-module` itself. If a checklist item cannot be grounded in
+source or a spec (e.g. `JavaScriptCallback<T>` may not exist under that
+name), describe what actually exists instead, and note the discrepancy in
+your report — do not invent APIs and do not silently drop the item.
+
+Then add one link line for the guide to `docs/README.md` (read it first,
+match its existing link-list style).
+
+No local absolute paths, usernames, or machine names anywhere in the guide.
+
+Operator additions (2026-07-19 review round):
+- The guide's project-setup section must state explicitly that it describes
+  the current repo-local workflow (module packages inside this monorepo);
+  authoring modules as standalone libraries in separate repos, or app-local
+  modules, is a planned future workflow not yet supported.
+- The guide's platform matrix uses the amended Step 3 table (Mono AOT column).
+- The JS facade section may note that dedicated facade base types
+  (upstream-style `NativeModule`/`EventEmitter` classes with typed events
+  maps) are a planned direction — without naming any type that does not yet
+  exist in `packages/expo-modules-dotnet/src/`. The actual types are planned
+  separately (plan 012).
+
+**Verify**: file exists; every C# identifier the guide names appears in the
+repo (spot-check with `rg` per identifier); `rg -n "module-authoring-guide" docs/README.md` shows the link.
+
+### Step 5: Docs checklist
 
 Run the docs-only checklist from `docs/README.md`: `git diff --check` and the
 rg regression grep (see Commands table). Run `scripts/format.sh --check --all`;
@@ -170,7 +249,10 @@ Docs-only; verification is the greps and checklist above. No test code.
       HostFXR + NativeAOT; Android/iOS: NativeAOT only, Mono AOT planned).
 - [ ] `git diff --check` clean; regression rg from `docs/README.md` shows no
       unexplained matches; `scripts/format.sh --check --all` exits 0.
-- [ ] No absolute paths/usernames in any touched file (`rg -n "/Users/|barthap" README.md docs/roadmap.md packages/expo-modules-dotnet-autolinking/README.md` → no matches).
+- [ ] `docs/module-authoring-guide.md` exists, covers all 11 checklist items,
+      links `packages/example-module` as the reference, and names no API that
+      doesn't exist in the repo; `docs/README.md` links it.
+- [ ] No absolute paths/usernames in any touched file (`rg -n "/Users/|barthap" README.md docs/roadmap.md docs/module-authoring-guide.md docs/README.md packages/expo-modules-dotnet-autolinking/README.md` → no matches).
 - [ ] No files outside in-scope list modified (`git status`).
 - [ ] `docs/plans/README.md` status row updated.
 
@@ -184,6 +266,9 @@ Stop and report back (do not improvise) if:
   longer matches the excerpt.
 - A command exists in `src/commands/` whose purpose you cannot determine from
   its source — do not guess in the README.
+- More than 3 of the guide's 11 checklist items cannot be grounded in repo
+  source or specs — the checklist is stale; report instead of writing a
+  speculative guide.
 
 ## Maintenance notes
 
@@ -191,6 +276,5 @@ Stop and report back (do not improvise) if:
   "(complete)" discipline applies — reviewers should treat roadmap staleness
   as a doc bug.
 - New CLI commands must be added to the README table; cheap review check.
-- Deferred deliberately: a full module-authoring guide (tutorial for writing
-  .NET Expo modules). Tracked as a direction finding in `docs/plans/README.md`, not
-  planned here.
+- The authoring guide will drift as the API grows (SharedObject, views);
+  reviewers should treat guide staleness like roadmap staleness — a doc bug.

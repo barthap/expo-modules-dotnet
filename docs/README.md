@@ -84,8 +84,10 @@ For current implementation work:
    behavior
 5. `docs/assorted/modules-core-generator-authoring.md` for module-library
    generator wiring and authoring background
-6. `docs/roadmap.md` for forward direction
-7. `docs/archive/` only when historical rationale or proof evidence is needed
+6. `docs/module-authoring-guide.md` for a practical, tutorial-style guide to
+   writing a .NET-backed Expo module using `packages/example-module`
+7. `docs/roadmap.md` for forward direction
+8. `docs/archive/` only when historical rationale or proof evidence is needed
 
 `docs/archive/learning-guide/` holds educational walkthroughs written before
 this repo's code existed. They are historical background only; current
