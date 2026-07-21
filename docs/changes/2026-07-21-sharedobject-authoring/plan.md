@@ -8,6 +8,16 @@
 
 **Tech Stack:** C# 13/.NET 10, Roslyn incremental source generators, Expo.JSI managed wrappers, Hermes-backed xUnit tests, TypeScript, Vitest, pnpm.
 
+**Execution status (2026-07-22): BLOCKED.** Task 1 proved that Hermes accepts
+a managed host function as a constructor and its final Proxy-guarded helper
+passed code review after two revision rounds. Production `Expo.ModulesCore`
+builds successfully. The repo-owned test consumer cannot currently compile
+under SDK 10.0.201, however: the Task 1 build and a comparison build excluding
+the new test both stall during project-reference evaluation and fail after
+exactly five minutes with zero warnings or errors. Task 1 source was fully
+rolled back at `a2ebfed2`. Unblock by restoring a working managed test-consumer
+baseline, then restart Task 1 and run every focused test before proceeding.
+
 ## Ground Rules
 
 - The approved requirements are in `docs/changes/2026-07-21-sharedobject-authoring/spec.md`.

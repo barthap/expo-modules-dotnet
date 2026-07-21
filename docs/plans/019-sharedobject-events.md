@@ -27,6 +27,8 @@
   exist first)
 - **Category**: direction / dx
 - **Planned at**: commit `ea07d69d`, 2026-07-20
+- **Execution status**: BLOCKED on 2026-07-22 because hard dependency Plan 017
+  did not land.
 
 ## Why this matters
 

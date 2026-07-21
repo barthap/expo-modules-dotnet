@@ -26,10 +26,10 @@ fully before starting, honor its STOP conditions, and update your row when done.
 | 014 | Typed `[Event]` partial-property members (Expo Modules 2.0 alignment) | P2 | M | 013 | DONE — generator suite, 449 managed tests, mobile and desktop typechecks, format, reflection/owned-wrapper scans, and documentation/privacy checks pass. |
 | 015 | Promise capability migration onto runtime-owned long-lived collection | P2 | M | — | BLOCKED — queued retry exhausted two review rounds; implementation rolled back at `17dbcc10` because the final race test did not assert that its registration gate was reached. |
 | 016 | NativeAOT publish check in CI (linux-x64 compile-time proof; end-to-end loader lane deferred) | P1 | S | — | TODO — re-scoped at `6db8167c` after the blocked Ubuntu attempt: publish-only AOT job now, console-app Linux/Windows ports split out as separate future plans. |
-| 017 | SharedObject public authoring surface | P2 | L | 015, 016 recommended first | IN PROGRESS — approved delta and reviewed implementation plan committed at `cf2a67af`; Task 1 is proving the existing-ABI constructor mechanism. |
-| 018 | Windows RNW build/deploy reliability + ReactNativeDir resolver | P1/P2 | L | — (needs Windows machine) | TODO |
-| 019 | Typed `[Event]` members on shared objects | P2 | M | 017 | TODO |
-| 020 | hermes-console-app Linux port + end-to-end loader lane in CI (hostfxr + nativeaot) | P1 | M | 016 | TODO — planned 2026-07-21 at `6db8167c`; includes a `hermes-testhost.md` delta spec (runner pairing gains Linux). Windows NativeAOT port stays unplanned (needs the Windows machine). |
+| 017 | SharedObject public authoring surface | P2 | L | 015, 016 recommended first | BLOCKED — managed test consumers stall before compilation under SDK 10.0.201 and fail at exactly five minutes with zero diagnostics; reviewed Task 1 source rolled back at `a2ebfed2`. |
+| 018 | Windows RNW build/deploy reliability + ReactNativeDir resolver | P1/P2 | L | — (needs Windows machine) | BLOCKED — current executor is on macOS; Windows + VS 2026 + RNW 0.81 prerequisite is unavailable. |
+| 019 | Typed `[Event]` members on shared objects | P2 | M | 017 | BLOCKED — hard dependency Plan 017 did not land. |
+| 020 | hermes-console-app Linux port + end-to-end loader lane in CI (hostfxr + nativeaot) | P1 | M | 016 | BLOCKED — Plan 016 is still WIP and was explicitly excluded from this execution. |
 
 Status values: TODO | IN PROGRESS | DONE | OPEN (follow-up) | BACKLOG (nice-to-have) | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 

@@ -24,6 +24,13 @@
   generated code)
 - **Category**: direction / dx
 - **Planned at**: commit `ea07d69d`, 2026-07-20
+- **Execution status**: BLOCKED on 2026-07-22. Task 1's final code review
+  approved the existing-ABI constructor primitive, but the repo-owned
+  `Expo.ModulesCore.Tests` consumer cannot currently compile under SDK
+  10.0.201: both the Task 1 build and a comparison build excluding the new
+  test stall before compilation and fail after exactly five minutes with zero
+  diagnostics. The three Task 1 source commits were fully rolled back at
+  `a2ebfed2`; the approved delta and reviewed implementation plan remain.
 
 ## Why this matters
 
