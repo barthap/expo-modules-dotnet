@@ -27,6 +27,9 @@
 - **Depends on**: none
 - **Category**: bug / dx / direction
 - **Planned at**: commit `ea07d69d`, 2026-07-20
+- **Execution status**: BLOCKED on 2026-07-22 because the current executor is
+  on macOS and the plan's Windows + VS 2026 + RNW 0.81 prerequisite is absent.
+  No implementation was attempted.
 
 ## Why this matters
 

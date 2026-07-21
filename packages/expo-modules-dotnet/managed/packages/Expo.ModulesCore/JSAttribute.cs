@@ -1,7 +1,8 @@
 namespace Expo.ModulesCore;
 
 /// <summary>
-/// Marks a generated JavaScript method or instance accessor property on an Expo module.
+/// Marks a generated JavaScript method or instance accessor property on an Expo module, or the
+/// exposed constructor of a shared-object class.
 /// </summary>
 /// <remarks>
 /// Unnamed members use the generated lower-camel JavaScript name; an explicit name is used
@@ -9,7 +10,9 @@ namespace Expo.ModulesCore;
 /// setters become JavaScript setters. Use an attributed module declaration for authored APIs;
 /// generated binding helpers are not an authoring surface.
 /// </remarks>
-[AttributeUsage(AttributeTargets.Method | AttributeTargets.Property, Inherited = false)]
+[AttributeUsage(
+    AttributeTargets.Method | AttributeTargets.Property | AttributeTargets.Constructor,
+    Inherited = false)]
 public sealed class JSAttribute : Attribute
 {
   public JSAttribute()

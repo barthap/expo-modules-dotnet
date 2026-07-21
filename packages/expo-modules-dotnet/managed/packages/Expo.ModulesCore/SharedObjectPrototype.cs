@@ -7,6 +7,35 @@ internal static class SharedObjectPrototype
   internal static object CreateReleaseCallbackState(SharedObjectRegistry registry) =>
       new WeakReference<SharedObjectRegistry>(registry);
 
+  /// <summary>
+  /// Creates the shared class prototype for a registered public shared-object class. The
+  /// idempotent <c>release</c> host function is installed once on the prototype; its callback
+  /// state holds the owning registry only weakly.
+  /// </summary>
+  internal static JavaScriptObject CreateClassPrototype(
+      JavaScriptRuntime runtime,
+      SharedObjectRegistry registry)
+  {
+    var prototype = runtime.CreateObject();
+    try
+    {
+      using var releaseFunction = runtime.CreateHostFunction(
+          "release",
+          0,
+          Release,
+          CreateReleaseCallbackState(registry)
+      );
+      using var releaseValue = releaseFunction.AsValue();
+      prototype.SetProperty("release", releaseValue);
+      return prototype;
+    }
+    catch
+    {
+      prototype.Dispose();
+      throw;
+    }
+  }
+
   internal static JavaScriptObject CreateInstance(
       JavaScriptRuntime runtime,
       SharedObjectRegistry registry,
