@@ -109,11 +109,15 @@ public sealed class GeneratedSharedObjectInfrastructureTests
       SetGlobalConstructor(runtime, constructor);
 
       using var result = fixture.Evaluate(
-          "try { globalThis.__generatedSharedObject(); 'no error'; } catch (error) { error.message; }",
+          "const Constructor = globalThis.__generatedSharedObject; " +
+          "const propertyCall = (() => { try { ({ Constructor }).Constructor(); return 'no error'; } catch (error) { return error.message; } })(); " +
+          "const explicitReceiverCall = (() => { try { Constructor.call({}); return 'no error'; } catch (error) { return error.message; } })(); " +
+          "const reflectApply = (() => { try { Reflect.apply(Constructor, {}, []); return 'no error'; } catch (error) { return error.message; } })(); " +
+          "[propertyCall.includes('new'), explicitReceiverCall.includes('new'), reflectApply.includes('new')].join(':')",
           "generated-shared-object-constructor-call.js"
       );
 
-      Assert.Contains("new", result.AsString());
+      Assert.Equal("true:true:true", result.AsString());
       Assert.False(state.WasCalled);
       return true;
     });

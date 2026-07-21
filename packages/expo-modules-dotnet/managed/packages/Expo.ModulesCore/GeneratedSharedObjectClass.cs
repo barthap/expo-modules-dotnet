@@ -34,19 +34,46 @@ public static class GeneratedSharedObjectClass
     ArgumentNullException.ThrowIfNull(context);
 
     var constructorState = new ConstructorState(name, callback, context);
-    var registration = runtimeContext.RegisterHostFunction(InvokeConstructor, constructorState);
+    var constructorRegistration = runtimeContext.RegisterHostFunction(
+        InvokeConstructor,
+        constructorState
+    );
     try
     {
-      return runtimeContext.Runtime.CreateHostFunction(
+      using var constructorTarget = runtimeContext.Runtime.CreateHostFunction(
           name,
           parameterCount,
           GeneratedFunction.InvokeGeneratedHostFunction,
-          registration
+          constructorRegistration
       );
+      var applyRegistration = runtimeContext.RegisterHostFunction(RejectApply, constructorState);
+      try
+      {
+        using var handler = runtimeContext.Runtime.CreateObject();
+        using var applyTrap = runtimeContext.Runtime.CreateHostFunction(
+            $"{name} apply",
+            3,
+            GeneratedFunction.InvokeGeneratedHostFunction,
+            applyRegistration
+        );
+        using var applyTrapValue = applyTrap.AsValue();
+        handler.SetProperty("apply", applyTrapValue);
+
+        using var global = runtimeContext.Runtime.Global();
+        using var proxyValue = global.GetProperty("Proxy");
+        using var proxy = proxyValue.AsFunction();
+        using var proxyResult = proxy.CallAsConstructor(constructorTarget, handler);
+        return proxyResult.AsFunction();
+      }
+      catch
+      {
+        applyRegistration.Dispose();
+        throw;
+      }
     }
     catch
     {
-      registration.Dispose();
+      constructorRegistration.Dispose();
       throw;
     }
   }
@@ -59,12 +86,18 @@ public static class GeneratedSharedObjectClass
   )
   {
     var state = (ConstructorState)context;
-    if (!thisValue.IsObject)
-    {
-      throw new InvalidOperationException($"{state.Name} must be called with new.");
-    }
-
     return state.Callback(runtime, thisValue, arguments, state.CallbackState);
+  }
+
+  private static JavaScriptValue RejectApply(
+      JavaScriptRuntime runtime,
+      JavaScriptValueRef thisValue,
+      JavaScriptArguments arguments,
+      object context
+  )
+  {
+    var state = (ConstructorState)context;
+    throw new InvalidOperationException($"{state.Name} must be called with new.");
   }
 
   private sealed class ConstructorState(
