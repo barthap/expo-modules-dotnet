@@ -85,34 +85,31 @@ public sealed class JavaScriptPromiseTests
   {
     using var fixture = HermesRuntimeFixture.Create();
     fixture.ResetCounters();
-    fixture.PauseNextPromiseRegistration();
     var created = false;
-    var creation = Task.Run(() => fixture.Runtime.Execute(runtime =>
-    {
-      try
-      {
-        using var promise = runtime.CreatePromise();
-        created = true;
-      }
-      catch (InvalidOperationException)
-      {
-      }
-      return true;
-    }), TestContext.Current.CancellationToken);
-
+    Task? preparation = null;
+    Task creation = Task.CompletedTask;
+    fixture.PauseNextPromiseRegistration();
     try
     {
+      creation = Task.Run(() => fixture.Runtime.Execute(runtime =>
+      {
+        try { using var promise = runtime.CreatePromise(); created = true; }
+        catch (InvalidOperationException) { }
+        return true;
+      }), TestContext.Current.CancellationToken);
       fixture.WaitUntilPromiseRegistrationPaused();
-      var preparation = Task.Run(
+      preparation = Task.Run(
           fixture.PrepareRuntimeForInvalidation,
           TestContext.Current.CancellationToken
       );
+      fixture.WaitUntilRuntimeTaskQueued(JavaScriptTaskPriority.Immediate);
       fixture.ResumePromiseRegistration();
       await Task.WhenAll(creation, preparation);
     }
     finally
     {
       fixture.ResumePromiseRegistration();
+      await Task.WhenAll(creation, preparation ?? Task.CompletedTask);
     }
 
     Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);

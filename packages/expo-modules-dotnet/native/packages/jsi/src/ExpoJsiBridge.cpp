@@ -185,6 +185,11 @@ struct PromiseRegistrationGate {
   std::mutex mutex;
   std::condition_variable condition;
   expo_jsi_runtime_handle armedRuntime = nullptr;
+  expo_jsi_runtime_handle blockedRuntime = nullptr;
+  uint64_t nextAttempt = 0;
+  uint64_t armedAttempt = 0;
+  uint64_t blockedAttempt = 0;
+  uint64_t resumedAttempt = 0;
   bool blocked = false;
   bool resumed = false;
 };
@@ -198,11 +203,18 @@ void waitForPromiseRegistrationGate(expo_jsi_runtime_handle runtime)
   if (promiseRegistrationGate.armedRuntime != runtime) {
     return;
   }
+  const auto attempt = promiseRegistrationGate.armedAttempt;
   promiseRegistrationGate.armedRuntime = nullptr;
+  promiseRegistrationGate.blockedRuntime = runtime;
+  promiseRegistrationGate.blockedAttempt = attempt;
   promiseRegistrationGate.blocked = true;
   promiseRegistrationGate.condition.notify_all();
-  promiseRegistrationGate.condition.wait(lock, [] { return promiseRegistrationGate.resumed; });
+  promiseRegistrationGate.condition.wait(lock, [runtime, attempt] {
+    return promiseRegistrationGate.resumed && promiseRegistrationGate.blockedRuntime == runtime &&
+           promiseRegistrationGate.resumedAttempt == attempt;
+  });
   promiseRegistrationGate.blocked = false;
+  promiseRegistrationGate.blockedRuntime = nullptr;
   promiseRegistrationGate.resumed = false;
   promiseRegistrationGate.condition.notify_all();
 }
@@ -2003,7 +2015,7 @@ expo_jsi_native_state_result makeNativeStateNotFoundResult()
 expo_jsi_native_state_result makeNativeStateErrorResult(int32_t code, const char *message)
 {
   return expo_jsi_native_state_result{
-    1,
+    0,
     0,
     expo_jsi_native_state_token{0, 0, 0},
     makeError(code, message),
@@ -2789,7 +2801,10 @@ void failNextPromiseHandleAllocationForTesting() noexcept
 void pauseNextPromiseRegistrationForTesting(expo_jsi_runtime_handle runtime) noexcept
 {
   std::lock_guard<std::mutex> lock(promiseRegistrationGate.mutex);
+  if (promiseRegistrationGate.blocked)
+    return;
   promiseRegistrationGate.armedRuntime = runtime;
+  promiseRegistrationGate.armedAttempt = ++promiseRegistrationGate.nextAttempt;
   promiseRegistrationGate.blocked = false;
   promiseRegistrationGate.resumed = false;
 }
@@ -2798,16 +2813,18 @@ bool waitUntilPromiseRegistrationPausedForTesting(expo_jsi_runtime_handle runtim
 {
   std::unique_lock<std::mutex> lock(promiseRegistrationGate.mutex);
   promiseRegistrationGate.condition.wait(lock, [runtime] {
-    return promiseRegistrationGate.blocked || promiseRegistrationGate.armedRuntime != runtime;
+    return promiseRegistrationGate.blockedRuntime == runtime ||
+           promiseRegistrationGate.armedRuntime != runtime;
   });
-  return promiseRegistrationGate.blocked;
+  return promiseRegistrationGate.blocked && promiseRegistrationGate.blockedRuntime == runtime;
 }
 
 void resumePromiseRegistrationForTesting(expo_jsi_runtime_handle runtime) noexcept
 {
   std::lock_guard<std::mutex> lock(promiseRegistrationGate.mutex);
-  if (promiseRegistrationGate.blocked || promiseRegistrationGate.armedRuntime == runtime) {
+  if (promiseRegistrationGate.blockedRuntime == runtime) {
     promiseRegistrationGate.armedRuntime = nullptr;
+    promiseRegistrationGate.resumedAttempt = promiseRegistrationGate.blockedAttempt;
     promiseRegistrationGate.resumed = true;
     promiseRegistrationGate.condition.notify_all();
   }
