@@ -2,8 +2,7 @@
 
 ## Status
 
-Draft delta for Plan 017, awaiting operator approval before implementation
-planning.
+Approved by the operator on 2026-07-21 for implementation planning.
 
 ## Goal
 
