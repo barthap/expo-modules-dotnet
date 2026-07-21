@@ -25,10 +25,11 @@ fully before starting, honor its STOP conditions, and update your row when done.
 | 013 | camelCase JS naming defaults + `[JS]` property support (Expo Modules 2.0 alignment) | P2 | M | — | DONE — completed 2026-07-19; implicit lower-camel method/record names, direct accessor properties, diagnostics, and lifetime coverage landed. |
 | 014 | Typed `[Event]` partial-property members (Expo Modules 2.0 alignment) | P2 | M | 013 | DONE — generator suite, 449 managed tests, mobile and desktop typechecks, format, reflection/owned-wrapper scans, and documentation/privacy checks pass. |
 | 015 | Promise capability migration onto runtime-owned long-lived collection | P2 | M | — | TODO — retry queued from the revised plan at `6db8167c`; all four findings from the blocked attempt are now explicit requirements. |
-| 016 | NativeAOT CI lane (hermes-console-app, hostfxr + nativeaot matrix) | P1 | M | — | TODO |
+| 016 | NativeAOT publish check in CI (linux-x64 compile-time proof; end-to-end loader lane deferred) | P1 | S | — | TODO — re-scoped at `6db8167c` after the blocked Ubuntu attempt: publish-only AOT job now, console-app Linux/Windows ports split out as separate future plans. |
 | 017 | SharedObject public authoring surface | P2 | L | 015, 016 recommended first | TODO |
 | 018 | Windows RNW build/deploy reliability + ReactNativeDir resolver | P1/P2 | L | — (needs Windows machine) | TODO |
 | 019 | Typed `[Event]` members on shared objects | P2 | M | 017 | TODO |
+| 020 | hermes-console-app Linux port + end-to-end loader lane in CI (hostfxr + nativeaot) | P1 | M | 016 | TODO — planned 2026-07-21 at `6db8167c`; includes a `hermes-testhost.md` delta spec (runner pairing gains Linux). Windows NativeAOT port stays unplanned (needs the Windows machine). |
 
 Status values: TODO | IN PROGRESS | DONE | OPEN (follow-up) | BACKLOG (nice-to-have) | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -73,6 +74,20 @@ counter stay armed. Detail in `009-windows-testhost-teardown-crash.md`.
   post-sweep collection entry and retained runtime cycle. The retry plan now
   requires terminal collection registration, allocation rollback, observable
   promise-entry release/abandon counters, and non-swallowable reentrancy tests.
+- 016 was attempted without retaining a workflow diff. HostFXR and NativeAOT
+  both pass locally on macOS, but the planned Ubuntu job cannot run the
+  macOS-only console proof. `scripts/run-hermes-console-app.sh`, the native
+  loader, and CMake currently select `osx-*`, `.dylib`, and macOS HostFXR
+  assets. A separate Linux-portability plan must land before retrying the
+  CI-only lane.
+- 016 re-scoped 2026-07-21 at `6db8167c` (advisor review of the blocked
+  attempt): the plan now adds a `nativeaot-publish (linux-x64)` compile-time
+  job (no Hermes, no runtime), locally provable in Docker. The end-to-end
+  loader-matrix lane is gated on two unwritten follow-up plans: console-app
+  Linux port (Docker-provable) and Windows NativeAOT port (needs the
+  Windows machine). Review corrections: `run-hermes-console-app.ps1`
+  already existed at `ea07d69d` (hostfxr-only), and CMake has a full
+  Windows HostFXR branch — only Linux is missing.
 
 ### Reconcile notes (2026-07-09, at `56463734`)
 
@@ -95,6 +110,10 @@ counter stay armed. Detail in `009-windows-testhost-teardown-crash.md`.
 - Per the AGENTS.md "Maturity" rule (added 2026-07-20), plans ship complete
   polished features — no spikes, proofs, design-only milestones, or partial
   surfaces.
+- 020 requires 016: both edit `native-tests.yml`, and 020 rewrites the
+  gating comment 016 leaves near the matrix. Run 016 → 020. The
+  `nativeaot-publish` job stays after 020 lands (fast PR-time signal; the
+  `console-app` lane is the runtime proof).
 - 017 has no hard dependency but 015 should land first (both touch
   teardown-adjacent test surface; promises stop being the long-lived-state
   exception) and 016 should land first (the NativeAOT lane guards 017's new
