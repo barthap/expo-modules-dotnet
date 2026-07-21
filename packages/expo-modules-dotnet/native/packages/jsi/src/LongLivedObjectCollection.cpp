@@ -23,20 +23,6 @@ uint64_t LongLivedObjectCollection::add(std::shared_ptr<LongLivedObject> object)
   return id;
 }
 
-std::optional<uint64_t> LongLivedObjectCollection::tryAdd(std::shared_ptr<LongLivedObject> object)
-{
-  if (object == nullptr) {
-    throw std::invalid_argument("Long-lived object is null.");
-  }
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (terminal_) {
-    return std::nullopt;
-  }
-  const auto id = nextId_++;
-  entries_.emplace(id, Entry{std::move(object), LongLivedEntryState::Active});
-  return id;
-}
-
 void LongLivedObjectCollection::requestRelease(uint64_t id, JsiRuntimeExecutor &executor) noexcept
 {
   std::shared_ptr<RuntimeState> state;
@@ -110,7 +96,6 @@ void LongLivedObjectCollection::drainDeferredReleases(jsi::Runtime &runtime) noe
 void LongLivedObjectCollection::sweep(jsi::Runtime &runtime) noexcept
 {
   std::lock_guard<std::mutex> lock(mutex_);
-  terminal_ = true;
   for (auto it = entries_.begin(); it != entries_.end();) {
     if (it->second.state != LongLivedEntryState::Released &&
         it->second.state != LongLivedEntryState::Invalidated) {
@@ -128,7 +113,6 @@ void LongLivedObjectCollection::sweep(jsi::Runtime &runtime) noexcept
 void LongLivedObjectCollection::invalidateWithoutRuntime() noexcept
 {
   std::lock_guard<std::mutex> lock(mutex_);
-  terminal_ = true;
   for (auto &[id, entry] : entries_) {
     if (entry.state != LongLivedEntryState::Released &&
         entry.state != LongLivedEntryState::Invalidated) {

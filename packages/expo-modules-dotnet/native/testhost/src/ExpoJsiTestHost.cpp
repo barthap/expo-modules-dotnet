@@ -533,8 +533,6 @@ extern "C" expo_jsi_testhost_counters expo_jsi_testhost_get_counters(
     counters.long_lived_array_buffers_abandoned = longLived.arrayBuffersAbandoned;
     counters.long_lived_weak_objects_released = longLived.weakObjectsReleased;
     counters.long_lived_weak_objects_abandoned = longLived.weakObjectsAbandoned;
-    counters.long_lived_promises_released = longLived.promisesReleased;
-    counters.long_lived_promises_abandoned = longLived.promisesAbandoned;
     counters.long_lived_objects_remaining = longLived.remaining;
   }
   return counters;
@@ -695,43 +693,6 @@ extern "C" void expo_jsi_testhost_prepare_runtime_for_invalidation(
   }
 }
 
-extern "C" void expo_jsi_testhost_fail_next_promise_handle_allocation(
-  expo_jsi_testhost_runtime_handle testhostRuntime)
-{
-  if (testhostRuntime != nullptr) {
-    expo::dotnet::failNextPromiseHandleAllocationForTesting();
-  }
-}
-
-extern "C" void expo_jsi_testhost_pause_next_promise_registration(
-  expo_jsi_testhost_runtime_handle testhostRuntime)
-{
-  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
-  if (testhost != nullptr) {
-    expo::dotnet::pauseNextPromiseRegistrationForTesting(testhost->runtime);
-  }
-}
-
-extern "C" expo_jsi_error expo_jsi_testhost_wait_until_promise_registration_paused(
-  expo_jsi_testhost_runtime_handle testhostRuntime)
-{
-  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
-  if (testhost == nullptr ||
-      !expo::dotnet::waitUntilPromiseRegistrationPausedForTesting(testhost->runtime)) {
-    return makeError(21, "Promise registration did not pause.");
-  }
-  return makeOk();
-}
-
-extern "C" void expo_jsi_testhost_resume_promise_registration(
-  expo_jsi_testhost_runtime_handle testhostRuntime)
-{
-  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
-  if (testhost != nullptr) {
-    expo::dotnet::resumePromiseRegistrationForTesting(testhost->runtime);
-  }
-}
-
 extern "C" expo_jsi_error expo_jsi_testhost_validate_array_buffer_snapshot(
   expo_jsi_testhost_runtime_handle testhostRuntime,
   uint8_t detached,
@@ -767,8 +728,6 @@ extern "C" void expo_jsi_testhost_release_bridge_runtime_handle(
   testhost->counters.long_lived_array_buffers_abandoned = longLived.arrayBuffersAbandoned;
   testhost->counters.long_lived_weak_objects_released = longLived.weakObjectsReleased;
   testhost->counters.long_lived_weak_objects_abandoned = longLived.weakObjectsAbandoned;
-  testhost->counters.long_lived_promises_released = longLived.promisesReleased;
-  testhost->counters.long_lived_promises_abandoned = longLived.promisesAbandoned;
   testhost->counters.long_lived_objects_remaining = longLived.remaining;
   testhost->runtime = nullptr;
 }

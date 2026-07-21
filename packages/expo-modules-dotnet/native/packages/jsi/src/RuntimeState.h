@@ -37,11 +37,6 @@ public:
   uint32_t weakObjectsReleased() const noexcept;
   uint32_t weakObjectsAbandoned() const noexcept;
   void resetWeakObjectCounters() noexcept;
-  void notePromiseReleased() noexcept;
-  void notePromiseAbandoned() noexcept;
-  uint32_t promisesReleased() const noexcept;
-  uint32_t promisesAbandoned() const noexcept;
-  void resetPromiseCounters() noexcept;
   uint32_t longLivedObjectCount() const noexcept;
 
 private:
@@ -57,8 +52,6 @@ private:
   std::atomic<uint32_t> abandoned_{0};
   std::atomic<uint32_t> weakReleased_{0};
   std::atomic<uint32_t> weakAbandoned_{0};
-  std::atomic<uint32_t> promiseReleased_{0};
-  std::atomic<uint32_t> promiseAbandoned_{0};
 };
 
 } // namespace expo::dotnet

@@ -28,10 +28,6 @@ internal static unsafe class NativeTestHost
   private static delegate* unmanaged[Cdecl]<nint, void> poisonMutableBufferDispatch;
   private static delegate* unmanaged[Cdecl]<nint, byte, void> setSyncExecutionSupported;
   private static delegate* unmanaged[Cdecl]<nint, void> prepareRuntimeForInvalidation;
-  private static delegate* unmanaged[Cdecl]<nint, void> failNextPromiseHandleAllocation;
-  private static delegate* unmanaged[Cdecl]<nint, void> pauseNextPromiseRegistration;
-  private static delegate* unmanaged[Cdecl]<nint, ExpoJsiError> waitUntilPromiseRegistrationPaused;
-  private static delegate* unmanaged[Cdecl]<nint, void> resumePromiseRegistration;
   private static delegate* unmanaged[Cdecl]<nint, byte, int, int, ExpoJsiError>
       validateArrayBufferSnapshot;
   private static delegate* unmanaged[Cdecl]<nint, ulong, ExpoJsiError>
@@ -69,8 +65,6 @@ internal static unsafe class NativeTestHost
     public readonly uint LongLivedArrayBuffersAbandoned;
     public readonly uint LongLivedWeakObjectsReleased;
     public readonly uint LongLivedWeakObjectsAbandoned;
-    public readonly uint LongLivedPromisesReleased;
-    public readonly uint LongLivedPromisesAbandoned;
     public readonly uint LongLivedObjectsRemaining;
   }
 
@@ -233,36 +227,6 @@ internal static unsafe class NativeTestHost
     prepareRuntimeForInvalidation(testHostRuntime);
   }
 
-  internal static void FailNextPromiseHandleAllocation(nint testHostRuntime)
-  {
-    EnsureLoaded();
-    failNextPromiseHandleAllocation(testHostRuntime);
-  }
-
-  internal static void PauseNextPromiseRegistration(nint testHostRuntime)
-  {
-    EnsureLoaded();
-    pauseNextPromiseRegistration(testHostRuntime);
-  }
-
-  internal static bool WaitUntilPromiseRegistrationPaused(nint testHostRuntime)
-  {
-    EnsureLoaded();
-    var error = waitUntilPromiseRegistrationPaused(testHostRuntime);
-    if (error.Code != 0)
-    {
-      error.GetMessageAndRelease();
-      return false;
-    }
-    return true;
-  }
-
-  internal static void ResumePromiseRegistration(nint testHostRuntime)
-  {
-    EnsureLoaded();
-    resumePromiseRegistration(testHostRuntime);
-  }
-
   internal static void ValidateArrayBufferSnapshot(
       nint testHostRuntime,
       bool detached,
@@ -400,26 +364,6 @@ internal static unsafe class NativeTestHost
       (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
           library,
           "expo_jsi_testhost_prepare_runtime_for_invalidation"
-      );
-    failNextPromiseHandleAllocation =
-      (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
-          library,
-          "expo_jsi_testhost_fail_next_promise_handle_allocation"
-      );
-    pauseNextPromiseRegistration =
-      (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
-          library,
-          "expo_jsi_testhost_pause_next_promise_registration"
-      );
-    waitUntilPromiseRegistrationPaused =
-      (delegate* unmanaged[Cdecl]<nint, ExpoJsiError>)LoadExport(
-          library,
-          "expo_jsi_testhost_wait_until_promise_registration_paused"
-      );
-    resumePromiseRegistration =
-      (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
-          library,
-          "expo_jsi_testhost_resume_promise_registration"
       );
     validateArrayBufferSnapshot =
       (delegate* unmanaged[Cdecl]<nint, byte, int, int, ExpoJsiError>)LoadExport(
