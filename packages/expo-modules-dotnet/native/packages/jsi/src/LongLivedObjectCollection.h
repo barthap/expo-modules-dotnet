@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
 
 #include "JsiRuntimeConnector.h"
@@ -37,6 +38,7 @@ public:
 
   void setRuntimeState(std::weak_ptr<RuntimeState> state) noexcept;
   uint64_t add(std::shared_ptr<LongLivedObject> object);
+  std::optional<uint64_t> tryAdd(std::shared_ptr<LongLivedObject> object);
 
   void requestRelease(uint64_t id, JsiRuntimeExecutor &executor) noexcept;
   void completeRelease(uint64_t id, jsi::Runtime &runtime) noexcept;
@@ -59,6 +61,7 @@ private:
   std::weak_ptr<RuntimeState> state_;
   std::unordered_map<uint64_t, Entry> entries_;
   uint64_t nextId_ = 1;
+  bool terminal_ = false;
 };
 
 class ScheduledReleaseToken final {

@@ -6,6 +6,121 @@ namespace Expo.JSI.Tests.Runtime;
 public sealed class JavaScriptPromiseTests
 {
   [Fact]
+  public void UnresolvedPromiseIsRegisteredAndAbruptTeardownAbandonsItExactlyOnce()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+    var promise = fixture.Runtime.Execute(runtime => runtime.CreatePromise());
+
+    Assert.Equal(1u, fixture.Counters.LongLivedObjectsRemaining);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesAbandoned);
+
+    fixture.ReleaseBridgeRuntimeHandle();
+    Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesAbandoned);
+
+    promise.Dispose();
+    promise.Dispose();
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesAbandoned);
+  }
+
+  [Fact]
+  public void PromiseConstructorReenteringPreparationCannotRegisterAfterTerminalSweep()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      using var prepareRuntime = runtime.CreateHostFunction(
+          "prepareRuntime",
+          0,
+          (_, _, _, _) =>
+          {
+            var result = runtime.CreateUndefined();
+            fixture.PrepareRuntimeForInvalidation();
+            return result;
+          },
+          new object()
+      );
+      using var prepareRuntimeValue = prepareRuntime.AsValue();
+      global.SetProperty("prepareRuntime", prepareRuntimeValue);
+      using var replace = fixture.Evaluate(
+          "globalThis.Promise = function(executor) { prepareRuntime(); executor(() => {}, () => {}); return {}; }; undefined;",
+          "promise-reentrant-prepare.js"
+      );
+      Assert.Throws<InvalidOperationException>(() => runtime.CreatePromise());
+      return true;
+    });
+
+    Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesAbandoned);
+  }
+
+  [Fact]
+  public void PromiseHandleAllocationFailureRollsBackTheRegisteredEntry()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+    fixture.FailNextPromiseHandleAllocation();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      Assert.Throws<InvalidOperationException>(() => runtime.CreatePromise());
+      return true;
+    });
+
+    Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesAbandoned);
+  }
+
+  [Fact]
+  public async Task PromiseRegistrationRacingPreparationIsEitherRejectedOrSwept()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+    fixture.PauseNextPromiseRegistration();
+    var created = false;
+    var creation = Task.Run(() => fixture.Runtime.Execute(runtime =>
+    {
+      try
+      {
+        using var promise = runtime.CreatePromise();
+        created = true;
+      }
+      catch (InvalidOperationException)
+      {
+      }
+      return true;
+    }), TestContext.Current.CancellationToken);
+
+    try
+    {
+      fixture.WaitUntilPromiseRegistrationPaused();
+      var preparation = Task.Run(
+          fixture.PrepareRuntimeForInvalidation,
+          TestContext.Current.CancellationToken
+      );
+      fixture.ResumePromiseRegistration();
+      await Task.WhenAll(creation, preparation);
+    }
+    finally
+    {
+      fixture.ResumePromiseRegistration();
+    }
+
+    Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);
+    Assert.Equal(created ? 1u : 0u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesAbandoned);
+  }
+
+  [Fact]
   public void OwnedPromiseResultClaimsStateExactlyOnce()
   {
     using var fixture = HermesRuntimeFixture.Create();
