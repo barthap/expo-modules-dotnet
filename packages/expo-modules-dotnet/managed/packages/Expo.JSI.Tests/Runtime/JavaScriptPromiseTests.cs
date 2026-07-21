@@ -118,6 +118,43 @@ public sealed class JavaScriptPromiseTests
   }
 
   [Fact]
+  public async Task PromiseRegistrationGateCancelsWhenConstructionFailsBeforeRegistration()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.Runtime.Execute(_ =>
+    {
+      using var setup = fixture.Evaluate(
+          "globalThis.Promise = function() { throw new Error('before registration'); }; undefined;",
+          "promise-registration-pre-gate-failure.js"
+      );
+      return true;
+    });
+
+    fixture.PauseNextPromiseRegistration();
+    var waiter = Task.Run(
+        fixture.WaitUntilPromiseRegistrationPaused,
+        TestContext.Current.CancellationToken
+    );
+    var creation = Task.Run(() => fixture.Runtime.Execute(runtime =>
+    {
+      Assert.Throws<InvalidOperationException>(() => runtime.CreatePromise());
+      return true;
+    }), TestContext.Current.CancellationToken);
+
+    try
+    {
+      await creation;
+      fixture.ResumePromiseRegistration();
+      Assert.False(await waiter.WaitAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken));
+    }
+    finally
+    {
+      fixture.ResumePromiseRegistration();
+      await Task.WhenAll(creation, waiter);
+    }
+  }
+
+  [Fact]
   public void OwnedPromiseResultClaimsStateExactlyOnce()
   {
     using var fixture = HermesRuntimeFixture.Create();

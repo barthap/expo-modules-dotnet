@@ -2801,12 +2801,13 @@ void failNextPromiseHandleAllocationForTesting() noexcept
 void pauseNextPromiseRegistrationForTesting(expo_jsi_runtime_handle runtime) noexcept
 {
   std::lock_guard<std::mutex> lock(promiseRegistrationGate.mutex);
-  if (promiseRegistrationGate.blocked)
+  if (promiseRegistrationGate.blocked || promiseRegistrationGate.armedRuntime != nullptr)
     return;
   promiseRegistrationGate.armedRuntime = runtime;
   promiseRegistrationGate.armedAttempt = ++promiseRegistrationGate.nextAttempt;
   promiseRegistrationGate.blocked = false;
   promiseRegistrationGate.resumed = false;
+  promiseRegistrationGate.blockedRuntime = nullptr;
 }
 
 bool waitUntilPromiseRegistrationPausedForTesting(expo_jsi_runtime_handle runtime) noexcept
@@ -2822,7 +2823,11 @@ bool waitUntilPromiseRegistrationPausedForTesting(expo_jsi_runtime_handle runtim
 void resumePromiseRegistrationForTesting(expo_jsi_runtime_handle runtime) noexcept
 {
   std::lock_guard<std::mutex> lock(promiseRegistrationGate.mutex);
-  if (promiseRegistrationGate.blockedRuntime == runtime) {
+  if (promiseRegistrationGate.armedRuntime == runtime) {
+    promiseRegistrationGate.armedRuntime = nullptr;
+    promiseRegistrationGate.armedAttempt = 0;
+    promiseRegistrationGate.condition.notify_all();
+  } else if (promiseRegistrationGate.blockedRuntime == runtime) {
     promiseRegistrationGate.armedRuntime = nullptr;
     promiseRegistrationGate.resumedAttempt = promiseRegistrationGate.blockedAttempt;
     promiseRegistrationGate.resumed = true;

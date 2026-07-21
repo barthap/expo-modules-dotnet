@@ -245,14 +245,16 @@ internal static unsafe class NativeTestHost
     pauseNextPromiseRegistration(testHostRuntime);
   }
 
-  internal static void WaitUntilPromiseRegistrationPaused(nint testHostRuntime)
+  internal static bool WaitUntilPromiseRegistrationPaused(nint testHostRuntime)
   {
     EnsureLoaded();
     var error = waitUntilPromiseRegistrationPaused(testHostRuntime);
     if (error.Code != 0)
     {
-      ThrowNativeError(error, "Failed to observe paused Promise registration.");
+      error.GetMessageAndRelease();
+      return false;
     }
+    return true;
   }
 
   internal static void ResumePromiseRegistration(nint testHostRuntime)

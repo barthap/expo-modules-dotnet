@@ -131,7 +131,7 @@ public sealed unsafe class HermesRuntimeFixture : IDisposable
   public void PauseNextPromiseRegistration() =>
       NativeTestHost.PauseNextPromiseRegistration(testHostRuntime);
 
-  public void WaitUntilPromiseRegistrationPaused() =>
+  public bool WaitUntilPromiseRegistrationPaused() =>
       NativeTestHost.WaitUntilPromiseRegistrationPaused(testHostRuntime);
 
   public void ResumePromiseRegistration() =>
