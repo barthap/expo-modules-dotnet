@@ -8,6 +8,12 @@
 
 **Tech Stack:** C++20, Hermes JSI, C ABI opaque handles, .NET/C#, xUnit, native Hermes testhost.
 
+**Execution status (2026-07-21): BLOCKED.** The queued retry exhausted two
+review rounds and was fully rolled back at `17dbcc10`. Production ownership
+and gate behavior passed final review, but the registration-race test did not
+assert that `WaitUntilPromiseRegistrationPaused()` returned `true`, so the
+test could pass without exercising the required blocked-registration ordering.
+
 ## Global Constraints
 
 - Work on the current `development` branch from the reviewed baseline at commit `4e32d07d`; do not create a branch or worktree.

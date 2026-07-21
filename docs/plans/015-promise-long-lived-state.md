@@ -23,9 +23,11 @@
 - **Planned at**: commit `ea07d69d`, 2026-07-20
 - **Revised at**: commit `0e8060f8`, 2026-07-21 — anchors re-verified against
   live code, retry-review findings folded into steps 1/3/4, scope corrected
-- **Execution status**: READY for retry on 2026-07-21; the prior partial
-  implementation was fully rolled back and this revision incorporates the
-  complete retry-review lifecycle and race findings.
+- **Execution status**: BLOCKED on 2026-07-21 after the queued retry exhausted
+  two review rounds. The implementation was fully rolled back at `17dbcc10`.
+  Production ownership and gate behavior passed final review, but the final
+  registration-race test did not assert that its pause gate was reached, so it
+  could pass without exercising the required ordering.
 
 ## Retry-review findings (2026-07-21)
 
