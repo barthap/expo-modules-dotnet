@@ -8,7 +8,7 @@
 > they maintain the index.
 >
 > **Drift check (run first)**:
-> `git diff --stat ea07d69d..HEAD -- packages/expo-modules-dotnet/native/packages/jsi packages/expo-modules-dotnet/managed/packages/Expo.JSI packages/expo-modules-dotnet/managed/packages/Expo.JSI.Tests docs/specs/promises.md`
+> `git diff --stat 6db8167c..HEAD -- packages/expo-modules-dotnet/native/packages/jsi packages/expo-modules-dotnet/managed/packages/Expo.JSI packages/expo-modules-dotnet/managed/packages/Expo.JSI.Tests docs/specs/promises.md`
 > If any in-scope file changed since this plan was written, compare the
 > "Current state" excerpts against the live code before proceeding; on a
 > mismatch, treat it as a STOP condition.
@@ -21,13 +21,19 @@
 - **Depends on**: none
 - **Category**: tech-debt
 - **Planned at**: commit `ea07d69d`, 2026-07-20
-- **Execution status**: BLOCKED on 2026-07-21 after two review rounds; partial
-  implementation fully rolled back
+- **Revised at**: commit `6db8167c`, 2026-07-21 — anchors re-verified against
+  live code, blocked findings folded into steps 1/3/4, scope corrected
+- **Execution status**: READY for retry on 2026-07-21; the prior partial
+  implementation was fully rolled back and this revision incorporates all
+  four blocking review findings.
 
 ## Blocked execution findings (2026-07-21)
 
-Retry only after incorporating all of these requirements; do not reuse the
-rolled-back partial implementation as an assumed-good baseline:
+These are the review-round requirements that blocked the first attempt. All
+four are verified real against live code. Steps 1, 3 and 4 below now
+incorporate them — this section is the record, the steps are the instructions.
+Do not reuse the rolled-back partial implementation as an assumed-good
+baseline:
 
 1. `global.Promise` construction can execute arbitrary JavaScript before the
    capability entry is registered. If that code re-enters runtime teardown,
@@ -64,32 +70,59 @@ Settlement scheduling semantics must NOT change.
 
 ## Current state
 
-(Line numbers at `ea07d69d`.)
+(Line numbers verified at `6db8167c`.)
 
-- `packages/expo-modules-dotnet/native/packages/jsi/src/RuntimeState.h`
-  - `:116-161` — `PromiseHandle`: static `owned(jsi::Object promise, ...)`
-    factory returning `std::unique_ptr<PromiseHandle>`; members
-    `std::unique_ptr<jsi::Object> promise_` plus resolve/reject
-    `jsi::Function`s. It is NOT a `LongLivedObject`.
 - `packages/expo-modules-dotnet/native/packages/jsi/src/ExpoJsiBridge.cpp`
+  - `:114-166` — `PromiseHandle`: static `owned(jsi::Object promise, ...)`
+    factory returning `std::unique_ptr<PromiseHandle>`; members
+    `std::unique_ptr<jsi::Object> promise_`, resolve/reject
+    `std::optional<jsi::Function>`s, and a `settled_` bool. It is NOT a
+    `LongLivedObject`. NOTE: it lives in `ExpoJsiBridge.cpp`, not
+    `RuntimeState.h` — an earlier revision of this plan cited the wrong file.
   - `:613-619` — `makePromiseResult(std::unique_ptr<PromiseHandle> promise)`
     returns `expo_jsi_promise_result{..., promise.release(), ...}` — raw
     ownership crosses the ABI with no runtime-side registration.
   - `:1719+` — `createPromise(expo_jsi_runtime_handle runtime)` constructs the
-    JS `Promise`, captures resolve/reject, wraps in `PromiseHandle::owned`.
+    JS `Promise` via `jsRuntime.global().getPropertyAsFunction(jsRuntime,
+    "Promise")` + `callAsConstructor` — this executes user-replaceable JS
+    (blocked finding 1) — captures resolve/reject, wraps in
+    `PromiseHandle::owned`.
+  - `:2602-2604` — `releasePromise(expo_jsi_runtime_handle, ...)` is a raw
+    `delete promise;` — synchronous, thread-agnostic, and it ignores the
+    runtime handle entirely. After the migration, release routes through the
+    collection's `requestRelease` → `executor.executeAsync` path and becomes
+    DEFERRED. This is an intended observable change; see steps 3 and 4.
+  - `:2761+` — implementations of the test hooks declared in
+    `ExpoJsiBridgeTestHooks.h`. There is no `ExpoJsiBridgeTestHooks.cpp`;
+    counter implementations go here.
 - The pattern to follow —
   `packages/expo-modules-dotnet/native/packages/jsi/src/WeakObjectHandles.h`:
-  - `:13` — `class WeakObjectEntry final : public LongLivedObject`
+  - `:13` — `class WeakObjectEntry final : public LongLivedObject` with
+    `std::atomic<bool> terminal_` guarding exactly-once release/abandon.
   - `:93` — `auto entryId = state->longLivedObjects().add(entry);`
-  - `:68` — release path calls `state_->releaseLongLivedObject(entryId_)`.
+  - `:68` — `WeakObjectHandle` destructor calls
+    `state_->releaseLongLivedObject(entryId_)`; the ABI handle is a wrapper
+    `{shared_ptr<RuntimeState>, shared_ptr<WeakObjectEntry>, entryId}`, NOT
+    the entry itself.
   `ArrayBufferHandles.h:65` (`ArrayBufferEntry`) is the second exemplar.
 - `packages/expo-modules-dotnet/native/packages/jsi/src/LongLivedObjectCollection.{h,cpp}`
-  — the runtime-owned collection itself.
+  — the runtime-owned collection. `add()`
+  (`LongLivedObjectCollection.cpp:10-19`) only null-checks; it has NO terminal
+  state — after `sweep` or `invalidateWithoutRuntime` erase the entries, a
+  later `add()` still succeeds silently and the new entry is never drained.
+  This is the gap behind blocked finding 1.
+- `packages/expo-modules-dotnet/native/packages/jsi/src/RuntimeState.{h,cpp}`
+  — owns the collection; holds the per-kind counters
+  (`noteWeakObjectReleased`/`noteWeakObjectAbandoned`,
+  `noteArrayBufferReleased`/`noteArrayBufferAbandoned`, matching getters and
+  resets). Promise counters follow this exact pattern.
 - `packages/expo-modules-dotnet/native/packages/jsi/src/ExpoJsiBridgeTestHooks.h`
-  - `:11-25` — `RuntimeLongLivedCounters`, `getRuntimeLongLivedCounters`,
+  - `:11-26` — `RuntimeLongLivedCounters` (fields `arrayBuffersReleased`,
+    `arrayBuffersAbandoned`, `weakObjectsReleased`, `weakObjectsAbandoned`,
+    `remaining`), `getRuntimeLongLivedCounters`,
     `resetRuntimeLongLivedCounters`,
-    `releaseRuntimeHandleAndGetLongLivedCounters` — test hooks used by managed
-    leak-accounting tests; extend these for promise entries.
+    `releaseRuntimeHandleAndGetLongLivedCounters` — extend the struct and all
+    three functions with promise-entry counters.
 - Managed side:
   - `packages/expo-modules-dotnet/managed/packages/Expo.JSI/JavaScriptPromise.cs`
     — sealed disposable wrapper; `Dispose()` releases the native capability;
@@ -135,10 +168,12 @@ Repo conventions that apply:
 
 **In scope** (the only files you should modify or create):
 
-- `packages/expo-modules-dotnet/native/packages/jsi/src/` — `RuntimeState.h`,
-  `ExpoJsiBridge.cpp`, `LongLivedObjectCollection.{h,cpp}` (if a new entry
-  kind needs it), `ExpoJsiBridgeTestHooks.h` (+ its .cpp if counters grow),
-  new `PromiseHandles.h` if you mirror the ArrayBuffer/WeakObject file split
+- `packages/expo-modules-dotnet/native/packages/jsi/src/` —
+  `RuntimeState.{h,cpp}` (promise counters), `ExpoJsiBridge.cpp`,
+  `LongLivedObjectCollection.{h,cpp}` (terminal flag + `tryAdd`, step 3),
+  `ExpoJsiBridgeTestHooks.h` (counter struct; implementations live in
+  `ExpoJsiBridge.cpp` — there is no separate test-hooks .cpp), new
+  `PromiseHandles.h` if you mirror the ArrayBuffer/WeakObject file split
 - `packages/expo-modules-dotnet/managed/packages/Expo.JSI/` — only if the
   managed wrapper needs an internal change; the public `JavaScriptPromise`
   API surface must not change
@@ -159,7 +194,10 @@ Repo conventions that apply:
 - `JavaScriptPromiseScheduler` settlement scheduling / disposal ordering —
   the plan-009 fix. Behavior stays identical.
 - `Expo.ModulesCore` generated promise bindings — they sit above this layer.
-- ArrayBuffer and WeakObject entries — pattern sources only.
+- ArrayBuffer and WeakObject entries — pattern sources only. In particular,
+  `WeakObjectHandles.h:93` and `ArrayBufferHandles.h` call the existing
+  `add()` and do not handle registration failure; do NOT change `add()`'s
+  contract for them (step 3 adds a separate failable `tryAdd` instead).
 
 ## Git workflow
 
@@ -182,6 +220,18 @@ GIVEN/WHEN/THEN SHALL style of `docs/specs/promises.md`, covering:
    SHALL not double-free (settlement/teardown race).
 4. Settlement scheduling and the scheduled-callback disposal ordering SHALL
    be unchanged.
+5. Registration SHALL fail once the collection is terminal (post-sweep or
+   post-invalidation); `createPromise` SHALL then fail with zero remaining
+   entries, including when a user-replaced `Promise` constructor re-enters
+   runtime teardown during creation (blocked findings 1 and 4).
+6. A failed or throwing registration/handle allocation SHALL roll back
+   without retaining an entry-to-runtime reference cycle (blocked finding 1).
+7. Resolver calls SHALL run without holding an entry lock; synchronous
+   re-entry from a thenable getter SHALL not deadlock or corrupt entry state
+   (blocked finding 2).
+8. Promise-entry release and abandonment SHALL be observable through
+   dedicated counters, distinguishing on-runtime release from abandonment,
+   with the terminal action occurring exactly once (blocked finding 3).
 
 Present to the operator for approval before implementing.
 **Verify**: spec committed; operator approved.
@@ -193,17 +243,56 @@ Write `docs/changes/<same-folder>/plan.md` mapping steps 3–5 to commits.
 
 ### Step 3: Native migration
 
-Make the promise capability a long-lived entry following `WeakObjectEntry`:
-an entry class deriving `LongLivedObject` holding the promise object and
-resolve/reject functions; `createPromise` adds it via
-`state->longLivedObjects().add(...)`; the ABI handle becomes/wraps the entry
-id or entry pointer consistent with how ArrayBuffer/WeakObject handles work.
-Settle and release paths remove the entry (idempotent). Extend
-`RuntimeLongLivedCounters` with promise-entry counters and expose them through
-the native testhost and managed fixtures. Make collection registration reject
-post-sweep/post-invalidation additions, and roll registration back if handle
-allocation fails. Do not hold an entry lock across a resolver call because
-thenable resolution can synchronously re-enter managed code.
+Target shape, mirroring the weak-object split:
+
+1. **Entry**: a `PromiseEntry final : public LongLivedObject` holding the
+   promise `jsi::Object` and resolve/reject `jsi::Function`s, with an
+   `std::atomic<bool> terminal_` guarding exactly-once release/abandon like
+   `WeakObjectEntry` (`WeakObjectHandles.h:13`). `release(runtime)` destroys
+   the JSI state on the runtime path and calls the new
+   `RuntimeState::notePromiseReleased()`; `abandon()` drops it without
+   touching the runtime and calls `notePromiseAbandoned()`.
+2. **ABI handle**: `expo_jsi_promise_t` becomes a wrapper
+   `{shared_ptr<RuntimeState>, shared_ptr<PromiseEntry>, entryId}` like
+   `WeakObjectHandle` (`WeakObjectHandles.h:55-85`). The opaque pointer
+   typedef in `expo_jsi.h` (`native/include/expo_jsi.h:28`) is unchanged —
+   no ABI signature changes are needed. `releasePromise` still deletes the
+   wrapper; the wrapper destructor calls
+   `state_->releaseLongLivedObject(entryId_)`, which is a no-op if the entry
+   was already removed by settle or teardown.
+3. **Failable registration**: add a terminal flag to
+   `LongLivedObjectCollection`, set inside `sweep` and
+   `invalidateWithoutRuntime` (under `mutex_`), and a new failable
+   `tryAdd(std::shared_ptr<LongLivedObject>)` that returns 0 (or
+   `std::nullopt`) once terminal. Only the promise path uses `tryAdd`. Do NOT
+   change the existing `add()` contract — `WeakObjectHandles.h:93` and
+   `ArrayBufferHandles.h` call it unchecked and are out of scope.
+4. **Registration ordering in `createPromise`** (`ExpoJsiBridge.cpp:1719+`):
+   the `global.Promise` lookup + `callAsConstructor` run user-replaceable JS
+   that can re-enter teardown, so register the entry AFTER the constructor
+   returns, via `tryAdd`; if `tryAdd` fails or wrapper allocation throws,
+   destroy the entry immediately (it holds a `shared_ptr<RuntimeState>` — a
+   leaked entry is a permanent cycle) and return a promise error result.
+5. **Settle**: resolve/reject paths remove the entry on the runtime path
+   after the resolver call returns. Do not hold any entry lock across the
+   `resolve_->call(...)` — a thenable getter can synchronously re-enter the
+   same capability; use the `terminal_` atomic exchange pattern for
+   exactly-once, not a mutex around the call.
+6. **Counters**: extend `RuntimeLongLivedCounters`
+   (`ExpoJsiBridgeTestHooks.h:11-26`) with `promisesReleased` /
+   `promisesAbandoned`, backed by `RuntimeState` counters following the
+   weak-object pattern, and wire them through `getRuntimeLongLivedCounters`,
+   `resetRuntimeLongLivedCounters`,
+   `releaseRuntimeHandleAndGetLongLivedCounters` (`ExpoJsiBridge.cpp:2761+`),
+   the native testhost, and both managed `NativeTestHost.cs` fixtures.
+
+Known observable change: entry release triggered by `Dispose()` is now
+deferred (`requestRelease` → `executor.executeAsync`), where the old
+`releasePromise` freed synchronously. Do NOT "fix" this by destroying JSI
+state synchronously off the runtime path — that reintroduces the bug family
+this plan removes. Tests observe final counts via
+`releaseRuntimeHandleAndGetLongLivedCounters` or after a drain, not
+immediately after dispose.
 
 **Verify**: `scripts/test-managed.sh` → exit 0 (existing promise tests pass
 unchanged).
@@ -212,7 +301,8 @@ unchanged).
 
 In `Expo.JSI.Tests`, model after the existing weak-object/ArrayBuffer counter
 tests (see `Runtime/JavaScriptWeakObjectTests.cs` and
-`Runtime/JavaScriptArrayBufferTests.cs`): unresolved promise released at
+`Runtime/JavaScriptArrayBufferTests.cs`; existing promise coverage lives in
+`Runtime/JavaScriptPromiseTests.cs`): unresolved promise released at
 runtime teardown (counter returns to baseline); settled promise removes its
 entry; double dispose is a no-op; async settlement still disposes inside the
 scheduled callback (existing scheduler tests keep passing). Add constructor
@@ -221,6 +311,11 @@ constructor and asserts failed creation leaves no entry. Add thenable
 re-entry coverage whose callback records outcomes for assertions after the
 outer resolution, rather than throwing assertions that Promise resolution can
 convert into rejection.
+
+Counter assertions: entry release after `Dispose()` is deferred to the
+runtime executor (see step 3), so assert final counts via
+`releaseRuntimeHandleAndGetLongLivedCounters` (or after a drain), never
+immediately after dispose.
 
 **Verify**: `scripts/test-managed.sh` → exit 0 including the new tests.
 
@@ -260,8 +355,13 @@ Machine-checkable. ALL must hold:
 
 Stop and report back (do not improvise) if:
 
-- The migration requires changing any `expo_jsi.h` ABI signature or adding
-  ABI entries.
+- The migration requires changing any `expo_jsi.h`
+  (`packages/expo-modules-dotnet/native/include/expo_jsi.h`) ABI signature or
+  adding ABI entries. (Wrapping the opaque `expo_jsi_promise_t` contents is
+  not an ABI change — see step 3.)
+- Meeting blocked finding 1 appears to require changing the existing `add()`
+  semantics for the weak-object/ArrayBuffer callers instead of adding the
+  separate `tryAdd` from step 3.
 - Preserving the scheduled-callback disposal ordering (plan-009 fix) is
   impossible with collection-owned entries.
 - Existing promise or scheduler tests fail after the migration and the fix
