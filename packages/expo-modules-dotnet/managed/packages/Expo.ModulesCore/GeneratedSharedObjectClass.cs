@@ -63,6 +63,13 @@ public static class GeneratedSharedObjectClass
         using var proxyValue = global.GetProperty("Proxy");
         using var proxy = proxyValue.AsFunction();
         using var proxyResult = proxy.CallAsConstructor(constructorTarget, handler);
+        using var proxyFunction = proxyResult.AsFunction();
+        using var proxyFunctionValue = proxyFunction.AsValue();
+        using var proxyFunctionObject = proxyFunctionValue.AsObject();
+        using var prototypeValue = proxyFunctionObject.GetProperty("prototype");
+        using var prototype = prototypeValue.AsObject();
+        using var constructorValue = proxyFunction.AsValue();
+        prototype.SetProperty("constructor", constructorValue);
         return proxyResult.AsFunction();
       }
       catch

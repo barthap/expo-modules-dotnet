@@ -79,9 +79,11 @@ public sealed class GeneratedSharedObjectInfrastructureTests
       SetGlobalConstructor(runtime, constructor);
 
       using var result = fixture.Evaluate(
-          "const value = new globalThis.__generatedSharedObject(); " +
-          "Object.getPrototypeOf(value) === globalThis.__generatedSharedObject.prototype && " +
-          "value instanceof globalThis.__generatedSharedObject",
+          "const Constructor = globalThis.__generatedSharedObject; " +
+          "const value = new Constructor(); " +
+          "Object.getPrototypeOf(value) === Constructor.prototype && " +
+          "value instanceof Constructor && " +
+          "Constructor.prototype.constructor === Constructor",
           "generated-shared-object-constructor-prototype.js"
       );
 
@@ -113,11 +115,12 @@ public sealed class GeneratedSharedObjectInfrastructureTests
           "const propertyCall = (() => { try { ({ Constructor }).Constructor(); return 'no error'; } catch (error) { return error.message; } })(); " +
           "const explicitReceiverCall = (() => { try { Constructor.call({}); return 'no error'; } catch (error) { return error.message; } })(); " +
           "const reflectApply = (() => { try { Reflect.apply(Constructor, {}, []); return 'no error'; } catch (error) { return error.message; } })(); " +
-          "[propertyCall.includes('new'), explicitReceiverCall.includes('new'), reflectApply.includes('new')].join(':')",
+          "const backReferenceCall = (() => { try { Constructor.prototype.constructor.call({}); return 'no error'; } catch (error) { return error.message; } })(); " +
+          "[propertyCall.includes('new'), explicitReceiverCall.includes('new'), reflectApply.includes('new'), backReferenceCall.includes('new')].join(':')",
           "generated-shared-object-constructor-call.js"
       );
 
-      Assert.Equal("true:true:true", result.AsString());
+      Assert.Equal("true:true:true:true", result.AsString());
       Assert.False(state.WasCalled);
       return true;
     });
