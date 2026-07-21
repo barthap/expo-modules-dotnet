@@ -1,101 +1,61 @@
-# Promises
+# Promise Long-Lived Capability State Delta Spec
 
-## Purpose
+## Goal
 
-Specify the low-level promise capability and promise value wrappers exposed by
-`Expo.JSI`.
+Move native Promise capability state into the runtime-owned long-lived object
+collection so capabilities remain teardown-tracked until disposal or runtime
+teardown, while preserving the existing managed Promise API and settlement
+scheduling behavior.
 
-## Requirements
+This delta extends `docs/specs/promises.md`.
 
-### Requirement: Promise Capability
+## Scope
 
-`JavaScriptRuntime.CreatePromise` SHALL create a native promise capability and
-return a managed `JavaScriptPromise` wrapper.
+This change covers native Promise capability storage, terminal registration,
+settlement state, exactly-once lifetime cleanup, managed handle leasing,
+teardown races, and testhost accounting. It does not change the public managed
+Promise API, generated module bindings, or the scheduling and disposal ordering
+of asynchronous Promise settlement.
 
-#### Scenario: Promise is converted to value
-- **GIVEN** managed code has a `JavaScriptPromise`
-- **WHEN** it calls `AsValue`
-- **THEN** it SHALL receive a `JavaScriptPromiseValue` owning the JavaScript
-  promise value
+The existing `expo_jsi.h` Promise entry signatures remain unchanged. The
+opaque Promise handle may change its internal representation, but raw JSI
+layouts SHALL NOT cross the C ABI.
 
-#### Scenario: Promise capability is disposed
-- **GIVEN** managed code owns a `JavaScriptPromise`
-- **WHEN** it disposes the wrapper before settlement
-- **THEN** native SHALL release the promise capability handle
+## Accepted Design
 
-### Requirement: Promise Settlement
+- A runtime-owned `PromiseEntry` holds the Promise object and resolver
+  functions as a `LongLivedObject`. The opaque Promise handle refers to a
+  wrapper that coordinates the entry, its runtime state, and its collection
+  identifier.
+- Settlement and lifetime termination use separate states. Successful
+  settlement without pending cleanup clears the resolver functions but
+  retains the Promise object and collection entry until opaque-handle disposal
+  or runtime teardown. An atomic lifetime-terminal transition coordinates
+  release and abandonment.
+- Promise construction completes before registration because the
+  user-replaceable JavaScript `Promise` constructor may execute arbitrary code.
+  Registration uses a new failable `tryAdd` operation after that constructor
+  returns.
+- The collection becomes terminal when it is swept or invalidated without a
+  runtime. `tryAdd` rejects later Promise entries. The existing `add()`
+  contract and its current callers remain unchanged.
+- Settlement transitions from Active to Settling before invoking a resolver.
+  No Promise-entry mutex is held while JavaScript resolver code runs. Resolver
+  failure restores Active when no lifetime cleanup is pending; otherwise the
+  pending cleanup completes after the resolver call unwinds.
+- `JavaScriptPromise` internally leases its native handle for `AsValue`,
+  `Resolve`, and `Reject`. Disposal rejects new leases and releases the native
+  handle immediately or after the last in-flight call exits, without blocking
+  reentrant disposal.
+- Disposing a Promise always forwards native handle release. Native release
+  requests collection removal through `RuntimeState` and its executor instead
+  of destroying JSI state synchronously from an arbitrary managed thread.
+- Dedicated release and abandonment counters expose Promise-entry terminal
+  outcomes through the native testhost and both managed test fixtures. A
+  separate testhost observation records release calls made without current
+  connector runtime access.
 
-Promise settlement SHALL happen through explicit resolve or reject operations
-using owned JavaScript values.
-
-#### Scenario: Promise resolves
-- **GIVEN** managed code has a promise capability and a settlement value
-- **WHEN** it calls resolve
-- **THEN** native SHALL resolve the JavaScript promise with that value
-
-#### Scenario: Promise rejects
-- **GIVEN** managed code has a promise capability and an error value
-- **WHEN** it calls reject
-- **THEN** native SHALL reject the JavaScript promise with that value
-
-### Requirement: Async Managed Promise Helper
-
-`JavaScriptRuntime.CreatePromise(Func<CancellationToken,
-Task<JavaScriptPromiseResult>>)` SHALL create a JavaScript promise value backed
-by an asynchronous managed operation, preserving its settlement scheduling and
-scheduled-callback disposal ordering as native capability storage moves into
-the runtime-owned long-lived collection.
-
-#### Scenario: Async operation resolves
-- **GIVEN** the managed operation returns a resolve result
-- **WHEN** the operation completes
-- **THEN** the scheduler SHALL settle the native promise on the runtime path
-
-#### Scenario: Async operation throws
-- **GIVEN** the managed operation throws
-- **WHEN** the scheduler observes the failure
-- **THEN** the JavaScript promise SHALL reject with an error value
-
-#### Scenario: Async promise capability is released
-- **GIVEN** an asynchronous managed operation created a native promise
-  capability
-- **WHEN** the operation settles or rejects that promise
-- **THEN** the scheduler SHALL release the native promise capability during the
-  same runtime access path
-- **AND** it SHALL NOT release the capability from an arbitrary managed
-  continuation thread
-
-#### Scenario: Scheduled settlement work is dropped
-- **GIVEN** asynchronous Promise settlement owns a result state and a native
-  Promise capability
-- **WHEN** its queued runtime callable is destroyed without invocation
-- **THEN** the existing claim-or-abandon behavior for the owned result SHALL
-  remain unchanged
-- **AND** the Promise capability entry SHALL still reach one terminal release
-  or abandonment through runtime teardown
-
-### Requirement: Promise Detection
-
-`JavaScriptValue` SHALL expose promise detection before wrapping a value as a
-promise value.
-
-#### Scenario: Non-promise is wrapped
-- **GIVEN** a `JavaScriptValue` is not a JavaScript Promise
-- **WHEN** managed code calls `AsPromiseValue`
-- **THEN** managed code SHALL throw `InvalidOperationException`
-
-### Requirement: Promise Settlement Can Abandon Owned Results
-
-Promise settlement results that own managed state SHALL use a claim-or-abandon
-guard. Successful runtime settlement claims the state exactly once; every
-other scheduler exit, including dropped settlement work, SHALL abandon it
-exactly once.
-
-#### Scenario: Settlement work is dropped
-- **GIVEN** an owned promise result is queued for runtime settlement
-- **WHEN** the queued callable is destroyed without invocation
-- **THEN** the result state SHALL be abandoned exactly once
-- **AND** no managed continuation SHALL release it a second time
+## ADDED Requirements
 
 ### Requirement: Runtime-Owned Promise Capability State
 
@@ -109,6 +69,7 @@ exposing a raw JSI object or changing an existing `expo_jsi.h` Promise entry
 signature.
 
 #### Scenario: Promise capability is registered
+
 - **GIVEN** the JavaScript `Promise` constructor completes while the runtime's
   long-lived collection remains active
 - **WHEN** native Promise capability creation succeeds
@@ -117,6 +78,7 @@ signature.
 - **AND** the returned opaque handle SHALL refer to that registered entry
 
 #### Scenario: Settled capability remains registered
+
 - **GIVEN** a registered Promise capability resolves or rejects successfully
 - **WHEN** managed code retains the capability without disposing it
 - **THEN** its Promise entry SHALL remain in the runtime-owned collection
@@ -124,6 +86,7 @@ signature.
 - **AND** the remaining-entry count SHALL continue to include that entry
 
 #### Scenario: Capability reaches runtime teardown
+
 - **GIVEN** a settled or unresolved Promise capability remains undisposed
 - **WHEN** runtime teardown drains the long-lived object collection while JSI
   access remains available
@@ -131,6 +94,7 @@ signature.
 - **AND** the capability SHALL NOT retain JSI state beyond that teardown
 
 #### Scenario: Runtime is invalidated without JSI access
+
 - **GIVEN** a Promise capability remains registered
 - **WHEN** the long-lived collection is invalidated without runtime access
 - **THEN** the collection SHALL abandon the Promise entry without accessing
@@ -148,6 +112,7 @@ The existing `add()` operation and the behavior of its existing ArrayBuffer
 and weak-object callers SHALL remain unchanged.
 
 #### Scenario: User Promise constructor triggers coordinated preparation
+
 - **GIVEN** a user-replaced JavaScript `Promise` constructor re-enters the
   bridge's coordinated `PrepareRuntimeForInvalidation` path during Promise
   creation
@@ -162,6 +127,7 @@ and weak-object callers SHALL remain unchanged.
 - **AND** no entry-to-runtime reference cycle SHALL remain
 
 #### Scenario: Registration or opaque-handle allocation fails
+
 - **GIVEN** the JavaScript Promise object and resolver functions have been
   captured
 - **WHEN** registration fails or registration or opaque-handle allocation
@@ -172,6 +138,7 @@ and weak-object callers SHALL remain unchanged.
 - **AND** no entry-to-runtime reference cycle SHALL remain
 
 #### Scenario: Registration races with collection termination
+
 - **GIVEN** Promise creation and collection termination proceed concurrently
 - **WHEN** registration and the terminal transition contend for the collection
   lock
@@ -192,6 +159,7 @@ and reject functions, retain the Promise object, transition settlement state
 to Settled, and leave the entry registered until disposal or runtime teardown.
 
 #### Scenario: Promise settles successfully
+
 - **GIVEN** a registered Promise capability in Active settlement state
 - **WHEN** native code resolves or rejects it on the runtime path
 - **THEN** the entry SHALL transition to Settling before calling the selected
@@ -203,6 +171,7 @@ to Settled, and leave the entry registered until disposal or runtime teardown.
   disposal or runtime teardown
 
 #### Scenario: Thenable getter re-enters settlement
+
 - **GIVEN** a Promise is resolved with a thenable whose getter synchronously
   re-enters the same capability
 - **WHEN** the reentrant call observes Settling state
@@ -212,6 +181,7 @@ to Settled, and leave the entry registered until disposal or runtime teardown.
   settlement transition
 
 #### Scenario: Resolver throws without pending cleanup
+
 - **GIVEN** a Promise entry transitions from Active to Settling
 - **WHEN** its JavaScript resolver throws and no release or abandonment is
   pending
@@ -221,6 +191,7 @@ to Settled, and leave the entry registered until disposal or runtime teardown.
 - **AND** a later settlement attempt SHALL be allowed to retry
 
 #### Scenario: Resolver throws with pending cleanup
+
 - **GIVEN** a resolver is executing in Settling state
 - **WHEN** release or abandonment becomes pending and the resolver then throws
 - **THEN** JSI state SHALL remain intact until the resolver call unwinds
@@ -230,6 +201,7 @@ to Settled, and leave the entry registered until disposal or runtime teardown.
   semantics
 
 #### Scenario: Re-entry behavior is verified
+
 - **GIVEN** Promise resolution may convert a JavaScript callback exception
   into Promise rejection
 - **WHEN** a test exercises synchronous thenable re-entry
@@ -250,6 +222,7 @@ release exactly once, either immediately when no lease is active or after the
 last in-flight lease exits.
 
 #### Scenario: Dispose races with an in-flight call
+
 - **GIVEN** `AsValue`, `Resolve`, or `Reject` holds a native-handle lease
 - **WHEN** another thread disposes the same `JavaScriptPromise`
 - **THEN** disposal SHALL reject subsequent lease attempts
@@ -258,6 +231,7 @@ last in-flight lease exits.
 - **AND** the in-flight native call SHALL NOT observe a released handle
 
 #### Scenario: Dispose re-enters from resolver execution
+
 - **GIVEN** `Resolve` or `Reject` holds a lease while its JavaScript resolver
   executes
 - **WHEN** resolver code synchronously disposes the same managed Promise
@@ -266,6 +240,7 @@ last in-flight lease exits.
 - **AND** the last lease exit SHALL forward native handle release exactly once
 
 #### Scenario: Operation starts after disposal
+
 - **GIVEN** a `JavaScriptPromise` has rejected new handle leases for disposal
 - **WHEN** managed code calls `AsValue`, `Resolve`, or `Reject`
 - **THEN** the operation SHALL fail through the existing disposed-wrapper
@@ -280,6 +255,7 @@ terminal source SHALL remove or abandon the entry and account for its outcome;
 later release sources SHALL be no-ops.
 
 #### Scenario: Promise is disposed before or after settlement
+
 - **GIVEN** a registered Promise capability in Active or Settled state
 - **WHEN** managed code disposes its wrapper and no resolver call is active
 - **THEN** native code SHALL request entry removal through `RuntimeState` and
@@ -289,6 +265,7 @@ later release sources SHALL be no-ops.
   managed thread
 
 #### Scenario: Teardown begins during resolver execution
+
 - **GIVEN** a Promise entry is in Settling state
 - **WHEN** runtime release or abandonment reaches it
 - **THEN** lifetime cleanup SHALL become pending
@@ -298,12 +275,14 @@ later release sources SHALL be no-ops.
   terminate the entry exactly once outside entry locks
 
 #### Scenario: Promise is disposed more than once
+
 - **GIVEN** a Promise capability has already reached a lifetime-terminal state
 - **WHEN** the managed wrapper is disposed again or disposed after teardown
 - **THEN** the later release SHALL be a no-op
 - **AND** the entry SHALL NOT be freed or counted twice
 
 #### Scenario: Settlement races with teardown
+
 - **GIVEN** Promise settlement is queued while runtime teardown begins
 - **WHEN** settlement, release, or abandonment reaches the entry
 - **THEN** settlement state and lifetime state SHALL coordinate without
@@ -323,6 +302,7 @@ and any off-runtime observation, then SHALL always forward the release to the
 underlying native API.
 
 #### Scenario: Promise is disposed off the runtime thread
+
 - **GIVEN** a managed Promise wrapper is disposed while
   `connector.runtime()` is unavailable to the calling thread
 - **WHEN** `countedReleasePromise` observes the release
@@ -334,6 +314,7 @@ underlying native API.
   according to its teardown state
 
 #### Scenario: Off-runtime disposal is verified
+
 - **GIVEN** a Promise capability is disposed from outside runtime access
 - **WHEN** the testhost reports disposal and long-lived entry counters
 - **THEN** the native release call and off-runtime observation SHALL both be
@@ -351,6 +332,7 @@ remaining-entry count. Counters SHALL record lifetime-terminal release or
 abandonment only.
 
 #### Scenario: Settled entry remains accounted as live
+
 - **GIVEN** a registered Promise capability settles successfully
 - **WHEN** long-lived counters are observed before disposal or teardown
 - **THEN** neither the Promise release counter nor the Promise abandonment
@@ -358,6 +340,7 @@ abandonment only.
 - **AND** the remaining-entry count SHALL still include that Promise entry
 
 #### Scenario: Promise entry is released on the runtime path
+
 - **GIVEN** a settled or unsettled Promise entry is removed while runtime
   access remains available
 - **WHEN** its terminal release runs
@@ -367,6 +350,7 @@ abandonment only.
 - **AND** the remaining-entry count SHALL no longer include that entry
 
 #### Scenario: Promise entry is abandoned
+
 - **GIVEN** a Promise entry cannot be released with runtime access
 - **WHEN** its terminal abandonment runs
 - **THEN** the Promise abandonment counter SHALL increase exactly once
@@ -374,8 +358,38 @@ abandonment only.
 - **AND** the remaining-entry count SHALL no longer include that entry
 
 #### Scenario: Late disposal follows a terminal outcome
+
 - **GIVEN** release or abandonment has already been counted for a Promise
   entry
 - **WHEN** its opaque or managed handle is disposed later
 - **THEN** neither Promise counter SHALL increase again
 - **AND** the remaining-entry count SHALL stay at zero
+
+## MODIFIED Requirements
+
+### Requirement: Async Managed Promise Helper
+
+`JavaScriptRuntime.CreatePromise(Func<CancellationToken,
+Task<JavaScriptPromiseResult>>)` SHALL preserve its current settlement
+scheduling and scheduled-callback disposal ordering while native capability
+storage moves into the runtime-owned collection.
+
+#### Scenario: Async promise settlement ordering is preserved
+
+- **GIVEN** an asynchronous managed Promise operation completes
+- **WHEN** its settlement work runs
+- **THEN** settlement SHALL occur on the existing scheduled runtime callback
+- **AND** the scheduler SHALL release the native Promise capability during the
+  same runtime access path
+- **AND** it SHALL NOT release the capability from an arbitrary managed
+  continuation thread
+
+#### Scenario: Scheduled settlement work is dropped
+
+- **GIVEN** asynchronous Promise settlement owns a result state and a native
+  Promise capability
+- **WHEN** its queued runtime callable is destroyed without invocation
+- **THEN** the existing claim-or-abandon behavior for the owned result SHALL
+  remain unchanged
+- **AND** the Promise capability entry SHALL still reach one terminal release
+  or abandonment through runtime teardown

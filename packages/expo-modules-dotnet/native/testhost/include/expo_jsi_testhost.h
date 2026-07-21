@@ -40,6 +40,8 @@ typedef struct expo_jsi_testhost_counters {
   uint32_t long_lived_array_buffers_abandoned;
   uint32_t long_lived_weak_objects_released;
   uint32_t long_lived_weak_objects_abandoned;
+  uint32_t long_lived_promises_released;
+  uint32_t long_lived_promises_abandoned;
   uint32_t long_lived_objects_remaining;
 } expo_jsi_testhost_counters;
 
@@ -89,6 +91,23 @@ EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_set_sync_execution_supported(
 EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_invalidate_runtime(
   expo_jsi_testhost_runtime_handle testhost_runtime);
 EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_prepare_runtime_for_invalidation(
+  expo_jsi_testhost_runtime_handle testhost_runtime);
+EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_fail_next_promise_handle_allocation(
+  expo_jsi_testhost_runtime_handle testhost_runtime);
+EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_pause_next_promise_registration(
+  expo_jsi_testhost_runtime_handle testhost_runtime);
+EXPO_JSI_TESTHOST_EXPORT expo_jsi_error expo_jsi_testhost_wait_until_promise_registration_paused(
+  expo_jsi_testhost_runtime_handle testhost_runtime);
+EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_resume_promise_registration(
+  expo_jsi_testhost_runtime_handle testhost_runtime);
+EXPO_JSI_TESTHOST_EXPORT void
+expo_jsi_testhost_invalidate_bridge_runtime_state_without_deleting_handle(
+  expo_jsi_testhost_runtime_handle testhost_runtime);
+EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_pause_next_promise_call(
+  expo_jsi_testhost_runtime_handle testhost_runtime, int32_t operation);
+EXPO_JSI_TESTHOST_EXPORT expo_jsi_error expo_jsi_testhost_wait_until_promise_call_blocked(
+  expo_jsi_testhost_runtime_handle testhost_runtime);
+EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_resume_promise_call(
   expo_jsi_testhost_runtime_handle testhost_runtime);
 EXPO_JSI_TESTHOST_EXPORT expo_jsi_error
 expo_jsi_testhost_validate_array_buffer_snapshot(expo_jsi_testhost_runtime_handle testhost_runtime,
