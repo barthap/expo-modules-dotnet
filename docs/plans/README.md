@@ -24,7 +24,7 @@ fully before starting, honor its STOP conditions, and update your row when done.
 | 012 | Typed JS facade base classes (`DotnetModule`, `DotnetEventEmitter`) | P2 | M | 005 | DONE — adapter runtime tests, adapter/mobile/desktop typechecks, 341 managed tests, formatting, and privacy scans pass. |
 | 013 | camelCase JS naming defaults + `[JS]` property support (Expo Modules 2.0 alignment) | P2 | M | — | DONE — completed 2026-07-19; implicit lower-camel method/record names, direct accessor properties, diagnostics, and lifetime coverage landed. |
 | 014 | Typed `[Event]` partial-property members (Expo Modules 2.0 alignment) | P2 | M | 013 | DONE — generator suite, 449 managed tests, mobile and desktop typechecks, format, reflection/owned-wrapper scans, and documentation/privacy checks pass. |
-| 015 | Promise capability migration onto runtime-owned long-lived collection | P2 | M | — | TODO |
+| 015 | Promise capability migration onto runtime-owned long-lived collection | P2 | M | — | BLOCKED — two review rounds exhausted: promise construction can re-enter teardown before registration, and the original scope omits reliable per-kind lifecycle observability. Partial implementation was fully rolled back. |
 | 016 | NativeAOT CI lane (hermes-console-app, hostfxr + nativeaot matrix) | P1 | M | — | TODO |
 | 017 | SharedObject public authoring surface | P2 | L | 015, 016 recommended first | TODO |
 | 018 | Windows RNW build/deploy reliability + ReactNativeDir resolver | P1/P2 | L | — (needs Windows machine) | TODO |
@@ -64,6 +64,15 @@ counter stay armed. Detail in `009-windows-testhost-teardown-crash.md`.
   blocking risks deadlock on async-only hosts). Recorded in the execution
   note at the top of `014-typed-event-members.md`.
 - 011 remains BACKLOG (executor skipped it; still a nice-to-have).
+
+### Execution notes (2026-07-21, at `56893ca2`)
+
+- 015 was attempted in place and fully rolled back after two review rounds.
+  Final review found that a user-controlled `global.Promise` constructor can
+  re-enter runtime teardown before the capability is registered, allowing a
+  post-sweep collection entry and retained runtime cycle. The retry plan now
+  requires terminal collection registration, allocation rollback, observable
+  promise-entry release/abandon counters, and non-swallowable reentrancy tests.
 
 ### Reconcile notes (2026-07-09, at `56463734`)
 

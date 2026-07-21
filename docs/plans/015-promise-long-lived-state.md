@@ -21,6 +21,31 @@
 - **Depends on**: none
 - **Category**: tech-debt
 - **Planned at**: commit `ea07d69d`, 2026-07-20
+- **Execution status**: BLOCKED on 2026-07-21 after two review rounds; partial
+  implementation fully rolled back
+
+## Blocked execution findings (2026-07-21)
+
+Retry only after incorporating all of these requirements; do not reuse the
+rolled-back partial implementation as an assumed-good baseline:
+
+1. `global.Promise` construction can execute arbitrary JavaScript before the
+   capability entry is registered. If that code re-enters runtime teardown,
+   the collection can be swept and invalidated before `add`. Registration
+   SHALL fail after the collection/runtime becomes terminal, and a failed or
+   throwing registration/handle allocation SHALL roll back without retaining
+   an entry-to-runtime cycle.
+2. Resolver calls SHALL run without holding an entry mutex. A thenable getter
+   can synchronously re-enter the same capability; tests SHALL record callback
+   outcomes and assert them after the outer resolve returns so Promise
+   rejection cannot swallow failed test assertions.
+3. Promise-entry release and abandonment counters SHALL be exposed through the
+   native testhost and both managed test fixtures. Tests SHALL distinguish
+   on-runtime release from abandonment and prove the terminal action occurs
+   exactly once, including after late disposal.
+4. The retry SHALL include a user-controlled `Promise` constructor that
+   re-enters runtime preparation. Creation must fail with zero remaining
+   entries.
 
 ## Why this matters
 
@@ -118,6 +143,10 @@ Repo conventions that apply:
   managed wrapper needs an internal change; the public `JavaScriptPromise`
   API surface must not change
 - `packages/expo-modules-dotnet/managed/packages/Expo.JSI.Tests/`
+- `packages/expo-modules-dotnet/managed/packages/Expo.JSI.Tests/Fixtures/NativeTestHost.cs`
+- `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests/Fixtures/NativeTestHost.cs`
+- `packages/expo-modules-dotnet/native/testhost/include/expo_jsi_testhost.h`
+- `packages/expo-modules-dotnet/native/testhost/src/ExpoJsiTestHost.cpp`
 - `docs/specs/promises.md`
 - `docs/changes/2026-<mm-dd>-promise-long-lived-state/` (create)
 - `docs/plans/README.md` (status row only)
@@ -170,7 +199,11 @@ resolve/reject functions; `createPromise` adds it via
 `state->longLivedObjects().add(...)`; the ABI handle becomes/wraps the entry
 id or entry pointer consistent with how ArrayBuffer/WeakObject handles work.
 Settle and release paths remove the entry (idempotent). Extend
-`RuntimeLongLivedCounters` with promise-entry counters.
+`RuntimeLongLivedCounters` with promise-entry counters and expose them through
+the native testhost and managed fixtures. Make collection registration reject
+post-sweep/post-invalidation additions, and roll registration back if handle
+allocation fails. Do not hold an entry lock across a resolver call because
+thenable resolution can synchronously re-enter managed code.
 
 **Verify**: `scripts/test-managed.sh` → exit 0 (existing promise tests pass
 unchanged).
@@ -182,7 +215,12 @@ tests (see `Runtime/JavaScriptWeakObjectTests.cs` and
 `Runtime/JavaScriptArrayBufferTests.cs`): unresolved promise released at
 runtime teardown (counter returns to baseline); settled promise removes its
 entry; double dispose is a no-op; async settlement still disposes inside the
-scheduled callback (existing scheduler tests keep passing).
+scheduled callback (existing scheduler tests keep passing). Add constructor
+re-entry coverage that prepares teardown from a user-controlled `Promise`
+constructor and asserts failed creation leaves no entry. Add thenable
+re-entry coverage whose callback records outcomes for assertions after the
+outer resolution, rather than throwing assertions that Promise resolution can
+convert into rejection.
 
 **Verify**: `scripts/test-managed.sh` → exit 0 including the new tests.
 
