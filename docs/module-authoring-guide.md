@@ -360,7 +360,128 @@ event-style use. Invoking a callback after its runtime context has torn down
 fails loudly instead of touching released native state — don't cache a
 callback past the lifetime of the module/runtime that received it.
 
-## 8. JS facade
+## 8. Shared objects
+
+A shared object is an expensive native resource (file handle, image, crypto
+key) held by JavaScript as a class instance while C# keeps the original
+managed object. Both sides always see the same instance: converting the same
+managed object twice yields strictly equal JavaScript objects, and passing the
+JavaScript object back into C# returns the original managed instance.
+
+### Declaring a class
+
+```csharp
+[ExpoSharedObject]
+public sealed partial class ExampleCounter : SharedObject
+{
+  [JS]
+  public ExampleCounter(double start)
+  {
+    Count = start;
+  }
+
+  [JS]
+  public double Count { get; private set; }
+
+  [JS("increment")]
+  public double Increment(double by)
+  {
+    Count += by;
+    return Count;
+  }
+
+  protected override void OnRelease()
+  {
+    // Idempotent resource cleanup. Called exactly once.
+  }
+}
+```
+
+Declaration constraints (violations produce `EXPOJSI021`–`EXPOJSI025`
+diagnostics):
+
+- The class must be `sealed`, `partial`, top-level, non-generic, and derive
+  from `SharedObject` (directly or through `SharedRef<T>`).
+- `[ExpoSharedObject]` takes an optional explicit JavaScript class name;
+  otherwise the C# type name is used verbatim.
+- At most one accessible `[JS]` constructor, with codec-supported parameters.
+  A class with a `[JS]` constructor is constructible from JavaScript; without
+  one it is native-created-only and never appears as a module property.
+- `[JS]` methods and properties follow the same shape, naming (lower-camel
+  defaults), async, and codec rules as module members. `[Event]` members and
+  the reserved names `release`, `constructor`, and `__proto__` are rejected.
+
+### Module ownership
+
+Exactly one module owns each shared class through the retained
+`[ExpoModule(Classes = ...)]` shape:
+
+```csharp
+[ExpoModule("ExampleModule", Classes = new[] { typeof(ExampleCounter) })]
+public sealed partial class ExampleMathModule : Module
+{
+  [JS]
+  public ExampleCounter MakeCounter(double start) => new(start);
+
+  [JS]
+  public ExampleCounter EchoCounter(ExampleCounter counter) => counter;
+}
+```
+
+The owning module exposes each constructible class as a class-name property
+(`module.ExampleCounter`). Exposed class names must not collide with the
+module's functions, properties, observing hooks, or event-runtime members.
+Shared-object parameters, returns, and properties must use the exact sealed
+authored type directly at the boundary — the `SharedObject`/`SharedRef<T>`
+bases and nested composition (records, lists, dictionaries, callbacks,
+nullable annotations) are rejected.
+
+### Lifetime and release
+
+- `OnRelease()` runs exactly once per instance — on explicit JavaScript
+  `release()`, deterministic garbage collection, or context teardown,
+  whichever comes first. It runs synchronously and must be thread-agnostic:
+  keep it short, idempotent, and free of JavaScript/runtime calls.
+- JavaScript `release()` is idempotent; repeated calls are no-ops.
+- Using a released instance from JavaScript throws a catchable error before
+  any authored code runs.
+
+### `SharedRef<T>`
+
+`SharedRef<T>` is a non-owning shared wrapper: releasing the shared object
+does NOT dispose or clean up `Ref`. Derive a sealed class and add explicit
+cleanup in `OnRelease` only if your subclass owns the resource.
+
+### TypeScript facade and cleanup recipe
+
+Extend `DotnetSharedObject` for the facade class and type the module's class
+property:
+
+```ts
+import { DotnetSharedObject } from 'expo-modules-dotnet';
+
+export declare class ExampleCounter extends DotnetSharedObject {
+  constructor(start: number);
+  readonly count: number;
+  increment(by: number): number;
+}
+```
+
+Release deterministically with `try`/`finally`:
+
+```ts
+const counter = new module.ExampleCounter(40);
+try {
+  counter.increment(2);
+} finally {
+  counter.release();
+}
+```
+
+`Symbol.dispose` / `using` support is deferred pending a TypeScript/runtime
+compatibility review; use explicit `release()`.
+
+## 9. JS facade
 
 The TypeScript side in `packages/<name>/src/` declares the native module shape
 and wraps it in an ergonomic public API:
@@ -412,7 +533,7 @@ inherit their JavaScript prototypes. The event map is explicit until generated
 event declarations provide a different authoring input. Release a listener
 with the returned subscription's `remove()` method.
 
-## 9. Platform matrix
+## 10. Platform matrix
 
 | Platform | HostFXR (dev loader) | NativeAOT | Mono AOT |
 |---|---|---|---|
@@ -434,7 +555,7 @@ mobile platforms. NativeAOT constraints that affect module authors:
 See the root `README.md`'s "Platform support" section and
 `docs/specs/runtime-and-abi.md` for how HostFXR and NativeAOT loaders differ.
 
-## 10. Verification
+## 11. Verification
 
 Run the Hermes-backed managed test suite from the repo root:
 
@@ -446,7 +567,7 @@ scripts/test-managed.sh
 (`Expo.ModulesCore.Tests`) are good references for testing a new module's
 behavior without a full mobile app build.
 
-## 11. Troubleshooting
+## 12. Troubleshooting
 
 - **A new module doesn't show up in the app**: confirm
   `expo-module.config.json` lists `"dotnet"` in `platforms` and the

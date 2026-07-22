@@ -8,7 +8,7 @@
 
 **Tech Stack:** C# 13/.NET 10, Roslyn incremental source generators, Expo.JSI managed wrappers, Hermes-backed xUnit tests, TypeScript, Vitest, pnpm.
 
-**Execution status (2026-07-22): IN PROGRESS.** Task 1 is complete with an
+**Execution status: COMPLETE (2026-07-22), all tasks done.** Task 1 landed with an
 approved deviation: the constructor primitive uses a `construct`-trap host
 function with an arguments-array callback contract
 (`GeneratedSharedObjectConstructor`) instead of direct host-function
@@ -17,8 +17,8 @@ targets ("target is not constructible"), and re-entering the native
 `callAsConstructor` path from inside another host-function callback crashes
 the VM. The trap runs as a normal call, invokes the callback with the
 argument array, and re-parents the returned instance onto
-`newTarget.prototype`. Task 5's emitted constructor glue must target this
-callback contract. Tasks 2–7 remain pending.
+`newTarget.prototype`. Task 5's emitted constructor glue targets this
+callback contract (`GeneratedSharedObjectFactory` for pairing constructors).
 
 ## Ground Rules
 
