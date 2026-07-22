@@ -2607,6 +2607,91 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Contains($"constructor parameter '{parameterName}'", diagnostic.GetMessage());
     Assert.Contains(expectedType, diagnostic.GetMessage());
     Assert.NotEqual(Location.None, diagnostic.Location);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Theory]
+  [InlineData(
+      "[JS] public CacheEntry(SharedObject value) { }",
+      "polymorphic SharedObject base")]
+  [InlineData(
+      "[JS] public CacheEntry(SharedRef<string> value) { }",
+      "managed carrier base")]
+  [InlineData(
+      "[JS] public CacheEntry(UnattributedEntry value) { }",
+      "not marked [ExpoSharedObject]")]
+  public void GeneratorReportsSharedObjectConstructorParameterBoundaryUse(
+      string constructor,
+      string expectedReason)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public sealed class UnattributedEntry : SharedObject
+        {
+        }
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+          {{constructor}}
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI023");
+    Assert.Contains("CacheEntry", diagnostic.GetMessage());
+    Assert.Contains("constructor parameter 'value'", diagnostic.GetMessage());
+    Assert.Contains(expectedReason, diagnostic.GetMessage());
+    Assert.NotEqual(Location.None, diagnostic.Location);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void GeneratorAcceptsOwnedSharedObjectConstructorParameter()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+          [JS]
+          public CacheEntry()
+          {
+          }
+        }
+
+        [ExpoSharedObject]
+        public sealed partial class Snapshot : SharedObject
+        {
+          [JS]
+          public Snapshot(CacheEntry entry)
+          {
+          }
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry), typeof(Snapshot) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
   }
 
   [Theory]
@@ -2652,6 +2737,8 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Contains(memberName, diagnostic.GetMessage());
     Assert.Contains(expectedReason, diagnostic.GetMessage());
     Assert.NotEqual(Location.None, diagnostic.Location);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
   }
 
   [Theory]
@@ -2706,6 +2793,169 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Contains(memberName, diagnostic.GetMessage());
     Assert.Contains(expectedReason, diagnostic.GetMessage());
     Assert.NotEqual(Location.None, diagnostic.Location);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Theory]
+  [InlineData(
+      "[JS] public void Store(CacheEntry? entry) { }",
+      "Store",
+      "parameter 'entry'")]
+  [InlineData(
+      "[JS] public CacheEntry? Load() => null;",
+      "Load",
+      "return type")]
+  [InlineData(
+      "[JS] public System.Threading.Tasks.Task<CacheEntry?> LoadAsync() => null!;",
+      "LoadAsync",
+      "async result type")]
+  [InlineData(
+      "[JS] public CacheEntry? Latest => null;",
+      "Latest",
+      "property type")]
+  public void GeneratorReportsNullableAnnotatedSharedObjectBoundaryUse(
+      string member,
+      string memberName,
+      string expectedPosition)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        #nullable enable
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+          {{member}}
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI023");
+    Assert.Contains(memberName, diagnostic.GetMessage());
+    Assert.Contains(expectedPosition, diagnostic.GetMessage());
+    Assert.Contains("without a nullable annotation", diagnostic.GetMessage());
+    Assert.NotEqual(Location.None, diagnostic.Location);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void GeneratorReportsNullableAnnotatedSharedObjectConstructorParameter()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        #nullable enable
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+          [JS]
+          public CacheEntry(CacheEntry? source)
+          {
+          }
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI023");
+    Assert.Contains("CacheEntry", diagnostic.GetMessage());
+    Assert.Contains("constructor parameter 'source'", diagnostic.GetMessage());
+    Assert.Contains("without a nullable annotation", diagnostic.GetMessage());
+    Assert.NotEqual(Location.None, diagnostic.Location);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  // Only the inaccessible overload may be removed from the model; the accessible overload
+  // keeps its own signature. Shared-object members are validated but not emitted in this
+  // slice, so survival is observed through the reserved-name validation that runs after
+  // inaccessible members are filtered out: the accessible overload must still reach it.
+  [Fact]
+  public void GeneratorKeepsAccessibleSharedObjectOverloadOfInaccessibleMethod()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+          [JS("releaseNumber")] private void Release(int value) { }
+          [JS("release")] public void Release(string value) { }
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """
+    );
+
+    var inaccessible = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI023");
+    Assert.Contains("Release", inaccessible.GetMessage());
+    Assert.Contains("not public or internal", inaccessible.GetMessage());
+    var reserved = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI025");
+    Assert.Contains("'release'", reserved.GetMessage());
+    Assert.Contains("reserved for the shared object prototype", reserved.GetMessage());
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  // Duplicate JavaScript-name detection runs over all authored [JS] members before
+  // accessibility filtering, so a private overload that also collides on the JavaScript
+  // name keeps reporting both problems: EXPOJSI023 for the inaccessible member and
+  // EXPOJSI025 for the authored name collision. Each diagnostic points at a distinct
+  // authored issue, and neither member is emitted.
+  [Fact]
+  public void GeneratorReportsInaccessibleAndDuplicateSharedObjectOverloadsSeparately()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+          [JS] private void Store(int value) { }
+          [JS] public void Store(string value) { }
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """
+    );
+
+    var inaccessible = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI023");
+    Assert.Contains("Store", inaccessible.GetMessage());
+    Assert.Contains("not public or internal", inaccessible.GetMessage());
+    var duplicate = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI025");
+    Assert.Contains("'store'", duplicate.GetMessage());
+    Assert.Contains("a duplicate", duplicate.GetMessage());
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
   }
 
   [Fact]
@@ -2779,6 +3029,8 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Contains("CacheEntry", diagnostic.GetMessage());
     Assert.Contains("composed codec", diagnostic.GetMessage());
     Assert.NotEqual(Location.None, diagnostic.Location);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
   }
 
   [Theory]
@@ -3024,6 +3276,8 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Contains(expectedName, diagnostic.GetMessage());
     Assert.Contains(expectedReason, diagnostic.GetMessage());
     Assert.NotEqual(Location.None, diagnostic.Location);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
   }
 
   [Theory]
@@ -3082,6 +3336,8 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Contains($"'{javaScriptName}'", diagnostic.GetMessage());
     Assert.Contains(expectedReason, diagnostic.GetMessage());
     Assert.NotEqual(Location.None, diagnostic.Location);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
   }
 
   [Fact]

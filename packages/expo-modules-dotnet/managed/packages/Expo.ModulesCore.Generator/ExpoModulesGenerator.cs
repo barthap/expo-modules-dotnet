@@ -222,7 +222,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       List<ExpoFunctionModel> functions,
       List<ExpoDiagnosticModel> diagnostics)
   {
-    var inaccessibleMethodNames = new HashSet<string>(StringComparer.Ordinal);
+    var inaccessibleMethodSignatures = new HashSet<string>(StringComparer.Ordinal);
     foreach (var member in typeSymbol.GetMembers().OfType<IMethodSymbol>())
     {
       if (member.MethodKind != MethodKind.Ordinary ||
@@ -233,7 +233,11 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         continue;
       }
 
-      inaccessibleMethodNames.Add(member.Name);
+      inaccessibleMethodSignatures.Add(GetMethodSignature(
+          member.Name,
+          member.Parameters.Select(parameter =>
+              parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
+      ));
       diagnostics.Add(CreateUnsupportedSharedObjectUsage(
           member.Name,
           "it is not public or internal",
@@ -241,10 +245,17 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       ));
     }
 
-    return inaccessibleMethodNames.Count == 0
+    return inaccessibleMethodSignatures.Count == 0
         ? functions
-        : functions.Where(function => !inaccessibleMethodNames.Contains(function.MethodName)).ToList();
+        : functions
+            .Where(function => !inaccessibleMethodSignatures.Contains(GetMethodSignature(
+                function.MethodName,
+                function.Parameters.Values.Select(parameter => parameter.TypeName))))
+            .ToList();
   }
+
+  private static string GetMethodSignature(string methodName, IEnumerable<string> parameterTypeNames) =>
+      $"{methodName}({string.Join(", ", parameterTypeNames)})";
 
   private static ExpoDiagnosticModel TranslateSharedObjectMemberDiagnostic(
       ExpoDiagnosticModel diagnostic,
@@ -446,6 +457,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         !typeSymbol.IsSealed)
     {
       return "which must be a top-level, non-generic, sealed [ExpoSharedObject] class";
+    }
+    if (typeSymbol.NullableAnnotation == NullableAnnotation.Annotated)
+    {
+      return "which must be used without a nullable annotation";
     }
     return null;
   }
