@@ -2491,6 +2491,674 @@ public sealed class ExpoModulesGeneratorTests
         .GetText(TestContext.Current.CancellationToken)
         .ToString(diagnostic.Location.SourceSpan);
     Assert.Contains(typeName, locatedText);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Theory]
+  [InlineData(
+      """
+        [JS]
+        public CacheEntry()
+        {
+        }
+
+        [JS]
+        public CacheEntry(int size)
+        {
+        }
+      """,
+      "declares multiple [JS] constructors")]
+  [InlineData(
+      """
+        [JS]
+        private CacheEntry()
+        {
+        }
+      """,
+      "must be public or internal")]
+  [InlineData(
+      """
+        [JS("create")]
+        public CacheEntry()
+        {
+        }
+      """,
+      "must not declare an explicit JavaScript name")]
+  [InlineData(
+      """
+        [JS]
+        static CacheEntry()
+        {
+        }
+      """,
+      "must be an instance constructor")]
+  public void GeneratorReportsInvalidSharedObjectConstructor(string constructor, string expectedReason)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+        {{constructor}}
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI022");
+    Assert.Contains("CacheEntry", diagnostic.GetMessage());
+    Assert.Contains(expectedReason, diagnostic.GetMessage());
+    Assert.NotEqual(Location.None, diagnostic.Location);
+    var locatedText = diagnostic.Location.SourceTree!
+        .GetText(TestContext.Current.CancellationToken)
+        .ToString(diagnostic.Location.SourceSpan);
+    Assert.Contains("CacheEntry", locatedText);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Theory]
+  [InlineData(
+      "[JS] public CacheEntry(decimal size) { }",
+      "CacheEntry",
+      "size",
+      "System.Decimal")]
+  [InlineData(
+      "[JS] public CacheEntry(System.Span<byte> data) { }",
+      "CacheEntry",
+      "data",
+      "Span")]
+  public void GeneratorReportsSharedObjectConstructorParameterWithoutCodec(
+      string constructor,
+      string typeName,
+      string parameterName,
+      string expectedType)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+          {{constructor}}
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI023");
+    Assert.Contains(typeName, diagnostic.GetMessage());
+    Assert.Contains($"constructor parameter '{parameterName}'", diagnostic.GetMessage());
+    Assert.Contains(expectedType, diagnostic.GetMessage());
+    Assert.NotEqual(Location.None, diagnostic.Location);
+  }
+
+  [Theory]
+  [InlineData("[JS] public static int GetSize() => 1;", "GetSize", "static")]
+  [InlineData("[JS] public T Identity<T>(T value) => value;", "Identity", "generic")]
+  [InlineData("[JS] internal protected int GetSize() => 1;", "GetSize", "public or internal")]
+  [InlineData("[JS] public static bool Ready => true;", "Ready", "static")]
+  [InlineData("[JS] public bool this[int index] => true;", "this[]", "indexed")]
+  [InlineData("[JS] public bool Ready { set { } }", "Ready", "setter-only")]
+  [InlineData("[JS] public bool Ready { get; init; }", "Ready", "init")]
+  [InlineData("[JS] public decimal Total => 0m;", "Total", "System.Decimal")]
+  [InlineData("[JS] public decimal GetTotal() => 0m;", "GetTotal", "System.Decimal")]
+  [InlineData("[JS] public void Store(decimal value) { }", "Store", "System.Decimal")]
+  [InlineData(
+      "[Event] public System.Func<System.Threading.Tasks.Task> OnChange { get; } = null!;",
+      "OnChange",
+      "[Event] is not supported on shared object classes")]
+  public void GeneratorReportsInvalidSharedObjectMember(
+      string member,
+      string memberName,
+      string expectedReason)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+          {{member}}
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI023");
+    Assert.Contains(memberName, diagnostic.GetMessage());
+    Assert.Contains(expectedReason, diagnostic.GetMessage());
+    Assert.NotEqual(Location.None, diagnostic.Location);
+  }
+
+  [Theory]
+  [InlineData(
+      "[JS] public void Store(SharedObject value) { }",
+      "Store",
+      "polymorphic SharedObject base")]
+  [InlineData(
+      "[JS] public void StoreRef(SharedRef<string> value) { }",
+      "StoreRef",
+      "managed carrier base")]
+  [InlineData(
+      "[JS] public SharedObject Load() => null!;",
+      "Load",
+      "polymorphic SharedObject base")]
+  [InlineData(
+      "[JS] public System.Threading.Tasks.Task<SharedObject> LoadAsync() => null!;",
+      "LoadAsync",
+      "polymorphic SharedObject base")]
+  [InlineData(
+      "[JS] public UnattributedEntry LoadCustom() => null!;",
+      "LoadCustom",
+      "not marked [ExpoSharedObject]")]
+  [InlineData(
+      "[JS] public SharedObject Value => null!;",
+      "Value",
+      "polymorphic SharedObject base")]
+  public void GeneratorReportsDirectSharedObjectBaseBoundaryUse(
+      string member,
+      string memberName,
+      string expectedReason)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public sealed class UnattributedEntry : SharedObject
+        {
+        }
+
+        [ExpoModule]
+        public sealed partial class CacheModule
+        {
+          {{member}}
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI023");
+    Assert.Contains(memberName, diagnostic.GetMessage());
+    Assert.Contains(expectedReason, diagnostic.GetMessage());
+    Assert.NotEqual(Location.None, diagnostic.Location);
+  }
+
+  [Fact]
+  public void GeneratorReportsDirectSharedObjectBaseUseOnSharedObjectMember()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+          [JS] public void Store(SharedRef<string> value) { }
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI023");
+    Assert.Contains("Store", diagnostic.GetMessage());
+    Assert.Contains("managed carrier base", diagnostic.GetMessage());
+  }
+
+  [Theory]
+  [InlineData(
+      "[JS] public void StoreAll(System.Collections.Generic.IReadOnlyList<CacheEntry> entries) { }",
+      "StoreAll")]
+  [InlineData(
+      "[JS] public void StoreMap(System.Collections.Generic.Dictionary<string, CacheEntry> entries) { }",
+      "StoreMap")]
+  [InlineData(
+      "[JS] public void StoreHolder(Holder holder) { }",
+      "StoreHolder")]
+  [InlineData(
+      "[JS] public void Subscribe(JavaScriptCallback<CacheEntry> callback) { }",
+      "Subscribe")]
+  [InlineData(
+      "[JS] public System.Collections.Generic.IReadOnlyList<CacheEntry> LoadAll() => null!;",
+      "LoadAll")]
+  public void GeneratorReportsNestedSharedObjectComposition(string member, string memberName)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+        }
+
+        public sealed record Holder(CacheEntry Entry);
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+          {{member}}
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI023");
+    Assert.Contains(memberName, diagnostic.GetMessage());
+    Assert.Contains("CacheEntry", diagnostic.GetMessage());
+    Assert.Contains("composed codec", diagnostic.GetMessage());
+    Assert.NotEqual(Location.None, diagnostic.Location);
+  }
+
+  [Theory]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoModule(Classes = new[] { typeof(string) })]
+      public sealed partial class CacheModule
+      {
+      }
+      """,
+      "string",
+      "not an [ExpoSharedObject] class")]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      public sealed class UnattributedEntry : SharedObject
+      {
+      }
+
+      [ExpoModule(Classes = new[] { typeof(UnattributedEntry) })]
+      public sealed partial class CacheModule
+      {
+      }
+      """,
+      "UnattributedEntry",
+      "not an [ExpoSharedObject] class")]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject]
+      public sealed partial class CacheEntry : SharedObject
+      {
+      }
+
+      [ExpoModule(Classes = new[] { typeof(CacheEntry), typeof(CacheEntry) })]
+      public sealed partial class CacheModule
+      {
+      }
+      """,
+      "CacheEntry",
+      "more than once")]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject]
+      public sealed partial class CacheEntry : SharedObject
+      {
+      }
+      """,
+      "CacheEntry",
+      "no module lists it")]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject]
+      public sealed partial class CacheEntry : SharedObject
+      {
+      }
+
+      [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+      public sealed partial class CacheModule
+      {
+      }
+
+      [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+      public sealed partial class BackupModule
+      {
+      }
+      """,
+      "CacheEntry",
+      "multiple modules")]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject("Entry")]
+      public sealed partial class CacheEntry : SharedObject
+      {
+      }
+
+      [ExpoSharedObject("Entry")]
+      public sealed partial class DiskEntry : SharedObject
+      {
+      }
+
+      [ExpoModule(Classes = new[] { typeof(CacheEntry), typeof(DiskEntry) })]
+      public sealed partial class CacheModule
+      {
+      }
+      """,
+      "Entry",
+      "already used")]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject("getSize")]
+      public sealed partial class CacheEntry : SharedObject
+      {
+        [JS]
+        public CacheEntry()
+        {
+        }
+      }
+
+      [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+      public sealed partial class CacheModule
+      {
+        [JS] public int GetSize() => 1;
+      }
+      """,
+      "getSize",
+      "generated function 'getSize'")]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject("ready")]
+      public sealed partial class CacheEntry : SharedObject
+      {
+        [JS]
+        public CacheEntry()
+        {
+        }
+      }
+
+      [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+      public sealed partial class CacheModule
+      {
+        [JS] public bool Ready => true;
+      }
+      """,
+      "ready",
+      "generated property 'ready'")]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject("Entry")]
+      public sealed partial class CacheEntry : SharedObject
+      {
+        [JS]
+        public CacheEntry()
+        {
+        }
+      }
+
+      [ExpoSharedObject("Entry")]
+      public sealed partial class DiskEntry : SharedObject
+      {
+        [JS]
+        public DiskEntry()
+        {
+        }
+      }
+
+      [ExpoModule(Classes = new[] { typeof(CacheEntry), typeof(DiskEntry) })]
+      public sealed partial class CacheModule
+      {
+      }
+      """,
+      "Entry",
+      "already used")]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject("startObserving")]
+      public sealed partial class CacheEntry : SharedObject
+      {
+        [JS]
+        public CacheEntry()
+        {
+        }
+      }
+
+      [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+      [Events("change")]
+      public sealed partial class CacheModule
+      {
+        [OnStartObserving] public void Start(string eventName) { }
+      }
+      """,
+      "startObserving",
+      "observing hook 'startObserving'")]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject("addListener")]
+      public sealed partial class CacheEntry : SharedObject
+      {
+        [JS]
+        public CacheEntry()
+        {
+        }
+      }
+
+      [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+      [Events("change")]
+      public sealed partial class CacheModule
+      {
+      }
+      """,
+      "addListener",
+      "reserved event-runtime member 'addListener'")]
+  public void GeneratorReportsInvalidSharedObjectOwnership(
+      string source,
+      string expectedName,
+      string expectedReason)
+  {
+    var result = GeneratorTestHost.Run(source);
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI024");
+    Assert.Contains(expectedName, diagnostic.GetMessage());
+    Assert.Contains(expectedReason, diagnostic.GetMessage());
+    Assert.NotEqual(Location.None, diagnostic.Location);
+  }
+
+  [Theory]
+  [InlineData(
+      """
+        [JS] public int GetSize() => 1;
+        [JS("getSize")] public int Size() => 2;
+      """,
+      "getSize",
+      "a duplicate")]
+  [InlineData(
+      """
+        [JS] public int GetSize() => 1;
+        [JS("getSize")] public bool Ready => true;
+      """,
+      "getSize",
+      "a duplicate")]
+  [InlineData(
+      "[JS] public void Release() { }",
+      "release",
+      "reserved for the shared object prototype")]
+  [InlineData(
+      "[JS(\"constructor\")] public void Rebuild() { }",
+      "constructor",
+      "reserved for the shared object prototype")]
+  [InlineData(
+      "[JS(\"__proto__\")] public bool Proto => true;",
+      "__proto__",
+      "reserved for the shared object prototype")]
+  public void GeneratorReportsDuplicateOrReservedSharedObjectMemberName(
+      string members,
+      string javaScriptName,
+      string expectedReason)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+        {{members}}
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI025");
+    Assert.Contains("CacheEntry", diagnostic.GetMessage());
+    Assert.Contains($"'{javaScriptName}'", diagnostic.GetMessage());
+    Assert.Contains(expectedReason, diagnostic.GetMessage());
+    Assert.NotEqual(Location.None, diagnostic.Location);
+  }
+
+  [Fact]
+  public void GeneratorAcceptsSharedObjectMembersAndModuleBoundaries()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+          [JS]
+          public CacheEntry(string key, int size = 16)
+          {
+            Key = key;
+            Size = size;
+          }
+
+          [JS] public string Key { get; }
+          [JS] public int Size { get; set; }
+          [JS] public string Tag { get; internal set; } = "";
+          [JS] public int GetCost() => Size;
+          [JS("resetNow")] public void Reset() { }
+          [JS] public Task Refresh() => Task.CompletedTask;
+          [JS] public Task<int> LoadAsync() => Task.FromResult(Size);
+          [JS] public CacheEntry Clone(CacheEntry other) => other;
+        }
+
+        [ExpoSharedObject("NativeSnapshot")]
+        public sealed partial class Snapshot : SharedObject
+        {
+          [JS] public int Version => 1;
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry), typeof(Snapshot) })]
+        public sealed partial class CacheModule
+        {
+          [JS] public CacheEntry MakeEntry(CacheEntry template) => template;
+          [JS] public Task<Snapshot> CaptureAsync() => Task.FromResult<Snapshot>(null!);
+          [JS] public CacheEntry Latest { get; set; } = null!;
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void GeneratorAcceptsConcreteSharedRefSubclassAtBoundary()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class ImageRef : SharedRef<string>
+        {
+          public ImageRef(string reference) : base(reference)
+          {
+          }
+        }
+
+        [ExpoModule(Classes = new[] { typeof(ImageRef) })]
+        public sealed partial class ImageModule
+        {
+          [JS] public ImageRef Snapshot(ImageRef source) => source;
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
   }
 
   private static string GeneratedText(GeneratorRunResult result) =>

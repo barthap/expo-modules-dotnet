@@ -18,9 +18,13 @@ internal sealed record ExpoModuleModel(
     EquatableArray<ExpoObservingHookModel> StopObservingHooks,
     EquatableArray<ExpoFunctionModel> Functions,
     EquatableArray<ExpoPropertyModel> Properties,
-    EquatableArray<string> SharedObjectClassTypeNames,
+    EquatableArray<ExpoSharedObjectClassModel> SharedObjectClasses,
     EquatableArray<ExpoGeneratedRecordCodecModel> RecordCodecs,
     EquatableArray<ExpoDiagnosticModel> Diagnostics);
+
+internal sealed record ExpoSharedObjectClassModel(
+    string TypeName,
+    Location? Location);
 
 internal enum ExpoEventPayloadKind
 {
@@ -54,6 +58,11 @@ internal enum ExpoModuleConstructorStrategy
   RuntimeContext,
 }
 
+// ReturnRequiresRuntimeContext and AsyncResultRequiresRuntimeContext mark direct shared-object
+// encode locations that must receive the current DotnetRuntimeContext explicitly. For an async
+// result, the generated host callback must capture GeneratedFunction.CurrentRuntimeContext while
+// the host-function frame is still valid and pass that captured context into Promise settlement;
+// settlement code must never consult the thread-static accessor after the frame exits.
 internal sealed record ExpoFunctionModel(
     string MethodName,
     string JavaScriptName,
@@ -67,8 +76,13 @@ internal sealed record ExpoFunctionModel(
     string AsyncResultCodecExpression,
     EquatableArray<ExpoParameterModel> Parameters,
     ExpoReturnPassingKind ReturnPassingKind = ExpoReturnPassingKind.Codec,
-    ExpoReturnPassingKind AsyncResultPassingKind = ExpoReturnPassingKind.Codec);
+    ExpoReturnPassingKind AsyncResultPassingKind = ExpoReturnPassingKind.Codec,
+    bool ReturnRequiresRuntimeContext = false,
+    bool AsyncResultRequiresRuntimeContext = false);
 
+// RequiresRuntimeContext covers both direct decode/encode locations of the property codec: the
+// generated getter encode and the generated setter decode receive the current
+// DotnetRuntimeContext explicitly when it is set.
 internal sealed record ExpoPropertyModel(
     string PropertyName,
     string JavaScriptName,

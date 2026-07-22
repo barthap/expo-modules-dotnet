@@ -13,6 +13,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
   private const string ExpoModuleAttributeMetadataName = "Expo.ModulesCore.ExpoModuleAttribute";
   private const string ExpoSharedObjectAttributeMetadataName = "Expo.ModulesCore.ExpoSharedObjectAttribute";
   private const string SharedObjectMetadataName = "Expo.ModulesCore.SharedObject";
+  private const string SharedRefMetadataName = "Expo.ModulesCore.SharedRef<T>";
   private const string EventsAttributeMetadataName = "Expo.ModulesCore.EventsAttribute";
   private const string EventAttributeMetadataName = "Expo.ModulesCore.EventAttribute";
   private const string OnCreateAttributeMetadataName = "Expo.ModulesCore.OnCreateAttribute";
@@ -126,6 +127,59 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       AddDeclarationDiagnostic("it must derive from Expo.ModulesCore.SharedObject");
     }
 
+    var isDeclarationValid = diagnostics.Count == 0;
+    ExpoSharedObjectConstructorModel? constructor = null;
+    var functions = new List<ExpoFunctionModel>();
+    var properties = new List<ExpoPropertyModel>();
+    var recordCodecs = new List<ExpoGeneratedRecordCodecModel>();
+    if (isDeclarationValid)
+    {
+      var memberDiagnostics = new List<ExpoDiagnosticModel>();
+      var functionCollection = GetFunctions(
+          typeSymbol,
+          memberDiagnostics,
+          recordCodecs,
+          new HashSet<string>(StringComparer.Ordinal)
+      );
+      functions = functionCollection.Functions;
+      properties = GetProperties(typeSymbol, memberDiagnostics, recordCodecs, new HashSet<string>(StringComparer.Ordinal));
+      properties = RemoveCollidingProperties(
+          typeSymbol,
+          functionCollection.ValidJavaScriptNames,
+          properties,
+          memberDiagnostics
+      );
+      foreach (var diagnostic in memberDiagnostics)
+      {
+        diagnostics.Add(TranslateSharedObjectMemberDiagnostic(diagnostic, typeSymbol.Name));
+      }
+
+      functions = RemoveInaccessibleSharedObjectMethods(typeSymbol, functions, diagnostics);
+      functions = functions
+          .Where(function => !ReportReservedSharedObjectMemberName(
+              typeSymbol.Name, function.JavaScriptName, function.Location, diagnostics))
+          .ToList();
+      properties = properties
+          .Where(property => !ReportReservedSharedObjectMemberName(
+              typeSymbol.Name, property.JavaScriptName, property.Location, diagnostics))
+          .ToList();
+
+      foreach (var member in typeSymbol.GetMembers())
+      {
+        if (member.GetAttributes().Any(attribute =>
+                attribute.AttributeClass?.ToDisplayString() == EventAttributeMetadataName))
+        {
+          diagnostics.Add(CreateUnsupportedSharedObjectUsage(
+              member.Name,
+              "[Event] is not supported on shared object classes",
+              member.Locations.FirstOrDefault() ?? location
+          ));
+        }
+      }
+
+      constructor = GetSharedObjectConstructor(typeSymbol, diagnostics, recordCodecs);
+    }
+
     return new ExpoSharedObjectModel(
         typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
         typeSymbol.ContainingNamespace.IsGlobalNamespace ? string.Empty : typeSymbol.ContainingNamespace.ToDisplayString(),
@@ -133,8 +187,213 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         typeSymbol.DeclaredAccessibility == Accessibility.Public ? "public" : "internal",
         javaScriptClassName,
         location,
-        diagnostics.Count == 0,
+        isDeclarationValid,
+        constructor,
+        new EquatableArray<ExpoFunctionModel>(functions),
+        new EquatableArray<ExpoPropertyModel>(properties),
+        new EquatableArray<ExpoGeneratedRecordCodecModel>(recordCodecs),
         new EquatableArray<ExpoDiagnosticModel>(diagnostics)
+    );
+  }
+
+  private static readonly string[] ReservedSharedObjectMemberNames = { "release", "constructor", "__proto__" };
+
+  private static bool ReportReservedSharedObjectMemberName(
+      string typeName,
+      string javaScriptName,
+      Location? location,
+      List<ExpoDiagnosticModel> diagnostics)
+  {
+    if (!ReservedSharedObjectMemberNames.Contains(javaScriptName, StringComparer.Ordinal))
+    {
+      return false;
+    }
+
+    diagnostics.Add(new ExpoDiagnosticModel(
+        ExpoModulesDiagnostics.InvalidSharedObjectMemberName.Id,
+        location,
+        new EquatableArray<string>(new[] { typeName, javaScriptName, "reserved for the shared object prototype" })
+    ));
+    return true;
+  }
+
+  private static List<ExpoFunctionModel> RemoveInaccessibleSharedObjectMethods(
+      INamedTypeSymbol typeSymbol,
+      List<ExpoFunctionModel> functions,
+      List<ExpoDiagnosticModel> diagnostics)
+  {
+    var inaccessibleMethodNames = new HashSet<string>(StringComparer.Ordinal);
+    foreach (var member in typeSymbol.GetMembers().OfType<IMethodSymbol>())
+    {
+      if (member.MethodKind != MethodKind.Ordinary ||
+          member.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal ||
+          !member.GetAttributes().Any(attribute =>
+              attribute.AttributeClass?.ToDisplayString() == JSAttributeMetadataName))
+      {
+        continue;
+      }
+
+      inaccessibleMethodNames.Add(member.Name);
+      diagnostics.Add(CreateUnsupportedSharedObjectUsage(
+          member.Name,
+          "it is not public or internal",
+          member.Locations.FirstOrDefault()
+      ));
+    }
+
+    return inaccessibleMethodNames.Count == 0
+        ? functions
+        : functions.Where(function => !inaccessibleMethodNames.Contains(function.MethodName)).ToList();
+  }
+
+  private static ExpoDiagnosticModel TranslateSharedObjectMemberDiagnostic(
+      ExpoDiagnosticModel diagnostic,
+      string typeName)
+  {
+    var arguments = diagnostic.Arguments.Values;
+    return diagnostic.DescriptorId switch
+    {
+      "EXPOJSI001" => CreateUnsupportedSharedObjectUsage(
+          arguments[1], $"parameter '{arguments[0]}' uses unsupported type '{arguments[2]}'", diagnostic.Location),
+      "EXPOJSI002" => CreateUnsupportedSharedObjectUsage(
+          arguments[0], $"it uses unsupported return type '{arguments[1]}'", diagnostic.Location),
+      "EXPOJSI004" => CreateUnsupportedSharedObjectUsage(
+          arguments[0], $"it is {arguments[1]}", diagnostic.Location),
+      "EXPOJSI005" => new ExpoDiagnosticModel(
+          ExpoModulesDiagnostics.InvalidSharedObjectMemberName.Id,
+          diagnostic.Location,
+          new EquatableArray<string>(new[] { typeName, arguments[1], "a duplicate" })),
+      "EXPOJSI008" => CreateUnsupportedSharedObjectUsage(
+          arguments[1], $"callback parameter '{arguments[0]}' uses unsupported callback type '{arguments[2]}'", diagnostic.Location),
+      "EXPOJSI012" => CreateUnsupportedSharedObjectUsage(
+          arguments[0], $"parameter '{arguments[1]}' uses '{arguments[2]}', which is supported only by synchronous methods", diagnostic.Location),
+      "EXPOJSI013" => CreateUnsupportedSharedObjectUsage(
+          arguments[0], $"it declares multiple span parameters ({arguments[1]})", diagnostic.Location),
+      "EXPOJSI014" => CreateUnsupportedSharedObjectUsage(
+          arguments[0], $"it is {arguments[1]}", diagnostic.Location),
+      "EXPOJSI015" => CreateUnsupportedSharedObjectUsage(
+          arguments[0], $"it uses unsupported type '{arguments[1]}'", diagnostic.Location),
+      "EXPOJSI016" => new ExpoDiagnosticModel(
+          ExpoModulesDiagnostics.InvalidSharedObjectMemberName.Id,
+          diagnostic.Location,
+          new EquatableArray<string>(new[] { typeName, arguments[1], "a duplicate" })),
+      _ => diagnostic,
+    };
+  }
+
+  private static ExpoSharedObjectConstructorModel? GetSharedObjectConstructor(
+      INamedTypeSymbol typeSymbol,
+      List<ExpoDiagnosticModel> diagnostics,
+      List<ExpoGeneratedRecordCodecModel> recordCodecs)
+  {
+    void AddConstructorDiagnostic(Location? location, string reason) =>
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.InvalidSharedObjectConstructor.Id,
+            location ?? typeSymbol.Locations.FirstOrDefault(),
+            new EquatableArray<string>(new[] { typeSymbol.Name, reason })
+        ));
+
+    var attributedConstructors = new List<(IMethodSymbol Constructor, AttributeData Attribute)>();
+    foreach (var constructor in typeSymbol.Constructors)
+    {
+      var jsAttribute = constructor.GetAttributes().FirstOrDefault(attribute =>
+          attribute.AttributeClass?.ToDisplayString() == JSAttributeMetadataName);
+      if (jsAttribute is null)
+      {
+        continue;
+      }
+
+      if (constructor.IsStatic)
+      {
+        AddConstructorDiagnostic(constructor.Locations.FirstOrDefault(), "it must be an instance constructor");
+        continue;
+      }
+
+      attributedConstructors.Add((constructor, jsAttribute));
+    }
+
+    if (attributedConstructors.Count == 0)
+    {
+      return null;
+    }
+
+    if (attributedConstructors.Count > 1)
+    {
+      AddConstructorDiagnostic(
+          attributedConstructors[1].Constructor.Locations.FirstOrDefault(),
+          "it declares multiple [JS] constructors"
+      );
+      return null;
+    }
+
+    var (target, attribute) = attributedConstructors[0];
+    if (attribute.ConstructorArguments.Length == 1)
+    {
+      AddConstructorDiagnostic(target.Locations.FirstOrDefault(), "it must not declare an explicit JavaScript name");
+      return null;
+    }
+
+    if (!IsSupportedConstructorAccessibility(target))
+    {
+      AddConstructorDiagnostic(target.Locations.FirstOrDefault(), "it must be public or internal");
+      return null;
+    }
+
+    var parameters = new List<ExpoParameterModel>();
+    foreach (var parameter in target.Parameters)
+    {
+      var parameterLocation = parameter.Locations.FirstOrDefault() ?? target.Locations.FirstOrDefault();
+      var positionDescription = $"its [JS] constructor parameter '{parameter.Name}'";
+      string? parameterCodec;
+      if (GetParameterPassingKind(parameter.Type) != ExpoParameterPassingKind.Codec)
+      {
+        parameterCodec = null;
+      }
+      else if (TryAnalyzeSharedObjectBoundaryType(
+          parameter.Type,
+          typeSymbol.Name,
+          positionDescription,
+          parameterLocation,
+          diagnostics,
+          out var sharedParameterCodec))
+      {
+        if (sharedParameterCodec is null)
+        {
+          return null;
+        }
+        parameterCodec = sharedParameterCodec;
+      }
+      else
+      {
+        parameterCodec = GetCodecExpression(parameter.Type, diagnostics, recordCodecs, parameter.GetAttributes());
+      }
+
+      if (parameterCodec is null)
+      {
+        diagnostics.Add(CreateUnsupportedSharedObjectUsage(
+            typeSymbol.Name,
+            $"{positionDescription} uses unsupported type '{GetDiagnosticTypeName(parameter.Type)}'",
+            parameterLocation
+        ));
+        return null;
+      }
+
+      parameters.Add(new ExpoParameterModel(
+          parameter.Name,
+          parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+          parameterCodec,
+          IsJavaScriptCallbackType(parameter.Type) || IsSharedObjectCodecExpression(parameterCodec),
+          parameterCodec is "JavaScriptValueCodec" or "ArrayBufferCodec",
+          parameter.HasExplicitDefaultValue,
+          parameter.HasExplicitDefaultValue
+              ? GetDefaultValueExpression(parameter.Type, parameter.ExplicitDefaultValue)
+              : string.Empty
+      ));
+    }
+
+    return new ExpoSharedObjectConstructorModel(
+        target.Locations.FirstOrDefault(),
+        new EquatableArray<ExpoParameterModel>(parameters)
     );
   }
 
@@ -147,6 +406,176 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         return true;
       }
     }
+    return false;
+  }
+
+  private static ExpoDiagnosticModel CreateUnsupportedSharedObjectUsage(
+      string memberName,
+      string reason,
+      Location? location) =>
+      new(
+          ExpoModulesDiagnostics.UnsupportedSharedObjectUsage.Id,
+          location,
+          new EquatableArray<string>(new[] { memberName, reason })
+      );
+
+  private static bool IsSharedObjectCodecExpression(string codecExpression) =>
+      codecExpression.StartsWith("SharedObjectCodec<", StringComparison.Ordinal);
+
+  private static bool IsSharedObjectRelatedType(ITypeSymbol typeSymbol) =>
+      typeSymbol.ToDisplayString() == SharedObjectMetadataName ||
+      (typeSymbol is INamedTypeSymbol namedType && DerivesFromSharedObject(namedType));
+
+  private static string? GetDirectSharedObjectBoundaryIssue(ITypeSymbol typeSymbol)
+  {
+    if (typeSymbol.ToDisplayString() == SharedObjectMetadataName)
+    {
+      return "which is the polymorphic SharedObject base";
+    }
+    if (typeSymbol is INamedTypeSymbol namedType &&
+        namedType.OriginalDefinition.ToDisplayString() == SharedRefMetadataName)
+    {
+      return "which is the SharedRef<T> managed carrier base";
+    }
+    if (!HasExpoSharedObjectAttribute(typeSymbol))
+    {
+      return "which is not marked [ExpoSharedObject]";
+    }
+    if (typeSymbol.ContainingType is not null ||
+        typeSymbol is INamedTypeSymbol { IsGenericType: true } ||
+        !typeSymbol.IsSealed)
+    {
+      return "which must be a top-level, non-generic, sealed [ExpoSharedObject] class";
+    }
+    return null;
+  }
+
+  private static bool HasExpoSharedObjectAttribute(ITypeSymbol typeSymbol) =>
+      typeSymbol.GetAttributes().Any(attribute =>
+          attribute.AttributeClass?.ToDisplayString() == ExpoSharedObjectAttributeMetadataName);
+
+  // Reports EXPOJSI023 and returns true when the boundary type is shared-object related.
+  // On success codecExpression is the exact shared-object codec; on failure it stays null.
+  // Ownership of the exact attributed type is validated once per compilation before emission.
+  private static bool TryAnalyzeSharedObjectBoundaryType(
+      ITypeSymbol typeSymbol,
+      string memberName,
+      string positionDescription,
+      Location? location,
+      List<ExpoDiagnosticModel> diagnostics,
+      out string? codecExpression)
+  {
+    codecExpression = null;
+    if (IsSharedObjectRelatedType(typeSymbol))
+    {
+      var issue = GetDirectSharedObjectBoundaryIssue(typeSymbol);
+      if (issue is null)
+      {
+        codecExpression =
+            $"SharedObjectCodec<{typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>";
+        return true;
+      }
+
+      diagnostics.Add(CreateUnsupportedSharedObjectUsage(
+          memberName,
+          $"{positionDescription} uses shared-object type '{GetDiagnosticTypeName(typeSymbol)}', {issue}",
+          location
+      ));
+      return true;
+    }
+
+    if (TryFindNestedSharedObjectType(typeSymbol, out var nestedSharedObjectType))
+    {
+      diagnostics.Add(CreateUnsupportedSharedObjectUsage(
+          memberName,
+          $"{positionDescription} uses shared-object type '{GetDiagnosticTypeName(nestedSharedObjectType)}' inside a composed codec; shared-object types are supported only directly at the generated boundary",
+          location
+      ));
+      return true;
+    }
+
+    return false;
+  }
+
+  private static bool TryFindNestedSharedObjectType(ITypeSymbol typeSymbol, out ITypeSymbol sharedObjectType)
+  {
+    return TryFindNestedSharedObjectType(
+        typeSymbol,
+        new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default),
+        out sharedObjectType
+    );
+  }
+
+  private static bool TryFindNestedSharedObjectType(
+      ITypeSymbol typeSymbol,
+      HashSet<ITypeSymbol> visitedTypes,
+      out ITypeSymbol sharedObjectType)
+  {
+    sharedObjectType = typeSymbol;
+    if (!visitedTypes.Add(typeSymbol))
+    {
+      return false;
+    }
+
+    if (typeSymbol is not INamedTypeSymbol namedType)
+    {
+      return false;
+    }
+
+    if (namedType.IsTupleType)
+    {
+      return TryFindFirstNestedSharedObjectType(
+          namedType.TupleElements.Select(element => element.Type), visitedTypes, out sharedObjectType);
+    }
+
+    if (IsJavaScriptCallbackType(namedType))
+    {
+      return TryFindFirstNestedSharedObjectType(namedType.TypeArguments, visitedTypes, out sharedObjectType);
+    }
+
+    if (namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T ||
+        namedType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ==
+            "global::System.Collections.Generic.IReadOnlyList<T>")
+    {
+      return TryFindFirstNestedSharedObjectType(namedType.TypeArguments, visitedTypes, out sharedObjectType);
+    }
+
+    var constructedType = namedType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    if (constructedType is "global::System.Collections.Generic.Dictionary<TKey, TValue>" or
+        "global::System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>")
+    {
+      return TryFindFirstNestedSharedObjectType(
+          new[] { namedType.TypeArguments[1] }, visitedTypes, out sharedObjectType);
+    }
+
+    if (namedType.IsRecord && GetRecordCodecConstructor(namedType) is { } constructor)
+    {
+      return TryFindFirstNestedSharedObjectType(
+          constructor.Parameters.Select(parameter => parameter.Type), visitedTypes, out sharedObjectType);
+    }
+
+    return false;
+  }
+
+  private static bool TryFindFirstNestedSharedObjectType(
+      IEnumerable<ITypeSymbol> typeSymbols,
+      HashSet<ITypeSymbol> visitedTypes,
+      out ITypeSymbol sharedObjectType)
+  {
+    foreach (var typeSymbol in typeSymbols)
+    {
+      if (IsSharedObjectRelatedType(typeSymbol))
+      {
+        sharedObjectType = typeSymbol;
+        return true;
+      }
+      if (TryFindNestedSharedObjectType(typeSymbol, visitedTypes, out sharedObjectType))
+      {
+        return true;
+      }
+    }
+
+    sharedObjectType = null!;
     return false;
   }
 
@@ -165,7 +594,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         ? typeSymbol.Name.Substring(0, typeSymbol.Name.Length - "Module".Length)
         : typeSymbol.Name;
 
-    var sharedObjectClassTypeNames = new List<string>();
+    var sharedObjectClasses = new List<ExpoSharedObjectClassModel>();
     foreach (var attribute in context.Attributes)
     {
       if (attribute.ConstructorArguments.Length == 1 &&
@@ -181,13 +610,16 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
           continue;
         }
 
-        foreach (var entry in namedArgument.Value.Values)
+        for (var index = 0; index < namedArgument.Value.Values.Length; index++)
         {
-          if (entry.Value is INamedTypeSymbol classSymbol)
-          {
-            sharedObjectClassTypeNames.Add(
-                classSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
-          }
+          var entry = namedArgument.Value.Values[index];
+          var entryTypeName = entry.Value is ITypeSymbol entryType
+              ? entryType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+              : entry.Value?.ToString() ?? "null";
+          sharedObjectClasses.Add(new ExpoSharedObjectClassModel(
+              entryTypeName,
+              GetClassesEntryLocation(attribute, index) ?? typeSymbol.Locations.FirstOrDefault()
+          ));
         }
       }
     }
@@ -267,10 +699,31 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         new EquatableArray<ExpoObservingHookModel>(stopObservingHooks),
         new EquatableArray<ExpoFunctionModel>(functions),
         new EquatableArray<ExpoPropertyModel>(properties),
-        new EquatableArray<string>(sharedObjectClassTypeNames),
+        new EquatableArray<ExpoSharedObjectClassModel>(sharedObjectClasses),
         new EquatableArray<ExpoGeneratedRecordCodecModel>(recordCodecs),
         new EquatableArray<ExpoDiagnosticModel>(diagnostics)
     );
+  }
+
+  private static Location? GetClassesEntryLocation(AttributeData attribute, int entryIndex)
+  {
+    if (attribute.ApplicationSyntaxReference?.GetSyntax() is not AttributeSyntax attributeSyntax)
+    {
+      return null;
+    }
+
+    var classesArgument = attributeSyntax.ArgumentList?.Arguments.FirstOrDefault(argument =>
+        argument.NameEquals?.Name.Identifier.ValueText == "Classes");
+    if (classesArgument is null)
+    {
+      return null;
+    }
+
+    var typeOfExpressions = classesArgument.Expression
+        .DescendantNodesAndSelf()
+        .OfType<TypeOfExpressionSyntax>()
+        .ToArray();
+    return entryIndex < typeOfExpressions.Length ? typeOfExpressions[entryIndex].Type.GetLocation() : null;
   }
 
   private static IEnumerable<string> GetEventNames(
@@ -1019,14 +1472,34 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       var asyncReturnsVoid = isAsync && asyncResultType is null;
       var asyncResultTypeName = asyncResultType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? string.Empty;
       var asyncResultPassingKind = GetReturnPassingKind(asyncResultType);
-      var asyncResultCodec = asyncResultType is null || asyncResultPassingKind != ExpoReturnPassingKind.Codec
-          ? string.Empty
-          : GetCodecExpression(
+      string? asyncResultCodec;
+      if (asyncResultType is not null &&
+          asyncResultPassingKind == ExpoReturnPassingKind.Codec &&
+          TryAnalyzeSharedObjectBoundaryType(
               asyncResultType,
+              member.Name,
+              "async result type",
+              member.Locations.FirstOrDefault(),
               diagnostics,
-              recordCodecs,
-              member.GetReturnTypeAttributes()
-          );
+              out var sharedAsyncResultCodec))
+      {
+        if (sharedAsyncResultCodec is null)
+        {
+          continue;
+        }
+        asyncResultCodec = sharedAsyncResultCodec;
+      }
+      else
+      {
+        asyncResultCodec = asyncResultType is null || asyncResultPassingKind != ExpoReturnPassingKind.Codec
+            ? string.Empty
+            : GetCodecExpression(
+                asyncResultType,
+                diagnostics,
+                recordCodecs,
+                member.GetReturnTypeAttributes()
+            );
+      }
 
       if (isAsync && !asyncReturnsVoid && asyncResultPassingKind == ExpoReturnPassingKind.Codec && asyncResultCodec is null)
       {
@@ -1049,14 +1522,34 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       var returnPassingKind = returnsVoid || isAsync
           ? ExpoReturnPassingKind.Codec
           : GetReturnPassingKind(member.ReturnType);
-      var returnCodec = returnsVoid || isAsync || returnPassingKind != ExpoReturnPassingKind.Codec
-          ? string.Empty
-          : GetCodecExpression(
+      string? returnCodec;
+      if (!isAsync && !returnsVoid &&
+          returnPassingKind == ExpoReturnPassingKind.Codec &&
+          TryAnalyzeSharedObjectBoundaryType(
               member.ReturnType,
+              member.Name,
+              "return type",
+              member.Locations.FirstOrDefault(),
               diagnostics,
-              recordCodecs,
-              member.GetReturnTypeAttributes()
-          );
+              out var sharedReturnCodec))
+      {
+        if (sharedReturnCodec is null)
+        {
+          continue;
+        }
+        returnCodec = sharedReturnCodec;
+      }
+      else
+      {
+        returnCodec = returnsVoid || isAsync || returnPassingKind != ExpoReturnPassingKind.Codec
+            ? string.Empty
+            : GetCodecExpression(
+                member.ReturnType,
+                diagnostics,
+                recordCodecs,
+                member.GetReturnTypeAttributes()
+            );
+      }
       if (!isAsync && !returnsVoid && returnPassingKind == ExpoReturnPassingKind.Codec && returnCodec is null)
       {
         diagnostics.Add(new ExpoDiagnosticModel(
@@ -1117,12 +1610,31 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       foreach (var parameter in member.Parameters)
       {
         var passingKind = GetParameterPassingKind(parameter.Type);
-        var parameterCodec = GetCodecExpression(
-            parameter.Type,
-            diagnostics,
-            recordCodecs,
-            parameter.GetAttributes()
-        );
+        string? parameterCodec;
+        if (passingKind == ExpoParameterPassingKind.Codec &&
+            TryAnalyzeSharedObjectBoundaryType(
+                parameter.Type,
+                member.Name,
+                $"parameter '{parameter.Name}'",
+                parameter.Locations.FirstOrDefault(),
+                diagnostics,
+                out var sharedParameterCodec))
+        {
+          if (sharedParameterCodec is null)
+          {
+            continue;
+          }
+          parameterCodec = sharedParameterCodec;
+        }
+        else
+        {
+          parameterCodec = GetCodecExpression(
+              parameter.Type,
+              diagnostics,
+              recordCodecs,
+              parameter.GetAttributes()
+          );
+        }
         if (passingKind == ExpoParameterPassingKind.Codec && parameterCodec is null)
         {
           var descriptor = IsJavaScriptCallbackType(parameter.Type)
@@ -1147,7 +1659,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
             parameter.Name,
             parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             parameterCodec ?? string.Empty,
-            IsJavaScriptCallbackType(parameter.Type),
+            IsJavaScriptCallbackType(parameter.Type) ||
+                IsSharedObjectCodecExpression(parameterCodec ?? string.Empty),
             parameterCodec is "JavaScriptValueCodec" or "ArrayBufferCodec",
             parameter.HasExplicitDefaultValue,
             parameter.HasExplicitDefaultValue
@@ -1177,7 +1690,9 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
           asyncResultCodec ?? string.Empty,
           new EquatableArray<ExpoParameterModel>(parameters),
           returnPassingKind,
-          asyncResultPassingKind
+          asyncResultPassingKind,
+          IsSharedObjectCodecExpression(returnCodec ?? string.Empty),
+          IsSharedObjectCodecExpression(asyncResultCodec ?? string.Empty)
       ));
     }
 
@@ -1255,7 +1770,25 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         continue;
       }
 
-      var codecExpression = GetCodecExpression(member.Type, diagnostics, recordCodecs, member.GetAttributes());
+      string? codecExpression;
+      if (TryAnalyzeSharedObjectBoundaryType(
+          member.Type,
+          member.Name,
+          "property type",
+          member.Locations.FirstOrDefault(),
+          diagnostics,
+          out var sharedPropertyCodec))
+      {
+        if (sharedPropertyCodec is null)
+        {
+          continue;
+        }
+        codecExpression = sharedPropertyCodec;
+      }
+      else
+      {
+        codecExpression = GetCodecExpression(member.Type, diagnostics, recordCodecs, member.GetAttributes());
+      }
       if (codecExpression is null)
       {
         diagnostics.Add(new ExpoDiagnosticModel(
@@ -1285,7 +1818,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
           codecExpression,
           IsSupportedPropertySetter(member.SetMethod),
           codecExpression is "JavaScriptValueCodec" or "ArrayBufferCodec",
-          IsJavaScriptCallbackType(member.Type)
+          IsJavaScriptCallbackType(member.Type) || IsSharedObjectCodecExpression(codecExpression)
       ));
     }
 
@@ -1405,6 +1938,13 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       context.ReportDiagnostic(ToDiagnostic(diagnostic));
     }
 
+    // The owning module's full JavaScript namespace is validated across the whole
+    // compilation before any module is emitted.
+    foreach (var diagnostic in ValidateSharedObjectOwnership(moduleModels, sharedObjectModels))
+    {
+      context.ReportDiagnostic(ToDiagnostic(diagnostic));
+    }
+
     foreach (var module in moduleModels)
     {
       EmitEventPartial(context, module);
@@ -1482,10 +2022,18 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     {
       foreach (var function in module.Functions.Values)
       {
+        if (UsesSharedObjectCodec(function))
+        {
+          continue;
+        }
         EmitHostFunction(builder, module, function);
       }
       foreach (var property in module.Properties.Values)
       {
+        if (IsSharedObjectCodecExpression(property.CodecExpression))
+        {
+          continue;
+        }
         EmitPropertyGetter(builder, module, property);
         if (property.HasSetter)
         {
@@ -1505,6 +2053,176 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
 
     context.AddSource($"{providerTypeName}.g.cs", SourceText.From(builder.ToString(), Encoding.UTF8));
   }
+
+  // Shared-object members are modeled and validated ahead of emission, but their generated glue
+  // requires the SharedObjectCodec<T> runtime surface and class installation, which are emitted
+  // together with the remaining shared-object binding work. Keep these members out of the
+  // generated provider until that emission exists.
+  private static bool UsesSharedObjectCodec(ExpoFunctionModel function) =>
+      function.ReturnRequiresRuntimeContext ||
+      function.AsyncResultRequiresRuntimeContext ||
+      function.Parameters.Values.Any(parameter => IsSharedObjectCodecExpression(parameter.CodecExpression));
+
+  private static List<ExpoDiagnosticModel> ValidateSharedObjectOwnership(
+      IReadOnlyList<ExpoModuleModel> moduleModels,
+      IReadOnlyList<ExpoSharedObjectModel> sharedObjectModels)
+  {
+    var diagnostics = new List<ExpoDiagnosticModel>();
+
+    ExpoDiagnosticModel CreateOwnershipDiagnostic(string typeName, string reason, Location? location) =>
+        new(
+            ExpoModulesDiagnostics.InvalidSharedObjectOwnership.Id,
+            location,
+            new EquatableArray<string>(new[] { typeName, reason })
+        );
+
+    var sharedObjectsByTypeName = new Dictionary<string, ExpoSharedObjectModel>(StringComparer.Ordinal);
+    foreach (var sharedObject in sharedObjectModels)
+    {
+      if (!sharedObjectsByTypeName.ContainsKey(sharedObject.FullyQualifiedTypeName))
+      {
+        sharedObjectsByTypeName.Add(sharedObject.FullyQualifiedTypeName, sharedObject);
+      }
+    }
+
+    var ownersByTypeName = new Dictionary<string, List<ExpoModuleModel>>(StringComparer.Ordinal);
+    var moduleOwnedClasses = new List<(ExpoModuleModel Module, List<ExpoSharedObjectModel> OwnedClasses)>();
+    foreach (var module in moduleModels)
+    {
+      var ownedClasses = new List<ExpoSharedObjectModel>();
+      var seenEntryTypeNames = new HashSet<string>(StringComparer.Ordinal);
+      foreach (var entry in module.SharedObjectClasses.Values)
+      {
+        if (!sharedObjectsByTypeName.TryGetValue(entry.TypeName, out var sharedObject))
+        {
+          diagnostics.Add(CreateOwnershipDiagnostic(
+              GetShortTypeName(entry.TypeName),
+              $"module '{module.ModuleName}' lists it in Classes, but it is not an [ExpoSharedObject] class deriving from SharedObject",
+              entry.Location ?? module.Location
+          ));
+          continue;
+        }
+
+        if (!seenEntryTypeNames.Add(entry.TypeName))
+        {
+          diagnostics.Add(CreateOwnershipDiagnostic(
+              sharedObject.SimpleTypeName,
+              $"module '{module.ModuleName}' lists it more than once in Classes",
+              entry.Location ?? module.Location
+          ));
+          continue;
+        }
+
+        if (!ownersByTypeName.TryGetValue(entry.TypeName, out var owners))
+        {
+          owners = new List<ExpoModuleModel>();
+          ownersByTypeName.Add(entry.TypeName, owners);
+        }
+        owners.Add(module);
+        if (sharedObject.IsValid)
+        {
+          ownedClasses.Add(sharedObject);
+        }
+      }
+      moduleOwnedClasses.Add((module, ownedClasses));
+    }
+
+    foreach (var sharedObject in sharedObjectModels)
+    {
+      ownersByTypeName.TryGetValue(sharedObject.FullyQualifiedTypeName, out var owners);
+      if (owners is { Count: > 1 })
+      {
+        diagnostics.Add(CreateOwnershipDiagnostic(
+            sharedObject.SimpleTypeName,
+            $"it is listed in Classes by multiple modules ({string.Join(", ", owners.Select(owner => $"'{owner.ModuleName}'"))})",
+            sharedObject.Location
+        ));
+      }
+      else if (owners is null or { Count: 0 } && sharedObject.IsValid)
+      {
+        diagnostics.Add(CreateOwnershipDiagnostic(
+            sharedObject.SimpleTypeName,
+            "no module lists it in [ExpoModule(Classes = ...)]",
+            sharedObject.Location
+        ));
+      }
+    }
+
+    foreach (var (module, ownedClasses) in moduleOwnedClasses)
+    {
+      // Effective class names stay unique for every owned class, including
+      // native-created-only classes, because the generated prototype and codec
+      // identity table is keyed by those names.
+      var classesByJavaScriptName = new Dictionary<string, ExpoSharedObjectModel>(StringComparer.Ordinal);
+      foreach (var sharedObject in ownedClasses)
+      {
+        if (classesByJavaScriptName.TryGetValue(sharedObject.JavaScriptClassName, out var existingClass))
+        {
+          diagnostics.Add(CreateOwnershipDiagnostic(
+              sharedObject.SimpleTypeName,
+              $"its JavaScript class name '{sharedObject.JavaScriptClassName}' is already used by class '{existingClass.SimpleTypeName}' in module '{module.ModuleName}'",
+              sharedObject.Location
+          ));
+          continue;
+        }
+        classesByJavaScriptName.Add(sharedObject.JavaScriptClassName, sharedObject);
+      }
+
+      var namespaceSurfaces = GetModuleNamespaceSurfaces(module);
+      foreach (var sharedObject in ownedClasses)
+      {
+        if (sharedObject.Constructor is null)
+        {
+          continue;
+        }
+        if (namespaceSurfaces.TryGetValue(sharedObject.JavaScriptClassName, out var surface))
+        {
+          diagnostics.Add(CreateOwnershipDiagnostic(
+              sharedObject.SimpleTypeName,
+              $"its JavaScript class name '{sharedObject.JavaScriptClassName}' collides with {surface} on module '{module.ModuleName}'",
+              sharedObject.Location
+          ));
+        }
+      }
+    }
+
+    return diagnostics;
+  }
+
+  private static Dictionary<string, string> GetModuleNamespaceSurfaces(ExpoModuleModel module)
+  {
+    var surfaces = new Dictionary<string, string>(StringComparer.Ordinal);
+    foreach (var function in module.Functions.Values)
+    {
+      surfaces[function.JavaScriptName] = $"generated function '{function.JavaScriptName}'";
+    }
+    foreach (var property in module.Properties.Values)
+    {
+      surfaces[property.JavaScriptName] = $"generated property '{property.JavaScriptName}'";
+    }
+
+    var hasEvents = module.EventNames.Values.Count > 0;
+    if (hasEvents ||
+        module.StartObservingHooks.Values.Count > 0 ||
+        module.StopObservingHooks.Values.Count > 0)
+    {
+      surfaces["startObserving"] = "the observing hook 'startObserving'";
+      surfaces["stopObserving"] = "the observing hook 'stopObserving'";
+    }
+    if (hasEvents)
+    {
+      foreach (var name in new[] { "addListener", "removeListener", "removeAllListeners", "emit", "listenerCount" })
+      {
+        surfaces[name] = $"the reserved event-runtime member '{name}'";
+      }
+    }
+    return surfaces;
+  }
+
+  private static string GetShortTypeName(string fullyQualifiedTypeName) =>
+      fullyQualifiedTypeName.StartsWith("global::", StringComparison.Ordinal)
+          ? fullyQualifiedTypeName.Substring("global::".Length)
+          : fullyQualifiedTypeName;
 
   private static void EmitModuleRegistrationFunction(StringBuilder builder, ExpoModuleModel module)
   {
@@ -1553,6 +2271,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     }
     foreach (var function in module.Functions.Values)
     {
+      if (UsesSharedObjectCodec(function))
+      {
+        continue;
+      }
       builder.AppendLine(function.IsAsync
           ? "      GeneratedFunction.DefineAsync("
           : "      GeneratedFunction.DefineSync(");
@@ -1566,6 +2288,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     }
     foreach (var property in module.Properties.Values)
     {
+      if (IsSharedObjectCodecExpression(property.CodecExpression))
+      {
+        continue;
+      }
       builder.AppendLine("      GeneratedProperty.Define(");
       builder.AppendLine("          context,");
       builder.AppendLine($"          {moduleVariable},");
@@ -1761,6 +2487,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       "EXPOJSI019" => ExpoModulesDiagnostics.UnsupportedEventPayload,
       "EXPOJSI020" => ExpoModulesDiagnostics.DuplicateEventName,
       "EXPOJSI021" => ExpoModulesDiagnostics.InvalidSharedObjectDeclaration,
+      "EXPOJSI022" => ExpoModulesDiagnostics.InvalidSharedObjectConstructor,
+      "EXPOJSI023" => ExpoModulesDiagnostics.UnsupportedSharedObjectUsage,
+      "EXPOJSI024" => ExpoModulesDiagnostics.InvalidSharedObjectOwnership,
+      "EXPOJSI025" => ExpoModulesDiagnostics.InvalidSharedObjectMemberName,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());

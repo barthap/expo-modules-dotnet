@@ -192,4 +192,40 @@ internal static class ExpoModulesDiagnostics
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true
   );
+
+  public static readonly DiagnosticDescriptor InvalidSharedObjectConstructor = new(
+      id: "EXPOJSI022",
+      title: "Invalid Expo shared object constructor",
+      messageFormat: "Shared object class '{0}' has an invalid [JS] constructor: {1}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor UnsupportedSharedObjectUsage = new(
+      id: "EXPOJSI023",
+      title: "Unsupported Expo shared object usage",
+      messageFormat: "'{0}' cannot be exported to JavaScript: {1}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor InvalidSharedObjectOwnership = new(
+      id: "EXPOJSI024",
+      title: "Invalid Expo shared object class ownership",
+      messageFormat: "Shared object class '{0}' has invalid ownership or naming: {1}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor InvalidSharedObjectMemberName = new(
+      id: "EXPOJSI025",
+      title: "Invalid Expo shared object member name",
+      messageFormat: "Shared object class '{0}' JavaScript member name '{1}' is {2}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
 }
