@@ -732,6 +732,15 @@ extern "C" void expo_jsi_testhost_resume_promise_registration(
   }
 }
 
+extern "C" void expo_jsi_testhost_invalidate_bridge_runtime_state_without_deleting_handle(
+  expo_jsi_testhost_runtime_handle testhostRuntime)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  if (testhost != nullptr) {
+    expo::dotnet::invalidateRuntimeStateWithoutDeletingHandleForTesting(testhost->runtime);
+  }
+}
+
 extern "C" expo_jsi_error expo_jsi_testhost_validate_array_buffer_snapshot(
   expo_jsi_testhost_runtime_handle testhostRuntime,
   uint8_t detached,

@@ -155,6 +155,442 @@ public sealed class JavaScriptPromiseTests
   }
 
   [Fact]
+  public void ResolveKeepsPromiseEntryRegisteredAndAsValueUsable()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var promise = runtime.CreatePromise();
+      using var value = runtime.CreateNumber(1);
+      promise.Resolve(value);
+
+      Assert.Equal(0u, fixture.Counters.LongLivedPromisesReleased);
+      Assert.Equal(0u, fixture.Counters.LongLivedPromisesAbandoned);
+      Assert.Equal(1u, fixture.Counters.LongLivedObjectsRemaining);
+
+      using var first = promise.AsValue();
+      using var second = promise.AsValue();
+      Assert.True(runtime.StrictEquals(first, second));
+      return true;
+    });
+
+    fixture.WaitUntilIdle();
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesAbandoned);
+    Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);
+  }
+
+  [Fact]
+  public void RejectKeepsPromiseEntryRegisteredAndAsValueUsable()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var promise = runtime.CreatePromise();
+      using var value = runtime.CreateString("boom");
+      promise.Reject(value);
+
+      Assert.Equal(0u, fixture.Counters.LongLivedPromisesReleased);
+      Assert.Equal(0u, fixture.Counters.LongLivedPromisesAbandoned);
+      Assert.Equal(1u, fixture.Counters.LongLivedObjectsRemaining);
+
+      using var asValue = promise.AsValue();
+      Assert.True(asValue.IsPromise);
+      return true;
+    });
+
+    fixture.WaitUntilIdle();
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesAbandoned);
+    Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);
+  }
+
+  [Fact]
+  public void ThrowingResolverReturnsToActiveAndCanBeRetried()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    // Replace globalThis.Promise with a constructor whose captured "resolve"
+    // function increments a JS counter, throws "resolver boom" on the first
+    // call, and succeeds on the second call. Because createPromise captures
+    // whatever functions the executor is invoked with, this makes the native
+    // PromiseEntry's stored resolver itself throw synchronously.
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var setup = fixture.Evaluate(
+          """
+          globalThis.__resolverCalls = 0;
+          globalThis.Promise = function (executor) {
+            const resolve = (value) => {
+              globalThis.__resolverCalls += 1;
+              if (globalThis.__resolverCalls === 1) {
+                throw new Error("resolver boom");
+              }
+            };
+            const reject = () => {};
+            executor(resolve, reject);
+            return {};
+          };
+          undefined;
+          """,
+          "promise-throw-retry-setup.js"
+      );
+
+      using var promise = runtime.CreatePromise();
+      using var value = runtime.CreateNumber(1);
+
+      Assert.Throws<InvalidOperationException>(() => promise.Resolve(value));
+      promise.Resolve(value);
+
+      using var callCount = fixture.Evaluate(
+          "globalThis.__resolverCalls",
+          "promise-throw-retry-call-count.js"
+      );
+      Assert.Equal(2, callCount.AsDouble());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void ThenableGetterReenteringResolveIsANonBlockingNoOp()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var reentrantInvocationCount = 0;
+    var reentrantReturned = false;
+    var reentrantExceptionText = string.Empty;
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      using var promise = runtime.CreatePromise();
+
+      using var reenter = runtime.CreateHostFunction(
+          "reenterResolve",
+          0,
+          (_, _, _, _) =>
+          {
+            reentrantInvocationCount++;
+            try
+            {
+              using var again = runtime.CreateNumber(2);
+              promise.Resolve(again);
+              reentrantReturned = true;
+            }
+            catch (Exception ex)
+            {
+              reentrantExceptionText = ex.Message;
+            }
+            return runtime.CreateUndefined();
+          },
+          new object()
+      );
+      using var reenterValue = reenter.AsValue();
+      global.SetProperty("reenterResolve", reenterValue);
+
+      using var thenable = fixture.Evaluate(
+          """
+          ({
+            get then() {
+              globalThis.reenterResolve();
+              return undefined;
+            }
+          });
+          """,
+          "promise-thenable-reenter-resolve.js"
+      );
+
+      using var value = runtime.CreateNumber(1);
+      promise.Resolve(thenable);
+
+      Assert.Equal(1, reentrantInvocationCount);
+      Assert.True(reentrantReturned);
+      Assert.Equal(string.Empty, reentrantExceptionText);
+      return true;
+    });
+  }
+
+  [Fact]
+  public void PreparationDuringResolverDefersReleaseUntilResolverReturns()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+    var ranAfterPreparation = false;
+    uint releasedCountObservedDuringResolver = uint.MaxValue;
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      var promise = runtime.CreatePromise();
+      try
+      {
+        using var prepare = runtime.CreateHostFunction(
+            "prepareDuringResolve",
+            0,
+            (_, _, _, _) =>
+            {
+              var undefinedResult = runtime.CreateUndefined();
+              fixture.PrepareRuntimeForInvalidation();
+              releasedCountObservedDuringResolver = fixture.Counters.LongLivedPromisesReleased;
+              ranAfterPreparation = true;
+              return undefinedResult;
+            },
+            new object()
+        );
+        using var prepareValue = prepare.AsValue();
+        global.SetProperty("prepareDuringResolve", prepareValue);
+
+        using var thenable = fixture.Evaluate(
+            """
+            ({
+              get then() {
+                globalThis.prepareDuringResolve();
+                return undefined;
+              }
+            });
+            """,
+            "promise-prepare-during-resolve.js"
+        );
+
+        promise.Resolve(thenable);
+        Assert.True(ranAfterPreparation);
+      }
+      finally
+      {
+        promise.Dispose();
+      }
+      return true;
+    });
+
+    Assert.Equal(0u, releasedCountObservedDuringResolver);
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesAbandoned);
+    Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);
+  }
+
+  [Fact]
+  public void PreparationDuringThrowingResolverCompletesPendingReleaseAndSurfacesTheError()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+    var ranAfterPreparation = false;
+    string? capturedErrorText = null;
+    uint releasedCountObservedDuringResolver = uint.MaxValue;
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      using var prepare = runtime.CreateHostFunction(
+          "prepareThenThrow",
+          0,
+          (_, _, _, _) =>
+          {
+            var undefinedResult = runtime.CreateUndefined();
+            fixture.PrepareRuntimeForInvalidation();
+            releasedCountObservedDuringResolver = fixture.Counters.LongLivedPromisesReleased;
+            ranAfterPreparation = true;
+            return undefinedResult;
+          },
+          new object()
+      );
+      using var prepareValue = prepare.AsValue();
+      global.SetProperty("prepareThenThrow", prepareValue);
+
+      // Replace globalThis.Promise so the executor receives a custom "resolve"
+      // function. createPromise captures that function as the entry's stored
+      // resolver, so calling PromiseEntry::resolve invokes this JS code
+      // directly and its throw propagates synchronously.
+      using var setup = fixture.Evaluate(
+          """
+          globalThis.Promise = function (executor) {
+            const resolve = (value) => {
+              globalThis.prepareThenThrow();
+              throw new Error("resolver after teardown");
+            };
+            const reject = () => {};
+            executor(resolve, reject);
+            return {};
+          };
+          undefined;
+          """,
+          "promise-prepare-then-throw-setup.js"
+      );
+
+      var promise = runtime.CreatePromise();
+      try
+      {
+        using var value = runtime.CreateNumber(1);
+        try
+        {
+          promise.Resolve(value);
+        }
+        catch (InvalidOperationException ex)
+        {
+          capturedErrorText = ex.Message;
+        }
+        Assert.True(ranAfterPreparation);
+      }
+      finally
+      {
+        promise.Dispose();
+      }
+      return true;
+    });
+
+    Assert.NotNull(capturedErrorText);
+    Assert.Contains("resolver after teardown", capturedErrorText);
+    Assert.Equal(0u, releasedCountObservedDuringResolver);
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesAbandoned);
+    Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);
+  }
+
+  [Fact]
+  public void StateInvalidationDuringResolverDefersAbandonUntilResolverReturns()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+    var ranAfterInvalidation = false;
+    uint abandonedCountObservedDuringResolver = uint.MaxValue;
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      var promise = runtime.CreatePromise();
+      try
+      {
+        using var invalidate = runtime.CreateHostFunction(
+            "invalidateDuringResolve",
+            0,
+            (_, _, _, _) =>
+            {
+              var undefinedResult = runtime.CreateUndefined();
+              fixture.InvalidateBridgeRuntimeStateWithoutDeletingHandle();
+              abandonedCountObservedDuringResolver = fixture.Counters.LongLivedPromisesAbandoned;
+              ranAfterInvalidation = true;
+              return undefinedResult;
+            },
+            new object()
+        );
+        using var invalidateValue = invalidate.AsValue();
+        global.SetProperty("invalidateDuringResolve", invalidateValue);
+
+        using var thenable = fixture.Evaluate(
+            """
+            ({
+              get then() {
+                globalThis.invalidateDuringResolve();
+                return undefined;
+              }
+            });
+            """,
+            "promise-invalidate-during-resolve.js"
+        );
+
+        promise.Resolve(thenable);
+        Assert.True(ranAfterInvalidation);
+      }
+      finally
+      {
+        promise.Dispose();
+      }
+      return true;
+    });
+
+    Assert.Equal(0u, abandonedCountObservedDuringResolver);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesAbandoned);
+    Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);
+
+    fixture.ReleaseBridgeRuntimeHandle();
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesAbandoned);
+  }
+
+  [Fact]
+  public void StateInvalidationDuringThrowingResolverCompletesPendingAbandonAndSurfacesTheError()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+    var ranAfterInvalidation = false;
+    string? capturedErrorText = null;
+    uint abandonedCountObservedDuringResolver = uint.MaxValue;
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      using var invalidate = runtime.CreateHostFunction(
+          "invalidateThenThrow",
+          0,
+          (_, _, _, _) =>
+          {
+            var undefinedResult = runtime.CreateUndefined();
+            fixture.InvalidateBridgeRuntimeStateWithoutDeletingHandle();
+            abandonedCountObservedDuringResolver = fixture.Counters.LongLivedPromisesAbandoned;
+            ranAfterInvalidation = true;
+            return undefinedResult;
+          },
+          new object()
+      );
+      using var invalidateValue = invalidate.AsValue();
+      global.SetProperty("invalidateThenThrow", invalidateValue);
+
+      // Replace globalThis.Promise so the executor receives a custom "resolve"
+      // function captured directly as the entry's stored resolver, making its
+      // throw propagate synchronously through PromiseEntry::resolve.
+      using var setup = fixture.Evaluate(
+          """
+          globalThis.Promise = function (executor) {
+            const resolve = (value) => {
+              globalThis.invalidateThenThrow();
+              throw new Error("abandoned resolver");
+            };
+            const reject = () => {};
+            executor(resolve, reject);
+            return {};
+          };
+          undefined;
+          """,
+          "promise-invalidate-then-throw-setup.js"
+      );
+
+      var promise = runtime.CreatePromise();
+      try
+      {
+        using var value = runtime.CreateNumber(1);
+        try
+        {
+          promise.Resolve(value);
+        }
+        catch (InvalidOperationException ex)
+        {
+          capturedErrorText = ex.Message;
+        }
+        Assert.True(ranAfterInvalidation);
+      }
+      finally
+      {
+        promise.Dispose();
+      }
+      return true;
+    });
+
+    Assert.NotNull(capturedErrorText);
+    Assert.Contains("abandoned resolver", capturedErrorText);
+    Assert.Equal(0u, abandonedCountObservedDuringResolver);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesAbandoned);
+    Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);
+
+    fixture.ReleaseBridgeRuntimeHandle();
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesAbandoned);
+  }
+
+  [Fact]
   public void OwnedPromiseResultClaimsStateExactlyOnce()
   {
     using var fixture = HermesRuntimeFixture.Create();

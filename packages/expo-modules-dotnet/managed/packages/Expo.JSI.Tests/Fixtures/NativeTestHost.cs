@@ -32,6 +32,8 @@ internal static unsafe class NativeTestHost
   private static delegate* unmanaged[Cdecl]<nint, void> pauseNextPromiseRegistration;
   private static delegate* unmanaged[Cdecl]<nint, ExpoJsiError> waitUntilPromiseRegistrationPaused;
   private static delegate* unmanaged[Cdecl]<nint, void> resumePromiseRegistration;
+  private static delegate* unmanaged[Cdecl]<nint, void>
+      invalidateBridgeRuntimeStateWithoutDeletingHandle;
   private static delegate* unmanaged[Cdecl]<nint, byte, int, int, ExpoJsiError>
       validateArrayBufferSnapshot;
   private static delegate* unmanaged[Cdecl]<nint, ulong, ExpoJsiError>
@@ -263,6 +265,12 @@ internal static unsafe class NativeTestHost
     resumePromiseRegistration(testHostRuntime);
   }
 
+  internal static void InvalidateBridgeRuntimeStateWithoutDeletingHandle(nint testHostRuntime)
+  {
+    EnsureLoaded();
+    invalidateBridgeRuntimeStateWithoutDeletingHandle(testHostRuntime);
+  }
+
   internal static void ValidateArrayBufferSnapshot(
       nint testHostRuntime,
       bool detached,
@@ -420,6 +428,11 @@ internal static unsafe class NativeTestHost
       (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
           library,
           "expo_jsi_testhost_resume_promise_registration"
+      );
+    invalidateBridgeRuntimeStateWithoutDeletingHandle =
+      (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
+          library,
+          "expo_jsi_testhost_invalidate_bridge_runtime_state_without_deleting_handle"
       );
     validateArrayBufferSnapshot =
       (delegate* unmanaged[Cdecl]<nint, byte, int, int, ExpoJsiError>)LoadExport(

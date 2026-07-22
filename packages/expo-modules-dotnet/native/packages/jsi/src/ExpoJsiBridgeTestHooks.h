@@ -30,5 +30,7 @@ void failNextPromiseHandleAllocationForTesting() noexcept;
 void pauseNextPromiseRegistrationForTesting(expo_jsi_runtime_handle runtime) noexcept;
 bool waitUntilPromiseRegistrationPausedForTesting(expo_jsi_runtime_handle runtime) noexcept;
 void resumePromiseRegistrationForTesting(expo_jsi_runtime_handle runtime) noexcept;
+void invalidateRuntimeStateWithoutDeletingHandleForTesting(
+  expo_jsi_runtime_handle runtime) noexcept;
 
 } // namespace expo::dotnet

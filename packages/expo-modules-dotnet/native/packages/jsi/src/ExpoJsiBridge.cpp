@@ -2835,6 +2835,13 @@ void resumePromiseRegistrationForTesting(expo_jsi_runtime_handle runtime) noexce
   }
 }
 
+void invalidateRuntimeStateWithoutDeletingHandleForTesting(expo_jsi_runtime_handle runtime) noexcept
+{
+  if (runtime != nullptr) {
+    runtime->invalidateWithoutRuntime();
+  }
+}
+
 expo_jsi_error validateArrayBufferSnapshotForTesting(uint8_t detached,
                                                      int32_t currentLength,
                                                      int32_t capturedLength) noexcept

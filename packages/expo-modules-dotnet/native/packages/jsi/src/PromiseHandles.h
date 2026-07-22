@@ -45,31 +45,45 @@ public:
     std::unique_ptr<jsi::Object> promise;
     std::unique_ptr<jsi::Function> resolve;
     std::unique_ptr<jsi::Function> reject;
+    bool completedNow = false;
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      if (cleanup_ != PromiseCleanupState::None)
+      if (cleanup_ == PromiseCleanupState::Terminal)
         return;
       if (settlement_ == PromiseSettlementState::Settling) {
-        cleanup_ = PromiseCleanupState::ReleasePending;
+        if (cleanup_ == PromiseCleanupState::None)
+          cleanup_ = PromiseCleanupState::ReleasePending;
         return;
       }
       cleanup_ = PromiseCleanupState::Terminal;
       promise = std::move(promise_);
       resolve = std::move(resolve_);
       reject = std::move(reject_);
+      completedNow = true;
     }
-    state_->notePromiseReleased();
+    if (completedNow)
+      state_->notePromiseReleased();
   }
   void abandon() noexcept override
   {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (cleanup_ != PromiseCleanupState::None)
-      return;
-    cleanup_ = PromiseCleanupState::Terminal;
-    (void)promise_.release();
-    (void)resolve_.release();
-    (void)reject_.release();
-    state_->notePromiseAbandoned();
+    bool completedNow = false;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (cleanup_ == PromiseCleanupState::Terminal)
+        return;
+      if (settlement_ == PromiseSettlementState::Settling) {
+        if (cleanup_ == PromiseCleanupState::None)
+          cleanup_ = PromiseCleanupState::AbandonPending;
+        return;
+      }
+      cleanup_ = PromiseCleanupState::Terminal;
+      (void)promise_.release();
+      (void)resolve_.release();
+      (void)reject_.release();
+      completedNow = true;
+    }
+    if (completedNow)
+      state_->notePromiseAbandoned();
   }
 
 private:
@@ -98,7 +112,7 @@ private:
     std::unique_ptr<jsi::Object> promise;
     std::unique_ptr<jsi::Function> resolve;
     std::unique_ptr<jsi::Function> reject;
-    bool released = false;
+    PromiseCleanupState completedCleanup = PromiseCleanupState::None;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (cleanup_ == PromiseCleanupState::ReleasePending) {
@@ -106,7 +120,13 @@ private:
         promise = std::move(promise_);
         resolve = std::move(resolve_);
         reject = std::move(reject_);
-        released = true;
+        completedCleanup = PromiseCleanupState::ReleasePending;
+      } else if (cleanup_ == PromiseCleanupState::AbandonPending) {
+        cleanup_ = PromiseCleanupState::Terminal;
+        (void)promise_.release();
+        (void)resolve_.release();
+        (void)reject_.release();
+        completedCleanup = PromiseCleanupState::AbandonPending;
       } else if (succeeded) {
         settlement_ = PromiseSettlementState::Settled;
         resolve_.reset();
@@ -115,8 +135,10 @@ private:
         settlement_ = PromiseSettlementState::Active;
       }
     }
-    if (released)
+    if (completedCleanup == PromiseCleanupState::ReleasePending)
       state_->notePromiseReleased();
+    else if (completedCleanup == PromiseCleanupState::AbandonPending)
+      state_->notePromiseAbandoned();
   }
   std::shared_ptr<RuntimeState> state_;
   std::mutex mutex_;

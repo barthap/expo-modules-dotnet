@@ -137,6 +137,9 @@ public sealed unsafe class HermesRuntimeFixture : IDisposable
   public void ResumePromiseRegistration() =>
       NativeTestHost.ResumePromiseRegistration(testHostRuntime);
 
+  public void InvalidateBridgeRuntimeStateWithoutDeletingHandle() =>
+      NativeTestHost.InvalidateBridgeRuntimeStateWithoutDeletingHandle(testHostRuntime);
+
   public void ValidateArrayBufferSnapshot(bool detached, int currentLength, int capturedLength) =>
       NativeTestHost.ValidateArrayBufferSnapshot(
           testHostRuntime,
