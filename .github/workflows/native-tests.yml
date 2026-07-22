@@ -21,8 +21,8 @@ jobs:
       fail-fast: false
       matrix:
         # NativeAOT compile-time proof: the nativeaot-publish job below. The
-        # end-to-end loader matrix (hostfxr + nativeaot, run, all OSes) is gated
-        # on the cross-platform console-app port (see docs/plans/016-*.md).
+        # console-app job runs the end-to-end Linux loader lane; only Windows
+        # NativeAOT remains deferred.
         os: [ubuntu-24.04, windows-latest]
     runs-on: ${{ matrix.os }}
 
@@ -100,3 +100,42 @@ jobs:
 
       - name: Publish HermesConsoleApp (NativeAOT, linux-x64)
         run: dotnet publish apps/hermes-console-app/managed/HermesConsoleApp/HermesConsoleApp.csproj -c Release -r linux-x64 /p:PublishAot=true /p:NativeLib=Shared
+
+  console-app:
+    name: console-app (${{ matrix.loader }})
+    strategy:
+      fail-fast: false
+      matrix:
+        loader: [hostfxr, nativeaot]
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache Hermes prebuilt
+        id: hermes-cache
+        uses: actions/cache@v4
+        with:
+          path: build/hermes
+          key: hermes-${{ runner.os }}-${{ hashFiles('scripts/hermes-ref.txt') }}
+
+      - name: Build Hermes (Linux)
+        if: steps.hermes-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build clang python3 libicu-dev
+          bash scripts/build-hermes-linux.sh
+
+      - name: Install console app build prerequisites
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build clang python3 libicu-dev zlib1g-dev
+
+      - name: Run hermes-console-app (${{ matrix.loader }})
+        run: EXPO_JSI_DOTNET_LOADER=${{ matrix.loader }} bash scripts/run-hermes-console-app.sh
