@@ -103,6 +103,12 @@ EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_resume_promise_registration(
 EXPO_JSI_TESTHOST_EXPORT void
 expo_jsi_testhost_invalidate_bridge_runtime_state_without_deleting_handle(
   expo_jsi_testhost_runtime_handle testhost_runtime);
+EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_pause_next_promise_call(
+  expo_jsi_testhost_runtime_handle testhost_runtime, int32_t operation);
+EXPO_JSI_TESTHOST_EXPORT expo_jsi_error expo_jsi_testhost_wait_until_promise_call_blocked(
+  expo_jsi_testhost_runtime_handle testhost_runtime);
+EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_resume_promise_call(
+  expo_jsi_testhost_runtime_handle testhost_runtime);
 EXPO_JSI_TESTHOST_EXPORT expo_jsi_error
 expo_jsi_testhost_validate_array_buffer_snapshot(expo_jsi_testhost_runtime_handle testhost_runtime,
                                                  uint8_t detached,

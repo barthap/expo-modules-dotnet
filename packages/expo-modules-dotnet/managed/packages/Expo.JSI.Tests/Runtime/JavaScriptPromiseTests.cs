@@ -590,6 +590,258 @@ public sealed class JavaScriptPromiseTests
     Assert.Equal(1u, fixture.Counters.LongLivedPromisesAbandoned);
   }
 
+  public enum GatedPromiseOperation
+  {
+    AsValue,
+    Resolve,
+    Reject,
+  }
+
+  [Theory]
+  [InlineData(GatedPromiseOperation.AsValue)]
+  [InlineData(GatedPromiseOperation.Resolve)]
+  [InlineData(GatedPromiseOperation.Reject)]
+  public async Task DisposeDuringBlockedPromiseCallDefersNativeRelease(GatedPromiseOperation operation)
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+
+    var gateOperation = operation switch
+    {
+      GatedPromiseOperation.AsValue => NativeTestHost.PromiseCallOperation.AsValue,
+      GatedPromiseOperation.Resolve => NativeTestHost.PromiseCallOperation.Resolve,
+      GatedPromiseOperation.Reject => NativeTestHost.PromiseCallOperation.Reject,
+      _ => throw new ArgumentOutOfRangeException(nameof(operation)),
+    };
+
+    var promise = fixture.Runtime.Execute(runtime => runtime.CreatePromise());
+    fixture.PauseNextPromiseCall(gateOperation);
+
+    var operationTask = Task.Run(() => fixture.Runtime.Execute(runtime =>
+    {
+      switch (operation)
+      {
+        case GatedPromiseOperation.AsValue:
+          using (var value = promise.AsValue()) { }
+          break;
+        case GatedPromiseOperation.Resolve:
+          using (var value = runtime.CreateNumber(1)) { promise.Resolve(value); }
+          break;
+        case GatedPromiseOperation.Reject:
+          using (var value = runtime.CreateString("failed")) { promise.Reject(value); }
+          break;
+      }
+      return true;
+    }), TestContext.Current.CancellationToken);
+
+    Assert.True(fixture.WaitUntilPromiseCallBlocked());
+
+    Exception? disposeException = null;
+    try
+    {
+      promise.Dispose();
+    }
+    catch (Exception ex)
+    {
+      disposeException = ex;
+    }
+    var releasedBeforeResume = fixture.Counters.ReleasedPromises;
+
+    Exception? resumeException = null;
+    Exception? operationException = null;
+    Exception? drainException = null;
+    try
+    {
+      fixture.ResumePromiseCall();
+    }
+    catch (Exception ex)
+    {
+      resumeException = ex;
+    }
+    try
+    {
+      await operationTask;
+    }
+    catch (Exception ex)
+    {
+      operationException = ex;
+    }
+    try
+    {
+      fixture.WaitUntilIdle();
+    }
+    catch (Exception ex)
+    {
+      drainException = ex;
+    }
+
+    Assert.Null(disposeException);
+    Assert.Null(resumeException);
+    Assert.Null(operationException);
+    Assert.Null(drainException);
+    Assert.Equal(0u, releasedBeforeResume);
+    Assert.Equal(1u, fixture.Counters.ReleasedPromises);
+    Assert.Equal(
+        1u,
+        fixture.Counters.LongLivedPromisesReleased + fixture.Counters.LongLivedPromisesAbandoned
+    );
+  }
+
+  [Fact]
+  public void ResolverReenteringDisposeReturnsWithoutWaitingForItsOwnLease()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+    var reentrantReturned = false;
+    string? reentrantExceptionText = null;
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      var promise = runtime.CreatePromise();
+
+      using var disposeFromResolver = runtime.CreateHostFunction(
+          "disposeFromResolver",
+          0,
+          (_, _, _, _) =>
+          {
+            var undefinedResult = runtime.CreateUndefined();
+            try
+            {
+              promise.Dispose();
+              reentrantReturned = true;
+            }
+            catch (Exception ex)
+            {
+              reentrantExceptionText = ex.Message;
+            }
+            return undefinedResult;
+          },
+          new object()
+      );
+      using var disposeValue = disposeFromResolver.AsValue();
+      global.SetProperty("disposeFromResolver", disposeValue);
+
+      using var thenable = fixture.Evaluate(
+          """
+          ({
+            get then() {
+              globalThis.disposeFromResolver();
+              return undefined;
+            }
+          });
+          """,
+          "promise-resolver-reenters-dispose.js"
+      );
+
+      promise.Resolve(thenable);
+
+      Assert.True(reentrantReturned);
+      Assert.Null(reentrantExceptionText);
+      return true;
+    });
+
+    Assert.Equal(1u, fixture.Counters.ReleasedPromises);
+
+    fixture.WaitUntilIdle();
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesAbandoned);
+    Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);
+  }
+
+  [Fact]
+  public void OffRuntimeDisposeAlwaysForwardsAndTerminatesTheEntry()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+
+    var promise = fixture.Runtime.Execute(runtime => runtime.CreatePromise());
+    promise.Dispose();
+    fixture.WaitUntilIdle();
+
+    Assert.Equal(1u, fixture.Counters.ReleasedPromises);
+    Assert.Equal(1u, fixture.Counters.ReleasedPromisesOffRuntimeThread);
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesAbandoned);
+    Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);
+  }
+
+  [Fact]
+  public void DoubleDisposeAfterSettlementCountsOneTerminalOutcome()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+
+    var promise = fixture.Runtime.Execute(runtime =>
+    {
+      var created = runtime.CreatePromise();
+      using var value = runtime.CreateNumber(1);
+      created.Resolve(value);
+      return created;
+    });
+
+    promise.Dispose();
+    promise.Dispose();
+    fixture.WaitUntilIdle();
+
+    Assert.Equal(1u, fixture.Counters.ReleasedPromises);
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesAbandoned);
+    Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);
+  }
+
+  [Fact]
+  public void LateDisposeAfterPreparedTeardownDoesNotCountAgain()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+
+    var promise = fixture.Runtime.Execute(runtime =>
+    {
+      var created = runtime.CreatePromise();
+      using var value = runtime.CreateNumber(1);
+      created.Resolve(value);
+      return created;
+    });
+
+    fixture.PrepareRuntimeForInvalidation();
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesAbandoned);
+
+    promise.Dispose();
+    promise.Dispose();
+
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesAbandoned);
+    Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);
+  }
+
+  [Fact]
+  public void LateDisposeAfterAbruptTeardownDoesNotCountAgain()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
+
+    JavaScriptPromise? promise = null;
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var value = runtime.CreateNumber(1);
+      promise = runtime.CreatePromise();
+      promise.Resolve(value);
+      return true;
+    });
+
+    fixture.ReleaseBridgeRuntimeHandle();
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesAbandoned);
+
+    promise!.Dispose();
+    promise.Dispose();
+
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesAbandoned);
+  }
+
   [Fact]
   public void OwnedPromiseResultClaimsStateExactlyOnce()
   {
@@ -627,6 +879,7 @@ public sealed class JavaScriptPromiseTests
   public async Task DroppedSettlementAbandonsOwnedResult()
   {
     using var fixture = HermesRuntimeFixture.Create();
+    fixture.ResetCounters();
     var abandoned = new TaskCompletionSource(
         TaskCreationOptions.RunContinuationsAsynchronously
     );
@@ -652,6 +905,11 @@ public sealed class JavaScriptPromiseTests
     fixture.WaitUntilIdle();
 
     Assert.Equal(1, probe.DisposeCount);
+
+    fixture.ReleaseBridgeRuntimeHandle();
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesAbandoned);
+    Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);
   }
 
   private sealed class DisposableProbe : IDisposable
@@ -1059,9 +1317,16 @@ public sealed class JavaScriptPromiseTests
         fixture,
         counters => counters.ReleasedPromises > 0 || counters.ReleasedPromisesOffRuntimeThread > 0
     );
+    await EventuallyCounterAsync(
+        fixture,
+        counters => counters.LongLivedObjectsRemaining == 0
+    );
 
     Assert.Equal(0u, fixture.Counters.ReleasedPromisesOffRuntimeThread);
     Assert.True(fixture.Counters.ReleasedPromises >= 1);
+    Assert.Equal(1u, fixture.Counters.LongLivedPromisesReleased);
+    Assert.Equal(0u, fixture.Counters.LongLivedPromisesAbandoned);
+    Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);
   }
 
   [Fact]

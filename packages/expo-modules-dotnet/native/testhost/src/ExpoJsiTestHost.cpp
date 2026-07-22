@@ -2,6 +2,7 @@
 #include <jsi/instrumentation.h>
 #include <jsi/jsilib.h>
 
+#include <condition_variable>
 #include <cstring>
 #include <exception>
 #include <memory>
@@ -15,6 +16,23 @@
 #include "HermesConsoleRuntimeConnector.h"
 #include "HermesConsoleRuntimeTestControl.h"
 
+// Test-only deterministic gate for blocking a single AsValue/Resolve/Reject
+// native call mid-flight so managed tests can race Dispose against it without
+// timing sleeps. Guards `countedPromiseAsValue`/`countedPromiseSettle` and the
+// deferred-release special case in `countedReleasePromise`.
+struct PromiseCallGate {
+  std::mutex mutex;
+  std::condition_variable condition;
+  int32_t configuredOperation = 0;
+  bool armed = false;
+  bool blocked = false;
+  bool resumed = false;
+  expo_jsi_promise_handle blockedHandle = nullptr;
+  bool hasDeferredRelease = false;
+  expo_jsi_runtime_handle deferredReleaseRuntime = nullptr;
+  expo_jsi_promise_handle deferredReleasePromise = nullptr;
+};
+
 struct expo_jsi_testhost_runtime_t {
   expo::dotnet::HermesConsoleRuntimeConnector connector;
   expo_jsi_runtime_handle runtime = nullptr;
@@ -22,6 +40,7 @@ struct expo_jsi_testhost_runtime_t {
   const expo_jsi_api *innerApi = nullptr;
   expo_jsi_testhost_counters counters{};
   bool syncExecutionSupported = true;
+  PromiseCallGate promiseCallGate;
 };
 
 namespace {
@@ -226,6 +245,68 @@ void countedReleaseValue(expo_jsi_runtime_handle runtime, expo_jsi_value_handle 
   api->release_value(runtime, value);
 }
 
+// Test-only selector for which promise call `pause_next_promise_call` should
+// block. Values are private to the testhost, distinct from
+// expo_jsi_promise_settlement in expo_jsi.h.
+enum class PromiseCallOperation : int32_t { AsValue = 1, Resolve = 2, Reject = 3 };
+
+// RAII guard entered immediately before forwarding to the inner promise API.
+// It blocks exactly one matching call until resumed, then always clears the
+// gate's blocked/armed state and forwards any release the gate deferred for
+// the same handle, on every exit path (success, inner-API error, or C++
+// exception).
+class PromiseCallGateGuard final {
+public:
+  PromiseCallGateGuard(expo_jsi_testhost_runtime_t &testhost,
+                       PromiseCallOperation operation,
+                       expo_jsi_promise_handle handle)
+    : testhost_(testhost)
+  {
+    auto &gate = testhost_.promiseCallGate;
+    std::unique_lock<std::mutex> lock(gate.mutex);
+    if (!gate.armed || gate.configuredOperation != static_cast<int32_t>(operation)) {
+      return;
+    }
+    gate.armed = false;
+    gate.blocked = true;
+    gate.blockedHandle = handle;
+    entered_ = true;
+    gate.condition.notify_all();
+    gate.condition.wait(lock, [&gate] { return gate.resumed; });
+    gate.resumed = false;
+  }
+
+  ~PromiseCallGateGuard()
+  {
+    if (!entered_) {
+      return;
+    }
+    auto &gate = testhost_.promiseCallGate;
+    expo_jsi_runtime_handle deferredRuntime = nullptr;
+    expo_jsi_promise_handle deferredPromise = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(gate.mutex);
+      gate.blocked = false;
+      gate.blockedHandle = nullptr;
+      if (gate.hasDeferredRelease) {
+        gate.hasDeferredRelease = false;
+        deferredRuntime = gate.deferredReleaseRuntime;
+        deferredPromise = gate.deferredReleasePromise;
+        gate.deferredReleaseRuntime = nullptr;
+        gate.deferredReleasePromise = nullptr;
+      }
+    }
+    if (deferredPromise != nullptr) {
+      const auto *api = testhost_.innerApi != nullptr ? testhost_.innerApi : expo::dotnet::api();
+      api->release_promise(deferredRuntime, deferredPromise);
+    }
+  }
+
+private:
+  expo_jsi_testhost_runtime_t &testhost_;
+  bool entered_ = false;
+};
+
 void countedReleasePromise(expo_jsi_runtime_handle runtime, expo_jsi_promise_handle promise)
 {
   auto *testhost = runtimeFor(runtime);
@@ -235,11 +316,47 @@ void countedReleasePromise(expo_jsi_runtime_handle runtime, expo_jsi_promise_han
       (void)testhost->connector.runtime();
     } catch (...) {
       testhost->counters.released_promises_off_runtime_thread++;
+    }
+
+    auto &gate = testhost->promiseCallGate;
+    std::lock_guard<std::mutex> lock(gate.mutex);
+    if (gate.blocked && gate.blockedHandle == promise) {
+      gate.hasDeferredRelease = true;
+      gate.deferredReleaseRuntime = runtime;
+      gate.deferredReleasePromise = promise;
       return;
     }
   }
   const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
   api->release_promise(runtime, promise);
+}
+
+expo_jsi_value_result countedPromiseAsValue(expo_jsi_runtime_handle runtime,
+                                            expo_jsi_promise_handle promise)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  if (testhost != nullptr) {
+    PromiseCallGateGuard guard(*testhost, PromiseCallOperation::AsValue, promise);
+    return api->promise_as_value(runtime, promise);
+  }
+  return api->promise_as_value(runtime, promise);
+}
+
+expo_jsi_error countedPromiseSettle(expo_jsi_runtime_handle runtime,
+                                    expo_jsi_promise_handle promise,
+                                    expo_jsi_promise_settlement settlement,
+                                    expo_jsi_value_handle value)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  if (testhost != nullptr) {
+    auto operation = settlement == EXPO_JSI_PROMISE_REJECT ? PromiseCallOperation::Reject
+                                                           : PromiseCallOperation::Resolve;
+    PromiseCallGateGuard guard(*testhost, operation, promise);
+    return api->promise_settle(runtime, promise, settlement, value);
+  }
+  return api->promise_settle(runtime, promise, settlement, value);
 }
 
 struct CountedStringReleaseContext {
@@ -397,6 +514,8 @@ const expo_jsi_api *makeCountedApi(expo_jsi_testhost_runtime_t &runtime)
   runtime.countedApi.get_bool = countedGetBool;
   runtime.countedApi.release_value = countedReleaseValue;
   runtime.countedApi.release_promise = countedReleasePromise;
+  runtime.countedApi.promise_as_value = countedPromiseAsValue;
+  runtime.countedApi.promise_settle = countedPromiseSettle;
   runtime.countedApi.get_string = countedGetString;
   runtime.countedApi.runtime_schedule_task = countedScheduleTask;
   runtime.countedApi.runtime_can_execute_sync = countedCanExecuteSync;
@@ -738,6 +857,57 @@ extern "C" void expo_jsi_testhost_invalidate_bridge_runtime_state_without_deleti
   auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
   if (testhost != nullptr) {
     expo::dotnet::invalidateRuntimeStateWithoutDeletingHandleForTesting(testhost->runtime);
+  }
+}
+
+extern "C" void expo_jsi_testhost_pause_next_promise_call(
+  expo_jsi_testhost_runtime_handle testhostRuntime, int32_t operation)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  if (testhost == nullptr) {
+    return;
+  }
+  auto &gate = testhost->promiseCallGate;
+  std::lock_guard<std::mutex> lock(gate.mutex);
+  if (gate.armed || gate.blocked) {
+    return;
+  }
+  gate.configuredOperation = operation;
+  gate.armed = true;
+  gate.blocked = false;
+  gate.resumed = false;
+  gate.blockedHandle = nullptr;
+}
+
+extern "C" expo_jsi_error expo_jsi_testhost_wait_until_promise_call_blocked(
+  expo_jsi_testhost_runtime_handle testhostRuntime)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  if (testhost == nullptr) {
+    return makeError(24, "Testhost runtime is null.");
+  }
+  auto &gate = testhost->promiseCallGate;
+  std::unique_lock<std::mutex> lock(gate.mutex);
+  gate.condition.wait(lock, [&gate] { return gate.blocked || !gate.armed; });
+  if (!gate.blocked) {
+    return makeError(25, "Promise call did not pause.");
+  }
+  return makeOk();
+}
+
+extern "C" void expo_jsi_testhost_resume_promise_call(
+  expo_jsi_testhost_runtime_handle testhostRuntime)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  if (testhost == nullptr) {
+    return;
+  }
+  auto &gate = testhost->promiseCallGate;
+  std::lock_guard<std::mutex> lock(gate.mutex);
+  gate.armed = false;
+  if (gate.blocked) {
+    gate.resumed = true;
+    gate.condition.notify_all();
   }
 }
 

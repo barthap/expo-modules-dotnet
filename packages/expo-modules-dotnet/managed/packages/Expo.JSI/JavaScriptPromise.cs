@@ -13,7 +13,10 @@ namespace Expo.JSI;
 public sealed class JavaScriptPromise : IJavaScriptValueRepresentable, IDisposable
 {
   private readonly JsiContext context;
+  private readonly object handleGate = new();
   private ExpoJsiPromiseHandle handle;
+  private int activeLeases;
+  private bool disposeRequested;
 
   internal JavaScriptPromise(JsiContext context, ExpoJsiPromiseHandle handle)
   {
@@ -30,10 +33,10 @@ public sealed class JavaScriptPromise : IJavaScriptValueRepresentable, IDisposab
   /// </remarks>
   public JavaScriptValue AsValue()
   {
-    ThrowIfDisposed();
+    using var lease = AcquireHandle();
     unsafe
     {
-      var result = context.Api->ConvertPromiseToValue(context.RuntimeHandle, handle);
+      var result = context.Api->ConvertPromiseToValue(context.RuntimeHandle, lease.Handle);
       if (!result.IsOk)
       {
         JsiContext.ThrowNativeError(
@@ -72,27 +75,45 @@ public sealed class JavaScriptPromise : IJavaScriptValueRepresentable, IDisposab
   /// <summary>
   /// Releases the owned native promise capability handle.
   /// </summary>
+  /// <remarks>
+  /// If a call to <see cref="AsValue" />, <see cref="Resolve" />, or <see cref="Reject" /> is in
+  /// flight, this method marks the handle for release and returns without waiting; the last
+  /// in-flight call releases the native handle when it exits.
+  /// </remarks>
   public void Dispose()
   {
-    var value = Interlocked.Exchange(ref handle, IntPtr.Zero);
-    if (value != 0)
+    ExpoJsiPromiseHandle valueToRelease = 0;
+    lock (handleGate)
+    {
+      if (disposeRequested)
+      {
+        return;
+      }
+      disposeRequested = true;
+      if (activeLeases == 0)
+      {
+        valueToRelease = handle;
+        handle = 0;
+      }
+    }
+    if (valueToRelease != 0)
     {
       unsafe
       {
-        context.Api->ReleasePromiseHandle(context.RuntimeHandle, value);
+        context.Api->ReleasePromiseHandle(context.RuntimeHandle, valueToRelease);
       }
     }
   }
 
   private void Settle(JavaScriptValue value, bool reject)
   {
-    ThrowIfDisposed();
+    using var lease = AcquireHandle();
     ArgumentNullException.ThrowIfNull(value);
     unsafe
     {
       var error = context.Api->SettlePromise(
           context.RuntimeHandle,
-          handle,
+          lease.Handle,
           reject ? ExpoJsiPromiseSettlement.Reject : ExpoJsiPromiseSettlement.Resolve,
           value.Handle
       );
@@ -102,8 +123,57 @@ public sealed class JavaScriptPromise : IJavaScriptValueRepresentable, IDisposab
     }
   }
 
-  private void ThrowIfDisposed()
+  private HandleLease AcquireHandle()
   {
-    ObjectDisposedException.ThrowIf(handle == 0, this);
+    lock (handleGate)
+    {
+      if (disposeRequested || handle == 0)
+      {
+        throw new ObjectDisposedException(nameof(JavaScriptPromise));
+      }
+      var lease = new HandleLease(this, handle);
+      activeLeases++;
+      return lease;
+    }
+  }
+
+  private void ReleaseLease()
+  {
+    ExpoJsiPromiseHandle valueToRelease = 0;
+    lock (handleGate)
+    {
+      activeLeases--;
+      if (activeLeases == 0 && disposeRequested)
+      {
+        valueToRelease = handle;
+        handle = 0;
+      }
+    }
+    if (valueToRelease != 0)
+    {
+      unsafe
+      {
+        context.Api->ReleasePromiseHandle(context.RuntimeHandle, valueToRelease);
+      }
+    }
+  }
+
+  private sealed class HandleLease : IDisposable
+  {
+    private JavaScriptPromise? owner;
+
+    public HandleLease(JavaScriptPromise owner, ExpoJsiPromiseHandle handle)
+    {
+      this.owner = owner;
+      Handle = handle;
+    }
+
+    public ExpoJsiPromiseHandle Handle { get; }
+
+    public void Dispose()
+    {
+      var released = Interlocked.Exchange(ref owner, null);
+      released?.ReleaseLease();
+    }
   }
 }

@@ -34,6 +34,16 @@ internal static unsafe class NativeTestHost
   private static delegate* unmanaged[Cdecl]<nint, void> resumePromiseRegistration;
   private static delegate* unmanaged[Cdecl]<nint, void>
       invalidateBridgeRuntimeStateWithoutDeletingHandle;
+  private static delegate* unmanaged[Cdecl]<nint, int, void> pauseNextPromiseCall;
+  private static delegate* unmanaged[Cdecl]<nint, ExpoJsiError> waitUntilPromiseCallBlocked;
+  private static delegate* unmanaged[Cdecl]<nint, void> resumePromiseCall;
+
+  internal enum PromiseCallOperation
+  {
+    AsValue = 1,
+    Resolve = 2,
+    Reject = 3,
+  }
   private static delegate* unmanaged[Cdecl]<nint, byte, int, int, ExpoJsiError>
       validateArrayBufferSnapshot;
   private static delegate* unmanaged[Cdecl]<nint, ulong, ExpoJsiError>
@@ -271,6 +281,30 @@ internal static unsafe class NativeTestHost
     invalidateBridgeRuntimeStateWithoutDeletingHandle(testHostRuntime);
   }
 
+  internal static void PauseNextPromiseCall(nint testHostRuntime, PromiseCallOperation operation)
+  {
+    EnsureLoaded();
+    pauseNextPromiseCall(testHostRuntime, (int)operation);
+  }
+
+  internal static bool WaitUntilPromiseCallBlocked(nint testHostRuntime)
+  {
+    EnsureLoaded();
+    var error = waitUntilPromiseCallBlocked(testHostRuntime);
+    if (error.Code != 0)
+    {
+      error.GetMessageAndRelease();
+      return false;
+    }
+    return true;
+  }
+
+  internal static void ResumePromiseCall(nint testHostRuntime)
+  {
+    EnsureLoaded();
+    resumePromiseCall(testHostRuntime);
+  }
+
   internal static void ValidateArrayBufferSnapshot(
       nint testHostRuntime,
       bool detached,
@@ -433,6 +467,21 @@ internal static unsafe class NativeTestHost
       (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
           library,
           "expo_jsi_testhost_invalidate_bridge_runtime_state_without_deleting_handle"
+      );
+    pauseNextPromiseCall =
+      (delegate* unmanaged[Cdecl]<nint, int, void>)LoadExport(
+          library,
+          "expo_jsi_testhost_pause_next_promise_call"
+      );
+    waitUntilPromiseCallBlocked =
+      (delegate* unmanaged[Cdecl]<nint, ExpoJsiError>)LoadExport(
+          library,
+          "expo_jsi_testhost_wait_until_promise_call_blocked"
+      );
+    resumePromiseCall =
+      (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(
+          library,
+          "expo_jsi_testhost_resume_promise_call"
       );
     validateArrayBufferSnapshot =
       (delegate* unmanaged[Cdecl]<nint, byte, int, int, ExpoJsiError>)LoadExport(
