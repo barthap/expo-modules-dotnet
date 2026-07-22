@@ -24,13 +24,13 @@
   generated code)
 - **Category**: direction / dx
 - **Planned at**: commit `ea07d69d`, 2026-07-20
-- **Execution status**: IN PROGRESS on 2026-07-22. Task 1 is restored and was
-  previously review-approved. The repo-owned `Expo.ModulesCore.Tests` consumer
-  cannot currently compile under SDK 10.0.201: both the Task 1 build and a
-  comparison build excluding the new test stall before compilation and fail
-  after exactly five minutes with zero diagnostics. Keep that consumer-test
-  stall as verification context; it is not a rollback blocker. Tasks 2–7
-  remain pending.
+- **Execution status**: IN PROGRESS on 2026-07-22. Task 1 is restored
+  byte-for-byte from `b318681d`, and the production `Expo.ModulesCore` build
+  passes. The prior SDK 10.0.201 consumer compile stall did not reproduce. The
+  focused test now reaches execution: 1 of 5 tests passes and 4 fail because
+  the restored helper assumes the host-function `Proxy` exposes an object
+  `prototype`. Task 1 is not verified or currently approved. Tasks 2–7 remain
+  pending.
 
 ## Why this matters
 

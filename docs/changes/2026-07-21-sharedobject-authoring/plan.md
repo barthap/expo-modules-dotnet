@@ -8,13 +8,12 @@
 
 **Tech Stack:** C# 13/.NET 10, Roslyn incremental source generators, Expo.JSI managed wrappers, Hermes-backed xUnit tests, TypeScript, Vitest, pnpm.
 
-**Execution status (2026-07-22): IN PROGRESS.** Task 1 is restored and was
-previously review-approved. The repo-owned test consumer cannot currently
-compile under SDK 10.0.201: the Task 1 build and a comparison build excluding
-the new test both stall during project-reference evaluation and fail after
-exactly five minutes with zero warnings or errors. Keep that consumer-test
-stall as verification context; it is not a rollback blocker. Tasks 2–7 remain
-pending.
+**Execution status (2026-07-22): IN PROGRESS.** Task 1 is restored byte-for-byte
+from `b318681d`, and the production `Expo.ModulesCore` build passes. The prior
+SDK 10.0.201 consumer compile stall did not reproduce. The focused test now
+reaches execution: 1 of 5 tests passes and 4 fail because the restored helper
+assumes the host-function `Proxy` exposes an object `prototype`. Task 1 is not
+verified or currently approved. Tasks 2–7 remain pending.
 
 ## Ground Rules
 
