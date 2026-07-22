@@ -129,8 +129,8 @@ private:
         completedCleanup = PromiseCleanupState::AbandonPending;
       } else if (succeeded) {
         settlement_ = PromiseSettlementState::Settled;
-        resolve_.reset();
-        reject_.reset();
+        resolve = std::move(resolve_);
+        reject = std::move(reject_);
       } else {
         settlement_ = PromiseSettlementState::Active;
       }
