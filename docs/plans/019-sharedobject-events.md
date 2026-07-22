@@ -27,8 +27,18 @@
   exist first)
 - **Category**: direction / dx
 - **Planned at**: commit `ea07d69d`, 2026-07-20
-- **Execution status**: TODO — unblocked on 2026-07-22; hard dependency Plan
-  017 completed at `353f98d8`.
+- **Execution status**: BLOCKED — reviewed context-owned listener handles root
+  self-capturing listeners. The JS-owned redesign requires exactly-once
+  disposal of host-function callback state and weak handles, which current
+  `Expo.JSI` does not provide. The implementation commits were rolled back.
+
+### Execution history
+
+- Blocked 2026-07-22 after review of the shared listener lifetime design.
+  Resume only after host-function callback-state lifetime/disposal is extended,
+  or after approving a design that keeps subscription cleanup entirely in the
+  JS GC graph without managed owned target or weak handles. Then rerun Plan 019
+  from generator and runtime tests.
 
 ## Why this matters
 
