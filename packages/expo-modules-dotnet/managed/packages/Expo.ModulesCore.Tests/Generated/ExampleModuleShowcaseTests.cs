@@ -139,6 +139,35 @@ public sealed class ExampleModuleShowcaseTests
     );
   }
 
+  [Fact]
+  public void ExampleCounterSharedObjectRoundTrips()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_ExampleModule.Register(context, modules);
+
+      using var result = fixture.Evaluate(
+          "const module = globalThis._expoDotnet.modules.ExampleModule; " +
+          "const owned = new module.ExampleCounter(10); " +
+          "const fromNative = module.makeCounter(5); " +
+          "const echoed = module.echoCounter(fromNative); " +
+          "const identity = fromNative === echoed && Object.getPrototypeOf(owned) === module.ExampleCounter.prototype; " +
+          "const values = [owned.increment(2), owned.count, fromNative.increment(1), identity]; " +
+          "owned.release(); fromNative.release(); " +
+          "const afterRelease = (() => { try { owned.increment(1); return 'no error'; } " +
+          "catch (error) { return error.message.includes('not an active shared object'); } })(); " +
+          "values.concat([afterRelease]).join(':')",
+          "example-counter-shared-object.js"
+      );
+      Assert.Equal("12:12:6:true:true", result.AsString());
+      return true;
+    });
+  }
+
   private sealed record ShowcaseOutcome(
       int Add,
       string AsyncMessage,

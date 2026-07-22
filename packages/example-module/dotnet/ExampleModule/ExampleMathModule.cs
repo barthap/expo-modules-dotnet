@@ -2,7 +2,7 @@ using Expo.ModulesCore;
 
 namespace ExampleModule;
 
-[ExpoModule("ExampleModule")]
+[ExpoModule("ExampleModule", Classes = new[] { typeof(ExampleCounter) })]
 public sealed partial class ExampleMathModule : Module
 {
   public ExampleMathModule(DotnetRuntimeContext context)
@@ -57,6 +57,12 @@ public sealed partial class ExampleMathModule : Module
 
   [Event]
   public partial Func<string, Task> OnStatus { get; }
+
+  [JS]
+  public ExampleCounter MakeCounter(double start) => new(start);
+
+  [JS]
+  public ExampleCounter EchoCounter(ExampleCounter counter) => counter;
 }
 
 public readonly record struct ExampleUser(string Name, int Age);

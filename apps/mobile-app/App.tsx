@@ -2,6 +2,8 @@ import { StatusBar } from 'expo-status-bar';
 import {
   add,
   addStatusListener,
+  createCounter,
+  echoCounter,
   describeUser,
   emitStatusAsync,
   getMessageAsync,
@@ -10,7 +12,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-type CapabilityKey = 'add' | 'async' | 'record' | 'callback' | 'event';
+type CapabilityKey = 'add' | 'async' | 'record' | 'callback' | 'event' | 'shared';
 
 type Capability = {
   key: CapabilityKey;
@@ -24,6 +26,7 @@ const capabilities: Capability[] = [
   { key: 'record', label: 'Record', button: 'Send record' },
   { key: 'callback', label: 'Callback', button: 'Invoke callback' },
   { key: 'event', label: 'Event', button: 'Emit event' },
+  { key: 'shared', label: 'Shared object', button: 'Run counter' },
 ];
 
 const initialResults: Record<CapabilityKey, string> = {
@@ -32,6 +35,7 @@ const initialResults: Record<CapabilityKey, string> = {
   record: 'Tap to send a JS object into a C# record',
   callback: 'Tap to let C# invoke a JS function',
   event: 'Tap to emit onStatus from C#',
+  shared: 'Tap to construct and release a shared counter',
 };
 
 export default function App() {
@@ -106,6 +110,30 @@ export default function App() {
     });
   }
 
+
+  function runSharedObject() {
+    try {
+      const counter = createCounter(40);
+      let message: string;
+      try {
+        const value = counter.increment(2);
+        const echoed = echoCounter(counter);
+        message = `count = ${value}, identity ${echoed === counter ? 'kept' : 'lost'}`;
+      } finally {
+        counter.release();
+      }
+      try {
+        counter.increment(1);
+        message += '; released counter unexpectedly usable';
+      } catch (caught) {
+        message += `; after release: ${caught instanceof Error ? caught.message : String(caught)}`;
+      }
+      setResult('shared', message);
+    } catch (caught) {
+      setResult('shared', caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
   function runCapability(key: CapabilityKey) {
     switch (key) {
       case 'add':
@@ -122,6 +150,9 @@ export default function App() {
         return;
       case 'event':
         runEvent();
+        return;
+      case 'shared':
+        runSharedObject();
         return;
     }
   }

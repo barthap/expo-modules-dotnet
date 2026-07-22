@@ -1,5 +1,6 @@
 import {
   DotnetModule,
+  DotnetSharedObject,
   requireDotnetModule,
   type EventSubscription,
 } from 'expo-modules-dotnet';
@@ -21,8 +22,21 @@ type ExampleModuleEvents = {
   onStatus(payload: string): void;
 };
 
+/**
+ * Shared counter handle: the same instance is visible to C# and JavaScript. Call `release()`
+ * when done; using a released counter throws a catchable error.
+ */
+export declare class ExampleCounter extends DotnetSharedObject {
+  constructor(start: number);
+  readonly count: number;
+  increment(by: number): number;
+}
+
 declare class ExampleModuleType extends DotnetModule<ExampleModuleEvents> {
+  ExampleCounter: typeof ExampleCounter;
   add(a: number, b: number): number;
+  echoCounter(counter: ExampleCounter): ExampleCounter;
+  makeCounter(start: number): ExampleCounter;
   describeUser(user: ExampleUser): ExampleUserSummary;
   emitStatusAsync(label: string): Promise<void>;
   getMessageAsync(): Promise<string>;
@@ -57,4 +71,16 @@ export function transformWithCallback(
   callback: (value: string) => string
 ): string {
   return nativeModule.transformWithCallback(value, callback);
+}
+
+export function createCounter(start: number): ExampleCounter {
+  return new nativeModule.ExampleCounter(start);
+}
+
+export function makeCounter(start: number): ExampleCounter {
+  return nativeModule.makeCounter(start);
+}
+
+export function echoCounter(counter: ExampleCounter): ExampleCounter {
+  return nativeModule.echoCounter(counter);
 }

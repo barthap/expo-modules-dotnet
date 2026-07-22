@@ -42,3 +42,4 @@ export function requireDotnetModule<T>(name: string): T {
 
 export { DotnetEventEmitter, DotnetModule } from './ts-declarations/DotnetEventEmitter';
 export type { EventSubscription, EventsMap } from './ts-declarations/DotnetEventEmitter';
+export { DotnetSharedObject } from './ts-declarations/DotnetSharedObject';

@@ -117,3 +117,35 @@ describe('typed facade base classes', () => {
     }
   });
 });
+
+describe('DotnetSharedObject', () => {
+  it('is an exported class value whose direct construction throws facade guidance', async () => {
+    const { DotnetSharedObject } = await import('../index');
+    expect(typeof DotnetSharedObject).toBe('function');
+    expect(() => new DotnetSharedObject()).toThrowError(
+      /generated class|module return/
+    );
+  });
+
+  it('exposes only constructor and release on its prototype', async () => {
+    const { DotnetSharedObject } = await import('../index');
+    expect(Object.getOwnPropertyNames(DotnetSharedObject.prototype).sort()).toEqual([
+      'constructor',
+      'release',
+    ]);
+  });
+
+  it('throws the same facade guidance from the placeholder release()', async () => {
+    const { DotnetSharedObject } = await import('../index');
+    expect(() => DotnetSharedObject.prototype.release.call({})).toThrowError(
+      /generated class|module return/
+    );
+  });
+
+  it('lets subclasses inherit release(): void', async () => {
+    const { DotnetSharedObject } = await import('../index');
+    class Handle extends DotnetSharedObject {}
+    expect(Handle.prototype.release).toBe(DotnetSharedObject.prototype.release);
+    expect(Object.getOwnPropertyNames(Handle.prototype)).toEqual(['constructor']);
+  });
+});
