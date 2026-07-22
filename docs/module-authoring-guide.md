@@ -408,33 +408,8 @@ diagnostics):
   A class with a `[JS]` constructor is constructible from JavaScript; without
   one it is native-created-only and never appears as a module property.
 - `[JS]` methods and properties follow the same shape, naming (lower-camel
-  defaults), async, and codec rules as module members. The reserved names
-  `release`, `constructor`, and `__proto__` are rejected.
-
-### Events on one shared-object instance
-
-Shared objects can declare typed `[Event]` properties with the same
-`Func<Task>` or `Func<T, Task>` shape as module events. Each paired JavaScript
-instance has its own listeners. Await the delegate when native code must know
-whether dispatch reached its runtime target:
-
-```csharp
-[Event]
-public partial Func<CounterProgress, Task> OnProgress { get; }
-
-[JS]
-public async Task<double> IncrementAndEmitAsync(double by)
-{
-  Count += by;
-  await OnProgress(new CounterProgress(Count));
-  return Count;
-}
-```
-
-The JavaScript name is `onProgress`. An explicit `[Event("ProgressChanged")]`
-name is preserved. Use the shared-object facade event type so TypeScript checks
-the event name and payload for that class instance. Calling a cached delegate
-after `release()` or runtime teardown returns a faulted task.
+  defaults), async, and codec rules as module members. `[Event]` members and
+  the reserved names `release`, `constructor`, and `__proto__` are rejected.
 
 ### Module ownership
 
@@ -485,9 +460,7 @@ property:
 ```ts
 import { DotnetSharedObject } from 'expo-modules-dotnet';
 
-export declare class ExampleCounter extends DotnetSharedObject<{
-  onProgress(payload: { count: number }): void;
-}> {
+export declare class ExampleCounter extends DotnetSharedObject {
   constructor(start: number);
   readonly count: number;
   increment(by: number): number;

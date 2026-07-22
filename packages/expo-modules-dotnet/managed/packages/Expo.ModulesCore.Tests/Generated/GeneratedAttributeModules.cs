@@ -440,12 +440,6 @@ public sealed partial class CounterEntry : SharedObject
 {
   public static int ReleaseCount;
 
-  [Event]
-  public partial Func<CounterProgress, Task> OnProgress { get; }
-
-  [Event]
-  public partial Func<JavaScriptValue, Task> OnValue { get; }
-
   [JS]
   public CounterEntry(double start)
   {
@@ -472,8 +466,6 @@ public sealed partial class CounterEntry : SharedObject
 
   protected override void OnRelease() => ReleaseCount++;
 }
-
-public readonly record struct CounterProgress(int Value);
 
 [ExpoSharedObject("NativeSnapshot")]
 public sealed partial class SnapshotEntry : SharedObject

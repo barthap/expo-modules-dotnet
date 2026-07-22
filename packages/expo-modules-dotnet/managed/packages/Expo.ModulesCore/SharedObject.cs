@@ -21,7 +21,6 @@ public abstract class SharedObject : ISharedObjectLifetime
   private readonly object pairingGate = new();
   private PairingState pairingState;
   private SharedObjectRegistry? pairingRegistry;
-  private ISharedObjectEventBinding? eventBinding;
   private int isReleased;
 
   /// <summary>
@@ -90,40 +89,17 @@ public abstract class SharedObject : ISharedObjectLifetime
     }
   }
 
-  internal void AttachEventBinding(ISharedObjectEventBinding binding)
-  {
-    ArgumentNullException.ThrowIfNull(binding);
-    lock (pairingGate)
-    {
-      if (pairingState == PairingState.Terminal)
-      {
-        throw new InvalidOperationException("The shared object has already been released.");
-      }
-      eventBinding = binding;
-    }
-  }
-
   void ISharedObjectLifetime.ReleaseFromSharedObjectRegistry()
   {
-    ISharedObjectEventBinding? binding;
     lock (pairingGate)
     {
       pairingState = PairingState.Terminal;
       pairingRegistry = null;
-      binding = eventBinding;
-      eventBinding = null;
     }
-
-    binding?.Release(this);
 
     if (Interlocked.Exchange(ref isReleased, 1) == 0)
     {
       OnRelease();
     }
   }
-}
-
-internal interface ISharedObjectEventBinding
-{
-  void Release(SharedObject instance);
 }

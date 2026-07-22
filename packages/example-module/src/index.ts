@@ -22,19 +22,14 @@ type ExampleModuleEvents = {
   onStatus(payload: string): void;
 };
 
-type ExampleCounterEvents = {
-  onProgress(payload: { count: number }): void;
-};
-
 /**
  * Shared counter handle: the same instance is visible to C# and JavaScript. Call `release()`
  * when done; using a released counter throws a catchable error.
  */
-export declare class ExampleCounter extends DotnetSharedObject<ExampleCounterEvents> {
+export declare class ExampleCounter extends DotnetSharedObject {
   constructor(start: number);
   readonly count: number;
   increment(by: number): number;
-  incrementAndEmitAsync(by: number): Promise<number>;
 }
 
 declare class ExampleModuleType extends DotnetModule<ExampleModuleEvents> {

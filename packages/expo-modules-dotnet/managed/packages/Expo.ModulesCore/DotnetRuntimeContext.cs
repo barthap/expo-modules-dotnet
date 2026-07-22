@@ -43,7 +43,6 @@ public sealed class DotnetRuntimeContext : IDisposable
   private readonly JavaScriptObjectFactory objects;
   private readonly ModuleEventEmitter events;
   private readonly SharedObjectRegistry sharedObjects;
-  private readonly SharedObjectEventEmitter sharedObjectEvents;
   private LifecycleState state = LifecycleState.Active;
   private int disposingThreadId;
 
@@ -54,7 +53,6 @@ public sealed class DotnetRuntimeContext : IDisposable
     events = new ModuleEventEmitter(this);
     moduleRegistry = new ModuleRegistry(this, objects);
     sharedObjects = new SharedObjectRegistry(runtime);
-    sharedObjectEvents = new SharedObjectEventEmitter(this, sharedObjects);
   }
 
   /// <summary>
@@ -123,18 +121,6 @@ public sealed class DotnetRuntimeContext : IDisposable
       {
         ThrowIfNotActiveLocked();
         return sharedObjects;
-      }
-    }
-  }
-
-  internal SharedObjectEventEmitter SharedObjectEvents
-  {
-    get
-    {
-      lock (gate)
-      {
-        ThrowIfNotActiveLocked();
-        return sharedObjectEvents;
       }
     }
   }
@@ -220,7 +206,6 @@ public sealed class DotnetRuntimeContext : IDisposable
     try
     {
       DisposeAndCapture(sharedObjects, ref exceptions);
-      DisposeAndCapture(sharedObjectEvents, ref exceptions);
       foreach (var registration in registrations)
       {
         DisposeAndCapture(registration, ref exceptions);

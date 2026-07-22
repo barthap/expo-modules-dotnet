@@ -1298,9 +1298,9 @@ The registry is also the identity and lifetime mechanism for generated public
 `SharedObject` bindings. Its per-context ownership, reference-identity maps,
 weak counterpart, private NativeState token, no-repairing rule, exactly-once
 terminal release outside locks, re-entry deferral, and teardown-first ordering
-apply unchanged to the public surface. Cross-runtime pairing and a
-`JavaScriptObject` codec remain separate future capabilities; `JavaScriptValue`
-remains the existing advanced module convertible.
+apply unchanged to the public surface. Cross-runtime pairing, shared-object
+events, and a `JavaScriptObject` codec remain separate future capabilities;
+`JavaScriptValue` remains the existing advanced module convertible.
 
 #### Scenario: Public binding reuses the proven registry
 
@@ -1369,38 +1369,6 @@ tokens, weak wrappers, JSI handles, or explicit runtime-scheduling duties.
 - **WHEN** the generator analyzes the declaration
 - **THEN** it SHALL report `EXPOJSI021`
 - **AND** it SHALL NOT silently emit a partial or reflection-based binding
-
-### Requirement: SharedObject Typed Events Are Instance Scoped
-
-An `[ExpoSharedObject]` class MAY declare `[Event]` on an instance getter-only
-partial property of exactly `Func<Task>` or `Func<T, Task>` when `T` has an
-event-safe compile-time codec. Names follow the module typed-event rule: the
-implicit name lowercases the first property character and an explicit name is
-verbatim. Generated class prototypes SHALL expose the `EventEmitter` listener
-methods for each instance.
-
-Generated delegates SHALL return a task that reacquires the paired JavaScript
-object through the registry weak object on the runtime thread. Zero listeners
-complete successfully. A listener failure SHALL not fail dispatch or block
-later listeners. Dispatch after release, collection, or context teardown SHALL
-return a faulted or canceled task. Listener state SHALL not retain an ordinary
-JavaScript object wrapper outside runtime work and terminal release SHALL
-remove it.
-
-#### Scenario: Shared-object listeners stay isolated
-
-- **GIVEN** two generated instances of the same shared-object class have
-  listeners for the same event name
-- **WHEN** managed code dispatches an event from either instance
-- **THEN** only listeners on that instance's paired JavaScript object SHALL run
-
-#### Scenario: Invalid shared-object event is rejected
-
-- **GIVEN** a shared-object `[Event]` has an invalid property shape, payload,
-  or a generated/reserved JavaScript-name collision
-- **WHEN** the generator analyzes the class
-- **THEN** it SHALL report `EXPOJSI026`, `EXPOJSI027`, or `EXPOJSI028`
-- **AND** it SHALL not emit reflection or dynamic dispatch
 
 ### Requirement: Modules Explicitly Own Shared-Object Classes
 

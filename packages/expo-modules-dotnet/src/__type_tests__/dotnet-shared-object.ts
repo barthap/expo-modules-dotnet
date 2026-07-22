@@ -1,10 +1,6 @@
-import { DotnetSharedObject, requireDotnetModule, type EventSubscription } from '../index';
+import { DotnetSharedObject, requireDotnetModule } from '../index';
 
-type CounterEvents = {
-  onProgress(value: number): void;
-};
-
-declare class CounterHandle extends DotnetSharedObject<CounterEvents> {
+declare class CounterHandle extends DotnetSharedObject {
   increment(by: number): number;
 }
 
@@ -20,16 +16,6 @@ const returned: CounterHandle = module.makeCounter(1);
 // Subclasses inherit the shared-object release surface.
 const released: void = constructed.release();
 returned.release();
-const subscription: EventSubscription = constructed.addListener('onProgress', value => {
-  const typedValue: number = value;
-  return typedValue;
-});
-
-// @ts-expect-error shared-object event names are typed per class.
-constructed.addListener('missing', () => {});
-
-// @ts-expect-error shared-object event payloads are typed per class.
-constructed.addListener('onProgress', (value: string) => value);
 
 // @ts-expect-error release takes no arguments.
 returned.release('now');
@@ -37,4 +23,4 @@ returned.release('now');
 // @ts-expect-error release returns void.
 const misused: number = constructed.release();
 
-export { released, misused, subscription };
+export { released, misused };
