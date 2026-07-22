@@ -22,14 +22,19 @@ type ExampleModuleEvents = {
   onStatus(payload: string): void;
 };
 
+type ExampleCounterEvents = {
+  onChange(value: number): void;
+};
+
 /**
  * Shared counter handle: the same instance is visible to C# and JavaScript. Call `release()`
  * when done; using a released counter throws a catchable error.
  */
-export declare class ExampleCounter extends DotnetSharedObject {
+export declare class ExampleCounter extends DotnetSharedObject<ExampleCounterEvents> {
   constructor(start: number);
   readonly count: number;
   increment(by: number): number;
+  incrementAndEmitAsync(by: number): Promise<number>;
 }
 
 declare class ExampleModuleType extends DotnetModule<ExampleModuleEvents> {
@@ -75,6 +80,13 @@ export function transformWithCallback(
 
 export function createCounter(start: number): ExampleCounter {
   return new nativeModule.ExampleCounter(start);
+}
+
+export function addCounterChangeListener(
+  counter: ExampleCounter,
+  listener: (value: number) => void
+): EventSubscription {
+  return counter.addListener('onChange', listener);
 }
 
 export function makeCounter(start: number): ExampleCounter {

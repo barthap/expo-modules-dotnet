@@ -14,7 +14,9 @@
 > executes: file names for the public SharedObject surface below are the
 > expected shapes from 017's approved spec — verify each against the real
 > post-017 code before relying on it; on a mismatch, treat it as a STOP
-> condition.
+> condition. Additionally verify plan 021 is DONE and read its merged
+> disposer contract in `docs/specs/` before Step 1 — this plan's cleanup
+> design consumes it.
 
 ## Status
 
@@ -22,13 +24,59 @@
 - **Effort**: M
 - **Risk**: MED (per-object listener lifetime + dispatch on registry-owned
   entries)
-- **Depends on**: docs/plans/017-sharedobject-authoring.md (hard — the public
-  `SharedObject` base, `[ExpoSharedObject]`, and generated JS classes must
-  exist first)
+- **Depends on**: docs/plans/017-sharedobject-authoring.md (hard — DONE) and
+  docs/plans/021-hostfunction-owned-state-disposal.md (hard — the exactly-once
+  owned callback-state disposer is what makes JS-owned subscription cleanup
+  possible)
 - **Category**: direction / dx
-- **Planned at**: commit `ea07d69d`, 2026-07-20
-- **Execution status**: TODO — unblocked on 2026-07-22; hard dependency Plan
-  017 completed at `353f98d8`.
+- **Planned at**: commit `ea07d69d`, 2026-07-20; reworked at `f2c72f68`,
+  2026-07-22 after the first execution was rolled back
+- **Execution status**: COMPLETE
+
+### Execution history
+
+- Blocked 2026-07-22 after review of the shared listener lifetime design;
+  implementation commits rolled back in `aaf5b6c9`. Root cause: listeners
+  stored in managed `EventEmitterRuntimeState` (owned by
+  `DotnetRuntimeContext`) rooted every JS listener closure. A listener that
+  captures its own shared object (`counter.addListener('onChange', () =>
+  console.log(counter.value))`) then forms `managed context → retained
+  listener → JS closure → shared object`, so JS GC can never collect the
+  shared object and its release callback never fires. The rolled-back
+  commits (`63ed1c55`, `2ca76d20`) are historical reference only — do NOT
+  restore them.
+- Reworked 2026-07-22: this plan now mandates the JS-owned listener design
+  (see "Revised design constraints") and depends on plan 021's disposer
+  primitive. Two fixable review findings from the first execution must also
+  be addressed: per-emitter event-ID isolation (one instance's listeners
+  must be keyed so another instance's dispatch can never reach them) and
+  teardown locking on the dispatch path (dispatch racing runtime teardown
+  must not touch freed state).
+
+## Revised design constraints (2026-07-22, binding)
+
+The delta spec in Step 1 must comply with all of these; deviating is a STOP
+condition:
+
+1. **Listener storage lives in the JS heap, per instance** — e.g. an
+   internal slot/property on the JS shared-object instance itself. The
+   target/listener reference cycle stays entirely inside the JS heap so
+   Hermes GC can collect an unreachable shared object together with
+   listeners that capture it. Managed code must NEVER retain a strong
+   reference to a JS listener function or to the JS instance outside a
+   runtime-thread callback frame.
+2. **Managed dispatch retains only the registry entry's
+   `JavaScriptWeakObject`** and reacquires the live instance on the runtime
+   thread; a dead weak ref means the defined loud lifetime failure.
+3. **Subscription cleanup uses plan 021's primitive**: a JS-owned `remove()`
+   host function whose callback state owns the weak handle passes the
+   exactly-once disposer to `CreateHostFunction`, so JS collecting the
+   subscription disposes the weak handle under 021's spec'd thread contract
+   (creation failure, GC, and teardown paths all covered by 021).
+4. `Symbol.dispose` (explicit resource management) may be offered as
+   deterministic user-triggered cleanup ONLY as an addition — it does not
+   replace GC-driven cleanup, because callers who never invoke it must still
+   not leak.
 
 ## Why this matters
 
@@ -144,8 +192,9 @@ Repo conventions that apply:
 
 **Out of scope** (do NOT touch, even though they look related):
 
-- `Expo.JSI` and native/C++ code — no ABI change. If per-object listeners
-  need one, STOP.
+- `Expo.JSI` and native/C++ code — CONSUME plan 021's owned callback-state
+  disposer as merged into `docs/specs/`; do not modify `Expo.JSI` itself.
+  If 021's primitive turns out to be insufficient for this design, STOP.
 - Module-level `[Event]` members and `ModuleEventEmitter` behavior — their
   semantics must not change; shared-object dispatch may reuse internals but
   not alter observable module behavior.
@@ -169,14 +218,23 @@ GIVEN/WHEN/THEN SHALL style, deciding at least:
    classes with the same `Func<Task>` / `Func<T, Task>` contract, naming
    default, and explicit-name override as module events (`:676-698`).
 2. JS surface: how a generated shared-object class exposes
-   `addListener`/`removeListener` etc. — reuse the `EventEmitterPrototype`
-   method set, scoped per instance.
+   `addListener`/`removeListener` etc. — same method NAMES and observable
+   semantics as `EventEmitterPrototype`, but listener storage must comply
+   with "Revised design constraints" §1 (JS-heap, per instance) — the
+   module-level managed-state storage model must NOT be reused for
+   shared-object instances.
 3. Dispatch: awaitable; target reacquired via the registry entry's weak
-   object on the runtime thread; listener-throw isolation identical to
-   `:733`; zero-listener dispatch completes successfully.
+   object on the runtime thread (constraints §2); listeners read from the
+   instance's JS-heap storage; listener-throw isolation identical to
+   `:733`; zero-listener dispatch completes successfully; per-emitter
+   isolation — listeners are keyed to their instance such that another
+   instance's dispatch can never invoke them.
 4. Lifetime: dispatch on a released/collected/torn-down entry fails loudly
    with a defined error; in-flight dispatch racing release/teardown must not
-   crash or leak; observing hooks (if specced) start/stop per instance.
+   crash or leak (define the locking/ordering); subscription cleanup per
+   constraints §3 (plan 021 disposer); a self-capturing listener must not
+   prevent GC of its shared object (constraints §1); observing hooks (if
+   specced) start/stop per instance.
 5. Diagnostics: invalid shapes on shared-object classes (same family as
    module-event diagnostics, next free `EXPOJSI` IDs), including `[Event]`
    on a class that is not `[ExpoSharedObject]`/`SharedObject`-derived where
@@ -202,9 +260,13 @@ diagnostic, modeled after the existing module-event generator tests.
 
 ### Step 4: Runtime dispatch + listener machinery
 
-Per-instance listener storage on the generated JS class (reusing
-`EventEmitterPrototype` internals per the spec), dispatch implementation
-with weak reacquisition, listener isolation, and loud lifetime failures.
+Per-instance listener storage in the JS heap on the generated instance
+(constraints §1), dispatch implementation with weak reacquisition
+(constraints §2), `remove()`/`removeListener` cleanup through plan 021's
+exactly-once disposer (constraints §3), listener isolation, per-emitter
+isolation, teardown locking on the dispatch path, and loud lifetime
+failures. `EventEmitterPrototype` method semantics may be mirrored, but its
+managed listener storage must not be reused for instances.
 
 **Verify**: `scripts/test-managed.sh` → exit 0.
 
@@ -214,8 +276,13 @@ Add an event to the 017 example shared object and subscribe from its facade.
 Hermes-backed tests: emit reaches only the target instance's listeners (two
 instances, disjoint listeners); payload decoding; await surfaces encode
 error; zero listeners; dispatch after release fails loudly; dispatch after
-runtime teardown fails loudly; module-level event tests unmodified and
-passing.
+runtime teardown fails loudly; **a listener that captures its own shared
+object does not prevent collection — drop all JS references, force GC via
+the fixture's `CollectGarbageForTesting()` (see
+`Expo.JSI.Tests/Runtime/JavaScriptWeakObjectTests.cs:97` for the pattern),
+and assert the registry release callback fires**; subscription weak-handle
+state is disposed when JS drops the subscription (021 disposer observed);
+module-level event tests unmodified and passing.
 
 **Verify**: `scripts/test-managed.sh` → exit 0;
 `pnpm --filter mobile-app typecheck` → exit 0.
@@ -260,7 +327,15 @@ Stop and report back (do not improvise) if:
 
 - Plan 017 has not landed, or its shipped surface differs from the "Expected
   from 017" facts above.
-- Per-instance listeners require new ABI entries or `Expo.JSI` changes.
+- Plan 021 has not landed, or its merged disposer contract differs from what
+  "Revised design constraints" §3 assumes (exactly-once across creation
+  failure / GC / teardown, with a thread contract safe for
+  `JavaScriptWeakObject` payloads).
+- Per-instance listeners require new ABI entries or `Expo.JSI` changes
+  beyond consuming 021's primitive.
+- Any design draft stores strong references to JS listener functions or
+  instances in managed state (the exact failure that rolled back the first
+  execution — see Execution history).
 - The dispatch path cannot satisfy loud lifetime failures without weakening
   the registry's exactly-once release contract.
 - Reusing `EventEmitterPrototype` would change observable module-level

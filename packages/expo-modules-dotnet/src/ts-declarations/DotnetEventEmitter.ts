@@ -36,9 +36,10 @@ export class DotnetEventEmitter<
   /**
    * Always throws because usable module objects are created by the native module registry.
    */
-  public constructor() {
+  public constructor(unavailableMessage?: string) {
     facadeUnavailable(
-      `${new.target?.name ?? 'DotnetEventEmitter'} instances are created by the native module registry. Use requireDotnetModule() to obtain a module.`
+      unavailableMessage ??
+        `${new.target?.name ?? 'DotnetEventEmitter'} instances are created by the native module registry. Use requireDotnetModule() to obtain a module.`
     );
   }
 

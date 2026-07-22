@@ -138,6 +138,28 @@ public static class GeneratedSharedObjectClass
       uint parameterCount,
       GeneratedSharedObjectFactory? constructorFactory,
       Action<DotnetRuntimeContext, JavaScriptObject>? memberInstaller
+  ) => Install(
+      runtimeContext,
+      module,
+      sharedObjectType,
+      name,
+      parameterCount,
+      constructorFactory,
+      memberInstaller,
+      null,
+      null
+  );
+
+  public static void Install(
+      DotnetRuntimeContext runtimeContext,
+      JavaScriptObject module,
+      Type sharedObjectType,
+      string name,
+      uint parameterCount,
+      GeneratedSharedObjectFactory? constructorFactory,
+      Action<DotnetRuntimeContext, JavaScriptObject>? memberInstaller,
+      IReadOnlyList<string>? eventNames,
+      Action<DotnetRuntimeContext, SharedObject>? eventInitializer
   )
   {
     ArgumentNullException.ThrowIfNull(runtimeContext);
@@ -160,7 +182,9 @@ public static class GeneratedSharedObjectClass
           name,
           parameterCount,
           constructorFactory,
-          memberInstaller
+          memberInstaller,
+          eventNames,
+          eventInitializer
       );
       lock (contextInstallations)
       {
@@ -235,7 +259,9 @@ public static class GeneratedSharedObjectClass
       string name,
       uint parameterCount,
       GeneratedSharedObjectFactory? constructorFactory,
-      Action<DotnetRuntimeContext, JavaScriptObject>? memberInstaller
+      Action<DotnetRuntimeContext, JavaScriptObject>? memberInstaller,
+      IReadOnlyList<string>? eventNames,
+      Action<DotnetRuntimeContext, SharedObject>? eventInitializer
   )
   {
     var registration = SharedObjectClassRegistration.Create(
@@ -245,6 +271,14 @@ public static class GeneratedSharedObjectClass
     try
     {
       memberInstaller?.Invoke(runtimeContext, registration.Prototype);
+      if (eventNames is not null || eventInitializer is not null)
+      {
+        registration.ConfigureEvents(
+            runtimeContext,
+            eventNames ?? throw new ArgumentNullException(nameof(eventNames)),
+            eventInitializer ?? throw new ArgumentNullException(nameof(eventInitializer))
+        );
+      }
 
       var installation = new Installation(registration);
       if (constructorFactory is not null)

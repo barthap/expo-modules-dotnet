@@ -397,7 +397,7 @@ public sealed partial class ExampleCounter : SharedObject
 }
 ```
 
-Declaration constraints (violations produce `EXPOJSI021`–`EXPOJSI025`
+Declaration constraints (violations produce `EXPOJSI021`–`EXPOJSI028`
 diagnostics):
 
 - The class must be `sealed`, `partial`, top-level, non-generic, and derive
@@ -408,8 +408,34 @@ diagnostics):
   A class with a `[JS]` constructor is constructible from JavaScript; without
   one it is native-created-only and never appears as a module property.
 - `[JS]` methods and properties follow the same shape, naming (lower-camel
-  defaults), async, and codec rules as module members. `[Event]` members and
-  the reserved names `release`, `constructor`, and `__proto__` are rejected.
+  defaults), async, and codec rules as module members. `release`,
+  `constructor`, `__proto__`, and the event-emitter method names are reserved.
+
+### Per-instance events
+
+Declare shared-object events with the same awaitable typed shape as module
+events. The generated delegate becomes available when the object first pairs
+with its JavaScript instance:
+
+```csharp
+[Event]
+public partial Func<double, Task> OnChange { get; }
+
+[JS]
+public async Task<double> IncrementAndEmitAsync(double by)
+{
+  Count += by;
+  await OnChange(Count);
+  return Count;
+}
+```
+
+Listeners belong to one JavaScript shared-object instance. A listener on one
+counter never receives another counter's event. The returned subscription has
+an idempotent `remove()` method; call it when the listener is no longer needed.
+Listeners, including a listener that captures its own shared object, stay in
+the JavaScript heap and do not prevent the whole unreachable cycle from being
+collected.
 
 ### Module ownership
 
@@ -460,10 +486,15 @@ property:
 ```ts
 import { DotnetSharedObject } from 'expo-modules-dotnet';
 
-export declare class ExampleCounter extends DotnetSharedObject {
+type ExampleCounterEvents = {
+  onChange(value: number): void;
+};
+
+export declare class ExampleCounter extends DotnetSharedObject<ExampleCounterEvents> {
   constructor(start: number);
   readonly count: number;
   increment(by: number): number;
+  incrementAndEmitAsync(by: number): Promise<number>;
 }
 ```
 
@@ -471,9 +502,13 @@ Release deterministically with `try`/`finally`:
 
 ```ts
 const counter = new module.ExampleCounter(40);
+const subscription = counter.addListener('onChange', value => {
+  console.log(value);
+});
 try {
-  counter.increment(2);
+  await counter.incrementAndEmitAsync(2);
 } finally {
+  subscription.remove();
   counter.release();
 }
 ```

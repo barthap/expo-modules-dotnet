@@ -127,12 +127,14 @@ describe('DotnetSharedObject', () => {
     );
   });
 
-  it('exposes only constructor and release on its prototype', async () => {
-    const { DotnetSharedObject } = await import('../index');
+  it('exposes release directly and inherits the typed event surface', async () => {
+    const { DotnetEventEmitter: RuntimeEventEmitter, DotnetSharedObject } = await import('../index');
     expect(Object.getOwnPropertyNames(DotnetSharedObject.prototype).sort()).toEqual([
       'constructor',
       'release',
     ]);
+    expect(Object.getPrototypeOf(DotnetSharedObject.prototype)).toBe(RuntimeEventEmitter.prototype);
+    expect(DotnetSharedObject.prototype.addListener).toBe(RuntimeEventEmitter.prototype.addListener);
   });
 
   it('throws the same facade guidance from the placeholder release()', async () => {

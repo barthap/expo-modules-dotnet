@@ -339,6 +339,8 @@ public sealed partial class GeneratedEventsModule : Module
 
 public readonly record struct TypedProgress(int Percent);
 
+public readonly record struct SharedEventPayload(int Value);
+
 [ExpoModule("GeneratedTypedEvents")]
 [Events("onLegacy")]
 public sealed partial class GeneratedTypedEventsModule : Module
@@ -449,6 +451,18 @@ public sealed partial class CounterEntry : SharedObject
   [JS]
   public double Current { get; set; }
 
+  [Event]
+  public partial Func<double, Task> OnChange { get; }
+
+  [Event]
+  public partial Func<Task> OnReady { get; }
+
+  [Event]
+  public partial Func<SharedEventPayload, Task> OnPayload { get; }
+
+  [Event]
+  public partial Func<JavaScriptValue, Task> OnEventValue { get; }
+
   [JS("increment")]
   public double Increment(double by)
   {
@@ -463,6 +477,20 @@ public sealed partial class CounterEntry : SharedObject
     Current += by;
     return Current;
   }
+
+  [JS]
+  public async Task<double> IncrementAndEmitAsync(double by)
+  {
+    Current += by;
+    await OnChange(Current);
+    return Current;
+  }
+
+  public Task EmitReadyAsync() => OnReady();
+
+  public Task EmitPayloadAsync(int value) => OnPayload(new SharedEventPayload(value));
+
+  public Task EmitValueAsync(JavaScriptValue value) => OnEventValue(value);
 
   protected override void OnRelease() => ReleaseCount++;
 }

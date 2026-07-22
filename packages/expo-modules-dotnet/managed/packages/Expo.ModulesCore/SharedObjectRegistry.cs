@@ -20,6 +20,12 @@ internal enum SharedObjectPairingStep
   WeakObjectCreated,
 }
 
+internal enum SharedObjectEventDispatchStep
+{
+  WeakObjectLocked,
+  EntryRevalidated,
+}
+
 internal sealed class SharedObjectEntry(
     long id,
     ISharedObjectLifetime instance,
@@ -76,6 +82,8 @@ internal sealed class SharedObjectRegistry : IDisposable
   internal bool IsGateEnteredForTesting => Monitor.IsEntered(gate);
 
   internal Action<SharedObjectPairingStep>? PairingStepForTesting { get; set; }
+
+  internal Action<SharedObjectEventDispatchStep, long>? EventDispatchStepForTesting { get; set; }
 
   internal JavaScriptObject GetOrCreateJavaScriptObject(ISharedObjectLifetime instance)
   {
@@ -192,9 +200,28 @@ internal sealed class SharedObjectRegistry : IDisposable
         }
       }
 
-      return existing is not null
-          ? LockExistingEntry(existing)
-          : BuildAndCommitReservation(instance, registration, reservationId, constructorOwned);
+      if (existing is not null)
+      {
+        return LockExistingEntry(existing);
+      }
+
+      try
+      {
+        registration.InitializeEvents(instance);
+      }
+      catch
+      {
+        lock (gate)
+        {
+          pendingReservations.Remove(reservationId);
+        }
+        if (!constructorOwned)
+        {
+          instance.RollBackReservation(this);
+        }
+        throw;
+      }
+      return BuildAndCommitReservation(instance, registration, reservationId, constructorOwned);
     }
     catch (Exception pairingFailure) when (constructorOwned)
     {
@@ -351,6 +378,46 @@ internal sealed class SharedObjectRegistry : IDisposable
       }
 
       return entry.Instance;
+    }
+  }
+
+  internal JavaScriptObject GetLiveJavaScriptObject(SharedObject instance)
+  {
+    ArgumentNullException.ThrowIfNull(instance);
+    SharedObjectEntry entry;
+    lock (gate)
+    {
+      ThrowIfDisposedLocked();
+      if (!entriesByInstance.TryGetValue(instance, out entry!) || entry.IsReleased)
+      {
+        throw new InvalidOperationException("The shared object event target has been released.");
+      }
+    }
+
+    JavaScriptObject? target = null;
+    try
+    {
+      target = entry.WeakObject.Lock();
+      EventDispatchStepForTesting?.Invoke(SharedObjectEventDispatchStep.WeakObjectLocked, entry.Id);
+      lock (gate)
+      {
+        ThrowIfDisposedLocked();
+        if (target is null ||
+            !entriesById.TryGetValue(entry.Id, out var current) ||
+            !ReferenceEquals(current, entry) ||
+            entry.IsReleased)
+        {
+          throw new InvalidOperationException("The shared object event target is no longer available.");
+        }
+      }
+      EventDispatchStepForTesting?.Invoke(SharedObjectEventDispatchStep.EntryRevalidated, entry.Id);
+      var result = target;
+      target = null;
+      return result;
+    }
+    finally
+    {
+      target?.Dispose();
     }
   }
 

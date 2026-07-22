@@ -1133,9 +1133,9 @@ public sealed class ExpoModulesGeneratorTests
 
     Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
     var source = Assert.Single(result.GeneratedSources).Text;
-    Assert.Contains("private readonly struct UserCodec : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.User>", source);
-    Assert.Contains("private readonly struct UserClassCodec : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.UserClass>", source);
-    Assert.Contains("private readonly struct UserStructCodec : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.UserStruct>", source);
+    Assert.Contains($"private readonly struct {RecordCodecName("User", "global::Expo.TestModules.User")} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.User>", source);
+    Assert.Contains($"private readonly struct {RecordCodecName("UserClass", "global::Expo.TestModules.UserClass")} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.UserClass>", source);
+    Assert.Contains($"private readonly struct {RecordCodecName("UserStruct", "global::Expo.TestModules.UserStruct")} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.UserStruct>", source);
     Assert.Contains("return new global::Expo.TestModules.User(name, age);", source);
     Assert.Contains("return new global::Expo.TestModules.UserClass(name, age);", source);
     Assert.Contains("return new global::Expo.TestModules.UserStruct(name, age);", source);
@@ -1177,11 +1177,13 @@ public sealed class ExpoModulesGeneratorTests
 
     Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
     var source = Assert.Single(result.GeneratedSources).Text;
-    Assert.Contains("private readonly struct AddressCodec : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.Address>", source);
-    Assert.Contains("private readonly struct UserCodec : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.User>", source);
-    Assert.Contains("var address = AddressCodec.Decode(obj.GetProperty(\"address\"), runtime);", source);
+    var addressCodec = RecordCodecName("Address", "global::Expo.TestModules.Address");
+    var userCodec = RecordCodecName("User", "global::Expo.TestModules.User");
+    Assert.Contains($"private readonly struct {addressCodec} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.Address>", source);
+    Assert.Contains($"private readonly struct {userCodec} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.User>", source);
+    Assert.Contains($"var address = {addressCodec}.Decode(obj.GetProperty(\"address\"), runtime);", source);
     Assert.Contains("var status = StringEnumCodec<global::Expo.TestModules.Status>.Decode(obj.GetProperty(\"status\"), runtime);", source);
-    Assert.Contains("using var address = AddressCodec.Encode(value.Address, runtime);", source);
+    Assert.Contains($"using var address = {addressCodec}.Encode(value.Address, runtime);", source);
     Assert.Contains("using var status = StringEnumCodec<global::Expo.TestModules.Status>.Encode(value.Status, runtime);", source);
     Assert.Contains("obj.SetProperty(\"address\", address);", source);
     Assert.Contains("obj.SetProperty(\"status\", status);", source);
@@ -1540,7 +1542,7 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Contains("InitializeDeviceEvents(context, module);", provider.Text);
     Assert.Contains("var emitter = context.Events;", provider.Text);
     Assert.Contains("() => emitter.EmitAsync(module, \"onReady\")", provider.Text);
-    Assert.Contains("emitter.EmitAsync<ProgressCodec, global::Expo.TestModules.Progress>(module, \"StatusChanged\", onProgressValue)", provider.Text);
+    Assert.Contains($"emitter.EmitAsync<{RecordCodecName("Progress", "global::Expo.TestModules.Progress")}, global::Expo.TestModules.Progress>(module, \"StatusChanged\", onProgressValue)", provider.Text);
     Assert.Contains("emitter.EmitAsync(module, \"onValue\", onValueValue)", provider.Text);
     Assert.Contains("emitter.EmitAsync(module, \"onBuffer\", onBufferValue)", provider.Text);
     Assert.Contains("GetOrCreateModule(\"Device\", () => CreateDevice(context), static module => module.Initialize(), null)", provider.Text);
@@ -2705,10 +2707,6 @@ public sealed class ExpoModulesGeneratorTests
   [InlineData("[JS] public decimal Total => 0m;", "Total", "System.Decimal")]
   [InlineData("[JS] public decimal GetTotal() => 0m;", "GetTotal", "System.Decimal")]
   [InlineData("[JS] public void Store(decimal value) { }", "Store", "System.Decimal")]
-  [InlineData(
-      "[Event] public System.Func<System.Threading.Tasks.Task> OnChange { get; } = null!;",
-      "OnChange",
-      "[Event] is not supported on shared object classes")]
   public void GeneratorReportsInvalidSharedObjectMember(
       string member,
       string memberName,
@@ -3561,6 +3559,297 @@ public sealed class ExpoModulesGeneratorTests
     Assert.DoesNotContain("ConstructSharedObject_", text);
   }
 
+  [Fact]
+  public void GeneratorEmitsAwaitableSharedObjectEventBinding()
+  {
+    var result = GeneratorTestHost.Run("""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public sealed record Progress(double Value);
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+          [Event]
+          public partial Func<Progress, Task> OnProgress { get; }
+
+          [Event("ReadyNow")]
+          internal partial Func<Task> OnReady { get; }
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """);
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var text = GeneratedText(result);
+    Assert.Contains("private readonly struct ProgressCodec", text);
+    Assert.Contains("GeneratedSharedObjectEvents.EmitAsync<ProgressCodec", text);
+    Assert.Contains("\"onProgress\"", text);
+    Assert.Contains("\"ReadyNow\"", text);
+    Assert.Contains("__ExpoModulesCoreInitializeSharedObjectEvents", text);
+    Assert.Contains("private global::System.Func<global::Expo.TestModules.Progress, global::System.Threading.Tasks.Task>? __expoSharedObjectEvent_OnProgress", text);
+    Assert.Contains("new[] { \"onProgress\", \"ReadyNow\" }", text);
+    Assert.Contains("static (context, sharedObject) => InitializeSharedObjectEvents_", text);
+  }
+
+  [Theory]
+  [InlineData("[Event] public partial Action OnChange { get; }", "EXPOJSI026")]
+  [InlineData("[Event] public partial Func<JavaScriptCallback<string>, Task> OnChange { get; }", "EXPOJSI027")]
+  [InlineData("[Event(\"same\")] public partial Func<Task> OnOther { get; }", "EXPOJSI028")]
+  public void GeneratorReportsInvalidSharedObjectEvent(string member, string diagnosticId)
+  {
+    var duplicate = diagnosticId == "EXPOJSI028"
+        ? "[Event(\"same\")] public partial Func<Task> OnChange { get; }"
+        : string.Empty;
+    var result = GeneratorTestHost.Run($$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+          {{duplicate}}
+          {{member}}
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """);
+
+    Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == diagnosticId);
+    Assert.DoesNotContain(result.Diagnostics, diagnostic =>
+        diagnostic.Id.StartsWith("CS", StringComparison.Ordinal) && diagnostic.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void GeneratorReportsEventOnUnrelatedClass()
+  {
+    var result = GeneratorTestHost.Run("""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        public partial class Unrelated
+        {
+          [Event]
+          public partial Func<Task> OnChange { get; }
+        }
+        """);
+
+    Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "EXPOJSI026");
+    Assert.DoesNotContain(result.Diagnostics, diagnostic =>
+        diagnostic.Id.StartsWith("CS", StringComparison.Ordinal) && diagnostic.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Theory]
+  [InlineData("partial Func<Task> OnChange { get; set; }")]
+  [InlineData("Func<Task> OnChange { get; } = null!;")]
+  public void GeneratorReportsSharedObjectEventPropertyShapes(string declaration)
+  {
+    var result = GeneratorTestHost.Run($$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+        [ExpoSharedObject] public sealed partial class Entry : SharedObject
+        {
+          [Event] public {{declaration}}
+        }
+        [ExpoModule(Classes = new[] { typeof(Entry) })] public sealed partial class Owner { }
+        """);
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI026");
+    Assert.Equal(6, diagnostic.Location.GetLineSpan().StartLinePosition.Line + 1);
+    Assert.Contains("OnChange", diagnostic.GetMessage());
+  }
+
+  [Theory]
+  [InlineData("addListener")]
+  [InlineData("removeListener")]
+  [InlineData("removeAllListeners")]
+  [InlineData("emit")]
+  [InlineData("listenerCount")]
+  [InlineData("removeSubscription")]
+  public void GeneratorReservesSharedObjectEventPrototypeMethods(string name)
+  {
+    var result = GeneratorTestHost.Run($$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+        [ExpoSharedObject] public sealed partial class Entry : SharedObject
+        {
+          [Event] public partial Func<Task> OnChange { get; }
+          [JS("{{name}}")] public void Conflict() { }
+        }
+        [ExpoModule(Classes = new[] { typeof(Entry) })] public sealed partial class Owner { }
+        """);
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI025");
+    Assert.Contains(name, diagnostic.GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorUsesDistinctRecordCodecsForCollidingFullyQualifiedPayloadHashes()
+  {
+    var result = GeneratorTestHost.Run("""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace N15qp1ec1guuw83 { public readonly record struct Progress(int ModuleValue); }
+        namespace N1sm951cf6akgv { public readonly record struct Progress(string SharedValue); }
+
+        namespace Expo.TestModules
+        {
+          [ExpoSharedObject]
+          public sealed partial class Entry : SharedObject
+          {
+            [Event] public partial Func<N1sm951cf6akgv.Progress, Task> OnSharedProgress { get; }
+          }
+
+          [ExpoModule(Classes = new[] { typeof(Entry) })]
+          public sealed partial class Owner
+          {
+            [Event] public partial Func<N15qp1ec1guuw83.Progress, Task> OnModuleProgress { get; }
+          }
+        }
+        """);
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic =>
+        diagnostic.Severity == DiagnosticSeverity.Error);
+    var text = GeneratedText(result);
+    Assert.Contains("global::N15qp1ec1guuw83.Progress", text);
+    Assert.Contains("global::N1sm951cf6akgv.Progress", text);
+    Assert.Equal(2, text.Split("private readonly struct ProgressCodec_", StringSplitOptions.None).Length - 1);
+  }
+
+  [Theory]
+  [InlineData("sealed partial record")]
+  [InlineData("partial record struct")]
+  public void AttributedRecordSharedObjectsReceiveControlledEventDiagnostics(string declaration)
+  {
+    var result = GeneratorTestHost.Run($$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        [ExpoSharedObject]
+        public {{declaration}} Entry
+        {
+          [Event]
+          public partial Func<Task> OnReady { get; }
+        }
+        """);
+
+    Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "EXPOJSI021");
+    Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "EXPOJSI026");
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Id == "CS9248");
+    Assert.Contains("cannot be used because its declaration is invalid", GeneratedText(result));
+  }
+
+  [Fact]
+  public void InvalidSharedObjectDeclarationStillControlsEventDiagnosticAndPartial()
+  {
+    var result = GeneratorTestHost.Run("""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        [ExpoSharedObject]
+        public partial class InvalidEntry : SharedObject
+        {
+          [Event]
+          public partial Func<Task> OnReady { get; }
+        }
+        """);
+
+    Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "EXPOJSI021");
+    Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "EXPOJSI026");
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Id == "CS9248");
+    Assert.Contains("cannot be used because its declaration is invalid", GeneratedText(result));
+  }
+
+  [Theory]
+  [InlineData(false)]
+  [InlineData(true)]
+  public void DuplicateSharedObjectEventNamesInvalidateEveryDeclaration(bool reverseOrder)
+  {
+    var first = "[Event(\"same\")] public partial Func<Task> OnFirst { get; }";
+    var second = "[Event(\"same\")] public partial Func<Task> OnSecond { get; }";
+    var declarations = reverseOrder ? second + "\n" + first : first + "\n" + second;
+    var result = GeneratorTestHost.Run($$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        [ExpoSharedObject]
+        public sealed partial class Entry : SharedObject
+        {
+          {{declarations}}
+        }
+
+        [ExpoModule(Classes = new[] { typeof(Entry) })]
+        public sealed partial class Owner { }
+        """);
+
+    Assert.Equal(2, result.Diagnostics.Count(diagnostic => diagnostic.Id == "EXPOJSI028"));
+    Assert.DoesNotContain(result.Diagnostics, diagnostic =>
+        diagnostic.Id.StartsWith("CS", StringComparison.Ordinal) &&
+        diagnostic.Severity == DiagnosticSeverity.Error);
+    var text = GeneratedText(result);
+    Assert.DoesNotContain("GeneratedSharedObjectEvents.EmitAsync", text);
+    Assert.DoesNotContain("new[] { \"same\" }", text);
+  }
+
+  [Fact]
+  public void OrphanEventHintsIncludeFullyQualifiedContainerIdentity()
+  {
+    var result = GeneratorTestHost.Run("""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace A
+        {
+          public partial class Entry
+          {
+            [Event] public partial Func<Task> OnReady { get; }
+          }
+        }
+
+        namespace B
+        {
+          public partial class Entry
+          {
+            [Event] public partial Func<Task> OnReady { get; }
+          }
+        }
+        """);
+
+    Assert.Equal(2, result.Diagnostics.Count(diagnostic => diagnostic.Id == "EXPOJSI026"));
+    Assert.DoesNotContain(result.Diagnostics, diagnostic =>
+        diagnostic.Id.StartsWith("CS", StringComparison.Ordinal) &&
+        diagnostic.Severity == DiagnosticSeverity.Error);
+    Assert.Equal(
+        2,
+        result.GeneratedSources.Count(source => source.HintName.EndsWith(".OrphanEvent.g.cs", StringComparison.Ordinal))
+    );
+  }
+
   private static string GeneratedText(GeneratorRunResult result) =>
       string.Join("\n", result.GeneratedSources.Select(source => source.Text));
+
+  private static string RecordCodecName(string simpleName, string fullyQualifiedTypeName)
+  {
+    return $"{simpleName}Codec_{string.Concat(fullyQualifiedTypeName.Select(character => ((ushort)character).ToString("X4", System.Globalization.CultureInfo.InvariantCulture)))}";
+  }
 }

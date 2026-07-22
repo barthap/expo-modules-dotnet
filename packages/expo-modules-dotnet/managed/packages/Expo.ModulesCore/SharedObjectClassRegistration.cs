@@ -14,6 +14,11 @@ namespace Expo.ModulesCore;
 internal sealed class SharedObjectClassRegistration : IDisposable
 {
   private readonly JavaScriptObject prototype;
+  private DotnetRuntimeContext? eventContext;
+  private Action<DotnetRuntimeContext, SharedObject>? eventInitializer;
+  private HashSet<string>? eventNames;
+  private string? eventStorageKey;
+  private long nextEventListenerId;
   private bool disposed;
 
   private SharedObjectClassRegistration(
@@ -66,6 +71,37 @@ internal sealed class SharedObjectClassRegistration : IDisposable
     ObjectDisposedException.ThrowIf(disposed, this);
     return Registry.Runtime.CreateObjectWithPrototype(prototype);
   }
+
+  internal string EventStorageKey => eventStorageKey ??
+      throw new InvalidOperationException("The shared object class does not declare events.");
+
+  internal void ConfigureEvents(
+      DotnetRuntimeContext context,
+      IReadOnlyList<string> names,
+      Action<DotnetRuntimeContext, SharedObject> initializer)
+  {
+    eventContext = context;
+    eventInitializer = initializer;
+    eventNames = new HashSet<string>(names, StringComparer.Ordinal);
+    if (eventNames.Count == 0 || eventNames.Any(string.IsNullOrWhiteSpace))
+    {
+      throw new ArgumentException("Shared-object event declarations cannot be empty.", nameof(names));
+    }
+    eventStorageKey = $"__expo_dotnet_shared_events_{Guid.NewGuid():N}";
+    SharedObjectEventPrototype.Install(context, this);
+  }
+
+  internal void InitializeEvents(SharedObject instance) => eventInitializer?.Invoke(eventContext!, instance);
+
+  internal void RequireEvent(string eventName)
+  {
+    if (eventNames is null || !eventNames.Contains(eventName))
+    {
+      throw new InvalidOperationException($"The shared object does not declare event '{eventName}'.");
+    }
+  }
+
+  internal long NextEventListenerId() => Interlocked.Increment(ref nextEventListenerId);
 
   public void Dispose()
   {

@@ -28,7 +28,7 @@ fully before starting, honor its STOP conditions, and update your row when done.
 | 016 | NativeAOT publish check in CI (linux-x64 compile-time proof; end-to-end loader lane deferred) | P1 | S | — | DONE — `1f8d0414` adds the publish-only AOT job; local macOS and Docker Linux publishes plus actionlint passed. |
 | 017 | SharedObject public authoring surface | P2 | L | 015, 016 recommended first | DONE — generated exact-type SharedObject authoring with module-owned JS classes, transactional registry pairing, SharedRef<T>, TS facade, ExampleCounter example, and merged docs. |
 | 018 | Windows RNW build/deploy reliability + ReactNativeDir resolver | P1/P2 | L | — (needs Windows machine) | BLOCKED — current executor is on macOS; Windows + VS 2026 + RNW 0.81 prerequisite is unavailable. |
-| 019 | Typed `[Event]` members on shared objects | P2 | M | 017, 021 | TODO — reworked 2026-07-22 at `f2c72f68`: JS-owned listener design mandated; resume after 021. |
+| 019 | Typed `[Event]` members on shared objects | P2 | M | 017, 021 | DONE |
 | 020 | hermes-console-app Linux port + end-to-end loader lane in CI (hostfxr + nativeaot) | P1 | M | 016 | DONE — Linux HostFXR and NativeAOT Docker proofs, macOS regressions, managed tests, formatting, and workflow lint passed; implemented at `be4ac86f`, `dc526e83`, `819d8622`, and `b21f3d9b`. |
 | 021 | Exactly-once owned callback-state disposal for host functions (`Expo.JSI`) | P2 | S–M | — | DONE — preserved the four-parameter API, added the owned-state overload, and verified GC, teardown, failure, and concurrent release. |
 
@@ -66,6 +66,30 @@ counter stay armed. Detail in `009-windows-testhost-teardown-crash.md`.
   blocking risks deadlock on async-only hosts). Recorded in the execution
   note at the top of `014-typed-event-members.md`.
 - 011 remains BACKLOG (executor skipped it; still a nice-to-have).
+
+### Verification notes (2026-07-23, at `2a1ef176`)
+
+- 021 and 019 advisor-verified DONE. All done criteria re-run and green:
+  managed suite passes (220 Expo.JSI + 188 Expo.ModulesCore + 212 generator),
+  mobile typecheck, format check, clean tree, no local paths committed.
+  Diff read in full: 021 commits touch only `Expo.JSI` (+ tests/spec);
+  4-parameter `CreateHostFunction` preserved, disposer overload added with
+  interlocked exactly-once release; 019 stores listeners in the JS heap on
+  the instance, managed dispatch holds only the registry weak object
+  (revalidated under the gate in `SharedObjectRegistry.GetLiveJavaScriptObject`),
+  subscription cleanup consumes the 021 disposer. Test audit confirmed
+  genuine assertions for the exactly-once matrix, instance isolation,
+  self-capturing-listener collection under forced GC, subscription-state
+  disposal, and both dispatch/release and dispatch/teardown races.
+- Accepted 021 deviation: `HostFunctionContext` pointers moved from
+  `GCHandle` to an id-keyed `ConcurrentDictionary`, so a stale context
+  pointer now throws `ObjectDisposedException` instead of undefined
+  behavior. In scope, spec'd, and safer than the plan's minimal shape.
+- Minor follow-up (not blocking): the merged spec guarantees "Zero
+  listeners SHALL succeed" for shared-object event dispatch
+  (`docs/specs/modules-core-boundary.md`, dispatch section), but no
+  dedicated test emits with zero listeners registered. Add one next time
+  the shared-object event tests are touched.
 
 ### Execution notes (2026-07-21, at `56893ca2`)
 

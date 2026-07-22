@@ -51,6 +51,18 @@ internal sealed record ExpoEventModel(
     bool IsShapeValid,
     bool IsDispatchable);
 
+internal sealed record ExpoOrphanEventModel(
+    string Namespace,
+    string FullyQualifiedContainerName,
+    string ContainerName,
+    string ContainerAccessibility,
+    string PropertyName,
+    string PropertyType,
+    string PropertyModifiers,
+    string GetterAccessor,
+    Location? Location,
+    bool CanReproduce);
+
 internal enum ExpoModuleConstructorStrategy
 {
   Unsupported,

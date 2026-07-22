@@ -1,8 +1,7 @@
-function facadeUnavailable(): never {
-  throw new Error(
-    'DotnetSharedObject instances are created by a generated shared-object class or a module return. Construct one with a generated class exposed on a module, or receive one from a module method.'
-  );
-}
+import { DotnetEventEmitter, type EventsMap } from './DotnetEventEmitter';
+
+const unavailableMessage =
+  'DotnetSharedObject instances are created by a generated shared-object class or a module return. Construct one with a generated class exposed on a module, or receive one from a module method.';
 
 /**
  * Provides the TypeScript facade for generated .NET shared-object instances.
@@ -12,12 +11,14 @@ function facadeUnavailable(): never {
  * are not guaranteed to be instances of this class. This class exists for TypeScript facade
  * heritage clauses only.
  */
-export class DotnetSharedObject {
+export class DotnetSharedObject<
+  TEventsMap extends EventsMap = Record<never, never>,
+> extends DotnetEventEmitter<TEventsMap> {
   /**
    * Always throws because usable shared objects come from a generated class or a module return.
    */
   public constructor() {
-    facadeUnavailable();
+    super(unavailableMessage);
   }
 
   /**
@@ -27,6 +28,6 @@ export class DotnetSharedObject {
    * accessors on the instance throws a catchable error.
    */
   public release(): void {
-    facadeUnavailable();
+    throw new Error(unavailableMessage);
   }
 }

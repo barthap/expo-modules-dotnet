@@ -24,10 +24,21 @@ public sealed partial class ExampleCounter : SharedObject
   [JS]
   public double Count { get; private set; }
 
+  [Event]
+  public partial Func<double, Task> OnChange { get; }
+
   [JS("increment")]
   public double Increment(double by)
   {
     Count += by;
+    return Count;
+  }
+
+  [JS]
+  public async Task<double> IncrementAndEmitAsync(double by)
+  {
+    Count += by;
+    await OnChange(Count);
     return Count;
   }
 

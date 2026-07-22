@@ -10,6 +10,56 @@ namespace Expo.ModulesCore.Tests.Generated;
 public sealed class GeneratedEventModuleTests
 {
   [Fact]
+  public async Task SameSimpleNameModuleAndSharedObjectEventRecordsUseTheirOwnCodecs()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    DotnetRuntimeContext? context = null;
+    fixture.Runtime.Execute(runtime =>
+    {
+      context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+      using var setup = fixture.Evaluate(
+          "const m = globalThis._expoDotnet.modules.GeneratedRecordCollision; " +
+          "globalThis.__recordCodecValues = []; " +
+          "m.addListener('onModuleProgress', value => __recordCodecValues.push('m:' + value.moduleValue)); " +
+          "const entry = new m.RecordCollisionEntry(); " +
+          "entry.addListener('onSharedProgress', value => __recordCodecValues.push('s:' + value.sharedValue)); " +
+          "Promise.all([m.emitModuleProgressAsync(17), entry.emitSharedProgressAsync('ok')])" +
+          ".then(() => { globalThis.__recordCodecDone = true; }); 'started'",
+          "generated-record-codec-collision.js"
+      );
+      return true;
+    });
+
+    for (var attempt = 0; attempt < 200; attempt++)
+    {
+      fixture.DrainTasks();
+      var done = fixture.Runtime.Execute(_ =>
+      {
+        using var value = fixture.Evaluate(
+            "String(globalThis.__recordCodecDone === true)",
+            "generated-record-codec-collision-wait.js"
+        );
+        return value.AsString() == "true";
+      });
+      if (done) break;
+      await Task.Delay(10, TestContext.Current.CancellationToken);
+    }
+
+    fixture.Runtime.Execute(_ =>
+    {
+      using var result = fixture.Evaluate(
+          "globalThis.__recordCodecValues.join(',')",
+          "generated-record-codec-collision-result.js"
+      );
+      Assert.Equal("m:17,s:ok", result.AsString());
+      context!.Dispose();
+      return true;
+    });
+  }
+
+  [Fact]
   public void TypedEventDelegatesAreInitializedBeforeOnCreate()
   {
     using var typed = TypedEventsFixture.Create();

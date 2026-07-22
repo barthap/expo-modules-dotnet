@@ -1298,8 +1298,8 @@ The registry is also the identity and lifetime mechanism for generated public
 `SharedObject` bindings. Its per-context ownership, reference-identity maps,
 weak counterpart, private NativeState token, no-repairing rule, exactly-once
 terminal release outside locks, re-entry deferral, and teardown-first ordering
-apply unchanged to the public surface. Cross-runtime pairing, shared-object
-events, and a `JavaScriptObject` codec remain separate future capabilities;
+apply unchanged to the public surface. Cross-runtime pairing and a
+`JavaScriptObject` codec remain separate future capabilities;
 `JavaScriptValue` remains the existing advanced module convertible.
 
 #### Scenario: Public binding reuses the proven registry
@@ -1840,14 +1840,192 @@ release is idempotent and that any later native member access fails.
   emitted library types, and supported JavaScript runtimes
 - **AND** this change SHALL remain compatible with explicit `release()`
 
+### Requirement: Shared Objects Declare Typed Awaitable Events
+
+`[Event]` SHALL be valid on an `[ExpoSharedObject]` class only when it is an
+instance, getter-only partial property of exactly `Func<Task>` or
+`Func<T, Task>`, and `T` has an event-safe compile-time codec. Implicit names
+SHALL lowercase only the first C# property character; explicit non-empty names
+SHALL be preserved verbatim. The generator SHALL cache one delegate per
+managed instance and initialize it during the first exact registered-class
+pairing. Reading it before pairing SHALL fail clearly.
+
+#### Scenario: Shared-object event is generated
+
+- **GIVEN** a shared object declares
+  `[Event] public partial Func<ProgressEvent, Task> OnProgress { get; }`
+- **WHEN** its instance first pairs with its generated JavaScript class
+- **THEN** the property SHALL return a cached awaitable delegate
+- **AND** awaiting it SHALL dispatch `onProgress` with the generated payload
+  codec
+
+### Requirement: Shared-Object Listeners Are JavaScript-Owned And Instance Scoped
+
+Every event-capable shared-object prototype SHALL expose `addListener`,
+`removeListener`, `removeAllListeners`, `emit`, `listenerCount`, and
+`removeSubscription` with the existing ModulesCore event-emitter argument,
+ordering, matching, and subscription semantics. These names SHALL be reserved
+against authored `[JS]` members.
+
+Listener entries SHALL live only in a runtime-private, non-enumerable own
+JavaScript Array on the target instance. Managed state SHALL NOT retain a
+listener function or ordinary shared-object wrapper outside a runtime callback.
+Removal SHALL replace the storage with a compacted Array. Dispatch SHALL use a
+snapshot of the starting Array so listeners added or removed during dispatch do
+not alter that dispatch's listener set. `addListener` SHALL commit its replacement
+Array only after the subscription object, remove host function, callback state,
+and return wrapper have been created successfully. A failure before that commit
+SHALL leave the listener count unchanged and release any temporary weak state.
+
+#### Scenario: Two instances keep listeners separate
+
+- **GIVEN** two instances of one generated shared-object class have disjoint
+  listeners for the same event
+- **WHEN** either managed instance dispatches
+- **THEN** only that JavaScript instance's listeners SHALL run
+
+#### Scenario: Self-capturing listener is collected
+
+- **GIVEN** a listener captures its own shared-object instance
+- **WHEN** JavaScript drops every external reference and collects the cycle
+- **THEN** the instance and listener SHALL be collectible together
+- **AND** the registry's existing release callback SHALL run
+
+### Requirement: Shared-Object Subscriptions Release Weak State Exactly Once
+
+The subscription returned by `addListener` SHALL own a `remove()` host
+function whose callback state owns one target `JavaScriptWeakObject` plus only
+scalar/string metadata. That host function SHALL use the owned-state disposer
+contract. Explicit repeated `remove()` calls SHALL be no-ops after the first
+removal. Collection of a subscription without explicit removal SHALL dispose
+the weak handle exactly once, but SHALL NOT itself unregister the listener. The
+callback state SHALL NOT retain the runtime context, shared-object registry,
+class registration, or prototype graph. A retained JavaScript subscription
+SHALL therefore not keep a disposed runtime context alive, and its `remove()`
+method SHALL remain safe after context teardown.
+
+#### Scenario: Subscription construction fails
+
+- **GIVEN** `addListener` starts constructing a subscription for a live target
+- **WHEN** remove-host-function creation or later subscription setup fails
+- **THEN** the target's listener count SHALL remain unchanged
+- **AND** any created target weak handle SHALL be disposed exactly once
+
+#### Scenario: Subscription outlives its runtime context
+
+- **GIVEN** JavaScript retains a subscription after its runtime context is
+  disposed and all other context roots are dropped
+- **WHEN** managed garbage collection runs and JavaScript later calls `remove()`
+- **THEN** the disposed runtime context SHALL remain collectible
+- **AND** `remove()` SHALL complete safely without consulting that context
+
+#### Scenario: Subscription is explicitly removed
+
+- **GIVEN** one live listener subscription
+- **WHEN** JavaScript calls `remove()` more than once
+- **THEN** only the first call SHALL remove that listener
+- **AND** the weak handle SHALL be disposed exactly once
+
+#### Scenario: Subscription is collected
+
+- **GIVEN** JavaScript drops a subscription without calling `remove()`
+- **WHEN** creation failure, JavaScript collection, or teardown releases its
+  host-function callback context
+- **THEN** the owned-state disposer SHALL release the weak handle exactly once
+- **AND** it SHALL not enter JSI or require a runtime access frame
+
+### Requirement: Shared-Object Event Dispatch Is Awaitable And Lifetime Safe
+
+Generated event delegates SHALL always return a non-null task. They SHALL
+dispatch inline during current runtime access, through synchronous scheduling
+when available, or through the asynchronous runtime task path. Target lookup,
+payload encoding, scheduling, release, collection, and teardown failures SHALL
+fault or cancel that task. Zero listeners SHALL succeed, and a throwing
+listener SHALL neither fault dispatch nor prevent later listeners.
+
+On the runtime thread, dispatch SHALL snapshot and validate the registry entry
+under the registry gate, lock its `JavaScriptWeakObject` outside the gate, then
+revalidate the same active entry under the gate. Release or teardown wins if
+the entry is terminal before that second validation; dispatch SHALL dispose
+any locked wrapper and fail. Dispatch wins at successful revalidation and may
+finish using only its callback-owned target wrapper while terminal release
+proceeds. It SHALL perform no later registry or weak-wrapper access.
+
+#### Scenario: Release wins dispatch acquisition
+
+- **GIVEN** dispatch and terminal release race for one active entry
+- **WHEN** release removes the entry before dispatch revalidates it
+- **THEN** dispatch SHALL fail loudly without reading listeners
+- **AND** it SHALL release any temporary target wrapper
+
+#### Scenario: Dispatch wins acquisition
+
+- **GIVEN** dispatch revalidates the active entry before terminal release
+- **WHEN** release begins during listener iteration
+- **THEN** dispatch MAY finish from its callback-owned target wrapper
+- **AND** release SHALL retain the registry's exactly-once terminal contract
+
+#### Scenario: Context is torn down
+
+- **GIVEN** C# retains an event delegate after its runtime context is disposed
+- **WHEN** it invokes that delegate
+- **THEN** the returned task SHALL fail or cancel loudly
+- **AND** it SHALL not touch a disposed runtime, registry entry, or weak handle
+
+### Requirement: Invalid Shared-Object Events Are Build Diagnostics
+
+Shared-object event validation SHALL use `EXPOJSI026` for invalid placement or
+property shapes, `EXPOJSI027` for unsupported event payloads, and `EXPOJSI028`
+for duplicate effective names. `[Event]` on a class that is neither an
+`[ExpoModule]` nor a valid `[ExpoSharedObject]` SHALL report `EXPOJSI026`.
+Rejected reproducible partial properties SHALL receive inert matching
+implementations so the Expo diagnostic does not cause a secondary compiler
+error. Every declaration in a duplicate effective-name group SHALL be invalid;
+source order SHALL NOT select one declaration for dispatch glue.
+
+#### Scenario: Unsupported payload is diagnosed
+
+- **GIVEN** a valid-shaped shared-object event uses a callback or nested
+  transfer-sensitive wrapper payload
+- **WHEN** the generator analyzes it
+- **THEN** it SHALL report `EXPOJSI027`
+- **AND** it SHALL not emit reflection, dynamic conversion, or callback encode
+  source
+
+### Requirement: Shared-Object TypeScript Facades Type Event Maps
+
+`DotnetSharedObject<TEventsMap>` SHALL extend
+`DotnetEventEmitter<TEventsMap>` and default to an empty event map for source
+compatibility. Event-capable facades SHALL supply their per-class event map.
+
+#### Scenario: Listener payload is type checked
+
+- **GIVEN** a facade extends
+  `DotnetSharedObject<{ onChange(value: number): void }>`
+- **WHEN** TypeScript checks `addListener`
+- **THEN** `onChange` SHALL require a numeric listener payload
+- **AND** undeclared event names SHALL be rejected
+
 ### Requirement: SharedObject Bindings Are Fully Generated And Portable
 
 Shared-object discovery, validation, construction, member dispatch, and codec
 selection SHALL be build-time generated and NativeAOT-compatible. The runtime
 path SHALL use direct calls, typed codecs, context-owned generated host-function
 registrations, and the existing managed registry and `Expo.JSI` primitives.
+Private generated record-codec type names SHALL derive from fully qualified
+record identity so distinct payload records with the same simple name do not
+share or suppress one another's codec.
 It SHALL NOT use runtime reflection, dynamic invocation, JSON conversion, raw
 JSI layouts, a new C ABI entry, or a platform-specific dependency.
+
+#### Scenario: Same simple-name event records keep distinct codecs
+
+- **GIVEN** a module event and a shared-object event use distinct payload
+  records with the same simple type name in different namespaces
+- **WHEN** the generator emits and runs both dispatch paths
+- **THEN** each path SHALL encode with the codec for its fully qualified payload
+  type
+- **AND** both generated codec declarations SHALL compile in one provider
 
 #### Scenario: Generated provider registers shared objects
 
