@@ -14,16 +14,19 @@ namespace Expo.ModulesCore;
 internal sealed class SharedObjectClassRegistration : IDisposable
 {
   private readonly JavaScriptObject prototype;
+  private readonly Action<SharedObject>? initializeEvents;
   private bool disposed;
 
   private SharedObjectClassRegistration(
       SharedObjectRegistry registry,
       Type sharedObjectType,
-      JavaScriptObject prototype)
+      JavaScriptObject prototype,
+      Action<SharedObject>? initializeEvents)
   {
     Registry = registry;
     SharedObjectType = sharedObjectType;
     this.prototype = prototype;
+    this.initializeEvents = initializeEvents;
   }
 
   internal SharedObjectRegistry Registry { get; }
@@ -45,7 +48,8 @@ internal sealed class SharedObjectClassRegistration : IDisposable
 
   internal static SharedObjectClassRegistration Create(
       SharedObjectRegistry registry,
-      Type sharedObjectType)
+      Type sharedObjectType,
+      Action<SharedObject>? initializeEvents = null)
   {
     ArgumentNullException.ThrowIfNull(registry);
     ArgumentNullException.ThrowIfNull(sharedObjectType);
@@ -58,13 +62,19 @@ internal sealed class SharedObjectClassRegistration : IDisposable
     }
 
     var prototype = SharedObjectPrototype.CreateClassPrototype(registry.Runtime, registry);
-    return new SharedObjectClassRegistration(registry, sharedObjectType, prototype);
+    return new SharedObjectClassRegistration(registry, sharedObjectType, prototype, initializeEvents);
   }
 
   internal JavaScriptObject CreateInstanceObject()
   {
     ObjectDisposedException.ThrowIf(disposed, this);
     return Registry.Runtime.CreateObjectWithPrototype(prototype);
+  }
+
+  internal void InitializeEvents(SharedObject instance)
+  {
+    ArgumentNullException.ThrowIfNull(instance);
+    initializeEvents?.Invoke(instance);
   }
 
   public void Dispose()

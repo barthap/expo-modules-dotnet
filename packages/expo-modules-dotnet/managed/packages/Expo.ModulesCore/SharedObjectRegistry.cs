@@ -295,6 +295,8 @@ internal sealed class SharedObjectRegistry : IDisposable
         entriesByInstance.Add(instance, entry);
       }
 
+      registration.InitializeEvents(instance);
+
       return value;
     }
     catch (Exception pairingFailure)
@@ -352,6 +354,45 @@ internal sealed class SharedObjectRegistry : IDisposable
 
       return entry.Instance;
     }
+  }
+
+  internal JavaScriptObject GetLiveJavaScriptObject(SharedObject instance)
+  {
+    ArgumentNullException.ThrowIfNull(instance);
+    SharedObjectEntry? deadEntry = null;
+    JavaScriptObject? result = null;
+    try
+    {
+      lock (gate)
+      {
+        ThrowIfDisposedLocked();
+        if (!entriesByInstance.TryGetValue(instance, out var entry) || entry.IsReleased)
+        {
+          throw new InvalidOperationException("The shared object has already been released.");
+        }
+
+        result = entry.WeakObject.Lock();
+        if (result is null)
+        {
+          deadEntry = TakeTerminalEntryLocked(entry.Id);
+        }
+      }
+    }
+    finally
+    {
+      DrainDeferredNativeStateEntries();
+    }
+
+    if (result is not null)
+    {
+      return result;
+    }
+
+    if (deadEntry is not null)
+    {
+      CompleteTerminalEntry(deadEntry);
+    }
+    throw new InvalidOperationException("The shared JavaScript object is no longer available.");
   }
 
   internal void ReleaseFromJavaScript(JavaScriptObject value)

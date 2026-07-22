@@ -8,25 +8,34 @@ internal static class EventEmitterPrototype
       JavaScriptRuntime runtime,
       JavaScriptObject prototype,
       EventEmitterRuntimeState state,
-      Func<JavaScriptFunction, JavaScriptFunction> retainHostFunction)
+      Func<JavaScriptFunction, JavaScriptFunction> retainHostFunction,
+      bool retainEmitters = true,
+      bool enableObservingHooks = true,
+      Action<JavaScriptObject, int>? onEmitterAttached = null)
   {
+    var prototypeContext = new EventEmitterPrototypeContext(
+        state,
+        retainEmitters,
+        enableObservingHooks,
+        onEmitterAttached
+    );
     using var addListener = retainHostFunction(
-        runtime.CreateHostFunction("addListener", 2, AddListener, state)
+        runtime.CreateHostFunction("addListener", 2, AddListener, prototypeContext)
     );
     using var removeListener = retainHostFunction(
-        runtime.CreateHostFunction("removeListener", 2, RemoveListener, state)
+        runtime.CreateHostFunction("removeListener", 2, RemoveListener, prototypeContext)
     );
     using var removeAllListeners = retainHostFunction(
-        runtime.CreateHostFunction("removeAllListeners", 1, RemoveAllListeners, state)
+        runtime.CreateHostFunction("removeAllListeners", 1, RemoveAllListeners, prototypeContext)
     );
     using var emit = retainHostFunction(
-        runtime.CreateHostFunction("emit", 1, Emit, state)
+        runtime.CreateHostFunction("emit", 1, Emit, prototypeContext)
     );
     using var listenerCount = retainHostFunction(
-        runtime.CreateHostFunction("listenerCount", 1, ListenerCount, state)
+        runtime.CreateHostFunction("listenerCount", 1, ListenerCount, prototypeContext)
     );
     using var removeSubscription = retainHostFunction(
-        runtime.CreateHostFunction("removeSubscription", 1, RemoveSubscription, state)
+        runtime.CreateHostFunction("removeSubscription", 1, RemoveSubscription, prototypeContext)
     );
 
     SetFunctionProperty(prototype, "addListener", addListener);
@@ -48,14 +57,16 @@ internal static class EventEmitterPrototype
       throw new ArgumentException("addListener expects an event name and listener.");
     }
 
-    var state = (EventEmitterRuntimeState)context;
+    var prototypeContext = (EventEmitterPrototypeContext)context;
+    var state = prototypeContext.State;
     var eventName = arguments.GetValue(0).AsString();
     using var emitter = thisValue.AsObject().Retain();
     using var listener = arguments.GetValue(1).AsFunction();
-    var emitterId = state.GetOrCreateEmitterId(runtime, emitter);
+    var emitterId = state.GetOrCreateEmitterId(runtime, emitter, prototypeContext.RetainEmitters);
+    prototypeContext.OnEmitterAttached?.Invoke(emitter, emitterId);
     var wasEmpty = state.ListenerCount(emitterId, eventName) == 0;
     var listenerId = state.AddListener(emitterId, eventName, listener);
-    if (wasEmpty)
+    if (wasEmpty && prototypeContext.EnableObservingHooks)
     {
       CallObservingFunction(runtime, emitter, "startObserving", eventName);
     }
@@ -65,7 +76,7 @@ internal static class EventEmitterPrototype
         "remove",
         0,
         RemoveSubscriptionByState,
-        new ListenerSubscription(state, emitterId, eventName, listenerId)
+        new ListenerSubscription(state, emitterId, eventName, listenerId, prototypeContext.EnableObservingHooks)
     );
     SetFunctionProperty(subscription, "remove", remove);
     return subscription.AsValue();
@@ -82,13 +93,14 @@ internal static class EventEmitterPrototype
       throw new ArgumentException("removeListener expects an event name and listener.");
     }
 
-    var state = (EventEmitterRuntimeState)context;
+    var prototypeContext = (EventEmitterPrototypeContext)context;
+    var state = prototypeContext.State;
     var eventName = arguments.GetValue(0).AsString();
     using var emitter = thisValue.AsObject().Retain();
     var emitterId = state.GetEmitterId(emitter);
     using var listener = arguments.GetValue(1).AsFunction();
     using var listenerValue = listener.AsValue();
-    RemoveListenerByValue(runtime, state, emitter, emitterId, eventName, listenerValue);
+    RemoveListenerByValue(runtime, state, emitter, emitterId, eventName, listenerValue, prototypeContext.EnableObservingHooks);
     return runtime.CreateUndefined();
   }
 
@@ -103,11 +115,12 @@ internal static class EventEmitterPrototype
       throw new ArgumentException("removeAllListeners expects an event name.");
     }
 
-    var state = (EventEmitterRuntimeState)context;
+    var prototypeContext = (EventEmitterPrototypeContext)context;
+    var state = prototypeContext.State;
     var eventName = arguments.GetValue(0).AsString();
     using var emitter = thisValue.AsObject().Retain();
     var emitterId = state.GetEmitterId(emitter);
-    if (emitterId is not null && state.RemoveAll(emitterId.Value, eventName) > 0)
+    if (emitterId is not null && state.RemoveAll(emitterId.Value, eventName) > 0 && prototypeContext.EnableObservingHooks)
     {
       CallObservingFunction(runtime, emitter, "stopObserving", eventName);
     }
@@ -125,7 +138,7 @@ internal static class EventEmitterPrototype
       throw new ArgumentException("emit expects an event name.");
     }
 
-    var state = (EventEmitterRuntimeState)context;
+    var state = ((EventEmitterPrototypeContext)context).State;
     var eventName = arguments.GetValue(0).AsString();
     using var emitter = thisValue.AsObject().Retain();
     var emitterId = state.GetEmitterId(emitter);
@@ -175,7 +188,7 @@ internal static class EventEmitterPrototype
       throw new ArgumentException("listenerCount expects an event name.");
     }
 
-    var state = (EventEmitterRuntimeState)context;
+    var state = ((EventEmitterPrototypeContext)context).State;
     var eventName = arguments.GetValue(0).AsString();
     using var emitter = thisValue.AsObject().Retain();
     var emitterId = state.GetEmitterId(emitter);
@@ -207,6 +220,12 @@ internal static class EventEmitterPrototype
       object context)
   {
     var subscription = (ListenerSubscription)context;
+    if (!subscription.EnableObservingHooks)
+    {
+      subscription.State.RemoveListener(subscription.EmitterId, subscription.EventName, subscription.ListenerId);
+      return runtime.CreateUndefined();
+    }
+
     using var emitter = subscription.State.GetEmitter(subscription.EmitterId);
     RemoveListenerById(
         runtime,
@@ -246,7 +265,8 @@ internal static class EventEmitterPrototype
       JavaScriptObject emitter,
       int? emitterId,
       string eventName,
-      JavaScriptValue listener)
+      JavaScriptValue listener,
+      bool enableObservingHooks)
   {
     if (emitterId is null)
     {
@@ -255,7 +275,7 @@ internal static class EventEmitterPrototype
 
     var before = state.ListenerCount(emitterId.Value, eventName);
     state.RemoveListeners(runtime, emitterId.Value, eventName, listener);
-    if (before > 0 && state.ListenerCount(emitterId.Value, eventName) == 0)
+    if (enableObservingHooks && before > 0 && state.ListenerCount(emitterId.Value, eventName) == 0)
     {
       CallObservingFunction(runtime, emitter, "stopObserving", eventName);
     }
@@ -306,5 +326,12 @@ internal static class EventEmitterPrototype
       EventEmitterRuntimeState State,
       int EmitterId,
       string EventName,
-      int ListenerId);
+      int ListenerId,
+      bool EnableObservingHooks);
+
+  private sealed record EventEmitterPrototypeContext(
+      EventEmitterRuntimeState State,
+      bool RetainEmitters,
+      bool EnableObservingHooks,
+      Action<JavaScriptObject, int>? OnEmitterAttached);
 }

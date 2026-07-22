@@ -137,7 +137,8 @@ public static class GeneratedSharedObjectClass
       string name,
       uint parameterCount,
       GeneratedSharedObjectFactory? constructorFactory,
-      Action<DotnetRuntimeContext, JavaScriptObject>? memberInstaller
+      Action<DotnetRuntimeContext, JavaScriptObject>? memberInstaller,
+      Action<DotnetRuntimeContext, SharedObject>? eventInitializer = null
   )
   {
     ArgumentNullException.ThrowIfNull(runtimeContext);
@@ -160,7 +161,8 @@ public static class GeneratedSharedObjectClass
           name,
           parameterCount,
           constructorFactory,
-          memberInstaller
+          memberInstaller,
+          eventInitializer
       );
       lock (contextInstallations)
       {
@@ -235,12 +237,14 @@ public static class GeneratedSharedObjectClass
       string name,
       uint parameterCount,
       GeneratedSharedObjectFactory? constructorFactory,
-      Action<DotnetRuntimeContext, JavaScriptObject>? memberInstaller
+      Action<DotnetRuntimeContext, JavaScriptObject>? memberInstaller,
+      Action<DotnetRuntimeContext, SharedObject>? eventInitializer
   )
   {
     var registration = SharedObjectClassRegistration.Create(
         runtimeContext.SharedObjects,
-        sharedObjectType
+        sharedObjectType,
+        eventInitializer is null ? null : sharedObject => eventInitializer(runtimeContext, sharedObject)
     );
     try
     {

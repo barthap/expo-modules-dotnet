@@ -9,7 +9,10 @@ internal sealed class EventEmitterRuntimeState : IDisposable
   private int nextListenerId = 1;
   private bool disposed;
 
-  public int GetOrCreateEmitterId(JavaScriptRuntime runtime, JavaScriptObject emitter)
+  public int GetOrCreateEmitterId(
+      JavaScriptRuntime runtime,
+      JavaScriptObject emitter,
+      bool retainEmitter = true)
   {
     ThrowIfDisposed();
     var existing = GetEmitterId(emitter);
@@ -20,7 +23,7 @@ internal sealed class EventEmitterRuntimeState : IDisposable
 
     var id = nextEmitterId++;
     emitter.SetNativeState(new EventEmitterNativeState(id));
-    emitters.Add(id, new EmitterState(emitter));
+    emitters.Add(id, new EmitterState(retainEmitter ? emitter : null));
     return id;
   }
 
@@ -35,7 +38,12 @@ internal sealed class EventEmitterRuntimeState : IDisposable
   public JavaScriptObject GetEmitter(int emitterId)
   {
     ThrowIfDisposed();
-    using var value = emitters[emitterId].Emitter.AsValue();
+    var emitter = emitters[emitterId].Emitter;
+    if (emitter is null)
+    {
+      throw new InvalidOperationException("The event emitter does not retain a JavaScript target.");
+    }
+    using var value = emitter.AsValue();
     return value.AsObject();
   }
 
@@ -124,6 +132,15 @@ internal sealed class EventEmitterRuntimeState : IDisposable
             : 0;
   }
 
+  public void RemoveEmitter(int emitterId)
+  {
+    ThrowIfDisposed();
+    if (emitters.Remove(emitterId, out var emitter))
+    {
+      emitter.Dispose();
+    }
+  }
+
   public IReadOnlyList<JavaScriptFunction> GetListeners(int emitterId, string eventName)
   {
     ThrowIfDisposed();
@@ -159,9 +176,9 @@ internal sealed class EventEmitterRuntimeState : IDisposable
     return value.AsFunction();
   }
 
-  private sealed class EmitterState(JavaScriptObject emitter) : IDisposable
+  private sealed class EmitterState(JavaScriptObject? emitter) : IDisposable
   {
-    public JavaScriptObject Emitter { get; } = RetainObject(emitter);
+    public JavaScriptObject? Emitter { get; } = emitter is null ? null : RetainObject(emitter);
 
     public Dictionary<string, List<ListenerEntry>> Listeners { get; } = new(StringComparer.Ordinal);
 
@@ -172,7 +189,7 @@ internal sealed class EventEmitterRuntimeState : IDisposable
         listener.Dispose();
       }
       Listeners.Clear();
-      Emitter.Dispose();
+      Emitter?.Dispose();
     }
   }
 

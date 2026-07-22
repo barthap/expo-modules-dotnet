@@ -11,6 +11,204 @@ namespace Expo.ModulesCore.Tests.Generated;
 public sealed class GeneratedSharedObjectTests
 {
   [Fact]
+  public async Task SharedObjectEventsKeepListenersScopedToTheirInstance()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    CounterEntry? first = null;
+    CounterEntry? second = null;
+    DotnetRuntimeContext? context = null;
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var setup = fixture.Evaluate(
+          "const m = globalThis._expoDotnet.modules.SharedThings; " +
+          "globalThis.__firstCounter = new m.CounterEntry(1); " +
+          "globalThis.__secondCounter = new m.CounterEntry(2); " +
+          "globalThis.__firstEvents = []; globalThis.__secondEvents = []; " +
+          "globalThis.__firstCounter.addListener('onProgress', value => globalThis.__firstEvents.push(value.value)); " +
+          "globalThis.__secondCounter.addListener('onProgress', value => globalThis.__secondEvents.push(value.value)); " +
+          "m.echoCounter(globalThis.__firstCounter); 'first'",
+          "generated-shared-object-event-listeners.js"
+      );
+      first = SharedThingsModule.LastSeenCounter;
+      using var secondResult = fixture.Evaluate(
+          "globalThis._expoDotnet.modules.SharedThings.echoCounter(globalThis.__secondCounter); 'second'",
+          "generated-shared-object-event-second.js"
+      );
+      second = SharedThingsModule.LastSeenCounter;
+      return true;
+    });
+
+    Assert.NotNull(first);
+    Assert.NotNull(second);
+    await first!.OnProgress(new CounterProgress(3));
+    await second!.OnProgress(new CounterProgress(4));
+
+    fixture.Runtime.Execute(_ =>
+    {
+      using var result = fixture.Evaluate(
+          "[globalThis.__firstEvents.join(','), globalThis.__secondEvents.join(',')].join(':')",
+          "generated-shared-object-event-results.js"
+      );
+      Assert.Equal("3:4", result.AsString());
+      context!.Dispose();
+      return true;
+    });
+  }
+
+  [Fact]
+  public async Task SharedObjectEventAfterReleaseReturnsAFaultedTask()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    CounterEntry? counter = null;
+    DotnetRuntimeContext? context = null;
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+      using var setup = fixture.Evaluate(
+          "const m = globalThis._expoDotnet.modules.SharedThings; " +
+          "globalThis.__releasedCounter = new m.CounterEntry(1); " +
+          "m.echoCounter(globalThis.__releasedCounter); " +
+          "globalThis.__releasedCounter.release(); 'released'",
+          "generated-shared-object-event-release.js"
+      );
+      counter = SharedThingsModule.LastSeenCounter;
+      return true;
+    });
+
+    Assert.NotNull(counter);
+    var emitted = counter!.OnProgress(new CounterProgress(1));
+    Assert.NotNull(emitted);
+    await Assert.ThrowsAsync<InvalidOperationException>(async () => await emitted);
+
+    fixture.Runtime.Execute(_ =>
+    {
+      context!.Dispose();
+      return true;
+    });
+  }
+
+  [Fact]
+  public async Task SharedObjectEventAfterTeardownReturnsAFaultedTask()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    CounterEntry? counter = null;
+    DotnetRuntimeContext? context = null;
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+      using var setup = fixture.Evaluate(
+          "const m = globalThis._expoDotnet.modules.SharedThings; " +
+          "globalThis.__teardownCounter = new m.CounterEntry(1); " +
+          "m.echoCounter(globalThis.__teardownCounter); 'paired'",
+          "generated-shared-object-event-teardown.js"
+      );
+      counter = SharedThingsModule.LastSeenCounter;
+      context.Dispose();
+      return true;
+    });
+
+    Assert.NotNull(counter);
+    var emitted = counter!.OnProgress(new CounterProgress(1));
+    Assert.NotNull(emitted);
+    await Assert.ThrowsAsync<ObjectDisposedException>(async () => await emitted);
+  }
+
+  [Fact]
+  public async Task SharedObjectEventSucceedsWithoutListenersAndIsolatesListenerFailures()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    CounterEntry? counter = null;
+    DotnetRuntimeContext? context = null;
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+      using var setup = fixture.Evaluate(
+          "const m = globalThis._expoDotnet.modules.SharedThings; " +
+          "globalThis.__eventCounter = new m.CounterEntry(1); " +
+          "m.echoCounter(globalThis.__eventCounter); globalThis.__laterListenerCalls = 0; 'paired'",
+          "generated-shared-object-event-zero-listeners.js"
+      );
+      counter = SharedThingsModule.LastSeenCounter;
+      return true;
+    });
+
+    Assert.NotNull(counter);
+    await counter!.OnProgress(new CounterProgress(1));
+
+    fixture.Runtime.Execute(_ =>
+    {
+      using var listeners = fixture.Evaluate(
+          "globalThis.__eventCounter.addListener('onProgress', () => { throw new Error('listener failure'); }); " +
+          "globalThis.__eventCounter.addListener('onProgress', () => { globalThis.__laterListenerCalls++; }); 'listening'",
+          "generated-shared-object-event-listener-failure.js"
+      );
+      return true;
+    });
+
+    await counter.OnProgress(new CounterProgress(2));
+
+    fixture.Runtime.Execute(_ =>
+    {
+      using var result = fixture.Evaluate(
+          "String(globalThis.__laterListenerCalls)",
+          "generated-shared-object-event-listener-result.js"
+      );
+      Assert.Equal("1", result.AsString());
+      context!.Dispose();
+      return true;
+    });
+  }
+
+  [Fact]
+  public async Task SharedObjectEventWithDisposedDirectValueFaultsItsTask()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    CounterEntry? counter = null;
+    DotnetRuntimeContext? context = null;
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+      using var setup = fixture.Evaluate(
+          "const m = globalThis._expoDotnet.modules.SharedThings; " +
+          "globalThis.__valueCounter = new m.CounterEntry(1); m.echoCounter(globalThis.__valueCounter); 'paired'",
+          "generated-shared-object-event-value.js"
+      );
+      counter = SharedThingsModule.LastSeenCounter;
+      return true;
+    });
+
+    using var payload = fixture.Runtime.Execute(runtime => runtime.CreateString("disposed"));
+    payload.Dispose();
+    Assert.NotNull(counter);
+    var emitted = counter!.OnValue(payload);
+    Assert.NotNull(emitted);
+    await Assert.ThrowsAsync<ObjectDisposedException>(async () => await emitted);
+
+    fixture.Runtime.Execute(_ =>
+    {
+      context!.Dispose();
+      return true;
+    });
+  }
+
+  [Fact]
   public void LazyClassInstallationHappensOnceAndIsReused()
   {
     using var fixture = HermesRuntimeFixture.Create();
