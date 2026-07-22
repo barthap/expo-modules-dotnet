@@ -8,10 +8,7 @@
 
 **Tech Stack:** C++20, Hermes JSI, C ABI opaque handles, .NET/C#, xUnit, native Hermes testhost.
 
-**Execution status (2026-07-22): IN PROGRESS.** Task 1 restored. The
-registration-race test now asserts that
-`WaitUntilPromiseRegistrationPaused()` returns `true`, so it proves the
-required blocked-registration ordering. Tasks 2–4 remain pending.
+**Execution status: COMPLETE (2026-07-22), all tasks done.**
 
 ## Global Constraints
 

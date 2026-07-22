@@ -24,7 +24,7 @@ fully before starting, honor its STOP conditions, and update your row when done.
 | 012 | Typed JS facade base classes (`DotnetModule`, `DotnetEventEmitter`) | P2 | M | 005 | DONE — adapter runtime tests, adapter/mobile/desktop typechecks, 341 managed tests, formatting, and privacy scans pass. |
 | 013 | camelCase JS naming defaults + `[JS]` property support (Expo Modules 2.0 alignment) | P2 | M | — | DONE — completed 2026-07-19; implicit lower-camel method/record names, direct accessor properties, diagnostics, and lifetime coverage landed. |
 | 014 | Typed `[Event]` partial-property members (Expo Modules 2.0 alignment) | P2 | M | 013 | DONE — generator suite, 449 managed tests, mobile and desktop typechecks, format, reflection/owned-wrapper scans, and documentation/privacy checks pass. |
-| 015 | Promise capability migration onto runtime-owned long-lived collection | P2 | M | — | IN PROGRESS — Task 1 restored; Tasks 2–4 remain pending. |
+| 015 | Promise capability migration onto runtime-owned long-lived collection | P2 | M | — | DONE — Promise capability state is runtime-owned, settlement/teardown races are covered, and managed opaque handles are leased. |
 | 016 | NativeAOT publish check in CI (linux-x64 compile-time proof; end-to-end loader lane deferred) | P1 | S | — | TODO — re-scoped at `6db8167c` after the blocked Ubuntu attempt: publish-only AOT job now, console-app Linux/Windows ports split out as separate future plans. |
 | 017 | SharedObject public authoring surface | P2 | L | 015, 016 recommended first | IN PROGRESS — Task 1 restored byte-for-byte from `b318681d`; production build passes; the prior SDK 10.0.201 consumer compile stall did not reproduce. Focused test: 1/5 passes, 4/5 fail because the restored helper assumes the host-function `Proxy` exposes an object `prototype`; Task 1 is not verified or currently approved. Tasks 2–7 pending. |
 | 018 | Windows RNW build/deploy reliability + ReactNativeDir resolver | P1/P2 | L | — (needs Windows machine) | BLOCKED — current executor is on macOS; Windows + VS 2026 + RNW 0.81 prerequisite is unavailable. |
@@ -68,10 +68,8 @@ counter stay armed. Detail in `009-windows-testhost-teardown-crash.md`.
 
 ### Execution notes (2026-07-21, at `56893ca2`)
 
-- 015 is in progress. Task 1 restored, including terminal collection
-  registration, allocation rollback, observable promise-entry release/abandon
-  counters, and the registration-race test asserting that its gate was reached.
-  Tasks 2–4 remain pending.
+- 015 completed 2026-07-22 via commits `fe79132b`, `d5df8c3e`, `85c39f8d`,
+  `1789604b`, `b0eb76d6` (advisor-reviewed).
 - 016 was attempted without retaining a workflow diff. HostFXR and NativeAOT
   both pass locally on macOS, but the planned Ubuntu job cannot run the
   macOS-only console proof. `scripts/run-hermes-console-app.sh`, the native
