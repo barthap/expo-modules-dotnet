@@ -8,12 +8,17 @@
 
 **Tech Stack:** C# 13/.NET 10, Roslyn incremental source generators, Expo.JSI managed wrappers, Hermes-backed xUnit tests, TypeScript, Vitest, pnpm.
 
-**Execution status (2026-07-22): IN PROGRESS.** Task 1 is restored byte-for-byte
-from `b318681d`, and the production `Expo.ModulesCore` build passes. The prior
-SDK 10.0.201 consumer compile stall did not reproduce. The focused test now
-reaches execution: 1 of 5 tests passes and 4 fail because the restored helper
-assumes the host-function `Proxy` exposes an object `prototype`. Task 1 is not
-verified or currently approved. Tasks 2–7 remain pending.
+**Execution status (2026-07-22): IN PROGRESS.** Task 1 is complete with an
+approved deviation: the constructor primitive uses a `construct`-trap host
+function with an arguments-array callback contract
+(`GeneratedSharedObjectConstructor`) instead of direct host-function
+construction. Reasons: Hermes rejects host functions as `Reflect.construct`
+targets ("target is not constructible"), and re-entering the native
+`callAsConstructor` path from inside another host-function callback crashes
+the VM. The trap runs as a normal call, invokes the callback with the
+argument array, and re-parents the returned instance onto
+`newTarget.prototype`. Task 5's emitted constructor glue must target this
+callback contract. Tasks 2–7 remain pending.
 
 ## Ground Rules
 

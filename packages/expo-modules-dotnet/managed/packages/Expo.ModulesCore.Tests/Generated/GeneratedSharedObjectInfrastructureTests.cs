@@ -175,15 +175,14 @@ public sealed class GeneratedSharedObjectInfrastructureTests
 
   private static JavaScriptValue CreateInstance(
       JavaScriptRuntime runtime,
-      JavaScriptValueRef thisValue,
-      JavaScriptArguments arguments,
+      JavaScriptArrayRef arguments,
       object context
   )
   {
     var state = (ConstructorState)context;
     state.WasCalled = true;
-    using var instance = thisValue.AsObject().Retain();
-    if (arguments.Count > 0)
+    using var instance = runtime.CreateObject();
+    if (arguments.Length > 0)
     {
       using var value = arguments.GetValue(0).Retain();
       instance.SetProperty("value", value);
