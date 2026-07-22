@@ -178,8 +178,8 @@ void start_showcase_checks(jsi::Runtime &rt)
       value => { global.__consoleShowcase.eventPayload = value; }
     );
 
-    const record = showcase.describeUser({ Name: 'Ada', Age: 37 });
-    global.__consoleShowcase.recordSummary = `${record.Name}:${record.Age}:${record.Summary}`;
+    const record = showcase.describeUser({ name: 'Ada', age: 37 });
+    global.__consoleShowcase.recordSummary = `${record.name}:${record.age}:${record.summary}`;
     global.__consoleShowcase.callbackResult =
       showcase.transformWithCallback('Hermes', value => `callback(${value})`);
 

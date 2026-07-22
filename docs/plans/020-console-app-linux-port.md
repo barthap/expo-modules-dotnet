@@ -25,8 +25,9 @@
   `native-tests.yml`; this plan edits the same file and its comment)
 - **Category**: tech-debt / tests
 - **Planned at**: commit `6db8167c`, 2026-07-21
-- **Execution status**: TODO — unblocked on 2026-07-22; hard dependency Plan
-  016 completed at `1f8d0414`.
+- **Execution status**: COMPLETE — implemented at `be4ac86f`, `dc526e83`,
+  `819d8622`, and `b21f3d9b`. macOS and Docker Linux HostFXR/NativeAOT proofs,
+  managed tests, formatting, and workflow lint passed.
 
 ## Why this matters
 

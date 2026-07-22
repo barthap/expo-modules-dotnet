@@ -81,8 +81,22 @@ testhost and run the same managed test projects. All runners SHALL pass
 ### Requirement: Headless Hermes Console Runners
 
 The headless Hermes console proof SHALL have platform-paired runners. The
-macOS runner SHALL remain `scripts/run-hermes-console-app.sh`. The Windows
+bash runner `scripts/run-hermes-console-app.sh` SHALL support macOS and
+Linux hosts. HostFXR SHALL select the matching nethost pack and build the
+managed app without a runtime-specific publish. NativeAOT SHALL select the
+host runtime identifier and published library name per platform. The Windows
 HostFXR runner SHALL be `scripts/run-hermes-console-app.ps1`.
+
+#### Scenario: Linux console proof runs both loaders
+- **GIVEN** a Linux host with a Linux Hermes prebuilt destroot
+- **WHEN** a developer runs `scripts/run-hermes-console-app.sh` with
+  `EXPO_JSI_DOTNET_LOADER` set to `hostfxr` or `nativeaot`
+- **THEN** HostFXR SHALL build the managed console app without a runtime
+  identifier and select the matching nethost pack
+- **AND** NativeAOT SHALL publish the managed console app for the Linux host
+  runtime identifier and load `HermesConsoleApp.so`
+- **AND** the proof SHALL exercise the same registration behavior as the
+  macOS console proof
 
 #### Scenario: Windows HostFXR console proof runs
 - **GIVEN** a Windows Hermes prebuilt exists under the configured
