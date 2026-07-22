@@ -26,9 +26,9 @@ fully before starting, honor its STOP conditions, and update your row when done.
 | 014 | Typed `[Event]` partial-property members (Expo Modules 2.0 alignment) | P2 | M | 013 | DONE — generator suite, 449 managed tests, mobile and desktop typechecks, format, reflection/owned-wrapper scans, and documentation/privacy checks pass. |
 | 015 | Promise capability migration onto runtime-owned long-lived collection | P2 | M | — | DONE — Promise capability state is runtime-owned, settlement/teardown races are covered, and managed opaque handles are leased. |
 | 016 | NativeAOT publish check in CI (linux-x64 compile-time proof; end-to-end loader lane deferred) | P1 | S | — | TODO — re-scoped at `6db8167c` after the blocked Ubuntu attempt: publish-only AOT job now, console-app Linux/Windows ports split out as separate future plans. |
-| 017 | SharedObject public authoring surface | P2 | L | 015, 016 recommended first | IN PROGRESS — Task 1 restored byte-for-byte from `b318681d`; production build passes; the prior SDK 10.0.201 consumer compile stall did not reproduce. Focused test: 1/5 passes, 4/5 fail because the restored helper assumes the host-function `Proxy` exposes an object `prototype`; Task 1 is not verified or currently approved. Tasks 2–7 pending. |
+| 017 | SharedObject public authoring surface | P2 | L | 015, 016 recommended first | DONE — generated exact-type SharedObject authoring with module-owned JS classes, transactional registry pairing, SharedRef<T>, TS facade, ExampleCounter example, and merged docs. |
 | 018 | Windows RNW build/deploy reliability + ReactNativeDir resolver | P1/P2 | L | — (needs Windows machine) | BLOCKED — current executor is on macOS; Windows + VS 2026 + RNW 0.81 prerequisite is unavailable. |
-| 019 | Typed `[Event]` members on shared objects | P2 | M | 017 | BLOCKED — hard dependency Plan 017 did not land. |
+| 019 | Typed `[Event]` members on shared objects | P2 | M | 017 | TODO — unblocked 2026-07-22; hard dependency Plan 017 is DONE. |
 | 020 | hermes-console-app Linux port + end-to-end loader lane in CI (hostfxr + nativeaot) | P1 | M | 016 | BLOCKED — Plan 016 is still WIP and was explicitly excluded from this execution. |
 
 Status values: TODO | IN PROGRESS | DONE | OPEN (follow-up) | BACKLOG (nice-to-have) | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
@@ -70,6 +70,10 @@ counter stay armed. Detail in `009-windows-testhost-teardown-crash.md`.
 
 - 015 completed 2026-07-22 via commits `fe79132b`, `d5df8c3e`, `85c39f8d`,
   `1789604b`, `b0eb76d6` (advisor-reviewed).
+- 017 completed 2026-07-22 via commits `903fdaa5`, `76da4288`, `e067fac0`,
+  `014d0d10`, `2ddcdf9e`, `093bb562`, `ea7a026f`, `326e984a`, `2b4ee365`
+  (advisor-reviewed); the Task 1 deviation (construct-trap arguments-array
+  contract) is recorded in the archived change plan.
 - 016 was attempted without retaining a workflow diff. HostFXR and NativeAOT
   both pass locally on macOS, but the planned Ubuntu job cannot run the
   macOS-only console proof. `scripts/run-hermes-console-app.sh`, the native
