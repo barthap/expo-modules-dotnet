@@ -20,8 +20,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # TODO: add loader: [hostfxr, nativeaot] dimension once NativeAOT
-        # end-to-end proof lands (see docs/plans/README.md maintenance notes).
+        # NativeAOT compile-time proof: the nativeaot-publish job below. The
+        # end-to-end loader matrix (hostfxr + nativeaot, run, all OSes) is gated
+        # on the cross-platform console-app port (see docs/plans/016-*.md).
         os: [ubuntu-24.04, windows-latest]
     runs-on: ${{ matrix.os }}
 
@@ -77,3 +78,25 @@ jobs:
           name: windows-crash-dump
           path: ${{ runner.temp }}/dumps
           if-no-files-found: ignore
+
+  nativeaot-publish:
+    name: nativeaot-publish (linux-x64)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install NativeAOT link prerequisites
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends clang zlib1g-dev
+
+      - name: Build generator analyzer
+        run: dotnet build packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/Expo.ModulesCore.Generator.csproj -c Debug
+
+      - name: Publish HermesConsoleApp (NativeAOT, linux-x64)
+        run: dotnet publish apps/hermes-console-app/managed/HermesConsoleApp/HermesConsoleApp.csproj -c Release -r linux-x64 /p:PublishAot=true /p:NativeLib=Shared
