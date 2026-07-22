@@ -171,6 +171,18 @@ internal sealed class SharedObjectRegistry : IDisposable
         ThrowIfDisposedLocked();
         if (instance.TryReserveForPairing(this))
         {
+          if (entriesByInstance.ContainsKey(instance))
+          {
+            // The instance is already tracked here through the internal generic route, which
+            // never touches the pairing state machine. Committing would duplicate the
+            // by-instance entry, so reject before installing the registry reservation; the
+            // rollback leaves a borrowed instance unpaired.
+            instance.RollBackReservation(this);
+            throw new InvalidOperationException(
+                "The shared object is already tracked by this runtime context through " +
+                    "another pairing route."
+            );
+          }
           reservationId = nextEntryId++;
           pendingReservations.Add(reservationId, instance);
         }
@@ -187,9 +199,11 @@ internal sealed class SharedObjectRegistry : IDisposable
     catch (Exception pairingFailure) when (constructorOwned)
     {
       // The construction path owns the instance from the moment the authored constructor
-      // returned, so even a pre-reservation rejection is terminal. The exchange guard inside
-      // the release keeps this convergent with the transactional rollback's own release and
-      // with NativeState rollback re-entry.
+      // returned, so even a pre-reservation rejection is terminal. For post-reservation
+      // failures the transactional rollback already released the instance, and this release
+      // deliberately re-fires for them too. The exchange guard inside the release keeps this
+      // convergent with the transactional rollback's own release and with NativeState
+      // rollback re-entry.
       List<Exception>? releaseFailures = null;
       TryCleanup(
           ((ISharedObjectLifetime)instance).ReleaseFromSharedObjectRegistry,

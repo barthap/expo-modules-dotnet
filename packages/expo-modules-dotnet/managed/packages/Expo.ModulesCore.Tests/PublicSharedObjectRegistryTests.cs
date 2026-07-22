@@ -163,6 +163,55 @@ public sealed class PublicSharedObjectRegistryTests
   }
 
   [Fact]
+  public void InstanceTrackedThroughInternalRouteIsRejectedWithoutDuplicateState()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var registry = new SharedObjectRegistry(runtime);
+      using var registration = SharedObjectClassRegistration.Create(
+          registry,
+          typeof(PublicTestSharedObject)
+      );
+      var instance = new PublicTestSharedObject();
+      using var internallyPaired = registry.GetOrCreateJavaScriptObject(
+          (ISharedObjectLifetime)instance
+      );
+      var steps = new List<SharedObjectPairingStep>();
+      registry.PairingStepForTesting = steps.Add;
+
+      var rejection = Assert.Throws<InvalidOperationException>(
+          () => registry.GetOrCreateJavaScriptObject(instance, registration)
+      );
+      Assert.Contains("another pairing route", rejection.Message);
+
+      // The rejection must leave the instance unpaired; a leaked reservation would surface
+      // here as an "already being paired" failure instead of the same clean rejection.
+      var repeatRejection = Assert.Throws<InvalidOperationException>(
+          () => registry.GetOrCreateJavaScriptObject(instance, registration)
+      );
+      Assert.Equal(rejection.Message, repeatRejection.Message);
+
+      Assert.Empty(steps);
+      Assert.Equal(1, registry.Count);
+      Assert.Equal(0, instance.ReleaseCount);
+      Assert.Same(instance, registry.ResolveManaged(internallyPaired));
+
+      using var reencoded = registry.GetOrCreateJavaScriptObject((ISharedObjectLifetime)instance);
+      using var pairedValue = internallyPaired.AsValue();
+      using var reencodedValue = reencoded.AsValue();
+      Assert.True(runtime.StrictEquals(pairedValue, reencodedValue));
+
+      var fresh = new PublicTestSharedObject();
+      using var freshPaired = registry.GetOrCreateJavaScriptObject(fresh, registration);
+      Assert.Equal(2, registry.Count);
+      Assert.Same(fresh, registry.ResolveManaged(freshPaired));
+      return true;
+    });
+  }
+
+  [Fact]
   public void PairingWorkAndOnReleaseRunOutsideTheRegistryGate()
   {
     using var fixture = HermesRuntimeFixture.Create();
