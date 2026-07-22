@@ -416,6 +416,24 @@ public sealed unsafe class JavaScriptRuntime
       uint parameterCount,
       JavaScriptHostFunction callback,
       object callbackState
+  ) => CreateHostFunction(name, parameterCount, callback, callbackState, null);
+
+  /// <summary>
+  /// Creates an owned JavaScript host function with managed callback-state disposal.
+  /// </summary>
+  /// <remarks>
+  /// The returned <see cref="JavaScriptFunction" /> must be disposed by the caller. During callback
+  /// invocation, <see cref="JavaScriptHostFunction" /> receives scoped refs for <c>this</c> and
+  /// arguments; retain those refs before storing them beyond the callback. When provided,
+  /// <paramref name="disposeCallbackState" /> runs at most once on the thread that releases the
+  /// callback context and must not call into JSI or require a runtime access frame.
+  /// </remarks>
+  public JavaScriptFunction CreateHostFunction(
+      string name,
+      uint parameterCount,
+      JavaScriptHostFunction callback,
+      object callbackState,
+      Action<object>? disposeCallbackState
   )
   {
     ArgumentNullException.ThrowIfNull(name);
@@ -423,7 +441,12 @@ public sealed unsafe class JavaScriptRuntime
     ArgumentNullException.ThrowIfNull(callbackState);
 
     var nameBytes = Encoding.UTF8.GetBytes(name);
-    var callbackContext = new HostFunctionContext(context, callback, callbackState).ToIntPtr();
+    var callbackContext = new HostFunctionContext(
+        context,
+        callback,
+        callbackState,
+        disposeCallbackState
+    ).ToIntPtr();
 
     var result = context.Api->CreateHostFunctionValue(
         context.RuntimeHandle,
@@ -719,7 +742,14 @@ public sealed unsafe class JavaScriptRuntime
   [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
   private static void ReleaseHostFunctionContext(nint callbackContext)
   {
-    HostFunctionContext.Release(callbackContext);
+    try
+    {
+      HostFunctionContext.Release(callbackContext);
+    }
+    catch (Exception ex)
+    {
+      HostFunctionContext.ReportException(ex);
+    }
   }
 
   [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]

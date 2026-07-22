@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Text;
 using Expo.JSI;
@@ -7,18 +8,25 @@ namespace Expo.JSI.Interop;
 
 internal sealed unsafe class HostFunctionContext
 {
+  private static readonly ConcurrentDictionary<nint, HostFunctionContext> activeContexts = new();
+  private static long nextContextId;
+
   private byte* lastErrorMessage;
   private int lastErrorMessageLength;
+  private readonly Action<object>? disposeCallbackState;
+  private int callbackStateDisposed;
 
   public HostFunctionContext(
       JsiContext jsiContext,
       JavaScriptHostFunction callback,
-      object context
+      object context,
+      Action<object>? disposeCallbackState
   )
   {
     JsiContext = jsiContext;
     Callback = callback;
     Context = context;
+    this.disposeCallbackState = disposeCallbackState;
   }
 
   public JsiContext JsiContext { get; }
@@ -50,26 +58,68 @@ internal sealed unsafe class HostFunctionContext
 
   public nint ToIntPtr()
   {
-    return GCHandle.ToIntPtr(GCHandle.Alloc(this));
+    while (true)
+    {
+      var pointer = unchecked((nint)Interlocked.Increment(ref nextContextId));
+      if (pointer != 0 && activeContexts.TryAdd(pointer, this))
+      {
+        return pointer;
+      }
+    }
   }
 
   public static HostFunctionContext FromIntPtr(nint pointer)
   {
-    return (HostFunctionContext)GCHandle.FromIntPtr(pointer).Target!;
+    if (
+      pointer == 0
+      || !activeContexts.TryGetValue(pointer, out var context)
+    )
+    {
+      throw new ObjectDisposedException(nameof(HostFunctionContext));
+    }
+    return context;
   }
 
   public static void Release(nint pointer)
   {
-    if (pointer == 0)
+    if (pointer == 0 || !activeContexts.TryRemove(pointer, out var context))
     {
       return;
     }
-    var handle = GCHandle.FromIntPtr(pointer);
-    if (handle.Target is HostFunctionContext context)
+    context.DisposeCallbackState();
+    context.ReleaseLastErrorMessage();
+  }
+
+  public static void ReportException(Exception exception)
+  {
+    try
     {
-      context.ReleaseLastErrorMessage();
+      Console.Error.WriteLine(exception);
     }
-    handle.Free();
+    catch
+    {
+      // Reporting is best-effort because release may run across an unmanaged boundary.
+    }
+  }
+
+  private void DisposeCallbackState()
+  {
+    if (
+      disposeCallbackState is null
+      || Interlocked.Exchange(ref callbackStateDisposed, 1) != 0
+    )
+    {
+      return;
+    }
+
+    try
+    {
+      disposeCallbackState(Context);
+    }
+    catch (Exception ex)
+    {
+      ReportException(ex);
+    }
   }
 
   private void ReleaseLastErrorMessage()

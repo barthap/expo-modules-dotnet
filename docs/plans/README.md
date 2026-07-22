@@ -28,8 +28,9 @@ fully before starting, honor its STOP conditions, and update your row when done.
 | 016 | NativeAOT publish check in CI (linux-x64 compile-time proof; end-to-end loader lane deferred) | P1 | S | — | DONE — `1f8d0414` adds the publish-only AOT job; local macOS and Docker Linux publishes plus actionlint passed. |
 | 017 | SharedObject public authoring surface | P2 | L | 015, 016 recommended first | DONE — generated exact-type SharedObject authoring with module-owned JS classes, transactional registry pairing, SharedRef<T>, TS facade, ExampleCounter example, and merged docs. |
 | 018 | Windows RNW build/deploy reliability + ReactNativeDir resolver | P1/P2 | L | — (needs Windows machine) | BLOCKED — current executor is on macOS; Windows + VS 2026 + RNW 0.81 prerequisite is unavailable. |
-| 019 | Typed `[Event]` members on shared objects | P2 | M | 017 | BLOCKED — self-capturing shared listeners need callback-state disposal that current `Expo.JSI` does not provide. |
+| 019 | Typed `[Event]` members on shared objects | P2 | M | 017, 021 | TODO — reworked 2026-07-22 at `f2c72f68`: JS-owned listener design mandated; resume after 021. |
 | 020 | hermes-console-app Linux port + end-to-end loader lane in CI (hostfxr + nativeaot) | P1 | M | 016 | DONE — Linux HostFXR and NativeAOT Docker proofs, macOS regressions, managed tests, formatting, and workflow lint passed; implemented at `be4ac86f`, `dc526e83`, `819d8622`, and `b21f3d9b`. |
+| 021 | Exactly-once owned callback-state disposal for host functions (`Expo.JSI`) | P2 | S–M | — | DONE — preserved the four-parameter API, added the owned-state overload, and verified GC, teardown, failure, and concurrent release. |
 
 Status values: TODO | IN PROGRESS | DONE | OPEN (follow-up) | BACKLOG (nice-to-have) | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -121,6 +122,13 @@ counter stay armed. Detail in `009-windows-testhost-teardown-crash.md`.
 - 019 requires 017 (public SharedObject surface). It exists as its own plan
   because per-object events are their own feature (per-instance listener
   machinery), not a missing piece of 017's surface.
+- 021 planned 2026-07-22 at `f2c72f68` from 019's blocked first execution
+  (rolled back in `aaf5b6c9`): managed-rooted listener storage prevented JS
+  GC of self-capturing shared objects. 019 requires 021 because its JS-owned
+  `remove()` cleanup needs `Expo.JSI` to dispose owned host-function callback
+  state (a `JavaScriptWeakObject`) exactly once across creation failure, JS
+  GC, and teardown. Run 021 → 019. The same gap in `HostObjectContext` is
+  recorded as deferred follow-up inside 021, not a plan.
 - 018 includes the `ReactNativeDir` resolver implementation (operator
   decision 2026-07-20; supersedes the earlier design-only scoping).
 - 014 requires 013: it reuses the camelCase naming default and the
