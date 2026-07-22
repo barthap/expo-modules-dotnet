@@ -206,16 +206,28 @@ std::filesystem::path nativeAotRid()
   return "osx-arm64";
 #elif defined(__APPLE__) && defined(__x86_64__)
   return "osx-x64";
+#elif defined(__linux__) && defined(__aarch64__)
+  return "linux-arm64";
+#elif defined(__linux__) && defined(__x86_64__)
+  return "linux-x64";
 #else
-  throw std::runtime_error("NativeAOT Hermes console proof currently supports macOS only.");
+  throw std::runtime_error("NativeAOT Hermes console proof supports macOS and Linux only.");
 #endif
 }
 
 std::filesystem::path findNativeAotLibrary()
 {
+#if defined(__APPLE__)
+  constexpr auto library_name = "HermesConsoleApp.dylib";
+#elif defined(__linux__)
+  constexpr auto library_name = "HermesConsoleApp.so";
+#else
+  throw std::runtime_error("NativeAOT Hermes console proof supports macOS and Linux only.");
+#endif
+
   auto library =
     repoRootFromCurrentDirectory() / "apps/hermes-console-app/managed/HermesConsoleApp/bin" /
-    EXPO_JSI_MANAGED_CONFIGURATION / "net10.0" / nativeAotRid() / "publish/HermesConsoleApp.dylib";
+    EXPO_JSI_MANAGED_CONFIGURATION / "net10.0" / nativeAotRid() / "publish" / library_name;
   if (!std::filesystem::exists(library)) {
     throw std::runtime_error("NativeAOT proof library does not exist. Run dotnet publish first: " +
                              library.string());

@@ -52,11 +52,13 @@ managed_configuration() {
 }
 
 nativeaot_rid() {
-	case "$(uname -m)" in
-	arm64) printf '%s\n' "osx-arm64" ;;
-	x86_64) printf '%s\n' "osx-x64" ;;
+	case "$(uname -s)-$(uname -m)" in
+	Darwin-arm64) printf '%s\n' "osx-arm64" ;;
+	Darwin-x86_64) printf '%s\n' "osx-x64" ;;
+	Linux-aarch64 | Linux-arm64) printf '%s\n' "linux-arm64" ;;
+	Linux-x86_64) printf '%s\n' "linux-x64" ;;
 	*)
-		echo "Unsupported macOS architecture for NativeAOT: $(uname -m)" >&2
+		echo "Unsupported host for NativeAOT: $(uname -s) $(uname -m)" >&2
 		exit 1
 		;;
 	esac

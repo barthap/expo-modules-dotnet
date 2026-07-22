@@ -50,10 +50,20 @@ if(EXPO_JSI_DOTNET_LOADER STREQUAL "hostfxr")
     else()
       set(DOTNET_HOST_RID "win-x64")
     endif()
-  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
-    set(DOTNET_HOST_RID "osx-arm64")
+  elseif(APPLE)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+      set(DOTNET_HOST_RID "osx-arm64")
+    else()
+      set(DOTNET_HOST_RID "osx-x64")
+    endif()
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+      set(DOTNET_HOST_RID "linux-arm64")
+    else()
+      set(DOTNET_HOST_RID "linux-x64")
+    endif()
   else()
-    set(DOTNET_HOST_RID "osx-x64")
+    message(FATAL_ERROR "Unsupported host platform for the HostFXR console proof")
   endif()
 
   set(DOTNET_HOST_PACK_DIR
@@ -126,7 +136,7 @@ if(EXPO_JSI_DOTNET_LOADER STREQUAL "hostfxr")
         "${DOTNET_HOST_NATIVE_DIR}/nethost.dll"
         "$<TARGET_FILE_DIR:hermes_console_app>/nethost.dll"
       COMMENT "Copying nethost.dll next to hermes_console_app")
-  else()
+  elseif(APPLE)
     target_link_libraries(hermes_console_app
                           PRIVATE "${DOTNET_HOST_NATIVE_DIR}/libnethost.dylib")
 
@@ -138,5 +148,18 @@ if(EXPO_JSI_DOTNET_LOADER STREQUAL "hostfxr")
         "${DOTNET_HOST_NATIVE_DIR}/libnethost.dylib"
         "$<TARGET_FILE_DIR:hermes_console_app>/libnethost.dylib"
       COMMENT "Copying libnethost.dylib next to hermes_console_app")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(hermes_console_app
+                          PRIVATE "${DOTNET_HOST_NATIVE_DIR}/libnethost.so")
+    set_property(TARGET hermes_console_app APPEND PROPERTY BUILD_RPATH "$ORIGIN")
+
+    add_custom_command(
+      TARGET hermes_console_app
+      POST_BUILD
+      COMMAND
+        ${CMAKE_COMMAND} -E copy_if_different
+        "${DOTNET_HOST_NATIVE_DIR}/libnethost.so"
+        "$<TARGET_FILE_DIR:hermes_console_app>/libnethost.so"
+      COMMENT "Copying libnethost.so next to hermes_console_app")
   endif()
 endif()
