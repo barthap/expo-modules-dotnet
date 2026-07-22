@@ -57,7 +57,7 @@ std::filesystem::path repoRootFromCurrentDirectory()
   throw std::runtime_error("Could not locate repository root from current working directory.");
 }
 
-native_library_handle loadNativeLibrary(const char_t *path)
+native_library_handle loadNativeLibrary(const std::filesystem::path::value_type *path)
 {
 #if defined(_WIN32)
   auto library = LoadLibraryW(path);
