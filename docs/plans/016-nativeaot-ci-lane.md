@@ -22,6 +22,8 @@
 - **Category**: tests / dx
 - **Planned at**: commit `6db8167c`, 2026-07-21 (re-scoped; originally
   planned at `ea07d69d`, 2026-07-20)
+- **Execution status**: COMPLETE — implemented at `1f8d0414`; local macOS and
+  Docker Linux NativeAOT publishes plus `actionlint` passed.
 
 ## History (why this plan was re-scoped)
 

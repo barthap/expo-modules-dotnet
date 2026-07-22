@@ -27,8 +27,8 @@
   exist first)
 - **Category**: direction / dx
 - **Planned at**: commit `ea07d69d`, 2026-07-20
-- **Execution status**: BLOCKED on 2026-07-22 because hard dependency Plan 017
-  did not land.
+- **Execution status**: TODO — unblocked on 2026-07-22; hard dependency Plan
+  017 completed at `353f98d8`.
 
 ## Why this matters
 

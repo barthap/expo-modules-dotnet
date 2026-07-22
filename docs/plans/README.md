@@ -25,11 +25,11 @@ fully before starting, honor its STOP conditions, and update your row when done.
 | 013 | camelCase JS naming defaults + `[JS]` property support (Expo Modules 2.0 alignment) | P2 | M | — | DONE — completed 2026-07-19; implicit lower-camel method/record names, direct accessor properties, diagnostics, and lifetime coverage landed. |
 | 014 | Typed `[Event]` partial-property members (Expo Modules 2.0 alignment) | P2 | M | 013 | DONE — generator suite, 449 managed tests, mobile and desktop typechecks, format, reflection/owned-wrapper scans, and documentation/privacy checks pass. |
 | 015 | Promise capability migration onto runtime-owned long-lived collection | P2 | M | — | DONE — Promise capability state is runtime-owned, settlement/teardown races are covered, and managed opaque handles are leased. |
-| 016 | NativeAOT publish check in CI (linux-x64 compile-time proof; end-to-end loader lane deferred) | P1 | S | — | TODO — re-scoped at `6db8167c` after the blocked Ubuntu attempt: publish-only AOT job now, console-app Linux/Windows ports split out as separate future plans. |
+| 016 | NativeAOT publish check in CI (linux-x64 compile-time proof; end-to-end loader lane deferred) | P1 | S | — | DONE — `1f8d0414` adds the publish-only AOT job; local macOS and Docker Linux publishes plus actionlint passed. |
 | 017 | SharedObject public authoring surface | P2 | L | 015, 016 recommended first | DONE — generated exact-type SharedObject authoring with module-owned JS classes, transactional registry pairing, SharedRef<T>, TS facade, ExampleCounter example, and merged docs. |
 | 018 | Windows RNW build/deploy reliability + ReactNativeDir resolver | P1/P2 | L | — (needs Windows machine) | BLOCKED — current executor is on macOS; Windows + VS 2026 + RNW 0.81 prerequisite is unavailable. |
 | 019 | Typed `[Event]` members on shared objects | P2 | M | 017 | TODO — unblocked 2026-07-22; hard dependency Plan 017 is DONE. |
-| 020 | hermes-console-app Linux port + end-to-end loader lane in CI (hostfxr + nativeaot) | P1 | M | 016 | BLOCKED — Plan 016 is still WIP and was explicitly excluded from this execution. |
+| 020 | hermes-console-app Linux port + end-to-end loader lane in CI (hostfxr + nativeaot) | P1 | M | 016 | TODO — unblocked 2026-07-22; Plan 016 is DONE at `1f8d0414`. |
 
 Status values: TODO | IN PROGRESS | DONE | OPEN (follow-up) | BACKLOG (nice-to-have) | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
