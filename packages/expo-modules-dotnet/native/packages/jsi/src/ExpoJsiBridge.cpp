@@ -1,13 +1,16 @@
 #include "ExpoJsiBridge.h"
 
 #include <algorithm>
+#include <atomic>
 #include <bit>
+#include <condition_variable>
 #include <cstring>
 #include <exception>
 #include <functional>
 #include <limits>
 #include <list>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -19,6 +22,7 @@
 #include "ArrayBufferHandles.h"
 #include "ExpoJsiBridgeTestHooks.h"
 #include "JsiRuntimeConnector.h"
+#include "PromiseHandles.h"
 #include "RuntimeState.h"
 #include "WeakObjectHandles.h"
 
@@ -111,59 +115,6 @@ private:
   const jsi::Value *borrowedValue_ = nullptr;
 };
 
-class PromiseHandle final {
-public:
-  static std::unique_ptr<PromiseHandle> owned(jsi::Object promise,
-                                              jsi::Function resolve,
-                                              jsi::Function reject)
-  {
-    return std::unique_ptr<PromiseHandle>(
-      new PromiseHandle(std::move(promise), std::move(resolve), std::move(reject)));
-  }
-
-  jsi::Object &promise()
-  {
-    return *promise_;
-  }
-
-  void resolve(jsi::Runtime &runtime, const jsi::Value &value)
-  {
-    if (settled_ || !resolve_.has_value()) {
-      return;
-    }
-
-    resolve_->call(runtime, value);
-    settled_ = true;
-    resolve_.reset();
-    reject_.reset();
-  }
-
-  void reject(jsi::Runtime &runtime, const jsi::Value &value)
-  {
-    if (settled_ || !reject_.has_value()) {
-      return;
-    }
-
-    reject_->call(runtime, value);
-    settled_ = true;
-    resolve_.reset();
-    reject_.reset();
-  }
-
-private:
-  PromiseHandle(jsi::Object promise, jsi::Function resolve, jsi::Function reject)
-    : promise_(std::make_unique<jsi::Object>(std::move(promise))),
-      resolve_(std::move(resolve)),
-      reject_(std::move(reject))
-  {
-  }
-
-  std::unique_ptr<jsi::Object> promise_;
-  std::optional<jsi::Function> resolve_;
-  std::optional<jsi::Function> reject_;
-  bool settled_ = false;
-};
-
 class ArgumentsHandle final {
 public:
   ArgumentsHandle(const jsi::Value *arguments, size_t count)
@@ -229,6 +180,44 @@ std::unique_ptr<ArrayBufferHandle> ArrayBufferHandle::clone() const
 namespace {
 
 namespace jsi = facebook::jsi;
+
+struct PromiseRegistrationGate {
+  std::mutex mutex;
+  std::condition_variable condition;
+  expo_jsi_runtime_handle armedRuntime = nullptr;
+  expo_jsi_runtime_handle blockedRuntime = nullptr;
+  uint64_t nextAttempt = 0;
+  uint64_t armedAttempt = 0;
+  uint64_t blockedAttempt = 0;
+  uint64_t resumedAttempt = 0;
+  bool blocked = false;
+  bool resumed = false;
+};
+
+PromiseRegistrationGate promiseRegistrationGate;
+std::atomic<bool> failNextPromiseHandleAllocation{false};
+
+void waitForPromiseRegistrationGate(expo_jsi_runtime_handle runtime)
+{
+  std::unique_lock<std::mutex> lock(promiseRegistrationGate.mutex);
+  if (promiseRegistrationGate.armedRuntime != runtime) {
+    return;
+  }
+  const auto attempt = promiseRegistrationGate.armedAttempt;
+  promiseRegistrationGate.armedRuntime = nullptr;
+  promiseRegistrationGate.blockedRuntime = runtime;
+  promiseRegistrationGate.blockedAttempt = attempt;
+  promiseRegistrationGate.blocked = true;
+  promiseRegistrationGate.condition.notify_all();
+  promiseRegistrationGate.condition.wait(lock, [runtime, attempt] {
+    return promiseRegistrationGate.resumed && promiseRegistrationGate.blockedRuntime == runtime &&
+           promiseRegistrationGate.resumedAttempt == attempt;
+  });
+  promiseRegistrationGate.blocked = false;
+  promiseRegistrationGate.blockedRuntime = nullptr;
+  promiseRegistrationGate.resumed = false;
+  promiseRegistrationGate.condition.notify_all();
+}
 
 constexpr uint32_t kApiVersion = 23;
 
@@ -1758,8 +1747,25 @@ expo_jsi_promise_result createPromise(expo_jsi_runtime_handle runtime)
       return makePromiseErrorResult(85, "Failed to create JavaScript promise.");
     }
 
-    return makePromiseResult(expo::dotnet::PromiseHandle::owned(
-      promiseValue.asObject(jsRuntime), std::move(*resolveFunction), std::move(*rejectFunction)));
+    auto state = runtimeHandle->state();
+    auto entry = std::make_shared<expo::dotnet::PromiseEntry>(
+      state,
+      std::make_unique<jsi::Object>(promiseValue.asObject(jsRuntime)),
+      std::make_unique<jsi::Function>(std::move(*resolveFunction)),
+      std::make_unique<jsi::Function>(std::move(*rejectFunction)));
+    waitForPromiseRegistrationGate(runtime);
+    auto entryId = state->longLivedObjects().tryAdd(entry);
+    if (!entryId.has_value())
+      return makePromiseErrorResult(85, "Promise runtime is no longer active.");
+    try {
+      if (failNextPromiseHandleAllocation.exchange(false, std::memory_order_acq_rel))
+        throw std::bad_alloc();
+      return makePromiseResult(
+        std::make_unique<expo::dotnet::PromiseHandle>(state, std::move(entry), *entryId));
+    } catch (...) {
+      state->longLivedObjects().completeRelease(*entryId, jsRuntime);
+      throw;
+    }
   } catch (const std::exception &ex) {
     return makePromiseErrorResult(86, ex.what());
   } catch (...) {
@@ -1780,8 +1786,9 @@ expo_jsi_value_result promiseAsValue(expo_jsi_runtime_handle runtime,
   }
 
   try {
+    auto entry = promise->entry();
     return makeValueResult(
-      expo::dotnet::ValueHandle::owned(jsi::Value(runtimeHandle->runtime(), promise->promise())));
+      expo::dotnet::ValueHandle::owned(entry->promiseValue(runtimeHandle->runtime())));
   } catch (const std::exception &ex) {
     return makeErrorResult(89, ex.what());
   } catch (...) {
@@ -1864,10 +1871,11 @@ expo_jsi_error promiseSettle(expo_jsi_runtime_handle runtime,
   }
 
   try {
+    auto entry = promise->entry();
     if (settlement == EXPO_JSI_PROMISE_RESOLVE) {
-      promise->resolve(runtimeHandle->runtime(), value->value());
+      entry->resolve(runtimeHandle->runtime(), value->value());
     } else if (settlement == EXPO_JSI_PROMISE_REJECT) {
-      promise->reject(runtimeHandle->runtime(), value->value());
+      entry->reject(runtimeHandle->runtime(), value->value());
     } else {
       return makeError(94, "Unknown promise settlement.");
     }
@@ -2769,6 +2777,8 @@ RuntimeLongLivedCounters getRuntimeLongLivedCounters(expo_jsi_runtime_handle run
     state->arrayBuffersAbandoned(),
     state->weakObjectsReleased(),
     state->weakObjectsAbandoned(),
+    state->promisesReleased(),
+    state->promisesAbandoned(),
     state->longLivedObjectCount(),
   };
 }
@@ -2779,6 +2789,49 @@ void resetRuntimeLongLivedCounters(expo_jsi_runtime_handle runtime) noexcept
     auto state = runtime->state();
     state->resetArrayBufferCounters();
     state->resetWeakObjectCounters();
+    state->resetPromiseCounters();
+  }
+}
+
+void failNextPromiseHandleAllocationForTesting() noexcept
+{
+  failNextPromiseHandleAllocation.store(true, std::memory_order_release);
+}
+
+void pauseNextPromiseRegistrationForTesting(expo_jsi_runtime_handle runtime) noexcept
+{
+  std::lock_guard<std::mutex> lock(promiseRegistrationGate.mutex);
+  if (promiseRegistrationGate.blocked || promiseRegistrationGate.armedRuntime != nullptr)
+    return;
+  promiseRegistrationGate.armedRuntime = runtime;
+  promiseRegistrationGate.armedAttempt = ++promiseRegistrationGate.nextAttempt;
+  promiseRegistrationGate.blocked = false;
+  promiseRegistrationGate.resumed = false;
+  promiseRegistrationGate.blockedRuntime = nullptr;
+}
+
+bool waitUntilPromiseRegistrationPausedForTesting(expo_jsi_runtime_handle runtime) noexcept
+{
+  std::unique_lock<std::mutex> lock(promiseRegistrationGate.mutex);
+  promiseRegistrationGate.condition.wait(lock, [runtime] {
+    return promiseRegistrationGate.blockedRuntime == runtime ||
+           promiseRegistrationGate.armedRuntime != runtime;
+  });
+  return promiseRegistrationGate.blocked && promiseRegistrationGate.blockedRuntime == runtime;
+}
+
+void resumePromiseRegistrationForTesting(expo_jsi_runtime_handle runtime) noexcept
+{
+  std::lock_guard<std::mutex> lock(promiseRegistrationGate.mutex);
+  if (promiseRegistrationGate.armedRuntime == runtime) {
+    promiseRegistrationGate.armedRuntime = nullptr;
+    promiseRegistrationGate.armedAttempt = 0;
+    promiseRegistrationGate.condition.notify_all();
+  } else if (promiseRegistrationGate.blockedRuntime == runtime) {
+    promiseRegistrationGate.armedRuntime = nullptr;
+    promiseRegistrationGate.resumedAttempt = promiseRegistrationGate.blockedAttempt;
+    promiseRegistrationGate.resumed = true;
+    promiseRegistrationGate.condition.notify_all();
   }
 }
 

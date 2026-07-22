@@ -8,11 +8,10 @@
 
 **Tech Stack:** C++20, Hermes JSI, C ABI opaque handles, .NET/C#, xUnit, native Hermes testhost.
 
-**Execution status (2026-07-21): BLOCKED.** The queued retry exhausted two
-review rounds and was fully rolled back at `17dbcc10`. Production ownership
-and gate behavior passed final review, but the registration-race test did not
-assert that `WaitUntilPromiseRegistrationPaused()` returned `true`, so the
-test could pass without exercising the required blocked-registration ordering.
+**Execution status (2026-07-22): IN PROGRESS.** Tasks 1–2 have been restored.
+The registration-race test now asserts that
+`WaitUntilPromiseRegistrationPaused()` returns `true`, so it proves the
+required blocked-registration ordering. Tasks 3–4 remain pending.
 
 ## Global Constraints
 

@@ -191,6 +191,32 @@ void RuntimeState::resetWeakObjectCounters() noexcept
   weakAbandoned_.store(0, std::memory_order_relaxed);
 }
 
+void RuntimeState::notePromiseReleased() noexcept
+{
+  promiseReleased_.fetch_add(1, std::memory_order_relaxed);
+}
+
+void RuntimeState::notePromiseAbandoned() noexcept
+{
+  promiseAbandoned_.fetch_add(1, std::memory_order_relaxed);
+}
+
+uint32_t RuntimeState::promisesReleased() const noexcept
+{
+  return promiseReleased_.load(std::memory_order_relaxed);
+}
+
+uint32_t RuntimeState::promisesAbandoned() const noexcept
+{
+  return promiseAbandoned_.load(std::memory_order_relaxed);
+}
+
+void RuntimeState::resetPromiseCounters() noexcept
+{
+  promiseReleased_.store(0, std::memory_order_relaxed);
+  promiseAbandoned_.store(0, std::memory_order_relaxed);
+}
+
 uint32_t RuntimeState::longLivedObjectCount() const noexcept
 {
   return longLivedObjects_.size();
