@@ -391,3 +391,119 @@ public sealed partial class GeneratedTypedEventsModule : Module
   public Task EmitLegacyAsync(string value) =>
       SendEventAsync<StringCodec, string>("onLegacy", value);
 }
+
+[ExpoModule("SharedThings", Classes = new[]
+{
+  typeof(CounterEntry),
+  typeof(SnapshotEntry),
+  typeof(TrackedRef),
+  typeof(SiblingEntry),
+})]
+public sealed partial class SharedThingsModule
+{
+  public static CounterEntry? LastSeenCounter;
+
+  public static TaskCompletionSource<CounterEntry>? PendingCounter;
+
+  [JS]
+  public CounterEntry MakeCounter(double start) => new(start);
+
+  [JS]
+  public CounterEntry EchoCounter(CounterEntry entry)
+  {
+    LastSeenCounter = entry;
+    return entry;
+  }
+
+  [JS]
+  public double ReadCounter(CounterEntry entry) => entry.Current;
+
+  [JS]
+  public async Task<CounterEntry> MakeCounterLater(double start)
+  {
+    await Task.Yield();
+    return new CounterEntry(start);
+  }
+
+  [JS]
+  public Task<CounterEntry> AwaitPendingCounter() => PendingCounter!.Task;
+
+  [JS]
+  public SnapshotEntry MakeSnapshot() => new();
+
+  [JS]
+  public TrackedRef WrapTracked() => new(new TrackedResource());
+}
+
+[ExpoSharedObject]
+public sealed partial class CounterEntry : SharedObject
+{
+  public static int ReleaseCount;
+
+  [JS]
+  public CounterEntry(double start)
+  {
+    Current = start;
+  }
+
+  [JS]
+  public double Current { get; set; }
+
+  [JS("increment")]
+  public double Increment(double by)
+  {
+    Current += by;
+    return Current;
+  }
+
+  [JS]
+  public async Task<double> IncrementLater(double by)
+  {
+    await Task.Yield();
+    Current += by;
+    return Current;
+  }
+
+  protected override void OnRelease() => ReleaseCount++;
+}
+
+[ExpoSharedObject("NativeSnapshot")]
+public sealed partial class SnapshotEntry : SharedObject
+{
+  [JS]
+  public double Stamp => 7;
+}
+
+public sealed class TrackedResource : IDisposable
+{
+  public bool Disposed { get; private set; }
+
+  public void Dispose() => Disposed = true;
+}
+
+[ExpoSharedObject]
+public sealed partial class TrackedRef : SharedRef<TrackedResource>
+{
+  public static TrackedRef? LastCreated;
+
+  public TrackedRef(TrackedResource reference)
+      : base(reference)
+  {
+    LastCreated = this;
+  }
+
+  [JS]
+  public bool IsDisposed => Ref.Disposed;
+}
+
+[ExpoSharedObject("Sibling")]
+public sealed partial class SiblingEntry : SharedObject
+{
+  [JS]
+  public SiblingEntry()
+  {
+  }
+
+  [JS]
+  public double Kind => 1;
+}

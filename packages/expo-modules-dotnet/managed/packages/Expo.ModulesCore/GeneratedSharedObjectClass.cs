@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Expo.JSI;
 
 namespace Expo.ModulesCore;
@@ -22,15 +23,40 @@ public delegate JavaScriptValue GeneratedSharedObjectConstructor(
     object context);
 
 /// <summary>
-/// Creates generated shared-object constructors backed by managed callbacks.
+/// Callback that creates the authored managed instance for a generated shared-object class.
+/// </summary>
+/// <param name="runtime">Runtime that owns the callback invocation.</param>
+/// <param name="arguments">
+/// Scoped reference to the JavaScript constructor arguments array. It is valid only during the
+/// callback. Generated code decodes elements positionally and calls the authored constructor
+/// directly.
+/// </param>
+/// <param name="context">Opaque installation state; generated factories ignore it.</param>
+/// <returns>
+/// The authored managed instance. <see cref="GeneratedSharedObjectClass" /> pairs it through the
+/// constructor-owned registry path, so a later pairing failure releases it exactly once.
+/// </returns>
+public delegate SharedObject GeneratedSharedObjectFactory(
+    JavaScriptRuntime runtime,
+    JavaScriptArrayRef arguments,
+    object context);
+
+/// <summary>
+/// Creates generated shared-object constructors backed by managed callbacks and owns each
+/// context's class installations (registration, shared prototype, and constructor).
 /// </summary>
 /// <remarks>
-/// The returned constructor wrapper is owned by the caller. Its callback registrations belong to
-/// the supplied <see cref="DotnetRuntimeContext" /> and become unusable when that context is
+/// Constructor wrappers returned by <see cref="Define" /> are owned by the caller. Installations
+/// created by <see cref="Install" /> are owned by the supplied <see cref="DotnetRuntimeContext" />
+/// and are disposed with it. All callback registrations become unusable when that context is
 /// disposed.
 /// </remarks>
 public static class GeneratedSharedObjectClass
 {
+  private static readonly ConditionalWeakTable<
+      DotnetRuntimeContext,
+      Dictionary<Type, Installation>> installations = new();
+
   /// <summary>
   /// Creates a JavaScript constructor for a generated shared-object class.
   /// </summary>
@@ -72,17 +98,226 @@ public static class GeneratedSharedObjectClass
     ArgumentNullException.ThrowIfNull(context);
 
     var constructorState = new ConstructorState(name, callback, context);
-    var constructRegistration = runtimeContext.RegisterHostFunction(
+    return CreateConstructorProxy(
+        runtimeContext,
+        name,
+        parameterCount,
         InvokeConstructTrap,
-        constructorState
+        constructorState,
+        prototype: null
+    );
+  }
+
+  /// <summary>
+  /// Installs a generated shared-object class for one runtime context, exactly once per class.
+  /// </summary>
+  /// <param name="runtimeContext">The context that owns the installation until its disposal.</param>
+  /// <param name="module">The owning module object that exposes the class constructor.</param>
+  /// <param name="sharedObjectType">The exact authored shared-object type.</param>
+  /// <param name="name">The JavaScript class name.</param>
+  /// <param name="parameterCount">The declared JavaScript constructor parameter count.</param>
+  /// <param name="constructorFactory">
+  /// The generated factory that decodes constructor arguments and directly calls the authored
+  /// constructor, or <see langword="null" /> for a native-created-only class. Only a class with a
+  /// factory exposes a constructor as the module's class-name property.
+  /// </param>
+  /// <param name="memberInstaller">
+  /// Generated callback that installs prototype methods and accessors on the shared class
+  /// prototype, or <see langword="null" /> when the class declares no members.
+  /// </param>
+  /// <remarks>
+  /// A repeated call for the same context and type reuses the existing installation and only
+  /// re-exposes the constructor on <paramref name="module" />. The installation (class
+  /// registration, shared prototype, and constructor wrapper) is disposed with the context.
+  /// </remarks>
+  public static void Install(
+      DotnetRuntimeContext runtimeContext,
+      JavaScriptObject module,
+      Type sharedObjectType,
+      string name,
+      uint parameterCount,
+      GeneratedSharedObjectFactory? constructorFactory,
+      Action<DotnetRuntimeContext, JavaScriptObject>? memberInstaller
+  )
+  {
+    ArgumentNullException.ThrowIfNull(runtimeContext);
+    ArgumentNullException.ThrowIfNull(module);
+    ArgumentNullException.ThrowIfNull(sharedObjectType);
+    ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+    var contextInstallations = installations.GetOrCreateValue(runtimeContext);
+    Installation? installation;
+    lock (contextInstallations)
+    {
+      contextInstallations.TryGetValue(sharedObjectType, out installation);
+    }
+
+    if (installation is null)
+    {
+      installation = CreateInstallation(
+          runtimeContext,
+          sharedObjectType,
+          name,
+          parameterCount,
+          constructorFactory,
+          memberInstaller
+      );
+      lock (contextInstallations)
+      {
+        contextInstallations.Add(sharedObjectType, installation);
+      }
+    }
+
+    if (installation.Constructor is not null)
+    {
+      using var constructorValue = installation.Constructor.AsValue();
+      module.SetProperty(name, constructorValue);
+    }
+  }
+
+  /// <summary>
+  /// Validates a generated constructor's argument count.
+  /// </summary>
+  /// <exception cref="ArgumentException">
+  /// Thrown when the argument count is outside the declared range.
+  /// </exception>
+  public static void RequireArgumentCount(
+      string className,
+      JavaScriptArrayRef arguments,
+      uint min,
+      uint max
+  )
+  {
+    ArgumentException.ThrowIfNullOrWhiteSpace(className);
+    if (min > max)
+    {
+      throw new ArgumentOutOfRangeException(nameof(min), "Minimum count cannot exceed maximum count.");
+    }
+
+    var count = arguments.Length;
+    if (count < min || count > max)
+    {
+      throw new ArgumentException(
+          min == max
+              ? $"new {className} expects {min} arguments, got {count}."
+              : $"new {className} expects between {min} and {max} arguments, got {count}."
+      );
+    }
+  }
+
+  /// <summary>
+  /// Resolves the installed class registration for a shared-object type in one context.
+  /// </summary>
+  internal static SharedObjectClassRegistration GetRegistration(
+      DotnetRuntimeContext runtimeContext,
+      Type sharedObjectType
+  )
+  {
+    if (installations.TryGetValue(runtimeContext, out var contextInstallations))
+    {
+      lock (contextInstallations)
+      {
+        if (contextInstallations.TryGetValue(sharedObjectType, out var installation))
+        {
+          return installation.Registration;
+        }
+      }
+    }
+
+    throw new InvalidOperationException(
+        $"The shared object class '{sharedObjectType}' is not installed for this runtime context."
+    );
+  }
+
+  private static Installation CreateInstallation(
+      DotnetRuntimeContext runtimeContext,
+      Type sharedObjectType,
+      string name,
+      uint parameterCount,
+      GeneratedSharedObjectFactory? constructorFactory,
+      Action<DotnetRuntimeContext, JavaScriptObject>? memberInstaller
+  )
+  {
+    var registration = SharedObjectClassRegistration.Create(
+        runtimeContext.SharedObjects,
+        sharedObjectType
     );
     try
     {
-      var applyRegistration = runtimeContext.RegisterHostFunction(RejectApply, constructorState);
+      memberInstaller?.Invoke(runtimeContext, registration.Prototype);
+
+      var installation = new Installation(registration);
+      if (constructorFactory is not null)
+      {
+        var factoryState = new FactoryState(constructorFactory, installation);
+        installation.Constructor = CreateConstructorProxy(
+            runtimeContext,
+            name,
+            parameterCount,
+            InvokePairingConstructTrap,
+            factoryState,
+            registration.Prototype
+        );
+      }
+
+      try
+      {
+        runtimeContext.RegisterRetainedCallback(installation);
+      }
+      catch
+      {
+        installation.Constructor?.Dispose();
+        throw;
+      }
+      return installation;
+    }
+    catch
+    {
+      registration.Dispose();
+      throw;
+    }
+  }
+
+  /// <summary>
+  /// Builds the constructable class proxy shared by <see cref="Define" /> and
+  /// <see cref="Install" />.
+  /// </summary>
+  /// <remarks>
+  /// When <paramref name="prototype" /> is supplied, it becomes the class target's
+  /// <c>prototype</c> property before the proxy is created, so the constructor's visible
+  /// prototype, the shared class prototype used to pair encoded instances, and the prototype of
+  /// constructor-created instances are all the same object.
+  /// </remarks>
+  private static JavaScriptFunction CreateConstructorProxy(
+      DotnetRuntimeContext runtimeContext,
+      string name,
+      uint parameterCount,
+      JavaScriptHostFunction constructTrapCallback,
+      object trapState,
+      JavaScriptObject? prototype
+  )
+  {
+    var constructRegistration = runtimeContext.RegisterHostFunction(
+        constructTrapCallback,
+        trapState
+    );
+    try
+    {
+      var applyRegistration = runtimeContext.RegisterHostFunction(
+          RejectApply,
+          new ApplyState(name)
+      );
       try
       {
         using var constructorTarget = runtimeContext.Runtime.CreateClass(name);
         DefineTargetLength(runtimeContext.Runtime, constructorTarget, parameterCount);
+        if (prototype is not null)
+        {
+          using var targetValue = constructorTarget.AsValue();
+          using var targetObject = targetValue.AsObject();
+          using var prototypeValue = prototype.AsValue();
+          targetObject.SetProperty("prototype", prototypeValue);
+        }
 
         using var handler = runtimeContext.Runtime.CreateObject();
 
@@ -111,10 +346,10 @@ public static class GeneratedSharedObjectClass
         using var proxyFunction = proxyResult.AsFunction();
         using var proxyFunctionValue = proxyFunction.AsValue();
         using var proxyFunctionObject = proxyFunctionValue.AsObject();
-        using var prototypeValue = proxyFunctionObject.GetProperty("prototype");
-        using var prototype = prototypeValue.AsObject();
+        using var visiblePrototypeValue = proxyFunctionObject.GetProperty("prototype");
+        using var visiblePrototype = visiblePrototypeValue.AsObject();
         using var constructorValue = proxyFunction.AsValue();
-        prototype.SetProperty("constructor", constructorValue);
+        visiblePrototype.SetProperty("constructor", constructorValue);
         return proxyResult.AsFunction();
       }
       catch
@@ -156,8 +391,9 @@ public static class GeneratedSharedObjectClass
     using var objectConstructor = objectValue.AsObject();
     using var definePropertyValue = objectConstructor.GetProperty("defineProperty");
     using var defineProperty = definePropertyValue.AsFunction();
+    using var targetValue = constructorTarget.AsValue();
     using var lengthName = runtime.CreateString("length");
-    using var defineResult = defineProperty.Call(constructorTarget, lengthName, descriptor);
+    using var defineResult = defineProperty.Call(targetValue, lengthName, descriptor);
   }
 
   /// <summary>
@@ -182,17 +418,7 @@ public static class GeneratedSharedObjectClass
     var instance = state.Callback(runtime, argumentsList, state.CallbackState);
     try
     {
-      using var newTarget = arguments.GetValue(2).Retain();
-      using var newTargetObject = newTarget.AsObject();
-      using var newTargetPrototype = newTargetObject.GetProperty("prototype");
-
-      using var global = runtime.Global();
-      using var objectValue = global.GetProperty("Object");
-      using var objectConstructor = objectValue.AsObject();
-      using var setPrototypeOfValue = objectConstructor.GetProperty("setPrototypeOf");
-      using var setPrototypeOf = setPrototypeOfValue.AsFunction();
-      using var setPrototypeOfResult = setPrototypeOf.Call(instance, newTargetPrototype);
-
+      ReparentOntoNewTargetPrototype(runtime, instance, arguments);
       return instance;
     }
     catch
@@ -202,6 +428,54 @@ public static class GeneratedSharedObjectClass
     }
   }
 
+  /// <summary>
+  /// Runs the <c>construct</c> trap for an installed class: creates the authored instance
+  /// through the generated factory and pairs it via the constructor-owned registry path.
+  /// </summary>
+  private static JavaScriptValue InvokePairingConstructTrap(
+      JavaScriptRuntime runtime,
+      JavaScriptValueRef thisValue,
+      JavaScriptArguments arguments,
+      object context
+  )
+  {
+    var state = (FactoryState)context;
+    var argumentsList = arguments.GetValue(1).AsArray();
+
+    var authored = state.Factory(runtime, argumentsList, state.Installation);
+    var registration = state.Installation.Registration;
+    using var paired = registration.Registry.PairConstructorOwnedInstance(authored, registration);
+    var instance = paired.AsValue();
+    try
+    {
+      ReparentOntoNewTargetPrototype(runtime, instance, arguments);
+      return instance;
+    }
+    catch
+    {
+      instance.Dispose();
+      throw;
+    }
+  }
+
+  private static void ReparentOntoNewTargetPrototype(
+      JavaScriptRuntime runtime,
+      JavaScriptValue instance,
+      JavaScriptArguments arguments
+  )
+  {
+    using var newTarget = arguments.GetValue(2).Retain();
+    using var newTargetObject = newTarget.AsObject();
+    using var newTargetPrototype = newTargetObject.GetProperty("prototype");
+
+    using var global = runtime.Global();
+    using var objectValue = global.GetProperty("Object");
+    using var objectConstructor = objectValue.AsObject();
+    using var setPrototypeOfValue = objectConstructor.GetProperty("setPrototypeOf");
+    using var setPrototypeOf = setPrototypeOfValue.AsFunction();
+    using var setPrototypeOfResult = setPrototypeOf.Call(instance, newTargetPrototype);
+  }
+
   private static JavaScriptValue RejectApply(
       JavaScriptRuntime runtime,
       JavaScriptValueRef thisValue,
@@ -209,7 +483,7 @@ public static class GeneratedSharedObjectClass
       object context
   )
   {
-    var state = (ConstructorState)context;
+    var state = (ApplyState)context;
     throw new InvalidOperationException($"{state.Name} must be called with new.");
   }
 
@@ -224,5 +498,33 @@ public static class GeneratedSharedObjectClass
     public GeneratedSharedObjectConstructor Callback { get; } = callback;
 
     public object CallbackState { get; } = callbackState;
+  }
+
+  private sealed class FactoryState(
+      GeneratedSharedObjectFactory factory,
+      Installation installation
+  )
+  {
+    public GeneratedSharedObjectFactory Factory { get; } = factory;
+
+    public Installation Installation { get; } = installation;
+  }
+
+  private sealed class ApplyState(string name)
+  {
+    public string Name { get; } = name;
+  }
+
+  private sealed class Installation(SharedObjectClassRegistration registration) : IDisposable
+  {
+    public SharedObjectClassRegistration Registration { get; } = registration;
+
+    public JavaScriptFunction? Constructor { get; set; }
+
+    public void Dispose()
+    {
+      Constructor?.Dispose();
+      Registration.Dispose();
+    }
   }
 }

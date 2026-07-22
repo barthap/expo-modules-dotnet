@@ -14,10 +14,16 @@ namespace Expo.ModulesCore;
 public static class GeneratedProperty
 {
   /// <summary>
-  /// Defines an enumerable, configurable own accessor property on a generated module object.
+  /// Defines an enumerable, configurable own accessor property on a generated module object or a
+  /// generated shared-object class prototype.
   /// </summary>
   /// <param name="runtimeContext">The active context that owns the accessor registrations.</param>
-  /// <param name="module">The module object that receives the own property.</param>
+  /// <param name="module">
+  /// The object that receives the own property: the module object for module-level accessors, or
+  /// the shared class prototype installed by <see cref="GeneratedSharedObjectClass.Install" />
+  /// for shared-object accessors (whose getter and setter resolve their receiver from
+  /// <c>thisValue</c> instead of this object).
+  /// </param>
   /// <param name="name">The JavaScript property name.</param>
   /// <param name="getter">The zero-argument getter callback.</param>
   /// <param name="setter">The optional one-argument setter callback.</param>

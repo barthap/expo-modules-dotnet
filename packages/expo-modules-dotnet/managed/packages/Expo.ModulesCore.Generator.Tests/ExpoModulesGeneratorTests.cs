@@ -3417,6 +3417,150 @@ public sealed class ExpoModulesGeneratorTests
     Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
   }
 
+  [Fact]
+  public void GeneratorEmitsSharedObjectClassInstallationAndDirectBindings()
+  {
+    var result = GeneratorTestHost.Run("""
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+          [JS]
+          public CacheEntry(double start)
+          {
+            Total = start;
+          }
+
+          [JS]
+          public double Total { get; set; }
+
+          [JS]
+          public double Increment(double by)
+          {
+            Total += by;
+            return Total;
+          }
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+          [JS]
+          public CacheEntry MakeEntry(double start) => new(start);
+
+          [JS]
+          public double ReadEntry(CacheEntry entry) => entry.Total;
+
+          [JS]
+          public async Task<CacheEntry> MakeEntryLater(double start)
+          {
+            await Task.Yield();
+            return new CacheEntry(start);
+          }
+        }
+        """);
+
+    Assert.DoesNotContain(
+        result.Diagnostics,
+        diagnostic => diagnostic.Severity == DiagnosticSeverity.Error
+    );
+    var text = GeneratedText(result);
+
+    // Class installation happens inside the module registration function, after the module is
+    // materialized, and not in the lazy provider metadata registration.
+    var installIndex = text.IndexOf("GeneratedSharedObjectClass.Install(", StringComparison.Ordinal);
+    var materializeIndex = text.IndexOf("GetOrCreateModule(", StringComparison.Ordinal);
+    var lazyMetadataIndex = text.IndexOf("RegisterLazyModule(", StringComparison.Ordinal);
+    Assert.True(installIndex > materializeIndex && materializeIndex > 0);
+    Assert.True(lazyMetadataIndex > 0 && installIndex > lazyMetadataIndex);
+    Assert.DoesNotContain(
+        "GeneratedSharedObjectClass.Install(",
+        text.Substring(lazyMetadataIndex, materializeIndex - lazyMetadataIndex)
+    );
+
+    // The receiver resolves through SharedObjectCodec<T> and the current runtime context before
+    // authored code runs, and the authored constructor/method/property are called directly.
+    Assert.Contains(
+        "SharedObjectCodec<global::Expo.TestModules.CacheEntry>.Decode(thisValue, runtime, GeneratedFunction.CurrentRuntimeContext)",
+        text
+    );
+    Assert.Contains("new global::Expo.TestModules.CacheEntry(", text);
+    Assert.Contains("module.Increment(", text);
+    Assert.Contains("module.Total", text);
+    Assert.Contains("typeof(global::Expo.TestModules.CacheEntry)", text);
+
+    // Shared decode and encode pass the runtime context explicitly.
+    Assert.Contains(
+        "SharedObjectCodec<global::Expo.TestModules.CacheEntry>.Decode(arguments.GetValue(0), runtime, GeneratedFunction.CurrentRuntimeContext)",
+        text
+    );
+    Assert.Contains(
+        "SharedObjectCodec<global::Expo.TestModules.CacheEntry>.Encode(module.MakeEntry(__expoArg0), runtime, GeneratedFunction.CurrentRuntimeContext)",
+        text
+    );
+
+    // Asynchronous shared results capture the exact runtime context inside the host-function
+    // frame and settle with the captured context, never the thread-static accessor.
+    Assert.Contains("var __expoRuntimeContext = GeneratedFunction.CurrentRuntimeContext;", text);
+    Assert.Contains(
+        "SharedObjectCodec<global::Expo.TestModules.CacheEntry>.Encode(__expoResult, runtime, __expoRuntimeContext)",
+        text
+    );
+    Assert.DoesNotContain(
+        "SharedObjectCodec<global::Expo.TestModules.CacheEntry>.Encode(__expoResult, runtime, GeneratedFunction.CurrentRuntimeContext)",
+        text
+    );
+
+    // Generated paths stay free of reflection, dynamic dispatch, JSON, and boxed argument arrays.
+    Assert.DoesNotContain("System.Reflection", text);
+    Assert.DoesNotContain("dynamic ", text);
+    Assert.DoesNotContain("Json", text);
+    Assert.DoesNotContain("object?[]", text);
+  }
+
+  [Fact]
+  public void GeneratorEmitsNativeCreatedOnlyClassWithoutConstructorExposure()
+  {
+    var result = GeneratorTestHost.Run("""
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject("NativeSnapshot")]
+        public sealed partial class SnapshotEntry : SharedObject
+        {
+          [JS]
+          public double Stamp => 7;
+        }
+
+        [ExpoModule(Classes = new[] { typeof(SnapshotEntry) })]
+        public sealed partial class SnapshotModule
+        {
+          [JS]
+          public SnapshotEntry MakeSnapshot() => new();
+        }
+        """);
+
+    Assert.DoesNotContain(
+        result.Diagnostics,
+        diagnostic => diagnostic.Severity == DiagnosticSeverity.Error
+    );
+    var text = GeneratedText(result);
+
+    // The class still installs its internal prototype under the explicit name, but no
+    // constructor factory is exposed for a native-created-only class.
+    Assert.Contains("GeneratedSharedObjectClass.Install(", text);
+    Assert.Contains("\"NativeSnapshot\",", text);
+    var installIndex = text.IndexOf("GeneratedSharedObjectClass.Install(", StringComparison.Ordinal);
+    var installCall = text.Substring(installIndex, text.IndexOf(");", installIndex, StringComparison.Ordinal) - installIndex);
+    Assert.Contains("null", installCall);
+    Assert.DoesNotContain("ConstructSharedObject_", text);
+  }
+
   private static string GeneratedText(GeneratorRunResult result) =>
       string.Join("\n", result.GeneratedSources.Select(source => source.Text));
 }
