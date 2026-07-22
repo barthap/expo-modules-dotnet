@@ -63,7 +63,8 @@ if(EXPO_JSI_DOTNET_LOADER STREQUAL "hostfxr")
       set(DOTNET_HOST_RID "linux-x64")
     endif()
   else()
-    message(FATAL_ERROR "Unsupported host platform for the HostFXR console proof")
+    message(
+      FATAL_ERROR "Unsupported host platform for the HostFXR console proof")
   endif()
 
   set(DOTNET_HOST_PACK_DIR
@@ -151,7 +152,10 @@ if(EXPO_JSI_DOTNET_LOADER STREQUAL "hostfxr")
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(hermes_console_app
                           PRIVATE "${DOTNET_HOST_NATIVE_DIR}/libnethost.so")
-    set_property(TARGET hermes_console_app APPEND PROPERTY BUILD_RPATH "$ORIGIN")
+    set_property(
+      TARGET hermes_console_app
+      APPEND
+      PROPERTY BUILD_RPATH "$ORIGIN")
 
     add_custom_command(
       TARGET hermes_console_app
