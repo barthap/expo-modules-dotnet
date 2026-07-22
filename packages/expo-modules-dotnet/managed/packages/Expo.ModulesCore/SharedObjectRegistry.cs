@@ -8,6 +8,18 @@ internal interface ISharedObjectLifetime
   void ReleaseFromSharedObjectRegistry();
 }
 
+/// <summary>
+/// Pairing steps of the registered-class route that must run outside the registry gate.
+/// Tests observe them to inject failures and assert lock-free JSI work.
+/// </summary>
+internal enum SharedObjectPairingStep
+{
+  ExistingWeakObjectLocked,
+  InstanceObjectCreated,
+  NativeStateAttached,
+  WeakObjectCreated,
+}
+
 internal sealed class SharedObjectEntry(
     long id,
     ISharedObjectLifetime instance,
@@ -34,6 +46,7 @@ internal sealed class SharedObjectRegistry : IDisposable
   private readonly ConditionalWeakTable<ISharedObjectLifetime, ReleasedInstanceMarker> releasedInstances =
       new();
   private readonly List<SharedObjectEntry> deferredNativeStateEntries = [];
+  private readonly Dictionary<long, SharedObject> pendingReservations = [];
   private readonly JavaScriptRuntime runtime;
   private readonly Action? installFailureForTesting;
   private long nextEntryId = 1;
@@ -57,6 +70,12 @@ internal sealed class SharedObjectRegistry : IDisposable
       }
     }
   }
+
+  internal JavaScriptRuntime Runtime => runtime;
+
+  internal bool IsGateEnteredForTesting => Monitor.IsEntered(gate);
+
+  internal Action<SharedObjectPairingStep>? PairingStepForTesting { get; set; }
 
   internal JavaScriptObject GetOrCreateJavaScriptObject(ISharedObjectLifetime instance)
   {
@@ -99,6 +118,206 @@ internal sealed class SharedObjectRegistry : IDisposable
 
     CompleteTerminalEntry(deadEntry!);
     throw new InvalidOperationException("The shared JavaScript object is no longer available.");
+  }
+
+  /// <summary>
+  /// Encodes a caller-owned public shared object through its registered class. A first-pairing
+  /// failure rolls the instance back to an unpaired, retryable state; ownership stays with the
+  /// module author.
+  /// </summary>
+  internal JavaScriptObject GetOrCreateJavaScriptObject(
+      SharedObject instance,
+      SharedObjectClassRegistration registration) =>
+      PairRegisteredInstance(instance, registration, constructorOwned: false);
+
+  /// <summary>
+  /// Pairs an instance returned by an authored <c>[JS]</c> constructor. The construction path
+  /// owns the instance, so any pairing failure marks it terminal and invokes its
+  /// <see cref="SharedObject.OnRelease"/> exactly once outside registry and weak-wrapper locks.
+  /// </summary>
+  internal JavaScriptObject PairConstructorOwnedInstance(
+      SharedObject instance,
+      SharedObjectClassRegistration registration) =>
+      PairRegisteredInstance(instance, registration, constructorOwned: true);
+
+  private JavaScriptObject PairRegisteredInstance(
+      SharedObject instance,
+      SharedObjectClassRegistration registration,
+      bool constructorOwned)
+  {
+    ArgumentNullException.ThrowIfNull(instance);
+    ArgumentNullException.ThrowIfNull(registration);
+
+    try
+    {
+      if (!ReferenceEquals(registration.Registry, this))
+      {
+        throw new InvalidOperationException(
+            "The shared object class registration belongs to another runtime context."
+        );
+      }
+      if (instance.GetType() != registration.SharedObjectType)
+      {
+        throw new InvalidOperationException(
+            $"The shared object runtime type '{instance.GetType()}' does not exactly match the " +
+                $"registered class '{registration.SharedObjectType}'."
+        );
+      }
+
+      long reservationId = 0;
+      SharedObjectEntry? existing = null;
+      lock (gate)
+      {
+        ThrowIfDisposedLocked();
+        if (instance.TryReserveForPairing(this))
+        {
+          reservationId = nextEntryId++;
+          pendingReservations.Add(reservationId, instance);
+        }
+        else if (!entriesByInstance.TryGetValue(instance, out existing))
+        {
+          throw new InvalidOperationException("The shared object has already been released.");
+        }
+      }
+
+      return existing is not null
+          ? LockExistingEntry(existing)
+          : BuildAndCommitReservation(instance, registration, reservationId, constructorOwned);
+    }
+    catch (Exception pairingFailure) when (constructorOwned)
+    {
+      // The construction path owns the instance from the moment the authored constructor
+      // returned, so even a pre-reservation rejection is terminal. The exchange guard inside
+      // the release keeps this convergent with the transactional rollback's own release and
+      // with NativeState rollback re-entry.
+      List<Exception>? releaseFailures = null;
+      TryCleanup(
+          ((ISharedObjectLifetime)instance).ReleaseFromSharedObjectRegistry,
+          ref releaseFailures
+      );
+      if (releaseFailures is not null)
+      {
+        throw new AggregateException([pairingFailure, .. releaseFailures]);
+      }
+      throw;
+    }
+  }
+
+  private JavaScriptObject LockExistingEntry(SharedObjectEntry existing)
+  {
+    JavaScriptObject? locked = null;
+    try
+    {
+      locked = existing.WeakObject.Lock();
+      PairingStepForTesting?.Invoke(SharedObjectPairingStep.ExistingWeakObjectLocked);
+
+      SharedObjectEntry? deadEntry = null;
+      lock (gate)
+      {
+        ThrowIfDisposedLocked();
+        var stillActive = entriesById.TryGetValue(existing.Id, out var current) &&
+            ReferenceEquals(current, existing) &&
+            !existing.IsReleased;
+        if (stillActive && locked is not null)
+        {
+          var result = locked;
+          locked = null;
+          return result;
+        }
+        if (stillActive)
+        {
+          deadEntry = TakeTerminalEntryLocked(existing.Id);
+        }
+      }
+
+      if (deadEntry is not null)
+      {
+        CompleteTerminalEntry(deadEntry);
+        throw new InvalidOperationException(
+            "The shared JavaScript object is no longer available."
+        );
+      }
+      throw new InvalidOperationException("The shared object has already been released.");
+    }
+    finally
+    {
+      locked?.Dispose();
+    }
+  }
+
+  private JavaScriptObject BuildAndCommitReservation(
+      SharedObject instance,
+      SharedObjectClassRegistration registration,
+      long reservationId,
+      bool constructorOwned)
+  {
+    JavaScriptObject? value = null;
+    JavaScriptWeakObject? weak = null;
+    var attached = false;
+
+    try
+    {
+      value = registration.CreateInstanceObject();
+      PairingStepForTesting?.Invoke(SharedObjectPairingStep.InstanceObjectCreated);
+      var nativeState = new SharedObjectNativeState(this, reservationId);
+      value.SetNativeState(nativeState);
+      attached = true;
+      PairingStepForTesting?.Invoke(SharedObjectPairingStep.NativeStateAttached);
+      weak = value.CreateWeak();
+      PairingStepForTesting?.Invoke(SharedObjectPairingStep.WeakObjectCreated);
+
+      lock (gate)
+      {
+        if (disposed || !pendingReservations.Remove(reservationId))
+        {
+          throw new InvalidOperationException(
+              "The runtime context was torn down before the shared object pairing committed."
+          );
+        }
+
+        instance.CommitPairing(this);
+        var entry = new SharedObjectEntry(reservationId, instance, weak, nativeState);
+        entriesById.Add(reservationId, entry);
+        entriesByInstance.Add(instance, entry);
+      }
+
+      return value;
+    }
+    catch (Exception pairingFailure)
+    {
+      lock (gate)
+      {
+        pendingReservations.Remove(reservationId);
+      }
+
+      List<Exception>? failures = [pairingFailure];
+      if (attached)
+      {
+        TryCleanup(value!.ClearNativeState<SharedObjectNativeState>, ref failures);
+      }
+      if (weak is not null)
+      {
+        TryCleanup(weak.Dispose, ref failures);
+      }
+      if (value is not null)
+      {
+        TryCleanup(value.Dispose, ref failures);
+      }
+
+      if (constructorOwned)
+      {
+        TryCleanup(
+            ((ISharedObjectLifetime)instance).ReleaseFromSharedObjectRegistry,
+            ref failures
+        );
+      }
+      else
+      {
+        instance.RollBackReservation(this);
+      }
+
+      throw new AggregateException(failures!);
+    }
   }
 
   internal ISharedObjectLifetime ResolveManaged(JavaScriptObject value)
@@ -182,6 +401,9 @@ internal sealed class SharedObjectRegistry : IDisposable
       }
       entriesById.Clear();
       entriesByInstance.Clear();
+      // Cancel in-flight reservations; the pairing thread observes the missing reservation at
+      // commit time and rolls back outside the gate without creating a live pair.
+      pendingReservations.Clear();
       terminalEntries.AddRange(deferredNativeStateEntries);
       deferredNativeStateEntries.Clear();
     }

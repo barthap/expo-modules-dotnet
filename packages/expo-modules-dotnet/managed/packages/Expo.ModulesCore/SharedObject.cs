@@ -10,6 +10,17 @@ namespace Expo.ModulesCore;
 /// </remarks>
 public abstract class SharedObject : ISharedObjectLifetime
 {
+  private enum PairingState
+  {
+    Unpaired,
+    Reserved,
+    Paired,
+    Terminal,
+  }
+
+  private readonly object pairingGate = new();
+  private PairingState pairingState;
+  private SharedObjectRegistry? pairingRegistry;
   private int isReleased;
 
   /// <summary>
@@ -20,8 +31,72 @@ public abstract class SharedObject : ISharedObjectLifetime
   {
   }
 
+  /// <summary>
+  /// Claims the instance for pairing before any JSI work happens. Returns <c>true</c> when this
+  /// call installed a reservation for <paramref name="registry"/> and <c>false</c> when the
+  /// instance is already paired to that same registry. A released instance, an in-flight
+  /// reservation, or another owning runtime context fails loudly here instead of creating
+  /// duplicate or cross-context pairing state.
+  /// </summary>
+  internal bool TryReserveForPairing(SharedObjectRegistry registry)
+  {
+    lock (pairingGate)
+    {
+      switch (pairingState)
+      {
+        case PairingState.Unpaired:
+          pairingState = PairingState.Reserved;
+          pairingRegistry = registry;
+          return true;
+        case PairingState.Reserved when ReferenceEquals(pairingRegistry, registry):
+          throw new InvalidOperationException(
+              "The shared object is already being paired in this runtime context."
+          );
+        case PairingState.Paired when ReferenceEquals(pairingRegistry, registry):
+          return false;
+        case PairingState.Terminal:
+          throw new InvalidOperationException("The shared object has already been released.");
+        default:
+          throw new InvalidOperationException(
+              "The shared object is owned by another runtime context."
+          );
+      }
+    }
+  }
+
+  internal void CommitPairing(SharedObjectRegistry registry)
+  {
+    lock (pairingGate)
+    {
+      if (pairingState != PairingState.Reserved || !ReferenceEquals(pairingRegistry, registry))
+      {
+        throw new InvalidOperationException("The shared object reservation is no longer active.");
+      }
+
+      pairingState = PairingState.Paired;
+    }
+  }
+
+  internal void RollBackReservation(SharedObjectRegistry registry)
+  {
+    lock (pairingGate)
+    {
+      if (pairingState == PairingState.Reserved && ReferenceEquals(pairingRegistry, registry))
+      {
+        pairingState = PairingState.Unpaired;
+        pairingRegistry = null;
+      }
+    }
+  }
+
   void ISharedObjectLifetime.ReleaseFromSharedObjectRegistry()
   {
+    lock (pairingGate)
+    {
+      pairingState = PairingState.Terminal;
+      pairingRegistry = null;
+    }
+
     if (Interlocked.Exchange(ref isReleased, 1) == 0)
     {
       OnRelease();
