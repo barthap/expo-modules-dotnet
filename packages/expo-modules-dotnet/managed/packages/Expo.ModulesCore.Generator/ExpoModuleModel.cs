@@ -18,6 +18,7 @@ internal sealed record ExpoModuleModel(
     EquatableArray<ExpoObservingHookModel> StopObservingHooks,
     EquatableArray<ExpoFunctionModel> Functions,
     EquatableArray<ExpoPropertyModel> Properties,
+    EquatableArray<string> SharedObjectClassTypeNames,
     EquatableArray<ExpoGeneratedRecordCodecModel> RecordCodecs,
     EquatableArray<ExpoDiagnosticModel> Diagnostics);
 

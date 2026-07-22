@@ -2224,6 +2224,275 @@ public sealed class ExpoModulesGeneratorTests
         item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
   }
 
+  [Fact]
+  public void GeneratorAcceptsSharedObjectDeclarationWithImplicitName()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void GeneratorAcceptsSharedObjectDeclarationWithExplicitName()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject("NativeCache")]
+        public sealed partial class CacheEntry : SharedObject
+        {
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void GeneratorAcceptsSharedObjectDerivedIndirectlyThroughSharedRef()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class ImageRef : SharedRef<string>
+        {
+          public ImageRef(string reference) : base(reference)
+          {
+          }
+        }
+
+        [ExpoModule(Classes = new[] { typeof(ImageRef) })]
+        public sealed partial class ImageModule
+        {
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void SharedObjectAuthoringApiSurfaceCompiles()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+          [JS]
+          public CacheEntry()
+          {
+          }
+
+          protected override void OnRelease()
+          {
+          }
+        }
+
+        [ExpoSharedObject]
+        public sealed partial class ImageRef : SharedRef<string>
+        {
+          public ImageRef(string reference) : base(reference)
+          {
+          }
+
+          public string Reference => Ref;
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry), typeof(ImageRef) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void SharedObjectSharedRefRefPropertyIsReadOnly()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class ImageRef : SharedRef<string>
+        {
+          public ImageRef(string reference) : base(reference)
+          {
+          }
+        }
+
+        public static class Mutator
+        {
+          public static void Mutate(ImageRef image) => image.Ref = "other";
+        }
+        """
+    );
+
+    Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "CS0200");
+  }
+
+  [Theory]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      public sealed class Container
+      {
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+        }
+      }
+      """,
+      "CacheEntry",
+      "top-level")]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject]
+      public sealed partial class CacheEntry<T> : SharedObject
+      {
+      }
+      """,
+      "CacheEntry",
+      "non-generic")]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject]
+      public partial class CacheEntry : SharedObject
+      {
+      }
+      """,
+      "CacheEntry",
+      "sealed")]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject]
+      public sealed class CacheEntry : SharedObject
+      {
+      }
+      """,
+      "CacheEntry",
+      "partial")]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject]
+      public sealed partial class CacheEntry
+      {
+      }
+      """,
+      "CacheEntry",
+      "derive from Expo.ModulesCore.SharedObject")]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject(null)]
+      public sealed partial class CacheEntry : SharedObject
+      {
+      }
+      """,
+      "CacheEntry",
+      "non-empty")]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject("")]
+      public sealed partial class CacheEntry : SharedObject
+      {
+      }
+      """,
+      "CacheEntry",
+      "non-empty")]
+  [InlineData(
+      """
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject("   ")]
+      public sealed partial class CacheEntry : SharedObject
+      {
+      }
+      """,
+      "CacheEntry",
+      "non-empty")]
+  public void GeneratorReportsInvalidSharedObjectDeclaration(
+      string source,
+      string typeName,
+      string expectedReason)
+  {
+    var result = GeneratorTestHost.Run(source);
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI021");
+    Assert.Contains(typeName, diagnostic.GetMessage());
+    Assert.Contains(expectedReason, diagnostic.GetMessage());
+    Assert.NotEqual(Location.None, diagnostic.Location);
+    var locatedText = diagnostic.Location.SourceTree!
+        .GetText(TestContext.Current.CancellationToken)
+        .ToString(diagnostic.Location.SourceSpan);
+    Assert.Contains(typeName, locatedText);
+  }
+
   private static string GeneratedText(GeneratorRunResult result) =>
       string.Join("\n", result.GeneratedSources.Select(source => source.Text));
 }

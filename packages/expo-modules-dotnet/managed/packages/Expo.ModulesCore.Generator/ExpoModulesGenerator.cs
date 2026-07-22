@@ -11,6 +11,8 @@ namespace Expo.ModulesCore.Generator;
 public sealed class ExpoModulesGenerator : IIncrementalGenerator
 {
   private const string ExpoModuleAttributeMetadataName = "Expo.ModulesCore.ExpoModuleAttribute";
+  private const string ExpoSharedObjectAttributeMetadataName = "Expo.ModulesCore.ExpoSharedObjectAttribute";
+  private const string SharedObjectMetadataName = "Expo.ModulesCore.SharedObject";
   private const string EventsAttributeMetadataName = "Expo.ModulesCore.EventsAttribute";
   private const string EventAttributeMetadataName = "Expo.ModulesCore.EventAttribute";
   private const string OnCreateAttributeMetadataName = "Expo.ModulesCore.OnCreateAttribute";
@@ -32,20 +34,120 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
             CreateModuleModel(syntaxContext, cancellationToken)
     );
 
-    var compilationAndModules = context.CompilationProvider.Combine(modules.Collect());
+    var sharedObjects = context.SyntaxProvider.ForAttributeWithMetadataName(
+        ExpoSharedObjectAttributeMetadataName,
+        static (node, _) => node is ClassDeclarationSyntax,
+        static (syntaxContext, cancellationToken) =>
+            CreateSharedObjectModel(syntaxContext, cancellationToken)
+    );
+
+    var compilationModulesAndSharedObjects = context.CompilationProvider
+        .Combine(modules.Collect())
+        .Combine(sharedObjects.Collect());
 
     context.RegisterSourceOutput(
-        compilationAndModules,
+        compilationModulesAndSharedObjects,
         static (sourceContext, value) =>
         {
-          var assemblyName = value.Left.AssemblyName ?? "ExpoModules";
+          var assemblyName = value.Left.Left.AssemblyName ?? "ExpoModules";
           EmitProvider(
               sourceContext,
               assemblyName,
-              value.Right.Where(module => module is not null).Select(module => module!)
+              value.Left.Right.Where(module => module is not null).Select(module => module!),
+              value.Right.Where(sharedObject => sharedObject is not null).Select(sharedObject => sharedObject!)
           );
         }
     );
+  }
+
+  private static ExpoSharedObjectModel? CreateSharedObjectModel(
+      GeneratorAttributeSyntaxContext context,
+      CancellationToken cancellationToken)
+  {
+    cancellationToken.ThrowIfCancellationRequested();
+
+    if (context.TargetSymbol is not INamedTypeSymbol typeSymbol)
+    {
+      return null;
+    }
+
+    var location = typeSymbol.Locations.FirstOrDefault();
+    var diagnostics = new List<ExpoDiagnosticModel>();
+    var javaScriptClassName = typeSymbol.Name;
+
+    void AddDeclarationDiagnostic(string reason) =>
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.InvalidSharedObjectDeclaration.Id,
+            location,
+            new EquatableArray<string>(new[] { typeSymbol.Name, reason })
+        ));
+
+    foreach (var attribute in context.Attributes)
+    {
+      if (attribute.ConstructorArguments.Length != 1)
+      {
+        continue;
+      }
+
+      if (attribute.ConstructorArguments[0].Value is string explicitName &&
+          !string.IsNullOrWhiteSpace(explicitName))
+      {
+        javaScriptClassName = explicitName;
+      }
+      else
+      {
+        AddDeclarationDiagnostic("its explicit JavaScript class name must be a non-empty string");
+      }
+    }
+
+    if (typeSymbol.ContainingType is not null)
+    {
+      AddDeclarationDiagnostic("it must be a top-level class");
+    }
+
+    if (typeSymbol.IsGenericType)
+    {
+      AddDeclarationDiagnostic("it must be non-generic");
+    }
+
+    if (!typeSymbol.IsSealed)
+    {
+      AddDeclarationDiagnostic("it must be sealed");
+    }
+
+    if (context.TargetNode is not ClassDeclarationSyntax classDeclaration ||
+        !classDeclaration.Modifiers.Any(SyntaxKind.PartialKeyword))
+    {
+      AddDeclarationDiagnostic("it must be partial");
+    }
+
+    if (!DerivesFromSharedObject(typeSymbol))
+    {
+      AddDeclarationDiagnostic("it must derive from Expo.ModulesCore.SharedObject");
+    }
+
+    return new ExpoSharedObjectModel(
+        typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+        typeSymbol.ContainingNamespace.IsGlobalNamespace ? string.Empty : typeSymbol.ContainingNamespace.ToDisplayString(),
+        typeSymbol.Name,
+        typeSymbol.DeclaredAccessibility == Accessibility.Public ? "public" : "internal",
+        javaScriptClassName,
+        location,
+        diagnostics.Count == 0,
+        new EquatableArray<ExpoDiagnosticModel>(diagnostics)
+    );
+  }
+
+  private static bool DerivesFromSharedObject(INamedTypeSymbol typeSymbol)
+  {
+    for (var baseType = typeSymbol.BaseType; baseType is not null; baseType = baseType.BaseType)
+    {
+      if (baseType.ToDisplayString() == SharedObjectMetadataName)
+      {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static ExpoModuleModel? CreateModuleModel(
@@ -63,12 +165,30 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         ? typeSymbol.Name.Substring(0, typeSymbol.Name.Length - "Module".Length)
         : typeSymbol.Name;
 
+    var sharedObjectClassTypeNames = new List<string>();
     foreach (var attribute in context.Attributes)
     {
       if (attribute.ConstructorArguments.Length == 1 &&
           attribute.ConstructorArguments[0].Value is string explicitName)
       {
         moduleName = explicitName;
+      }
+
+      foreach (var namedArgument in attribute.NamedArguments)
+      {
+        if (namedArgument.Key != "Classes" || namedArgument.Value.Kind != TypedConstantKind.Array)
+        {
+          continue;
+        }
+
+        foreach (var entry in namedArgument.Value.Values)
+        {
+          if (entry.Value is INamedTypeSymbol classSymbol)
+          {
+            sharedObjectClassTypeNames.Add(
+                classSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+          }
+        }
       }
     }
 
@@ -147,6 +267,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         new EquatableArray<ExpoObservingHookModel>(stopObservingHooks),
         new EquatableArray<ExpoFunctionModel>(functions),
         new EquatableArray<ExpoPropertyModel>(properties),
+        new EquatableArray<string>(sharedObjectClassTypeNames),
         new EquatableArray<ExpoGeneratedRecordCodecModel>(recordCodecs),
         new EquatableArray<ExpoDiagnosticModel>(diagnostics)
     );
@@ -1261,8 +1382,15 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
   private static void EmitProvider(
       SourceProductionContext context,
       string assemblyName,
-      IEnumerable<ExpoModuleModel> modules)
+      IEnumerable<ExpoModuleModel> modules,
+      IEnumerable<ExpoSharedObjectModel> sharedObjects)
   {
+    var sharedObjectModels = sharedObjects.ToArray();
+    foreach (var diagnostic in sharedObjectModels.SelectMany(sharedObject => sharedObject.Diagnostics.Values))
+    {
+      context.ReportDiagnostic(ToDiagnostic(diagnostic));
+    }
+
     var moduleModels = modules.ToArray();
     var duplicateModuleNames = new HashSet<string>(
         moduleModels
@@ -1632,6 +1760,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       "EXPOJSI018" => ExpoModulesDiagnostics.UnsupportedEventProperty,
       "EXPOJSI019" => ExpoModulesDiagnostics.UnsupportedEventPayload,
       "EXPOJSI020" => ExpoModulesDiagnostics.DuplicateEventName,
+      "EXPOJSI021" => ExpoModulesDiagnostics.InvalidSharedObjectDeclaration,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());

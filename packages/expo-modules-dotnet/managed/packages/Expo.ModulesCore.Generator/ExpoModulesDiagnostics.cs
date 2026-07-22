@@ -183,4 +183,13 @@ internal static class ExpoModulesDiagnostics
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true
   );
+
+  public static readonly DiagnosticDescriptor InvalidSharedObjectDeclaration = new(
+      id: "EXPOJSI021",
+      title: "Invalid Expo shared object declaration",
+      messageFormat: "Shared object class '{0}' is invalid: {1}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
 }
