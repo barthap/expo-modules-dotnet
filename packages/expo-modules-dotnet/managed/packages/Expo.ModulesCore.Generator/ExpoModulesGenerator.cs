@@ -131,6 +131,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     ExpoSharedObjectConstructorModel? constructor = null;
     var functions = new List<ExpoFunctionModel>();
     var properties = new List<ExpoPropertyModel>();
+    var events = new List<ExpoEventModel>();
     var recordCodecs = new List<ExpoGeneratedRecordCodecModel>();
     if (isDeclarationValid)
     {
@@ -163,19 +164,15 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
           .Where(property => !ReportReservedSharedObjectMemberName(
               typeSymbol.Name, property.JavaScriptName, property.Location, diagnostics))
           .ToList();
-
-      foreach (var member in typeSymbol.GetMembers())
-      {
-        if (member.GetAttributes().Any(attribute =>
-                attribute.AttributeClass?.ToDisplayString() == EventAttributeMetadataName))
-        {
-          diagnostics.Add(CreateUnsupportedSharedObjectUsage(
-              member.Name,
-              "[Event] is not supported on shared object classes",
-              member.Locations.FirstOrDefault() ?? location
-          ));
-        }
-      }
+      events = GetTypedEvents(
+          typeSymbol,
+          typeSymbol.Name,
+          diagnostics,
+          recordCodecs,
+          ExpoModulesDiagnostics.UnsupportedSharedObjectEventProperty.Id,
+          ExpoModulesDiagnostics.UnsupportedSharedObjectEventPayload.Id
+      );
+      ValidateSharedObjectEventNames(typeSymbol.Name, functions, properties, events, diagnostics);
 
       constructor = GetSharedObjectConstructor(typeSymbol, diagnostics, recordCodecs);
     }
@@ -189,6 +186,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         location,
         isDeclarationValid,
         constructor,
+        new EquatableArray<ExpoEventModel>(events),
         new EquatableArray<ExpoFunctionModel>(functions),
         new EquatableArray<ExpoPropertyModel>(properties),
         new EquatableArray<ExpoGeneratedRecordCodecModel>(recordCodecs),
@@ -215,6 +213,55 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         new EquatableArray<string>(new[] { typeName, javaScriptName, "reserved for the shared object prototype" })
     ));
     return true;
+  }
+
+  private static void ValidateSharedObjectEventNames(
+      string typeName,
+      IReadOnlyList<ExpoFunctionModel> functions,
+      IReadOnlyList<ExpoPropertyModel> properties,
+      List<ExpoEventModel> events,
+      List<ExpoDiagnosticModel> diagnostics)
+  {
+    var memberNames = new HashSet<string>(
+        functions.Select(function => function.JavaScriptName)
+            .Concat(properties.Select(property => property.JavaScriptName)),
+        StringComparer.Ordinal
+    );
+    var eventNames = new HashSet<string>(StringComparer.Ordinal);
+    for (var index = 0; index < events.Count; index++)
+    {
+      var @event = events[index];
+      if (!@event.IsDispatchable)
+      {
+        continue;
+      }
+
+      string? reason = null;
+      if (ReservedSharedObjectMemberNames.Contains(@event.JavaScriptName, StringComparer.Ordinal))
+      {
+        reason = "reserved for the shared object prototype";
+      }
+      else if (memberNames.Contains(@event.JavaScriptName))
+      {
+        reason = "already used by a generated shared-object member";
+      }
+      else if (!eventNames.Add(@event.JavaScriptName))
+      {
+        reason = "duplicated by another shared-object event";
+      }
+
+      if (reason is null)
+      {
+        continue;
+      }
+
+      diagnostics.Add(new ExpoDiagnosticModel(
+          ExpoModulesDiagnostics.InvalidSharedObjectEventName.Id,
+          @event.Location,
+          new EquatableArray<string>(new[] { typeName, @event.PropertyName, @event.JavaScriptName, reason })
+      ));
+      events[index] = @event with { IsDispatchable = false };
+    }
   }
 
   private static List<ExpoFunctionModel> RemoveInaccessibleSharedObjectMethods(
@@ -809,7 +856,9 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       INamedTypeSymbol typeSymbol,
       string moduleName,
       List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs)
+      List<ExpoGeneratedRecordCodecModel> recordCodecs,
+      string unsupportedPropertyDiagnosticId = "EXPOJSI018",
+      string unsupportedPayloadDiagnosticId = "EXPOJSI019")
   {
     var events = new List<ExpoEventModel>();
     var containerReason = GetUnsupportedEventContainerShape(typeSymbol);
@@ -867,7 +916,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         var payloadReason = GetUnsupportedEventPayload(payloadType);
         if (payloadReason is not null)
         {
-          diagnostics.Add(CreateUnsupportedEventPayload(moduleName, property, payloadType, payloadReason));
+          diagnostics.Add(CreateUnsupportedEventPayload(moduleName, property, payloadType, payloadReason, unsupportedPayloadDiagnosticId));
           hasUnsupportedPayload = true;
           propertyReason = "an unsupported payload";
         }
@@ -882,7 +931,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
                 moduleName,
                 property,
                 payloadType,
-                "no encode-capable codec is available"
+                "no encode-capable codec is available",
+                unsupportedPayloadDiagnosticId
             ));
             hasUnsupportedPayload = true;
             propertyReason = "an unsupported payload";
@@ -899,7 +949,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         var payloadReason = GetUnsupportedEventPayload(payloadType);
         if (payloadReason is not null)
         {
-          diagnostics.Add(CreateUnsupportedEventPayload(moduleName, property, payloadType, payloadReason));
+          diagnostics.Add(CreateUnsupportedEventPayload(moduleName, property, payloadType, payloadReason, unsupportedPayloadDiagnosticId));
           hasUnsupportedPayload = true;
           propertyReason = "an unsupported payload";
         }
@@ -908,7 +958,7 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       if (propertyReason is not null && !hasUnsupportedPayload)
       {
         diagnostics.Add(new ExpoDiagnosticModel(
-            ExpoModulesDiagnostics.UnsupportedEventProperty.Id,
+            unsupportedPropertyDiagnosticId,
             property.Locations.FirstOrDefault(),
             new EquatableArray<string>(new[] { moduleName, property.Name, propertyReason })
         ));
@@ -970,9 +1020,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       string moduleName,
       IPropertySymbol property,
       ITypeSymbol payloadType,
-      string reason) =>
+      string reason,
+      string diagnosticId = "EXPOJSI019") =>
       new(
-          ExpoModulesDiagnostics.UnsupportedEventPayload.Id,
+          diagnosticId,
           payloadType.Locations.FirstOrDefault() ?? property.Locations.FirstOrDefault(),
           new EquatableArray<string>(new[] { moduleName, property.Name, GetDiagnosticTypeName(payloadType), reason })
       );
@@ -1968,6 +2019,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     {
       EmitEventPartial(context, module);
     }
+    foreach (var sharedObject in sharedObjectModels.Where(sharedObject => sharedObject.IsValid))
+    {
+      EmitSharedObjectEventPartial(context, sharedObject);
+    }
 
     foreach (var group in moduleModels.GroupBy(module => module.ModuleName))
     {
@@ -2006,9 +2061,16 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine();
     builder.AppendLine($"public static class {providerTypeName}");
     builder.AppendLine("{");
-    foreach (var recordCodec in moduleModels.SelectMany(module => module.RecordCodecs.Values))
+    var emittedRecordCodecNames = new HashSet<string>(StringComparer.Ordinal);
+    foreach (var recordCodec in moduleModels
+                 .SelectMany(module => module.RecordCodecs.Values)
+                 .Concat(moduleModels.SelectMany(module =>
+                     GetEmittableClasses(module).SelectMany(sharedObject => sharedObject.RecordCodecs.Values))))
     {
-      EmitRecordCodec(builder, recordCodec);
+      if (emittedRecordCodecNames.Add(recordCodec.CodecTypeName))
+      {
+        EmitRecordCodec(builder, recordCodec);
+      }
     }
 
     builder.AppendLine("  public static void Register(global::Expo.ModulesCore.DotnetRuntimeContext context)");
@@ -2117,6 +2179,11 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       ExpoPropertyModel property) =>
       $"SetSharedObjectProperty_{GetSharedObjectIdentifier(module, sharedObject)}_{SanitizeIdentifier(property.JavaScriptName)}";
 
+  private static string GetSharedObjectEventInitializerName(
+      ExpoModuleModel module,
+      ExpoSharedObjectModel sharedObject) =>
+      $"InitializeSharedObjectEvents_{GetSharedObjectIdentifier(module, sharedObject)}";
+
   private static void EmitSharedObjectClassGlue(
       StringBuilder builder,
       ExpoModuleModel module,
@@ -2127,8 +2194,14 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       EmitSharedObjectFactory(builder, module, sharedObject);
     }
 
+    if (sharedObject.Events.Values.Any(@event => @event.IsDispatchable))
+    {
+      EmitSharedObjectEventProviderHelper(builder, module, sharedObject);
+    }
+
     var hasMembers = sharedObject.Functions.Values.Count > 0 ||
-        sharedObject.Properties.Values.Count > 0;
+        sharedObject.Properties.Values.Count > 0 ||
+        sharedObject.Events.Values.Any(@event => @event.IsDispatchable);
     if (hasMembers)
     {
       EmitSharedObjectMemberInstaller(builder, module, sharedObject);
@@ -2173,6 +2246,35 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
         );
       }
     }
+  }
+
+  private static void EmitSharedObjectEventProviderHelper(
+      StringBuilder builder,
+      ExpoModuleModel module,
+      ExpoSharedObjectModel sharedObject)
+  {
+    var events = sharedObject.Events.Values.Where(@event => @event.IsDispatchable).ToArray();
+    builder.AppendLine();
+    builder.AppendLine($"  private static void {GetSharedObjectEventInitializerName(module, sharedObject)}(");
+    builder.AppendLine("      global::Expo.ModulesCore.DotnetRuntimeContext context,");
+    builder.AppendLine($"      {sharedObject.FullyQualifiedTypeName} sharedObject)");
+    builder.AppendLine("  {");
+    builder.AppendLine("    sharedObject.__ExpoModulesCoreInitializeSharedObjectEvents(");
+    builder.AppendLine("        context,");
+    for (var index = 0; index < events.Length; index++)
+    {
+      var @event = events[index];
+      var valueParameter = GetEventValueParameterName(@event);
+      var emitExpression = @event.PayloadKind switch
+      {
+        ExpoEventPayloadKind.None => $"() => global::Expo.ModulesCore.GeneratedSharedObjectEvents.EmitAsync(context, sharedObject, \"{EscapeString(@event.JavaScriptName)}\")",
+        ExpoEventPayloadKind.Codec => $"{valueParameter} => global::Expo.ModulesCore.GeneratedSharedObjectEvents.EmitAsync<{@event.CodecExpression}, {@event.PayloadTypeName}>(context, sharedObject, \"{EscapeString(@event.JavaScriptName)}\", {valueParameter})",
+        ExpoEventPayloadKind.JavaScriptValue or ExpoEventPayloadKind.ArrayBuffer => $"{valueParameter} => global::Expo.ModulesCore.GeneratedSharedObjectEvents.EmitAsync(context, sharedObject, \"{EscapeString(@event.JavaScriptName)}\", {valueParameter})",
+        _ => throw new InvalidOperationException($"Unknown event payload kind: {@event.PayloadKind}"),
+      };
+      builder.AppendLine($"        {emitExpression}{(index == events.Length - 1 ? ");" : ",")}");
+    }
+    builder.AppendLine("  }");
   }
 
   private static void EmitSharedObjectFactory(
@@ -2227,6 +2329,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     builder.AppendLine("      global::Expo.ModulesCore.DotnetRuntimeContext context,");
     builder.AppendLine("      global::Expo.JSI.JavaScriptObject prototype)");
     builder.AppendLine("  {");
+    if (sharedObject.Events.Values.Any(@event => @event.IsDispatchable))
+    {
+      builder.AppendLine("    global::Expo.ModulesCore.GeneratedSharedObjectEvents.InstallPrototype(context, prototype);");
+    }
     foreach (var function in sharedObject.Functions.Values)
     {
       builder.AppendLine(function.IsAsync
@@ -2516,7 +2622,8 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     foreach (var sharedObject in ownedClasses)
     {
       var hasMembers = sharedObject.Functions.Values.Count > 0 ||
-          sharedObject.Properties.Values.Count > 0;
+          sharedObject.Properties.Values.Count > 0 ||
+          sharedObject.Events.Values.Any(@event => @event.IsDispatchable);
       builder.AppendLine("      GeneratedSharedObjectClass.Install(");
       builder.AppendLine("          context,");
       builder.AppendLine($"          {moduleVariable},");
@@ -2527,7 +2634,10 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
           ? "          null,"
           : $"          {GetSharedObjectFactoryName(module, sharedObject)},");
       builder.AppendLine(hasMembers
-          ? $"          {GetSharedObjectMemberInstallerName(module, sharedObject)}"
+          ? $"          {GetSharedObjectMemberInstallerName(module, sharedObject)},"
+          : "          null,");
+      builder.AppendLine(sharedObject.Events.Values.Any(@event => @event.IsDispatchable)
+          ? $"          static (context, sharedObject) => {GetSharedObjectEventInitializerName(module, sharedObject)}(context, ({sharedObject.FullyQualifiedTypeName})sharedObject)"
           : "          null");
       builder.AppendLine("      );");
     }
@@ -2616,6 +2726,89 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
     }
     builder.AppendLine("}");
     context.AddSource(GetEventHintName(module), SourceText.From(builder.ToString(), Encoding.UTF8));
+  }
+
+  private static void EmitSharedObjectEventPartial(
+      SourceProductionContext context,
+      ExpoSharedObjectModel sharedObject)
+  {
+    var events = sharedObject.Events.Values.Where(@event => @event.IsShapeValid).ToArray();
+    if (events.Length == 0)
+    {
+      return;
+    }
+
+    var dispatchableEvents = events.Where(@event => @event.IsDispatchable).ToArray();
+    var builder = new StringBuilder();
+    builder.AppendLine("// <auto-generated/>");
+    builder.AppendLine("#nullable enable");
+    if (sharedObject.Namespace.Length > 0)
+    {
+      builder.AppendLine($"namespace {sharedObject.Namespace};");
+      builder.AppendLine();
+    }
+    builder.AppendLine($"{sharedObject.Accessibility} partial class {EscapeIdentifier(sharedObject.SimpleTypeName)}");
+    builder.AppendLine("{");
+    if (dispatchableEvents.Length > 0)
+    {
+      builder.AppendLine("  private readonly object __expoSharedObjectEventInitializationGate = new();");
+      builder.AppendLine("  private global::Expo.ModulesCore.DotnetRuntimeContext? __expoSharedObjectEventContext;");
+    }
+    foreach (var @event in dispatchableEvents)
+    {
+      builder.AppendLine($"  private {@event.DelegateTypeName}? __expoSharedObjectEvent_{SanitizeIdentifier(@event.PropertyName)};");
+    }
+    foreach (var @event in events)
+    {
+      builder.AppendLine();
+      builder.AppendLine($"  {@event.DeclarationModifiers} {@event.DelegateTypeName} {EscapeIdentifier(@event.PropertyName)}");
+      builder.AppendLine("  {");
+      if (@event.GetterAccessor.Length > 0)
+      {
+        var getterExpression = @event.IsDispatchable
+            ? $"__expoSharedObjectEvent_{SanitizeIdentifier(@event.PropertyName)} ?? throw new global::System.InvalidOperationException(\"Event member '{sharedObject.SimpleTypeName}.{@event.PropertyName}' is unavailable before shared-object pairing.\")"
+            : $"throw new global::System.InvalidOperationException(\"Event member '{sharedObject.SimpleTypeName}.{@event.PropertyName}' cannot be used because its declaration is invalid.\")";
+        builder.AppendLine($"    {@event.GetterAccessor} => {getterExpression};");
+      }
+      if (@event.SetterAccessor.Length > 0)
+      {
+        builder.AppendLine($"    {@event.SetterAccessor} => throw new global::System.InvalidOperationException(\"Event member '{sharedObject.SimpleTypeName}.{@event.PropertyName}' cannot be assigned.\");");
+      }
+      builder.AppendLine("  }");
+    }
+    if (dispatchableEvents.Length > 0)
+    {
+      builder.AppendLine();
+      builder.AppendLine("  internal void __ExpoModulesCoreInitializeSharedObjectEvents(");
+      builder.AppendLine("      global::Expo.ModulesCore.DotnetRuntimeContext context,");
+      for (var index = 0; index < dispatchableEvents.Length; index++)
+      {
+        var @event = dispatchableEvents[index];
+        builder.AppendLine($"      {@event.DelegateTypeName} {GetEventParameterName(@event)}{(index == dispatchableEvents.Length - 1 ? ")" : ",")}");
+      }
+      builder.AppendLine("  {");
+      builder.AppendLine("    lock (__expoSharedObjectEventInitializationGate)");
+      builder.AppendLine("    {");
+      builder.AppendLine("      if (__expoSharedObjectEventContext is not null)");
+      builder.AppendLine("      {");
+      builder.AppendLine("        if (!global::System.Object.ReferenceEquals(__expoSharedObjectEventContext, context))");
+      builder.AppendLine("          throw new global::System.InvalidOperationException(\"Shared-object event members cannot be rebound to a different runtime context.\");");
+      builder.AppendLine("        return;");
+      builder.AppendLine("      }");
+      builder.AppendLine($"      global::Expo.ModulesCore.GeneratedSharedObjectEvents.Attach(context, this, new[] {{ {string.Join(", ", dispatchableEvents.Select(@event => $"\"{EscapeString(@event.JavaScriptName)}\""))} }});");
+      foreach (var @event in dispatchableEvents)
+      {
+        builder.AppendLine($"      __expoSharedObjectEvent_{SanitizeIdentifier(@event.PropertyName)} = {GetEventParameterName(@event)} ?? throw new global::System.ArgumentNullException(nameof({GetEventParameterName(@event)}));");
+      }
+      builder.AppendLine("      __expoSharedObjectEventContext = context ?? throw new global::System.ArgumentNullException(nameof(context));");
+      builder.AppendLine("    }");
+      builder.AppendLine("  }");
+    }
+    builder.AppendLine("}");
+    context.AddSource(
+        $"{SanitizeIdentifier(sharedObject.FullyQualifiedTypeName)}_{GetStableHash(sharedObject.FullyQualifiedTypeName):X8}.SharedObjectEvents.g.cs",
+        SourceText.From(builder.ToString(), Encoding.UTF8)
+    );
   }
 
   private static void EmitTypedEventProviderHelpers(StringBuilder builder, ExpoModuleModel module)
@@ -2719,6 +2912,9 @@ public sealed class ExpoModulesGenerator : IIncrementalGenerator
       "EXPOJSI023" => ExpoModulesDiagnostics.UnsupportedSharedObjectUsage,
       "EXPOJSI024" => ExpoModulesDiagnostics.InvalidSharedObjectOwnership,
       "EXPOJSI025" => ExpoModulesDiagnostics.InvalidSharedObjectMemberName,
+      "EXPOJSI026" => ExpoModulesDiagnostics.UnsupportedSharedObjectEventProperty,
+      "EXPOJSI027" => ExpoModulesDiagnostics.UnsupportedSharedObjectEventPayload,
+      "EXPOJSI028" => ExpoModulesDiagnostics.InvalidSharedObjectEventName,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());

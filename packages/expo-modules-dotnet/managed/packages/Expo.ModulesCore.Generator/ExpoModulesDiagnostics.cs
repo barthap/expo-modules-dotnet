@@ -228,4 +228,31 @@ internal static class ExpoModulesDiagnostics
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true
   );
+
+  public static readonly DiagnosticDescriptor UnsupportedSharedObjectEventProperty = new(
+      id: "EXPOJSI026",
+      title: "Unsupported Expo shared object event property",
+      messageFormat: "Shared object class '{0}' event property '{1}' is unsupported because it is {2}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor UnsupportedSharedObjectEventPayload = new(
+      id: "EXPOJSI027",
+      title: "Unsupported Expo shared object event payload",
+      messageFormat: "Shared object class '{0}' event property '{1}' uses unsupported payload type '{2}': {3}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor InvalidSharedObjectEventName = new(
+      id: "EXPOJSI028",
+      title: "Invalid Expo shared object event name",
+      messageFormat: "Shared object class '{0}' event property '{1}' resolves to invalid event name '{2}': {3}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
 }

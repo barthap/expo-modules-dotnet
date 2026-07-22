@@ -2705,10 +2705,6 @@ public sealed class ExpoModulesGeneratorTests
   [InlineData("[JS] public decimal Total => 0m;", "Total", "System.Decimal")]
   [InlineData("[JS] public decimal GetTotal() => 0m;", "GetTotal", "System.Decimal")]
   [InlineData("[JS] public void Store(decimal value) { }", "Store", "System.Decimal")]
-  [InlineData(
-      "[Event] public System.Func<System.Threading.Tasks.Task> OnChange { get; } = null!;",
-      "OnChange",
-      "[Event] is not supported on shared object classes")]
   public void GeneratorReportsInvalidSharedObjectMember(
       string member,
       string memberName,
@@ -2737,6 +2733,35 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Contains(memberName, diagnostic.GetMessage());
     Assert.Contains(expectedReason, diagnostic.GetMessage());
     Assert.NotEqual(Location.None, diagnostic.Location);
+    Assert.DoesNotContain(result.Diagnostics, item =>
+        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void GeneratorReportsNonPartialSharedObjectEvent()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+          [Event] public System.Func<System.Threading.Tasks.Task> OnChange { get; } = null!;
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI026");
+    Assert.Contains("OnChange", diagnostic.GetMessage());
+    Assert.Contains("non-partial", diagnostic.GetMessage());
     Assert.DoesNotContain(result.Diagnostics, item =>
         item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
   }
@@ -3387,6 +3412,76 @@ public sealed class ExpoModulesGeneratorTests
     );
 
     Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+  }
+
+  [Fact]
+  public void GeneratorEmitsAwaitableSharedObjectEventBinding()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public sealed record Progress(double Value);
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+          [Event]
+          public partial Func<Progress, Task> OnProgress { get; }
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var provider = Assert.Single(result.GeneratedSources, source => source.HintName.Contains("Provider"));
+    var partial = Assert.Single(result.GeneratedSources, source => source.HintName.Contains("SharedObjectEvents"));
+    Assert.Contains("private readonly struct ProgressCodec", provider.Text);
+    Assert.Contains(
+        "GeneratedSharedObjectEvents.EmitAsync<ProgressCodec, global::Expo.TestModules.Progress>(context, sharedObject, \"onProgress\", onProgressValue)",
+        provider.Text
+    );
+    Assert.Contains("__ExpoModulesCoreInitializeSharedObjectEvents", partial.Text);
+  }
+
+  [Theory]
+  [InlineData("[Event] public partial Action OnProgress { get; }", "EXPOJSI026")]
+  [InlineData("[Event] public partial Func<JavaScriptCallback<string>, Task> OnProgress { get; }", "EXPOJSI027")]
+  [InlineData("[Event(\"release\")] public partial Func<Task> OnProgress { get; }", "EXPOJSI028")]
+  public void GeneratorReportsInvalidSharedObjectEvent(string member, string diagnosticId)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+          {{member}}
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """
+    );
+
+    Assert.Single(result.Diagnostics, diagnostic => diagnostic.Id == diagnosticId);
+    Assert.DoesNotContain(result.Diagnostics, diagnostic =>
+        diagnostic.Id.StartsWith("CS", StringComparison.Ordinal) && diagnostic.Severity == DiagnosticSeverity.Error);
   }
 
   [Fact]

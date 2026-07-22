@@ -11,6 +11,7 @@ internal sealed record ExpoSharedObjectModel(
     Location? Location,
     bool IsValid,
     ExpoSharedObjectConstructorModel? Constructor,
+    EquatableArray<ExpoEventModel> Events,
     EquatableArray<ExpoFunctionModel> Functions,
     EquatableArray<ExpoPropertyModel> Properties,
     EquatableArray<ExpoGeneratedRecordCodecModel> RecordCodecs,
