@@ -58,6 +58,26 @@ default and uses `dotnet build`; NativeAOT uses `dotnet publish -r <rid>
 points from the published shared library. The native CMake flag
 `EXPO_JSI_DOTNET_LOADER` mirrors the script environment variable.
 
+## Linux
+
+Build a Linux Hermes prebuilt first:
+
+```sh
+scripts/build-hermes-linux.sh
+```
+
+Run the HostFXR and NativeAOT console proofs:
+
+```sh
+scripts/run-hermes-console-app.sh
+EXPO_JSI_DOTNET_LOADER=nativeaot scripts/run-hermes-console-app.sh
+```
+
+On a non-Linux development machine, run the Linux proof in a .NET SDK Docker
+container. Set `HERMES_WORK_DIR` while building Hermes and
+`HERMES_PREBUILT_ROOT` while running the console app to separate Linux
+destroot from the host platform prebuilt.
+
 ## Windows
 
 Build or stage a Windows Hermes prebuilt first:
