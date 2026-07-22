@@ -127,17 +127,29 @@ describe('DotnetSharedObject', () => {
     );
   });
 
-  it('exposes only constructor and release on its prototype', async () => {
+  it('exposes release and the typed event-emitter method set on its prototype', async () => {
     const { DotnetSharedObject } = await import('../index');
     expect(Object.getOwnPropertyNames(DotnetSharedObject.prototype).sort()).toEqual([
+      'addListener',
       'constructor',
+      'emit',
+      'listenerCount',
       'release',
+      'removeAllListeners',
+      'removeListener',
     ]);
   });
 
   it('throws the same facade guidance from the placeholder release()', async () => {
     const { DotnetSharedObject } = await import('../index');
     expect(() => DotnetSharedObject.prototype.release.call({})).toThrowError(
+      /generated class|module return/
+    );
+  });
+
+  it('keeps event placeholders on the shared-object facade', async () => {
+    const { DotnetSharedObject } = await import('../index');
+    expect(() => DotnetSharedObject.prototype.addListener.call({}, 'onProgress', () => {})).toThrowError(
       /generated class|module return/
     );
   });

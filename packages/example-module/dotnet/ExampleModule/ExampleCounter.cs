@@ -31,6 +31,17 @@ public sealed partial class ExampleCounter : SharedObject
     return Count;
   }
 
+  [JS]
+  public async Task<double> IncrementAndEmitAsync(double by)
+  {
+    Count += by;
+    await OnProgress(new ExampleCounterProgress(Count));
+    return Count;
+  }
+
+  [Event]
+  public partial Func<ExampleCounterProgress, Task> OnProgress { get; }
+
   /// <summary>
   /// Cleans up the counter's resources; the guard keeps the cleanup idempotent even though the
   /// runtime already guarantees at most one invocation.
@@ -46,3 +57,5 @@ public sealed partial class ExampleCounter : SharedObject
     Count = 0;
   }
 }
+
+public readonly record struct ExampleCounterProgress(double Count);
