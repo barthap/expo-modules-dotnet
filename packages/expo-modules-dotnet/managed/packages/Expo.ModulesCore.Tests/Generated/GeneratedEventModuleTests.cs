@@ -567,9 +567,9 @@ public sealed class GeneratedEventModuleTests
     typed.Fixture.SetSyncExecutionSupportedForTesting(true);
     typed.DisposeContextWithoutRuntimeAccess();
     typed.Fixture.ResumeRuntimeExecutor();
-    typed.Fixture.WaitUntilIdle();
 
     await Assert.ThrowsAnyAsync<Exception>(async () => await emitted);
+    typed.Fixture.WaitUntilIdle();
     Assert.Equal(1u, typed.Fixture.Counters.LongLivedArrayBuffersReleased);
     Assert.Equal(0u, typed.Fixture.Counters.LongLivedArrayBuffersAbandoned);
   }
