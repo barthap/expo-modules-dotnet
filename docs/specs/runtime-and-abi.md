@@ -319,15 +319,36 @@ the loader choice SHALL NOT change the C ABI shape passed into managed code.
 - **AND** MutableBuffer discovery SHALL report no backing MutableBuffer
 - **AND** detachment probing SHALL treat the buffer as not introspectable
 
-#### Scenario: Windows bridge defers React Native core paths to RNW
-- **GIVEN** a Windows app builds `ExpoModulesDotnet` through RNW property
-  sheets
-- **WHEN** the adapter compiles for either HostFXR or NativeAOT
-- **THEN** the adapter project SHALL not derive `ReactNativeDir` from its own
+#### Scenario: Windows config-plugin resolution is deferred to expo-desktop
+- **GIVEN** a Windows app lists `expo-modules-dotnet` as an Expo config plugin
+- **WHEN** standard Expo prebuild or the React Native Windows CLI runs
+- **THEN** the app SHALL NOT assume that the plugin's `windows` dangerous mod
+  has executed or that it generated `.expo/dotnet/windows/` properties
+- **AND** standard Expo prebuild and the RNW CLI SHALL NOT be documented as
+  supported Windows prebuild hosts for that mod
+- **AND** the app-scoped Node resolver remains deferred until expo-desktop
+  provides a supported Windows prebuild/mod execution path
+- **AND** the adapter project SHALL not derive `ReactNativeDir` from its own
   package directory or assume it is a sibling of `react-native-windows`
-- **AND** it SHALL not add an independent `ReactCommon` include root
-- **AND** imported RNW property sheets SHALL provide the JSI and CallInvoker
-  include paths used by the adapter
+
+#### Scenario: Windows bridge proves a build-host-provided core-header path
+- **GIVEN** a Windows build host supplies `ReactNativeDir` before the adapter
+  project evaluates
+- **WHEN** the adapter compiles for either HostFXR or NativeAOT
+- **THEN** it SHALL compile a dedicated `ReactNativeVersion.h` translation
+  unit through `$(ReactNativeDir)\\ReactCommon`
+- **AND** that translation unit SHALL use a React Native version macro only as
+  a compile-time assertion with no runtime behavior
+- **AND** imported RNW property sheets SHALL continue to provide the JSI and
+  CallInvoker include paths used by the adapter
+
+#### Scenario: Windows core-header resolution does not change ArrayBuffer selection
+- **GIVEN** the Windows adapter compiles its app-scoped header proof
+- **WHEN** the shared JSI bridge selects ArrayBuffer behavior
+- **THEN** `ArrayBufferCapabilities.h` and `ExpoJsiBridge.cpp` SHALL continue
+  to use selected-JSI C++20 capability checks
+- **AND** neither file SHALL include `ReactNativeVersion.h`, use
+  `REACT_NATIVE_VERSION_*`, or introduce a preprocessor version gate
 
 #### Scenario: Desktop NativeAOT entry point uses the same registration ABI
 - **GIVEN** `apps/desktop-app` selects the `nativeaot` loader and stages a

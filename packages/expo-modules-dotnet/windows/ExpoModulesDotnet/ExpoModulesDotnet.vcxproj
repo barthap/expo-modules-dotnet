@@ -83,6 +83,7 @@
         $(MSBuildThisFileDirectory);
         $(MSBuildThisFileDirectory)..\..\native\include;
         $(MSBuildThisFileDirectory)..\..\native\packages\jsi\include;
+        $(ReactNativeDir)\ReactCommon;
         %(AdditionalIncludeDirectories)
       </AdditionalIncludeDirectories>
     </ClCompile>
@@ -125,6 +126,9 @@
     </ClCompile>
     <ClCompile Include="ExpoModulesDotnetInstaller.cpp" />
     <ClCompile Include="ManagedLoader.cpp" />
+    <ClCompile Include="ReactNativeHeaderResolution.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="ReactPackageProvider.cpp">
       <DependentUpon>ReactPackageProvider.idl</DependentUpon>
     </ClCompile>
@@ -157,5 +161,6 @@
     </PropertyGroup>
     <Error Condition="!Exists('$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.props')" Text="$([System.String]::Format('$(ErrorText)', '$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.props'))" />
     <Error Condition="!Exists('$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.targets')" Text="$([System.String]::Format('$(ErrorText)', '$(ReactNativeWindowsDir)\PropertySheets\External\Microsoft.ReactNative.CppLib.targets'))" />
+    <Error Condition="'$(ReactNativeDir)' == ''" Text="ExpoModulesDotnet requires an app-provided ReactNativeDir. Run the expo-modules-dotnet Windows config plugin before building." />
   </Target>
 </Project>

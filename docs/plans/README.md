@@ -27,7 +27,7 @@ fully before starting, honor its STOP conditions, and update your row when done.
 | 015 | Promise capability migration onto runtime-owned long-lived collection | P2 | M | — | DONE — Promise capability state is runtime-owned, settlement/teardown races are covered, and managed opaque handles are leased. |
 | 016 | NativeAOT publish check in CI (linux-x64 compile-time proof; end-to-end loader lane deferred) | P1 | S | — | DONE — `1f8d0414` adds the publish-only AOT job; local macOS and Docker Linux publishes plus actionlint passed. |
 | 017 | SharedObject public authoring surface | P2 | L | 015, 016 recommended first | DONE — generated exact-type SharedObject authoring with module-owned JS classes, transactional registry pairing, SharedRef<T>, TS facade, ExampleCounter example, and merged docs. |
-| 018 | Windows RNW build/deploy reliability + ReactNativeDir resolver | P1/P2 | L | — (needs Windows machine) | BLOCKED — current executor is on macOS; Windows + VS 2026 + RNW 0.81 prerequisite is unavailable. |
+| 018 | Windows RNW build/deploy reliability + ReactNativeDir resolver | P1/P2 | L | — | OPEN — P1 direct MSBuild, RNW CLI build/deploy/launch, and live-app rebuild attempts did not reproduce a PDB lock. P2 resolver helpers and the isolated core-header proof are retained, but activation is deferred until expo-desktop supports Windows prebuild/mod execution. |
 | 019 | Typed `[Event]` members on shared objects | P2 | M | 017, 021 | DONE |
 | 020 | hermes-console-app Linux port + end-to-end loader lane in CI (hostfxr + nativeaot) | P1 | M | 016 | DONE — Linux HostFXR and NativeAOT Docker proofs, macOS regressions, managed tests, formatting, and workflow lint passed; implemented at `be4ac86f`, `dc526e83`, `819d8622`, and `b21f3d9b`. |
 | 021 | Exactly-once owned callback-state disposal for host functions (`Expo.JSI`) | P2 | S–M | — | DONE — preserved the four-parameter API, added the owned-state overload, and verified GC, teardown, failure, and concurrent release. |
@@ -153,8 +153,10 @@ counter stay armed. Detail in `009-windows-testhost-teardown-crash.md`.
   state (a `JavaScriptWeakObject`) exactly once across creation failure, JS
   GC, and teardown. Run 021 → 019. The same gap in `HostObjectContext` is
   recorded as deferred follow-up inside 021, not a plan.
-- 018 includes the `ReactNativeDir` resolver implementation (operator
-  decision 2026-07-20; supersedes the earlier design-only scoping).
+- 018 retains app-scoped `ReactNativeDir` resolver helpers (operator decision
+  2026-07-20), but standard Expo prebuild does not execute Windows mods and
+  the RNW CLI does not consume Expo config-plugin mods. Activating the resolver
+  is deferred until expo-desktop supplies a supported Windows prebuild path.
 - 014 requires 013: it reuses the camelCase naming default and the
   generator's property-scanning machinery introduced there.
 - 013/014 come from the Expo Modules 2.0 alignment request (operator-provided

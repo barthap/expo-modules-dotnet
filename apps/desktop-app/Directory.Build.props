@@ -1,0 +1,4 @@
+<Project>
+  <!-- expo-modules-dotnet-react-native-dir -->
+  <Import Project="$(MSBuildThisFileDirectory).expo\dotnet\windows\ExpoDotnetReactNativeDir.props" Condition="Exists('$(MSBuildThisFileDirectory).expo\dotnet\windows\ExpoDotnetReactNativeDir.props')" />
+</Project>

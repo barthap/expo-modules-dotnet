@@ -2,6 +2,9 @@
   "expo": {
     "name": "Desktop App",
     "slug": "desktop-app",
-    "scheme": "desktopapp"
+    "scheme": "desktopapp",
+    "plugins": [
+      "expo-modules-dotnet"
+    ]
   }
 }

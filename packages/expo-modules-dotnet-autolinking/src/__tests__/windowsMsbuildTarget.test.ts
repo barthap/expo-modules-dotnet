@@ -19,7 +19,7 @@ describe('Windows MSBuild autolinking target', () => {
     expect(target).toContain('<Target Name="ExpoDotnetLink" BeforeTargets="PrepareForBuild">');
   });
 
-  it('leaves React Native core resolution to RNW property sheets', () => {
+  it('uses an app-provided React Native core-header path without a sibling fallback', () => {
     const projectPath = path.resolve(
       __dirname,
       '..',
@@ -30,10 +30,29 @@ describe('Windows MSBuild autolinking target', () => {
       'ExpoModulesDotnet',
       'ExpoModulesDotnet.vcxproj'
     );
+    const headerResolutionPath = path.resolve(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'expo-modules-dotnet',
+      'windows',
+      'ExpoModulesDotnet',
+      'ReactNativeHeaderResolution.cpp'
+    );
     const project = fs.readFileSync(projectPath, 'utf8');
+    const headerResolution = fs.readFileSync(headerResolutionPath, 'utf8');
 
     expect(project).not.toContain('<ReactNativeDir ');
-    expect(project).not.toContain('$(ReactNativeDir)\\ReactCommon');
+    expect(project).toContain('$(ReactNativeDir)\\ReactCommon');
+    expect(project).toContain('<ClCompile Include="ReactNativeHeaderResolution.cpp">');
+    expect(project).toContain('<PrecompiledHeader>NotUsing</PrecompiledHeader>');
+    expect(project).not.toContain('$(ReactNativeWindowsDir)..\\react-native');
+    expect(project).not.toContain(
+      "GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), 'node_modules\\react-native\\package.json')"
+    );
+    expect(headerResolution).toContain('#include <cxxreact/ReactNativeVersion.h>');
+    expect(headerResolution).toContain('REACT_NATIVE_VERSION_MAJOR');
   });
 
   it('uses the selected JSI declaration for ArrayBuffer capabilities', () => {

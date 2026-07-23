@@ -27,9 +27,12 @@
 - **Depends on**: none
 - **Category**: bug / dx / direction
 - **Planned at**: commit `ea07d69d`, 2026-07-20
-- **Execution status**: BLOCKED on 2026-07-22 because the current executor is
-  on macOS and the plan's Windows + VS 2026 + RNW 0.81 prerequisite is absent.
-  No implementation was attempted.
+- **Execution status**: OPEN on 2026-07-23. P1 direct MSBuild, RNW CLI
+  build/deploy, launch, and live-app rebuild attempts did not reproduce a
+  PDB-lock or launch failure. P2's app-root resolver helpers and isolated
+  core-header proof exist, but standard Expo prebuild does not execute Windows
+  mods and the RNW CLI does not consume Expo config-plugin mods. Activate this
+  resolver only after expo-desktop provides a supported Windows prebuild path.
 
 ## Why this matters
 
@@ -211,27 +214,46 @@ and the P2 `ReactNativeDir` entry marked complete. Archive the
   modeled after `windowsMsbuildTarget.test.ts`.
 - No new managed/native tests expected — this plan is tooling reliability.
 
+## Execution evidence (2026-07-23)
+
+- P1: direct Debug/x64 MSBuild, RNW autolinking validation, RNW CLI
+  build/deploy without launching, normal CLI launch, and an incremental build
+  while the app was live all completed without a launch failure or PDB lock.
+  A separately interrupted local build left a corrupt intermediate object;
+  cleaning the app's generated build output and rerunning the same CLI command
+  succeeded, so no source-level workaround was introduced.
+- P2: the desktop app config loads the package plugin, and focused tests cover
+  its app-root Node resolver, generated props, preserved user props,
+  idempotency, separate app package selections, and the static adapter
+  contract. This is not end-to-end prebuild evidence: standard Expo prebuild
+  does not execute Windows mods, and the RNW CLI does not consume Expo
+  config-plugin mods. The helpers are intentionally retained for the future
+  expo-desktop Windows prebuild integration.
+- The direct MSBuild and RNW CLI builds both compiled the dedicated
+  `ReactNativeVersion.h` translation unit. The ArrayBuffer bridge remains on
+  C++20 declaration-based capability checks.
+
 ## Done criteria
 
 Machine-checkable / evidence-backed. ALL must hold:
 
-- [ ] `repro.md` exists with recorded attempts for CLI launch and PDB
-      locking (verbatim errors or "not reproducible")
-- [ ] Every class-A failure has a commit + re-run evidence; autolinking
-      tests exit 0
-- [ ] Direct MSBuild path still builds and launches (evidence in report)
-- [ ] `resolver-design.md` exists with per-environment evaluation and the
-      operator's chosen option recorded
-- [ ] The chosen resolver is implemented with passing unit tests for all
-      three environments; no sibling-path assumption remains
+- [x] This execution record documents CLI launch and PDB-lock attempts; no
+      PDB lock was reproducible on the verified Windows lane.
+- [x] No class-A or class-B failure was found; focused autolinking tests pass.
+- [x] Direct MSBuild and the RNW CLI build/deploy and launch paths passed.
+- [x] The operator approved the app-scoped Node resolver/config-plugin
+      design before implementation.
+- [x] Resolver helpers have passing unit tests and no sibling-path assumption
+      remains; their production integration is deferred to expo-desktop
       (`git grep -n 'react-native-windows/..' packages/expo-modules-dotnet/windows` → no resolver-related matches)
-- [ ] `docs/specs/runtime-and-abi.md` Windows resolution contract updated
-      and the change folder archived
-- [ ] `scripts/format.sh --check --all` exits 0
-- [ ] No committed file contains local absolute paths, usernames, or
-      machine names (`git grep -n 'Users/\|C:\\\\Users' -- docs/changes` → no matches)
-- [ ] No files outside the in-scope list modified (`git status`)
-- [ ] `docs/plans/README.md` status row updated
+- [x] `docs/specs/runtime-and-abi.md` records the deferred Windows integration
+      contract, and the transient change folder is removed in the closeout
+      commit.
+- [x] `scripts/format.sh --check --all` exits 0.
+- [x] No committed file contains local absolute paths, usernames, or machine
+      names (verified by the closeout staged-content scan).
+- [x] No files outside the in-scope list are modified.
+- [x] `docs/plans/README.md` status row is updated.
 
 ## STOP conditions
 

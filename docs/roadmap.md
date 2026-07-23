@@ -26,8 +26,9 @@ current behavior; archived docs provide provenance.
 - `apps/desktop-app` also contains a React Native Windows example app. Direct
   MSBuild validates the Windows adapter, HostFXR artifact staging, and app
   output layout on the React Native Windows 0.81 lane. Windows now follows the
-  shared `DotnetRuntimeContext` lifecycle shape; the RNW CLI build/deploy path
-  still has VS 2026/PDB locking follow-up work.
+  shared `DotnetRuntimeContext` lifecycle shape. Windows verification on
+  2026-07-23 passed direct MSBuild, RNW CLI build/deploy and launch, and a
+  live-app rebuild attempt without reproducing a PDB lock.
 
 ## Priority Roadmap
 
@@ -287,21 +288,19 @@ options.
   `ExpoModulesDotnetLoader` `Info.plist` entry, `Managed` folder resource, and
   any macOS Podfile/autolinking shim still required by the supported
   `expo-desktop` / React Native macOS lane.
-- **P1 — Windows build/deploy reliability**: The Windows adapter and direct
-  MSBuild example app live in `apps/desktop-app` and
-  `packages/expo-modules-dotnet/windows`. Lifecycle teardown now follows
-  `DotnetRuntimeContext`; remaining production work includes RNW CLI launch
-  reliability and VS/PDB locking issues.
-- **P2 — Windows `ReactNativeDir` resolution**: The adapter currently relies
-  on RNW property sheets for the JSI and CallInvoker include paths. Future
-  Windows adapter work that needs `ReactNativeDir` must resolve the consuming
-  app's selected `react-native` package, not walk from the physical package
-  directory or assume it is a sibling of `react-native-windows`. Design an
-  app-scoped Node resolver/config-plugin or an RNW target-provided property
-  that works for pnpm monorepos, independently versioned desktop/mobile apps,
-  and direct MSBuild invocations. Context: commit
-  `3c64fb4d12466f281459672dda06cc519062b319` used the sibling-path workaround
-  that must not become the general resolver.
+- **P1 — Windows build/deploy reliability** (complete for the current RNW
+  0.81 / VS 2026 lane): Direct MSBuild, RNW CLI build/deploy and launch, and a
+  live-app rebuild attempt were exercised on 2026-07-23 without reproducing a
+  PDB lock or launch failure. No in-repo reliability workaround was warranted.
+- **P2 — Windows `ReactNativeDir` resolution** (deferred until expo-desktop
+  supports Windows prebuild): The package contains an app-root Node resolver
+  and generated-props helper, but standard Expo prebuild does not execute
+  Windows mods and the RNW CLI does not consume Expo config-plugin mods. It is
+  therefore not a supported current build path. Require expo-desktop to provide
+  Windows prebuild/mod execution before making that resolver active. The
+  adapter's isolated `ReactNativeVersion.h` proof remains, with RNW owning JSI
+  and CallInvoker include paths and ArrayBuffer selection remaining
+  declaration-based rather than version-macro based.
 - **P3 — View adapters**: Platform-specific native view creation, prop mapping,
   event routing. Platform-gated — no view concepts in the portable core.
 - **P3 — NativeAOT for iOS and Android**: The current example app lives under
