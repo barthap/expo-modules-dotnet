@@ -3,7 +3,7 @@ using System.Text;
 using Expo.JSI;
 using Expo.JSI.Interop;
 
-namespace Expo.ModulesCore.Tests.Fixtures;
+namespace Expo.ModulesCore.Testing.Internal;
 
 internal static unsafe class NativeTestHost
 {
@@ -340,16 +340,28 @@ internal static unsafe class NativeTestHost
 
   private static nint LoadLibrary()
   {
-    var path = Environment.GetEnvironmentVariable(LibraryEnvVar);
+    var path = ValidateLibraryPath(Environment.GetEnvironmentVariable(LibraryEnvVar));
+    return NativeLibrary.Load(path);
+  }
+
+  internal static string ValidateLibraryPath(string? path)
+  {
     if (string.IsNullOrWhiteSpace(path))
     {
-      throw new InvalidOperationException($"{LibraryEnvVar} is not set. Run scripts/test-managed.sh.");
+      throw new InvalidOperationException(
+          "EXPO_JSI_TESTHOST_LIBRARY is not set. Run scripts/test-managed.sh " +
+          "or scripts/test-managed.ps1."
+      );
     }
     if (!File.Exists(path))
     {
-      throw new FileNotFoundException($"{LibraryEnvVar} points to a missing library.", path);
+      throw new FileNotFoundException(
+          "EXPO_JSI_TESTHOST_LIBRARY points to a missing library. Run " +
+          "scripts/test-managed.sh or scripts/test-managed.ps1.",
+          path
+      );
     }
-    return NativeLibrary.Load(path);
+    return path;
   }
 
   private static nint LoadExport(nint library, string name)

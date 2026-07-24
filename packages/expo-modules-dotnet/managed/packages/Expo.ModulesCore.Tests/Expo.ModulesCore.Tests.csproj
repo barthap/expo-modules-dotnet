@@ -16,6 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="../../../../example-module/dotnet/ExampleModule/ExampleModule.csproj" />
     <ProjectReference Include="../Expo.ModulesCore/Expo.ModulesCore.csproj" />
+    <ProjectReference Include="../Expo.ModulesCore.Testing/Expo.ModulesCore.Testing.csproj" />
     <ProjectReference
       Include="../Expo.ModulesCore.Generator/Expo.ModulesCore.Generator.csproj"
       OutputItemType="Analyzer"

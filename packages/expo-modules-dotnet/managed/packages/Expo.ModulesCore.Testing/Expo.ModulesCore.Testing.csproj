@@ -4,10 +4,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
+
   <ItemGroup>
-    <InternalsVisibleTo Include="Expo.JSI.Tests" />
-    <InternalsVisibleTo Include="Expo.ModulesCore.Tests" />
-    <InternalsVisibleTo Include="Expo.ModulesCore.Testing" />
+    <ProjectReference Include="../Expo.ModulesCore/Expo.ModulesCore.csproj" />
   </ItemGroup>
 </Project>
