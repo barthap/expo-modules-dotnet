@@ -685,9 +685,10 @@ scripts/test-managed.ps1
 scripts/test-managed.ps1 -Project packages/example-module/dotnet/ExampleModule.Tests/ExampleModule.Tests.csproj
 ```
 
-Direct `dotnet test` is valid for a project containing only pure C# tests. An
-unfiltered project that mixes pure tests with Hermes-backed tests requires the
-canonical runner so it can build and provide the native testhost.
+Direct `dotnet test` is valid for a project containing only pure C# tests, or
+for a pure-test filter in a project that also contains Hermes-backed tests. An
+unfiltered mixed project requires the canonical runner so it can build and
+provide the native testhost.
 
 ## 12. Troubleshooting
 

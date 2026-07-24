@@ -65,7 +65,8 @@ testhost and run the same managed test projects. All runners SHALL pass
 - **THEN** it SHALL deterministically discover
   `packages/*/dotnet/*.Tests/*.Tests.csproj`
 - **AND** it SHALL build one native Hermes testhost, pass
-  `EXPO_JSI_TESTHOST_LIBRARY` to managed tests, and run `Expo.JSI.Tests`,
+  `EXPO_JSI_TESTHOST_LIBRARY` to managed tests, and run
+  `Expo.ModulesCore.Generator.Tests`, `Expo.JSI.Tests`,
   `Expo.ModulesCore.Tests`, and the discovered authored-module test projects
 - **AND** the testhost library name SHALL be `libexpo_jsi_testhost.dylib` on
   macOS and `libexpo_jsi_testhost.so` on Linux

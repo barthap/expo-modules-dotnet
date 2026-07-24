@@ -146,6 +146,71 @@ public sealed partial class ExpoModuleTestHostTests
   }
 
   [Fact]
+  public async Task RepeatedPromiseFulfillmentReleasesEveryOwnedValue()
+  {
+    using var host = ExpoModuleTestHost.Create((_, _) => { });
+    host.TestRuntime.ResetCounters();
+
+    for (var iteration = 0; iteration < 10; iteration++)
+    {
+      using var result = await host.EvaluatePromiseAsync(
+          "Promise.resolve('ready')",
+          TestContext.Current.CancellationToken
+      );
+      host.Runtime.Execute(_ =>
+      {
+        Assert.Equal("ready", result.AsString());
+        return true;
+      });
+    }
+
+    host.TestRuntime.WaitUntilIdle();
+    Assert.Equal(110u, host.TestRuntime.Counters.ReleasedValues);
+  }
+
+  [Fact]
+  public async Task RejectionWithThrowingToStringSettlesWithExtractionContext()
+  {
+    using var host = ExpoModuleTestHost.Create((_, _) => { });
+
+    var exception = await Assert.ThrowsAsync<JavaScriptPromiseRejectedException>(
+        () => host.EvaluatePromiseAsync(
+            "Promise.reject({ toString() { throw new Error('toString failed'); } })",
+            TestContext.Current.CancellationToken
+        )
+    );
+
+    Assert.StartsWith("Failed to extract JavaScript Promise rejection:", exception.Message);
+    Assert.Contains("toString failed", exception.Message);
+    Assert.Equal(0, host.ActivePromiseEvaluationCount);
+  }
+
+  [Fact]
+  public async Task RejectionWithThrowingErrorPropertySettlesWithExtractionContext()
+  {
+    using var host = ExpoModuleTestHost.Create((_, _) => { });
+
+    var exception = await Assert.ThrowsAsync<JavaScriptPromiseRejectedException>(
+        () => host.EvaluatePromiseAsync(
+            """
+            (() => {
+              const error = new Error('original failure');
+              Object.defineProperty(error, 'message', {
+                get() { throw new Error('message getter failed'); }
+              });
+              return Promise.reject(error);
+            })()
+            """,
+            TestContext.Current.CancellationToken
+        )
+    );
+
+    Assert.StartsWith("Failed to extract JavaScript Promise rejection:", exception.Message);
+    Assert.Contains("message getter failed", exception.Message);
+    Assert.Equal(0, host.ActivePromiseEvaluationCount);
+  }
+
+  [Fact]
   public async Task PromiseEvaluationRejectsSynchronousValue()
   {
     using var host = ExpoModuleTestHost.Create((_, _) => { });

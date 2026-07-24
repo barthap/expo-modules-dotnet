@@ -122,7 +122,8 @@ public sealed class ExpoModuleTestHost : IDisposable
           }
 
           using var promiseObject = promise.AsObject();
-          using var then = promiseObject.GetProperty("then").AsFunction();
+          using var thenValue = promiseObject.GetProperty("then");
+          using var then = thenValue.AsFunction();
           using var onFulfilled = runtime.CreateHostFunction(
               "resolvePromise",
               1,
@@ -269,9 +270,21 @@ public sealed class ExpoModuleTestHost : IDisposable
       object stateObject
   )
   {
-    var rejection = arguments.Count == 0
-        ? new JavaScriptPromiseRejectedException("undefined", null, null)
-        : CreateRejectionException(arguments.GetValue(0));
+    JavaScriptPromiseRejectedException rejection;
+    try
+    {
+      rejection = arguments.Count == 0
+          ? new JavaScriptPromiseRejectedException("undefined", null, null)
+          : CreateRejectionException(arguments.GetValue(0));
+    }
+    catch (Exception exception)
+    {
+      rejection = new JavaScriptPromiseRejectedException(
+          $"Failed to extract JavaScript Promise rejection: {exception.Message}",
+          null,
+          null
+      );
+    }
     ((PromiseEvaluationState)stateObject).TryReject(rejection);
     return runtime.CreateUndefined();
   }

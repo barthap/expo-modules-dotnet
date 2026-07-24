@@ -39,57 +39,81 @@ function Invoke-Process {
   }
 }
 
-$testProjects = [System.Collections.Generic.List[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-if ($Project.Count -gt 0) {
+$testProjects = [System.Collections.Generic.List[string]]::new()
+$seenTestProjects = [System.Collections.Generic.HashSet[string]]::new(
+  [System.StringComparer]::OrdinalIgnoreCase
+)
+
+function Add-TestProject {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ProjectPath,
+    [Parameter(Mandatory = $true)]
+    [string]$DisplayPath
+  )
+
+  $projectPath = [IO.Path]::GetFullPath($ProjectPath)
   $repoRootWithSeparator = $repoRoot + [IO.Path]::DirectorySeparatorChar
+  if (!$projectPath.StartsWith($repoRootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Invalid test project path: $DisplayPath (must resolve inside the repository)."
+  }
+  if (!(Test-Path -LiteralPath $projectPath -PathType Leaf)) {
+    throw "Invalid test project path: $DisplayPath (must be an existing regular file)."
+  }
+
+  $ancestorPath = $projectPath
+  while ($true) {
+    $ancestorItem = Get-Item -LiteralPath $ancestorPath -Force
+    if ($ancestorItem.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+      throw "Invalid test project path: $DisplayPath (must not traverse a reparse point)."
+    }
+    if ($ancestorPath.Equals($repoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+      break
+    }
+
+    $parent = [IO.Directory]::GetParent($ancestorPath)
+    if ($null -eq $parent) {
+      throw "Invalid test project path: $DisplayPath (must resolve inside the repository)."
+    }
+    $ancestorPath = $parent.FullName
+  }
+
+  $projectItem = Get-Item -LiteralPath $projectPath -Force
+  if ($projectItem -isnot [System.IO.FileInfo]) {
+    throw "Invalid test project path: $DisplayPath (must be an existing regular file)."
+  }
+  if (!$projectItem.Name.EndsWith('.Tests.csproj', [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Invalid test project path: $DisplayPath (must name a *.Tests.csproj file)."
+  }
+  if (!$seenTestProjects.Add($projectPath)) {
+    throw "Invalid test project path: $DisplayPath (duplicate selection)."
+  }
+
+  $testProjects.Add($projectPath)
+}
+
+if ($Project.Count -gt 0) {
   foreach ($selectedProject in $Project) {
     if ([IO.Path]::IsPathRooted($selectedProject)) {
       throw "Invalid test project path: $selectedProject (paths must be repo-relative)."
     }
 
-    $projectPath = [IO.Path]::GetFullPath((Join-Path $repoRoot $selectedProject))
-    if (!$projectPath.StartsWith($repoRootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)) {
-      throw "Invalid test project path: $selectedProject (must resolve inside the repository)."
-    }
-    if (!(Test-Path -LiteralPath $projectPath -PathType Leaf)) {
-      throw "Invalid test project path: $selectedProject (must be an existing regular file)."
-    }
-
-    $projectItem = Get-Item -LiteralPath $projectPath
-    if ($projectItem -isnot [System.IO.FileInfo] -or ($projectItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
-      throw "Invalid test project path: $selectedProject (must be an existing regular non-symlink file)."
-    }
-    if (!$projectItem.Name.EndsWith('.Tests.csproj', [System.StringComparison]::OrdinalIgnoreCase)) {
-      throw "Invalid test project path: $selectedProject (must name a *.Tests.csproj file)."
-    }
-    if (!$testProjects.Add($projectPath)) {
-      throw "Invalid test project path: $selectedProject (duplicate selection)."
-    }
+    Add-TestProject (Join-Path $repoRoot $selectedProject) $selectedProject
   }
 } else {
-  $testProjects.Add((Join-Path $repoRoot 'packages\expo-modules-dotnet\managed\packages\Expo.ModulesCore.Generator.Tests\Expo.ModulesCore.Generator.Tests.csproj'))
-  $testProjects.Add((Join-Path $repoRoot 'packages\expo-modules-dotnet\managed\packages\Expo.JSI.Tests\Expo.JSI.Tests.csproj'))
-  $testProjects.Add((Join-Path $repoRoot 'packages\expo-modules-dotnet\managed\packages\Expo.ModulesCore.Tests\Expo.ModulesCore.Tests.csproj'))
+  Add-TestProject (Join-Path $repoRoot 'packages\expo-modules-dotnet\managed\packages\Expo.ModulesCore.Generator.Tests\Expo.ModulesCore.Generator.Tests.csproj') 'Expo.ModulesCore.Generator.Tests'
+  Add-TestProject (Join-Path $repoRoot 'packages\expo-modules-dotnet\managed\packages\Expo.JSI.Tests\Expo.JSI.Tests.csproj') 'Expo.JSI.Tests'
+  Add-TestProject (Join-Path $repoRoot 'packages\expo-modules-dotnet\managed\packages\Expo.ModulesCore.Tests\Expo.ModulesCore.Tests.csproj') 'Expo.ModulesCore.Tests'
 
-  $authoredProjects = @(
-    Get-ChildItem -LiteralPath (Join-Path $repoRoot 'packages') -Directory | ForEach-Object {
-      $dotnetDirectory = Join-Path $_.FullName 'dotnet'
-      if (Test-Path -LiteralPath $dotnetDirectory -PathType Container) {
-        Get-ChildItem -LiteralPath $dotnetDirectory -Directory -Filter '*.Tests' | ForEach-Object {
-          $projectPath = Join-Path $_.FullName "$($_.Name).csproj"
-          if (Test-Path -LiteralPath $projectPath -PathType Leaf) {
-            $projectItem = Get-Item -LiteralPath $projectPath
-            if ($projectItem -is [System.IO.FileInfo] -and !($projectItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
-              $projectItem.FullName
-            }
-          }
+  foreach ($packageDirectory in Get-ChildItem -LiteralPath (Join-Path $repoRoot 'packages') -Directory -Force | Sort-Object FullName) {
+    $dotnetDirectory = Join-Path $packageDirectory.FullName 'dotnet'
+    if (Test-Path -LiteralPath $dotnetDirectory -PathType Container) {
+      foreach ($projectDirectory in Get-ChildItem -LiteralPath $dotnetDirectory -Directory -Filter '*.Tests' -Force | Sort-Object FullName) {
+        $projectPath = Join-Path $projectDirectory.FullName "$($projectDirectory.Name).csproj"
+        if (Test-Path -LiteralPath $projectPath -PathType Leaf) {
+          Add-TestProject $projectPath $projectPath
         }
       }
-    } | Sort-Object
-  )
-  foreach ($authoredProject in $authoredProjects) {
-    if (!$testProjects.Add($authoredProject)) {
-      throw "Duplicate managed test project: $authoredProject"
     }
   }
 }
