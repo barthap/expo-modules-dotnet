@@ -10,6 +10,7 @@
     "run:macos": "react-native run-macos",
     "windows": "pnpm run:windows",
     "run:windows": "react-native run-windows",
+    "autolink:windows": "expo-modules-dotnet-autolinking sync-windows --sln windows/DesktopApp.sln --proj windows/DesktopApp/DesktopApp.vcxproj",
     "build:managed": "expo-modules-dotnet-autolinking link --platform macos",
     "build:managed:windows": "expo-modules-dotnet-autolinking link --platform windows",
     "typecheck": "tsc --noEmit"

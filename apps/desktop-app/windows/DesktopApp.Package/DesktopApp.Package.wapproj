@@ -5,7 +5,7 @@
     <ProjectGuid>{20c83435-96d5-4660-b0f0-2f7f0843f33f}</ProjectGuid>
     <DefaultLanguage>en-US</DefaultLanguage>
     <EntryPointProjectUniqueName>..\DesktopApp\DesktopApp.vcxproj</EntryPointProjectUniqueName>
-    <DebuggerType>NativeOnly</DebuggerType>
+    <DebuggerType>Mixed</DebuggerType>
     <BackgroundTaskDebugEngines>NativeOnly</BackgroundTaskDebugEngines>
   </PropertyGroup>
   <PropertyGroup Label="ReactNativeWindowsProps">

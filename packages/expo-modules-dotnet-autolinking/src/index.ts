@@ -5,6 +5,7 @@ import { registerGenerateCommand } from './commands/generateCommand';
 import { registerLinkCommand } from './commands/linkCommand';
 import { registerResolveCommand } from './commands/resolveCommand';
 import { registerStageCommand } from './commands/stageCommand';
+import { registerSyncWindowsCommand } from './commands/syncWindowsCommand';
 
 export function createProgram(): Command {
   const program = new Command('expo-modules-dotnet-autolinking');
@@ -14,6 +15,7 @@ export function createProgram(): Command {
   registerLinkCommand(program);
   registerResolveCommand(program);
   registerStageCommand(program);
+  registerSyncWindowsCommand(program);
   return program;
 }
 

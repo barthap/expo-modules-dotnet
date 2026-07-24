@@ -13,6 +13,17 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ExpoDesktopStubs", "..\node
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ExpoModulesDotnet", "..\node_modules\expo-modules-dotnet\windows\ExpoModulesDotnet\ExpoModulesDotnet.vcxproj", "{A7B9E08A-8F3B-4B3B-A521-2E6D6BB55F40}"
 EndProject
+Project("{66A26720-8FB5-11D2-AA7E-00C04F688DDE}") = "Expo .NET Managed", "Expo .NET Managed", "{81DE5219-EFEC-56C3-A758-522C2C888920}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExpoDotnetHost", "..\.expo\dotnet\ExpoDotnetHost.csproj", "{77FE513A-A19C-5A02-AA9A-82C6622383D8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Expo.JSI", "..\..\..\packages\expo-modules-dotnet\managed\packages\Expo.JSI\Expo.JSI.csproj", "{9BA13D71-878C-53FA-8A65-3F832E39FFE9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Expo.ModulesCore", "..\..\..\packages\expo-modules-dotnet\managed\packages\Expo.ModulesCore\Expo.ModulesCore.csproj", "{56CFB1A8-2705-5EF0-88CA-E64699CA1A30}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExampleModule", "..\..\..\packages\example-module\dotnet\ExampleModule\ExampleModule.csproj", "{0B3BAA69-EB54-50EB-B155-ECEB133F18E8}"
+EndProject
+
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -94,12 +105,42 @@ Global
 		{A7B9E08A-8F3B-4B3B-A521-2E6D6BB55F40}.Release|x86.ActiveCfg = Release|Win32
 		{A7B9E08A-8F3B-4B3B-A521-2E6D6BB55F40}.Release|x86.Build.0 = Release|Win32
 		{A7B9E08A-8F3B-4B3B-A521-2E6D6BB55F40}.Release|ARM64.ActiveCfg = Release|ARM64
-		{A7B9E08A-8F3B-4B3B-A521-2E6D6BB55F40}.Release|ARM64.Build.0 = Release|ARM64
+		{A7B9E08A-8F3B-4B3B-A521-2E6D6BB55F40}.Release|ARM64.Build.0 = Release|ARM64
+		{77FE513A-A19C-5A02-AA9A-82C6622383D8}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{77FE513A-A19C-5A02-AA9A-82C6622383D8}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{77FE513A-A19C-5A02-AA9A-82C6622383D8}.Debug|ARM64.ActiveCfg = Debug|Any CPU
+		{77FE513A-A19C-5A02-AA9A-82C6622383D8}.Release|x64.ActiveCfg = Release|Any CPU
+		{77FE513A-A19C-5A02-AA9A-82C6622383D8}.Release|x86.ActiveCfg = Release|Any CPU
+		{77FE513A-A19C-5A02-AA9A-82C6622383D8}.Release|ARM64.ActiveCfg = Release|Any CPU
+		{9BA13D71-878C-53FA-8A65-3F832E39FFE9}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{9BA13D71-878C-53FA-8A65-3F832E39FFE9}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{9BA13D71-878C-53FA-8A65-3F832E39FFE9}.Debug|ARM64.ActiveCfg = Debug|Any CPU
+		{9BA13D71-878C-53FA-8A65-3F832E39FFE9}.Release|x64.ActiveCfg = Release|Any CPU
+		{9BA13D71-878C-53FA-8A65-3F832E39FFE9}.Release|x86.ActiveCfg = Release|Any CPU
+		{9BA13D71-878C-53FA-8A65-3F832E39FFE9}.Release|ARM64.ActiveCfg = Release|Any CPU
+		{56CFB1A8-2705-5EF0-88CA-E64699CA1A30}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{56CFB1A8-2705-5EF0-88CA-E64699CA1A30}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{56CFB1A8-2705-5EF0-88CA-E64699CA1A30}.Debug|ARM64.ActiveCfg = Debug|Any CPU
+		{56CFB1A8-2705-5EF0-88CA-E64699CA1A30}.Release|x64.ActiveCfg = Release|Any CPU
+		{56CFB1A8-2705-5EF0-88CA-E64699CA1A30}.Release|x86.ActiveCfg = Release|Any CPU
+		{56CFB1A8-2705-5EF0-88CA-E64699CA1A30}.Release|ARM64.ActiveCfg = Release|Any CPU
+		{0B3BAA69-EB54-50EB-B155-ECEB133F18E8}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{0B3BAA69-EB54-50EB-B155-ECEB133F18E8}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{0B3BAA69-EB54-50EB-B155-ECEB133F18E8}.Debug|ARM64.ActiveCfg = Debug|Any CPU
+		{0B3BAA69-EB54-50EB-B155-ECEB133F18E8}.Release|x64.ActiveCfg = Release|Any CPU
+		{0B3BAA69-EB54-50EB-B155-ECEB133F18E8}.Release|x86.ActiveCfg = Release|Any CPU
+		{0B3BAA69-EB54-50EB-B155-ECEB133F18E8}.Release|ARM64.ActiveCfg = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {D43FAD39-F619-437D-BB40-04A3982ACB6A}
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{77FE513A-A19C-5A02-AA9A-82C6622383D8} = {81DE5219-EFEC-56C3-A758-522C2C888920}
+		{9BA13D71-878C-53FA-8A65-3F832E39FFE9} = {81DE5219-EFEC-56C3-A758-522C2C888920}
+		{56CFB1A8-2705-5EF0-88CA-E64699CA1A30} = {81DE5219-EFEC-56C3-A758-522C2C888920}
+		{0B3BAA69-EB54-50EB-B155-ECEB133F18E8} = {81DE5219-EFEC-56C3-A758-522C2C888920}
 	EndGlobalSection
 EndGlobal

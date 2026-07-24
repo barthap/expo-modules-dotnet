@@ -14,6 +14,7 @@ pnpm --filter desktop-app macos
 pnpm --filter desktop-app windows
 pnpm --filter desktop-app build:managed:windows
 pnpm --filter desktop-app typecheck
+pnpm --filter desktop-app autolink:windows
 ```
 
 `pnpm --filter desktop-app windows` is the preferred Windows entry point. It
@@ -69,6 +70,17 @@ files manually from `apps/desktop-app` when native dependencies change:
 ```powershell
 pnpm exec react-native autolink-windows --sln "windows\DesktopApp.sln" --proj "windows\DesktopApp\DesktopApp.vcxproj"
 ```
+
+Use `pnpm --filter desktop-app autolink:windows` for the complete checked-in
+solution projection. It first runs that app-local RNW command, then adds
+`ExpoDotnetHost`, `Expo.JSI`, `Expo.ModulesCore`, and linked C# modules under
+the `Expo .NET Managed` solution folder. The normal build-phase `link` hooks
+remain responsible for managed artifact staging and ABI alignment.
+
+The package project is configured for mixed debugging: HostFXR `Debug|x64`
+sessions can stop in both C++ and C# source. NativeAOT remains a native-only
+debugging workflow. `sync-windows --check` verifies the managed projection;
+it intentionally does not invoke RNW's unreliable `autolink-windows --check`.
 
 `AutolinkedNativeModules.g.*` files are RNW-generated and checked in, matching
 the RNW app template. Do not hand-format them; the MSBuild autolink check

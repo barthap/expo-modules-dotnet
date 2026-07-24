@@ -11,6 +11,16 @@ Normative terms such as SHALL, SHALL NOT, and MAY use RFC 2119 meanings.
 
 ## Requirements
 
+### Requirement: Windows Solution Projection
+
+The package-owned `sync-windows` command SHALL run the app-local RNW
+`autolink-windows` command before updating a checked-in `.sln` with the
+generated host, managed core packages, and resolved module projects under an
+`Expo .NET Managed` solution folder. It SHALL NOT replace the platform build
+hooks that build and stage managed artifacts. Its `--check` mode SHALL verify
+only the deterministic managed projection because RNW `autolink-windows --check`
+may report `NeedAutolinking` after a no-op normal invocation.
+
 ### Requirement: Dotnet Modules Declare Autolinking Metadata
 
 A dotnet Expo module package SHALL declare `"dotnet"` in
