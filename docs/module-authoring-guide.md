@@ -592,15 +592,102 @@ See the root `README.md`'s "Platform support" section and
 
 ## 11. Verification
 
-Run the Hermes-backed managed test suite from the repo root:
+Each repo-local authored package owns a non-packable `.Tests` project. Follow
+the `ExampleModule.Tests.csproj` reference shape:
+
+```xml
+<ItemGroup>
+  <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.0" />
+  <PackageReference Include="xunit.v3" Version="3.2.0" />
+  <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+</ItemGroup>
+
+<ItemGroup>
+  <ProjectReference Include="../ExampleModule/ExampleModule.csproj" />
+  <ProjectReference Include="../../../expo-modules-dotnet/managed/packages/Expo.ModulesCore.Testing/Expo.ModulesCore.Testing.csproj" />
+</ItemGroup>
+```
+
+Disable xUnit parallel execution for an authored module test project in v1:
+
+```csharp
+using Xunit;
+
+[assembly: CollectionBehavior(DisableTestParallelization = true)]
+```
+
+Keep direct C# unit tests in the same project for behavior that does not need
+JavaScript or Hermes. Use `Expo.ModulesCore.Testing` only when testing the
+generated module surface. Register the generated provider explicitly; TestCore
+does not scan assemblies for providers:
+
+```csharp
+using var host = ExpoModuleTestHost.Create(
+    ExpoModulesProvider_ExampleModule.Register
+);
+```
+
+`ExpoModuleTestHost` owns the Hermes runtime and module context. Keep it in a
+`using` scope. Read and dispose `JavaScriptValue` instances inside
+`host.Runtime.Execute(...)`, including values fulfilled by
+`EvaluatePromiseAsync`, so all JSI access and release occurs on the runtime
+executor.
+
+For synchronous evaluation:
+
+```csharp
+using var host = ExpoModuleTestHost.Create(
+    ExpoModulesProvider_ExampleModule.Register
+);
+var sum = host.Runtime.Execute(_ =>
+{
+  using var value = host.Evaluate(
+      "globalThis._expoDotnet.modules.ExampleModule.add(20, 22)",
+      "example-module-test.js"
+  );
+  return checked((int)value.AsDouble());
+});
+
+Assert.Equal(42, sum);
+```
+
+For a Promise-returning method, await settlement first, then consume and
+dispose the owned fulfillment value on the executor:
+
+```csharp
+using var host = ExpoModuleTestHost.Create(
+    ExpoModulesProvider_ExampleModule.Register
+);
+var fulfilled = await host.EvaluatePromiseAsync(
+    "globalThis._expoDotnet.modules.ExampleModule.getMessageAsync()",
+    TestContext.Current.CancellationToken
+);
+var message = host.Runtime.Execute(_ =>
+{
+  using (fulfilled)
+  {
+    return fulfilled.AsString();
+  }
+});
+
+Assert.Equal("Hello from async C#", message);
+```
+
+Run the canonical runners for the full suite or a selected mixed project:
 
 ```sh
 scripts/test-managed.sh
+scripts/test-managed.sh --project packages/example-module/dotnet/ExampleModule.Tests/ExampleModule.Tests.csproj
 ```
 
-`example-module` and its Hermes-backed dispatch/conversion tests
-(`Expo.ModulesCore.Tests`) are good references for testing a new module's
-behavior without a full mobile app build.
+```powershell
+scripts/test-managed.ps1
+scripts/test-managed.ps1 -Project packages/example-module/dotnet/ExampleModule.Tests/ExampleModule.Tests.csproj
+```
+
+Direct `dotnet test` is valid for a project containing only pure C# tests. An
+unfiltered project that mixes pure tests with Hermes-backed tests requires the
+canonical runner so it can build and provide the native testhost.
 
 ## 12. Troubleshooting
 
