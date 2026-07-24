@@ -1217,8 +1217,16 @@ and idempotent; it SHALL NOT depend on finalizers or ordinary GC timing.
 
 `Expo.ModulesCore.ArrayBuffer` SHALL be the universal module-facing binary
 abstraction with exactly two private backing forms: JavaScript-owned storage
-and native MutableBuffer-owned storage. `byte[]` and span support SHALL be
-convenience codecs, not additional backing kinds.
+and native MutableBuffer-owned storage. `byte[]`, `Memory<byte>`,
+`ReadOnlyMemory<byte>`, and span support SHALL be convenience codecs, not
+additional backing kinds.
+
+| CLR type | Boundary behavior | Generated-binding constraints |
+| --- | --- | --- |
+| `ArrayBuffer` | Preserves wrapper ownership semantics | Ordinary codec |
+| `byte[]` | Copies in both directions | Rank-one arrays only |
+| `Memory<byte>` / `ReadOnlyMemory<byte>` | Copies in both directions, encoding exactly the current logical slice | Ordinary codecs |
+| `Span<byte>` / `ReadOnlySpan<byte>` | Borrows an input slice or copies a return value | One synchronous parameter only |
 
 #### Scenario: Module ArrayBuffer owns storage
 - **GIVEN** a module receives or creates an `ArrayBuffer`
@@ -1237,17 +1245,29 @@ convenience codecs, not additional backing kinds.
 - **WHEN** a native-backed value is encoded into any live runtime
 - **THEN** the returned JavaScript object SHALL be distinct while sharing bytes
 
-#### Scenario: Byte arrays and spans cross the module boundary
-- **GIVEN** a generated method uses `byte[]`, `Span<byte>`, or
-  `ReadOnlySpan<byte>`
+#### Scenario: Byte arrays, memory, and spans cross the module boundary
+- **GIVEN** a generated method uses `byte[]`, `Memory<byte>`,
+  `ReadOnlyMemory<byte>`, `Span<byte>`, or `ReadOnlySpan<byte>`
 - **WHEN** the method is generated
 - **THEN** byte arrays SHALL copy in both directions
+- **AND** `Memory<byte>` and `ReadOnlyMemory<byte>` SHALL be ordinary codecs
+  that copy in both directions
+- **AND** memory codecs SHALL be available in ordinary synchronous and
+  asynchronous generated-binding positions
+- **AND** memory encoding SHALL copy exactly the current logical slice into a
+  distinct JavaScript `ArrayBuffer`
+- **AND** memory codecs SHALL NOT pin, retain, or alias managed storage as
+  JavaScript storage
 - **AND** one synchronous scoped span parameter MAY borrow bytes
 - **AND** asynchronous or multiple span parameters SHALL produce diagnostics
 - **AND** span return values SHALL be copied immediately
 - **AND** only rank-one `byte[]` parameters and returns SHALL use the byte-array
   codec; multidimensional byte arrays SHALL produce unsupported-type diagnostics
-- **AND** the one-span limit SHALL not restrict `ArrayBuffer` or `byte[]` arity
+- **AND** only exact `Memory<byte>` and `ReadOnlyMemory<byte>` specializations
+  SHALL use the memory codecs; other `Memory<T>` and `ReadOnlyMemory<T>` types
+  SHALL produce unsupported-type diagnostics
+- **AND** the one-span limit SHALL not restrict `ArrayBuffer`, `byte[]`,
+  `Memory<byte>`, or `ReadOnlyMemory<byte>` arity
 
 ### Requirement: Internal Shared-Object Identity Registry
 

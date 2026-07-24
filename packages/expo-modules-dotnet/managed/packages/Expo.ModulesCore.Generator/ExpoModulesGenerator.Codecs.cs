@@ -310,6 +310,18 @@ public sealed partial class ExpoModulesGenerator
       return "ByteArrayCodec";
     }
 
+    if (typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ==
+        "global::System.Memory<byte>")
+    {
+      return "MemoryByteCodec";
+    }
+
+    if (typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ==
+        "global::System.ReadOnlyMemory<byte>")
+    {
+      return "ReadOnlyMemoryByteCodec";
+    }
+
     if (typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == JavaScriptValueMetadataName)
     {
       return "JavaScriptValueCodec";

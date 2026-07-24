@@ -105,10 +105,13 @@ not raw managed object pointers.
 ### Requirement: Binary Borrowing And Ownership
 
 ArrayBuffer byte callbacks SHALL borrow native storage only for the duration
-of the synchronous callback. Managed `byte[]` values SHALL be copied at codec
-boundaries. Span return values SHALL be copied immediately because a span has
-no owner that JavaScript can retain. No arbitrary managed array SHALL be pinned
-for a long-lived or asynchronous operation.
+of the synchronous callback. Managed `byte[]`, `Memory<byte>`, and
+`ReadOnlyMemory<byte>` values SHALL be copied at codec boundaries. Memory
+decoding SHALL produce independent managed storage, and memory encoding SHALL
+copy exactly the current logical slice into JavaScript storage. Span return
+values SHALL be copied immediately because a span has no owner that JavaScript
+can retain. No managed array or memory storage SHALL be pinned, retained, or
+aliased as JavaScript storage for a long-lived or asynchronous operation.
 
 #### Scenario: A span is projected into a module call
 - **GIVEN** a generated synchronous method has one `Span<byte>` or
@@ -123,6 +126,16 @@ for a long-lived or asynchronous operation.
 - **WHEN** the wrapper is copied
 - **THEN** the copy SHALL retain the shared MutableBuffer storage
 - **AND** mutation through either wrapper SHALL remain visible to the other
+
+#### Scenario: Managed memory crosses the module boundary
+- **GIVEN** a generated method receives or returns `Memory<byte>` or
+  `ReadOnlyMemory<byte>`
+- **WHEN** the codec decodes or encodes the value
+- **THEN** it SHALL copy bytes into independent storage at that boundary
+- **AND** later mutation of source managed or JavaScript storage SHALL NOT
+  change the copied value
+- **AND** encoding a sliced memory value SHALL copy only its current logical
+  slice
 
 ### Requirement: Weak Object Handles Are Opaque Owned Wrappers
 

@@ -74,6 +74,105 @@ public sealed class GeneratedBinaryModuleTests
   }
 
   [Fact]
+  public void GeneratedMemoryByteCodecsCopyInputsAndReturnedSlices()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+      using var result = fixture.Evaluate(
+          "const mutableInput = new ArrayBuffer(4); " +
+          "new Uint8Array(mutableInput).set([1, 2, 3, 4]); " +
+          "const readOnlyInput = new ArrayBuffer(4); " +
+          "new Uint8Array(readOnlyInput).set([5, 6, 7, 8]); " +
+          "const mutableOutput = globalThis._expoDotnet.modules.Binary.mutableSlice(mutableInput); " +
+          "const mutableInputSecondAfterCall = new Uint8Array(mutableInput)[1]; " +
+          "const readOnlyOutput = globalThis._expoDotnet.modules.Binary.readOnlySlice(readOnlyInput); " +
+          "const combinedOutput = globalThis._expoDotnet.modules.Binary.combineMemory(mutableInput, readOnlyInput); " +
+          "const asyncInput = new ArrayBuffer(3); " +
+          "new Uint8Array(asyncInput).set([9, 10, 11]); " +
+          "globalThis.memoryAsyncInput = asyncInput; " +
+          "globalThis._expoDotnet.modules.Binary.readOnlySliceAsync(asyncInput).then(value => { " +
+          "globalThis.memoryAsyncOutput = value; " +
+          "}); " +
+          "new Uint8Array(mutableInput).fill(0); " +
+          "new Uint8Array(readOnlyInput).fill(0); " +
+          "new Uint8Array(asyncInput).fill(0); " +
+          "[mutableOutput instanceof ArrayBuffer, readOnlyOutput instanceof ArrayBuffer, combinedOutput instanceof ArrayBuffer, " +
+          "mutableOutput === mutableInput, readOnlyOutput === readOnlyInput, combinedOutput === mutableInput, " +
+          "mutableInputSecondAfterCall, mutableOutput.byteLength, new Uint8Array(mutableOutput)[0], " +
+          "new Uint8Array(mutableOutput)[1], readOnlyOutput.byteLength, new Uint8Array(readOnlyOutput)[0], " +
+          "new Uint8Array(readOnlyOutput)[1], combinedOutput.byteLength, new Uint8Array(combinedOutput)[0], " +
+          "new Uint8Array(combinedOutput)[1], new Uint8Array(combinedOutput)[2], new Uint8Array(combinedOutput)[3]]",
+          "binary-memory.js"
+      );
+      using var values = result.AsArray();
+      using var mutableIsArrayBuffer = values.GetValue(0);
+      using var readOnlyIsArrayBuffer = values.GetValue(1);
+      using var combinedIsArrayBuffer = values.GetValue(2);
+      using var mutableSame = values.GetValue(3);
+      using var readOnlySame = values.GetValue(4);
+      using var combinedSame = values.GetValue(5);
+      using var mutableInputSecondAfterCall = values.GetValue(6);
+      using var mutableLength = values.GetValue(7);
+      using var mutableFirst = values.GetValue(8);
+      using var mutableSecond = values.GetValue(9);
+      using var readOnlyLength = values.GetValue(10);
+      using var readOnlyFirst = values.GetValue(11);
+      using var readOnlySecond = values.GetValue(12);
+      using var combinedLength = values.GetValue(13);
+      using var combinedFirst = values.GetValue(14);
+      using var combinedSecond = values.GetValue(15);
+      using var combinedThird = values.GetValue(16);
+      using var combinedFourth = values.GetValue(17);
+      Assert.True(mutableIsArrayBuffer.AsBool());
+      Assert.True(readOnlyIsArrayBuffer.AsBool());
+      Assert.True(combinedIsArrayBuffer.AsBool());
+      Assert.False(mutableSame.AsBool());
+      Assert.False(readOnlySame.AsBool());
+      Assert.False(combinedSame.AsBool());
+      Assert.Equal(2, mutableInputSecondAfterCall.AsDouble());
+      Assert.Equal(2, mutableLength.AsDouble());
+      Assert.Equal(42, mutableFirst.AsDouble());
+      Assert.Equal(3, mutableSecond.AsDouble());
+      Assert.Equal(2, readOnlyLength.AsDouble());
+      Assert.Equal(6, readOnlyFirst.AsDouble());
+      Assert.Equal(7, readOnlySecond.AsDouble());
+      Assert.Equal(4, combinedLength.AsDouble());
+      Assert.Equal(2, combinedFirst.AsDouble());
+      Assert.Equal(3, combinedSecond.AsDouble());
+      Assert.Equal(6, combinedThird.AsDouble());
+      Assert.Equal(7, combinedFourth.AsDouble());
+      return true;
+    });
+
+    fixture.WaitUntilIdle();
+    fixture.Runtime.Execute(_ =>
+    {
+      using var result = fixture.Evaluate(
+          "[globalThis.memoryAsyncOutput instanceof ArrayBuffer, " +
+          "globalThis.memoryAsyncOutput === globalThis.memoryAsyncInput, globalThis.memoryAsyncOutput.byteLength, " +
+          "new Uint8Array(globalThis.memoryAsyncOutput)[0], new Uint8Array(globalThis.memoryAsyncOutput)[1]]",
+          "binary-memory-async.js"
+      );
+      using var values = result.AsArray();
+      using var isArrayBuffer = values.GetValue(0);
+      using var isSame = values.GetValue(1);
+      using var length = values.GetValue(2);
+      using var first = values.GetValue(3);
+      using var second = values.GetValue(4);
+      Assert.True(isArrayBuffer.AsBool());
+      Assert.False(isSame.AsBool());
+      Assert.Equal(2, length.AsDouble());
+      Assert.Equal(10, first.AsDouble());
+      Assert.Equal(11, second.AsDouble());
+      return true;
+    });
+  }
+
+  [Fact]
   public void GeneratedAsyncArrayBufferPreservesOwnedResultIdentity()
   {
     using var fixture = HermesRuntimeFixture.Create();

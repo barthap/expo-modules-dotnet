@@ -427,6 +427,77 @@ public sealed class ExpoModulesGeneratorTests
   }
 
   [Fact]
+  public void GeneratorEmitsMemoryByteCodecsAsOrdinaryCodecs()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class MemoryModule
+        {
+          [JS]
+          public Memory<byte> Combine(Memory<byte> mutable, ReadOnlyMemory<byte> readOnly) => mutable;
+
+          [JS]
+          public Task<ReadOnlyMemory<byte>> CombineAsync(
+              Memory<byte> mutable,
+              ReadOnlyMemory<byte> readOnly) => Task.FromResult(readOnly);
+
+          [JS]
+          public double Use(JavaScriptCallback<ReadOnlyMemory<byte>> callback) => 0.0;
+
+          [JS]
+          public double UseMutable(JavaScriptCallback<Memory<byte>> callback) => 0.0;
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains("MemoryByteCodec.Decode(arguments.GetValue(0), runtime)", source);
+    Assert.Contains("ReadOnlyMemoryByteCodec.Decode(arguments.GetValue(1), runtime)", source);
+    Assert.Contains("MemoryByteCodec.Encode(module.Combine(__expoArg0, __expoArg1), runtime)", source);
+    Assert.Contains("ReadOnlyMemoryByteCodec.Encode(__expoResult, runtime)", source);
+    Assert.Contains("JavaScriptCallbackCodec<global::System.ReadOnlyMemory<byte>, ReadOnlyMemoryByteCodec>", source);
+    Assert.Contains("JavaScriptCallbackCodec<global::System.Memory<byte>, MemoryByteCodec>", source);
+    Assert.DoesNotContain("WithReadOnlyBytes", source);
+    Assert.DoesNotContain("WithBytes", source);
+  }
+
+  [Theory]
+  [InlineData("Memory<int>")]
+  [InlineData("ReadOnlyMemory<int>")]
+  public void GeneratorReportsUnsupportedNonByteMemoryTypes(string type)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using System;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class MemoryModule
+        {
+          [JS]
+          public void RejectParameter({{type}} value) { }
+
+          [JS]
+          public {{type}} RejectReturn() => default;
+        }
+        """
+    );
+
+    Assert.Single(result.Diagnostics, diagnostic => diagnostic.Id == "EXPOJSI001");
+    Assert.Single(result.Diagnostics, diagnostic => diagnostic.Id == "EXPOJSI002");
+  }
+
+  [Fact]
   public void GeneratorEmitsDeterministicProviderForAssembly()
   {
     var result = GeneratorTestHost.Run(

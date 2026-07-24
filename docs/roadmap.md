@@ -220,9 +220,10 @@ ABI support.
   primitives are supported through the generic number codec.
 - **P1 — Nullable types** (complete for value primitives): `T?` support exists
   for optional parameters and return values over supported value codecs.
-- **P2/P3 — binary codecs**: Plan 006 covers `ArrayBuffer`, `byte[]`,
-  `Span<byte>`, and `ReadOnlySpan<byte>`. `Memory<byte>` and
-  `ReadOnlyMemory<byte>` remain future work.
+- **P2/P3 — binary codecs** (complete): `ArrayBuffer`, `byte[]`,
+  `Span<byte>`, `ReadOnlySpan<byte>`, `Memory<byte>`, and
+  `ReadOnlyMemory<byte>` are supported. Memory codecs use independent
+  two-way copies and encode only the current logical slice.
 - **P2/P3 — SharedObject references**: Typed handles to shared native state.
   The internal identity registry spike is GO; the codec/generator surface is
   the follow-up slice.

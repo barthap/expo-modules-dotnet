@@ -24,6 +24,39 @@ public sealed class ArrayBufferCodecTests
   }
 
   [Fact]
+  public void MemoryByteCodecsCopyAtBothBoundariesAndPreserveSlices()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var source = fixture.Evaluate("new Uint8Array([1, 2, 3]).buffer", "memory-codec-source.js");
+      var mutable = MemoryByteCodec.Decode(source, runtime);
+      var readOnly = ReadOnlyMemoryByteCodec.Decode(source, runtime);
+      using var global = runtime.Global();
+      global.SetProperty("memoryCodecSource", source);
+      using var mutation = fixture.Evaluate("new Uint8Array(memoryCodecSource)[0] = 99", "memory-codec-mutation.js");
+
+      Assert.Equal(new byte[] { 1, 2, 3 }, mutable.ToArray());
+      Assert.Equal(new byte[] { 1, 2, 3 }, readOnly.ToArray());
+
+      var mutableSource = new byte[] { 4, 5, 6, 7 };
+      var readOnlySource = new byte[] { 8, 9, 10, 11 };
+      using var encodedMutable = MemoryByteCodec.Encode(mutableSource.AsMemory(1, 2), runtime);
+      using var encodedReadOnly = ReadOnlyMemoryByteCodec.Encode(readOnlySource.AsMemory(1, 2), runtime);
+      using var encodedDefault = MemoryByteCodec.Encode(default, runtime);
+      using var encodedEmpty = ReadOnlyMemoryByteCodec.Encode(ReadOnlyMemory<byte>.Empty, runtime);
+      mutableSource[1] = 99;
+      readOnlySource[1] = 99;
+
+      Assert.Equal(new byte[] { 5, 6 }, ByteArrayCodec.Decode(encodedMutable, runtime));
+      Assert.Equal(new byte[] { 9, 10 }, ByteArrayCodec.Decode(encodedReadOnly, runtime));
+      Assert.Empty(ByteArrayCodec.Decode(encodedDefault, runtime));
+      Assert.Empty(ByteArrayCodec.Decode(encodedEmpty, runtime));
+      return true;
+    });
+  }
+
+  [Fact]
   public async Task NativeBackedAsyncAccessRunsInlineAndCopies()
   {
     using var fixture = HermesRuntimeFixture.Create();
