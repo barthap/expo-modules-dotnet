@@ -153,13 +153,16 @@ public sealed partial class ExpoModuleTestHostTests
 
     for (var iteration = 0; iteration < 10; iteration++)
     {
-      using var result = await host.EvaluatePromiseAsync(
+      var result = await host.EvaluatePromiseAsync(
           "Promise.resolve('ready')",
           TestContext.Current.CancellationToken
       );
       host.Runtime.Execute(_ =>
       {
-        Assert.Equal("ready", result.AsString());
+        using (result)
+        {
+          Assert.Equal("ready", result.AsString());
+        }
         return true;
       });
     }
@@ -207,6 +210,33 @@ public sealed partial class ExpoModuleTestHostTests
 
     Assert.StartsWith("Failed to extract JavaScript Promise rejection:", exception.Message);
     Assert.Contains("message getter failed", exception.Message);
+    Assert.Equal(0, host.ActivePromiseEvaluationCount);
+  }
+
+  [Fact]
+  public async Task RejectionWithThrowingStackPreservesMessageAndName()
+  {
+    using var host = ExpoModuleTestHost.Create((_, _) => { });
+
+    var exception = await Assert.ThrowsAsync<JavaScriptPromiseRejectedException>(
+        () => host.EvaluatePromiseAsync(
+            """
+            (() => {
+              const error = new Error('original failure');
+              Object.defineProperty(error, 'stack', {
+                get() { throw new Error('stack getter failed'); }
+              });
+              return Promise.reject(error);
+            })()
+            """,
+            TestContext.Current.CancellationToken
+        )
+    );
+
+    Assert.Equal("original failure", exception.Message);
+    Assert.Equal("Error", exception.JavaScriptName);
+    Assert.StartsWith("Failed to extract JavaScript Promise rejection: stack:", exception.JavaScriptStack);
+    Assert.Contains("stack getter failed", exception.JavaScriptStack);
     Assert.Equal(0, host.ActivePromiseEvaluationCount);
   }
 

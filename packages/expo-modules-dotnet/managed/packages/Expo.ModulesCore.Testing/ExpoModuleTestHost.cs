@@ -304,7 +304,23 @@ public sealed class ExpoModuleTestHost : IDisposable
     }
 
     using var error = retainedRejection.AsErrorObject();
-    return new JavaScriptPromiseRejectedException(error.Message, error.Name, error.Stack);
+    return new JavaScriptPromiseRejectedException(
+        ExtractErrorField(() => error.Message, "message") ?? string.Empty,
+        ExtractErrorField(() => error.Name, "name"),
+        ExtractErrorField(() => error.Stack, "stack")
+    );
+  }
+
+  private static string? ExtractErrorField(Func<string?> extract, string fieldName)
+  {
+    try
+    {
+      return extract();
+    }
+    catch (Exception exception)
+    {
+      return $"Failed to extract JavaScript Promise rejection: {fieldName}: {exception.Message}";
+    }
   }
 
   private static void AbandonOnRuntime(
