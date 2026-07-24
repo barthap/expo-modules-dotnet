@@ -3,7 +3,6 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
@@ -14,11 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../Expo.ModulesCore/Expo.ModulesCore.csproj" />
-    <ProjectReference Include="../Expo.ModulesCore.Testing/Expo.ModulesCore.Testing.csproj" />
-    <ProjectReference
-      Include="../Expo.ModulesCore.Generator/Expo.ModulesCore.Generator.csproj"
-      OutputItemType="Analyzer"
-      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../ExampleModule/ExampleModule.csproj" />
+    <ProjectReference Include="../../../expo-modules-dotnet/managed/packages/Expo.ModulesCore.Testing/Expo.ModulesCore.Testing.csproj" />
   </ItemGroup>
 </Project>
