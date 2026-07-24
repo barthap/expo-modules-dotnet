@@ -3,7 +3,7 @@ using Expo.ModulesCore.Codecs;
 using Expo.ModulesCore.Tests.Fixtures;
 using Xunit;
 
-namespace Expo.ModulesCore.Tests.Generated;
+namespace Expo.ModulesCore.Tests.Events;
 
 public sealed class ModuleEventEmitterTests
 {

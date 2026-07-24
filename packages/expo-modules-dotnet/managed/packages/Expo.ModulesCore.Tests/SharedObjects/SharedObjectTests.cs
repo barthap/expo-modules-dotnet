@@ -4,9 +4,10 @@ using Expo.JSI;
 using Expo.ModulesCore;
 using Expo.ModulesCore.Generated;
 using Expo.ModulesCore.Tests.Fixtures;
+using Expo.ModulesCore.Tests.Modules;
 using Xunit;
 
-namespace Expo.ModulesCore.Tests.Generated;
+namespace Expo.ModulesCore.Tests.SharedObjects;
 
 public sealed class GeneratedSharedObjectTests
 {

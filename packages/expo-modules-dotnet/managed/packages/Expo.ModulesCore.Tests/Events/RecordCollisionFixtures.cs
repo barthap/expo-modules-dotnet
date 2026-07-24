@@ -11,7 +11,7 @@ namespace N1sm951cf6akgv
   public readonly record struct Progress(string SharedValue);
 }
 
-namespace Expo.ModulesCore.Tests.Generated
+namespace Expo.ModulesCore.Tests.Events
 {
   [ExpoModule("GeneratedRecordCollision", Classes = new[] { typeof(RecordCollisionEntry) })]
   public sealed partial class GeneratedRecordCollisionModule

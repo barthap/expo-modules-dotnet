@@ -3,7 +3,7 @@ using Expo.ModulesCore;
 using Expo.ModulesCore.Tests.Fixtures;
 using Xunit;
 
-namespace Expo.ModulesCore.Tests.Generated;
+namespace Expo.ModulesCore.Tests.Properties;
 
 public sealed class GeneratedPropertyTests
 {

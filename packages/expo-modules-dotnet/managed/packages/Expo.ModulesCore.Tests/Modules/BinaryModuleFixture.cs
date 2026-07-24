@@ -1,6 +1,6 @@
 using Expo.ModulesCore;
 
-namespace Expo.ModulesCore.Tests.Generated;
+namespace Expo.ModulesCore.Tests.Modules;
 
 [ExpoModule("Binary")]
 public sealed class GeneratedBinaryModule

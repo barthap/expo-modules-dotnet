@@ -6,7 +6,7 @@ using Expo.ModulesCore.Generated;
 using Expo.ModulesCore.Tests.Fixtures;
 using Xunit;
 
-namespace Expo.ModulesCore.Tests.Generated;
+namespace Expo.ModulesCore.Tests.Modules;
 
 public sealed class GeneratedAttributeModuleTests
 {

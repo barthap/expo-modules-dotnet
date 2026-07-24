@@ -2,7 +2,7 @@ using Expo.JSI;
 using Expo.ModulesCore.Tests.Fixtures;
 using Xunit;
 
-namespace Expo.ModulesCore.Tests;
+namespace Expo.ModulesCore.Tests.SharedObjects;
 
 public sealed class SharedObjectRegistryTests
 {

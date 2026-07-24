@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using Expo.JSI;
 using Expo.ModulesCore.Codecs;
 
-namespace Expo.ModulesCore.Tests.Generated;
+namespace Expo.ModulesCore.Tests.Modules;
 
 [ExpoModule("GeneratedMath")]
 public sealed partial class GeneratedMathModule
