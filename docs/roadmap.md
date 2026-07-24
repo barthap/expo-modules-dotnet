@@ -234,6 +234,21 @@ ABI support.
 
 ## Backlog: Module System
 
+### Future authored module packages
+
+The first authored C# packages are separate Windows/macOS work items. They use
+the normal `_expoDotnet.modules` registry and do not yet claim upstream Expo
+package compatibility or install aliases into `globalThis.expo.modules`.
+
+1. [`expo-asset-dotnet`](plans/022-expo-asset-dotnet.md): native cache/download
+   operation behind Expo's existing JavaScript asset resolution.
+2. [`expo-constants-dotnet`](plans/023-expo-constants-dotnet.md): typed host
+   metadata with explicit provenance.
+3. [`expo-file-system-dotnet`](plans/024-expo-file-system-dotnet.md): local
+   `Paths`, `File`, and `Directory` operations for Windows/macOS.
+4. [`expo-crypto-dotnet`](plans/025-expo-crypto-dotnet.md): random and digest
+   operations with ArrayBuffer range-aware native bindings.
+
 - **P1 — Module-authored lifecycle hooks** (complete): `[OnCreate]` and
   `[OnDestroy]` are generator-backed managed callbacks on top of the
   runtime-scoped `DotnetRuntimeContext` / `ModuleRegistry` owner.
