@@ -287,6 +287,13 @@ values.
 
 The managed interop layer SHALL validate the native API table before using it.
 
+Host-supplied structs on the runtime-context create ABI SHALL follow the same
+rule. Managed code SHALL check `size` first, then require exact version
+equality, and SHALL name both the native and the managed value in the rejection
+message. Strict equality is safe only because the loader and the generated host
+are built together for one app. If loaders ever ship independently of generated
+hosts, `size`-based tolerant parsing would be needed instead.
+
 #### Scenario: Runtime is created from native handles
 - **GIVEN** an API table pointer is passed into managed code
 - **WHEN** `JavaScriptRuntime.FromNative` runs
@@ -436,6 +443,20 @@ adapters can call for one JavaScript runtime. HostFXR loaders SHALL resolve the
 stable managed type name
 `Expo.ModulesCore.Generated.EntryPoints, ExpoDotnetHost`.
 
+The create entry point SHALL take a host-supplied app-directories pointer
+between the opaque runtime handle and the structured result out parameter. It
+SHALL be exported as the NativeAOT symbol
+`expo_dotnet_create_runtime_context_result_v2` and resolved through HostFXR as
+the managed method `CreateRuntimeContextResultV2`. The native function-pointer
+typedef and the loader entry-point field SHALL carry matching v2 names.
+
+No alias SHALL remain under the old create name, and no loader SHALL probe it. A
+rename is the only thing that makes a stale adapter and host pairing fail before
+invocation. The version field inside the struct guards the contents of a call
+whose signature already matches, so it cannot guard a call made through the wrong
+function type. Teardown SHALL keep its current name, because its signature did
+not change.
+
 The native ABI keeps `expo_jsi_runtime_handle` opaque. The managed runtime context
 handle is also opaque to native code and SHALL be passed back only to the
 matching managed teardown entry point.
@@ -444,8 +465,23 @@ matching managed teardown entry point.
 - **GIVEN** a host adapter has an `expo_jsi_api` table and opaque runtime handle
 - **WHEN** it calls the managed create-runtime-context entry point
 - **THEN** managed code SHALL register modules through a runtime-scoped context
+- **AND** the adapter SHALL pass an app-directories pointer, using null when it
+  has no directories to supply
 - **AND** native SHALL retain only the opaque managed runtime context handle and teardown
   function pointer
+
+#### Scenario: Mismatched adapter and generated host fail to resolve
+- **GIVEN** a native adapter and a generated host built on opposite sides of the
+  v2 rename
+- **WHEN** the loader resolves the create symbol or the HostFXR method
+- **THEN** resolution SHALL fail
+- **AND** the adapter SHALL NOT call any create function pointer
+
+#### Scenario: Built artifacts carry only the v2 create symbol
+- **GIVEN** a generated host is published for NativeAOT
+- **WHEN** its exported symbols are inspected with the platform symbol tool
+- **THEN** the v2 create symbol SHALL be present
+- **AND** the old create symbol SHALL be absent
 
 #### Scenario: Native adapter tears down a managed runtime context
 - **GIVEN** the host reports runtime or module invalidation
@@ -462,6 +498,175 @@ matching managed teardown entry point.
 - **THEN** teardown SHALL avoid JSI access
 - **AND** still release managed pins and non-JSI module state
 - **AND** stale scheduled work SHALL not touch the runtime
+
+### Requirement: Host-Supplied App Directories Cross The Create ABI
+
+The app-directories struct, both runtime-context result types, and both
+runtime-context function-pointer typedefs SHALL be declared exactly once, in the
+shared native header
+`packages/expo-modules-dotnet/native/include/expo_dotnet_host.h`. No platform
+adapter SHALL redeclare them locally. Everything here crosses through a function
+pointer, so drift between duplicated declarations is invisible at compile time
+and corrupts memory at runtime.
+
+`expo_dotnet_app_directories` SHALL begin with a `uint32_t size` field and then a
+`uint32_t version` field, matching the `expo_jsi_api` shape required by
+`### Requirement: ABI Version And Size Validation`. Its payload SHALL be a cache
+directory and a persistent-files directory, each a UTF-8 byte pointer plus an
+`int32_t` byte length.
+
+Each string SHALL follow `### Requirement: UTF-8 String Contract` and SHALL NOT
+be NUL-terminated. The host SHALL keep both buffers valid for the duration of the
+create call only. Managed code SHALL copy each value into a `string` before the
+call returns, so no release callback is needed. Managed decoding SHALL use strict
+UTF-8 that throws on invalid bytes and SHALL NOT repair invalid input.
+
+Unconfigured has one exact encoding. A null struct pointer SHALL mean both
+directories are unconfigured. At field level, `(null pointer, zero length)` SHALL
+mean that directory is unconfigured, `(null pointer, nonzero length)` SHALL be
+rejected as an invalid pair, and `(non-null pointer, zero length)` SHALL decode as
+a supplied empty string, which then fails managed path validation. A negative byte
+length SHALL be rejected. The two fields SHALL be independent, so a host MAY
+supply one directory and leave the other unconfigured.
+
+Managed decoding SHALL validate `size` before it reads `version`, and both before
+it reads either pointer field. It SHALL reject a struct smaller than the managed
+expected size and SHALL require exact version equality. Every rejection SHALL
+report through the existing structured `RuntimeContextResult` error channel, and
+no partially configured runtime context SHALL be created.
+
+The shared header SHALL pin standard layout, every field offset, and the total
+size with `static_assert` for both 4-byte and 8-byte pointer targets. The Android
+adapter compiles that header for its configured 32-bit ABIs (`armeabi-v7a` and
+`x86`) alongside the 64-bit ones, so the 32-bit half is checked rather than
+assumed.
+
+#### Scenario: Host passes a valid struct
+- **GIVEN** a native adapter fills `size` and `version` and supplies both
+  directories
+- **WHEN** it calls the create entry point
+- **THEN** managed code SHALL decode both strings before it constructs the
+  runtime context
+- **AND** module registration SHALL observe both configured directories
+
+#### Scenario: Undersized or wrong-versioned struct is rejected
+- **GIVEN** a struct whose `size` is below the managed expected size, or whose
+  `version` differs from the managed expected version
+- **WHEN** managed decoding runs
+- **THEN** it SHALL fail with a structured error naming the native and the
+  managed value
+- **AND** it SHALL NOT read either directory pointer
+
+#### Scenario: Invalid UTF-8 fails loudly
+- **GIVEN** a directory field holds bytes that are not valid UTF-8
+- **WHEN** managed decoding runs
+- **THEN** decoding SHALL fail with a structured error
+- **AND** it SHALL NOT substitute a replacement character
+
+#### Scenario: Invalid pointer and length pairs are rejected
+- **GIVEN** a directory field has a negative byte length, or a null pointer with
+  a nonzero length
+- **WHEN** managed decoding runs
+- **THEN** it SHALL fail with a structured error naming the field
+- **AND** it SHALL NOT treat the field as unconfigured
+
+#### Scenario: Empty supplied string is not unconfigured
+- **GIVEN** a directory field has a non-null pointer and a zero length
+- **WHEN** managed decoding runs
+- **THEN** it SHALL decode an empty string rather than an unconfigured value
+- **AND** managed path validation SHALL reject that empty string
+
+#### Scenario: Native layout is locked at compile time
+- **GIVEN** the shared header is compiled for a 32-bit or a 64-bit pointer target
+- **WHEN** the target builds
+- **THEN** static assertions SHALL fix standard layout, each field offset, and the
+  total size
+- **AND** a field reorder or type change SHALL fail the build instead of
+  corrupting memory at runtime
+
+### Requirement: Platform Adapters Follow A Defined App-Directory Policy
+
+The packaged Windows example adapter and the macOS example adapter SHALL supply
+real app-scoped paths for both directories. The iOS adapter, the Android adapter,
+and the development console app SHALL pass the unconfigured value. No module on
+those hosts consumes app-scoped storage through this bridge yet, upstream's own
+`expo-asset` serves iOS and Android, and the console app has no app identity at
+all. Passing a guessed path there would invent a contract with no consumer to
+check it.
+
+A supplying adapter SHALL resolve the paths in the same stack frame that makes the
+create call, because the struct borrows the strings only for that call. On both
+desktop adapters that frame is `registerModules`. Neither needs the host's
+`ReactContext` to resolve a path.
+
+A supplying adapter SHALL validate its resolved paths on every launch, not only in
+a build-time check, and SHALL fall back to unconfigured when a path is not
+absolute, not distinct from the other, or not app-scoped. Unconfigured is a
+defined state that fails loudly, so falling back to it is safe. Falling back to a
+bare user-wide root is the defect this ABI exists to remove, and SHALL NOT happen.
+
+Desktop hosts today are both-or-nothing: if either directory fails to resolve or
+fails validation, the adapter SHALL report both as unconfigured. Per-directory
+independence stays fully supported by the ABI and the managed model, and tests
+cover the mixed case. It is only that no shipped desktop adapter exercises it.
+
+Each platform validates against what its own API guarantees:
+
+- macOS resolves `NSCachesDirectory` and `NSApplicationSupportDirectory` in
+  `NSUserDomainMask` and appends the main bundle identifier, giving shapes like
+  `<user-home>/Library/Caches/<bundle-id>`. It requires each path to be absolute,
+  free of NUL, and to end in the bundle identifier, so a bare user-wide root
+  cannot pass. A nil bundle identifier SHALL yield unconfigured.
+- Windows reads `ApplicationData::Current().LocalCacheFolder()` and
+  `.LocalFolder()`, giving shapes like
+  `<local-app-data>/Packages/<package-family>/LocalCache`. It requires each path
+  to be non-empty, fully qualified as a drive-rooted or UNC path, and distinct.
+  It deliberately does not require a package-family component.
+  `ApplicationData::Current()` throws without package identity, so app scoping
+  comes from the API contract, and matching the on-disk package layout would
+  assert an undocumented implementation detail.
+
+An unpackaged Windows process with no app-model identity SHALL pass the
+unconfigured value for both directories. No executable-name fallback SHALL be
+introduced, because two unrelated apps can share an executable name, which
+reproduces the collision this ABI removes. No `%LOCALAPPDATA%` fallback SHALL be
+introduced either.
+
+After validation a supplying adapter SHALL emit one durable marker that carries no
+raw path and no app identity. Committed artifacts SHALL record only sanitized path
+shapes, never a real user profile, machine path, or package identity.
+
+#### Scenario: Packaged host supplies app-scoped paths
+- **GIVEN** the packaged Windows example or the macOS example starts
+- **WHEN** the adapter resolves its directories
+- **THEN** both SHALL be app-scoped and distinct from each other
+- **AND** the adapter SHALL emit the path-free configured marker
+
+#### Scenario: A resolved path fails validation at launch
+- **GIVEN** a supplying adapter resolves a path that is relative, equal to the
+  other directory, or a bare user-wide root
+- **WHEN** it checks the resolved values before the create call
+- **THEN** it SHALL log the failure and pass the unconfigured value
+- **AND** it SHALL NOT pass that path as app-scoped
+
+#### Scenario: Unpackaged Windows has no app identity
+- **GIVEN** the Windows adapter cannot obtain app-model identity
+- **WHEN** it prepares the create call
+- **THEN** it SHALL log the missing host identity and pass the unconfigured value
+  for both directories
+- **AND** it SHALL NOT derive a path from an executable name or a user-wide root
+
+#### Scenario: Mobile and console hosts are unconfigured
+- **GIVEN** the iOS adapter, the Android adapter, or the development console app
+  creates a runtime context
+- **WHEN** it prepares the create call
+- **THEN** it SHALL pass the defined unconfigured value
+- **AND** module registration SHALL still succeed
+
+Note on verification status: the macOS adapter was built and run against these
+rules. The Windows adapter is written and reviewed against them but has not been
+built or launched, because no Windows host was available. Treat the Windows path
+as unproven until a packaged Windows run confirms the marker.
 
 ### Requirement: Object NativeState ABI
 
