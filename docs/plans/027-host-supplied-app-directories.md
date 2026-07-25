@@ -1,4 +1,4 @@
-# Plan 027: Host-supplied app-scoped cache directory on `DotnetRuntimeContext`
+# Plan 027: Host-supplied app-scoped directories on `DotnetRuntimeContext`
 
 > **Executor instructions**: Follow this plan step by step. Run every
 > verification command and confirm the expected result before moving on. Touch
@@ -24,8 +24,9 @@
   call sites across five platform adapters; a mismatched struct layout corrupts
   memory instead of failing to compile)
 - **Depends on**: none
-- **Blocks**: `docs/plans/022-expo-asset-dotnet.md`, and any authored module that
-  reads or writes app-scoped storage (expected: plan 024, local filesystem)
+- **Blocks**: `docs/plans/022-expo-asset-dotnet.md`. Also unblocks plan 024
+  (local filesystem) with no further ABI work, because Decision 5 ships the
+  persistent files directory too.
 - **Category**: core capability
 - **Planned at**: `4c10f90b`, 2026-07-25
 
@@ -91,8 +92,8 @@ value:
 
 Everything else plan 022 does stays in .NET: `HttpClient` for the download,
 `System.Security.Cryptography` for MD5, and `File`/`Directory`/`Path` for the
-cache write. One string of host knowledge crosses the ABI; the rest is the base
-class library. If a future plan's ratio inverts, that is the signal to stop and
+cache write. Two strings of host knowledge cross the ABI; the rest is the
+base class library. If a future plan's ratio inverts, that is the signal to stop and
 rethink rather than add a field.
 
 ## Current state
@@ -283,13 +284,13 @@ The generated host csproj template compiles exactly two files
 ## Decisions
 
 These are settled by upstream behavior, by the repo's own conventions, or by the
-constraint in `AGENTS.md`. Decision 1 is the one worth confirming before native
-work starts, because it changes how many files move.
+constraint in `AGENTS.md`. Decisions 1 and 5 were put to the operator on
+2026-07-25 and are recorded here as answered; the rest need no confirmation.
 
 ### Decision 1 — extract the runtime-context ABI into one shared header
 
-**Do this**, rather than adding a struct to each of the three duplicated
-declarations. Create
+**Approved by the operator, 2026-07-25.** Do this rather than adding a struct to
+each of the three duplicated declarations. Create
 `packages/expo-modules-dotnet/native/include/expo_dotnet_host.h` holding
 `RuntimeContextError`, `RuntimeContextResult`, the new app-directories struct,
 the function-pointer typedefs, and the version constant. Have
@@ -307,9 +308,9 @@ platform-divergent `char_t`/`std::wstring` config plumbing
 (`macos/ManagedHostFxr.h:8` uses `char`, `windows/ManagedHostFxr.h:8` uses
 `wchar_t`) — that divergence is in loader-private code and is out of scope.
 
-**Alternative if rejected**: add the struct to all three copies and add a
-compile-time `static_assert` on `sizeof` in each, so drift at least fails the
-build. Weaker, since field *order* can drift at equal size.
+The alternative that was rejected: add the struct to all three copies plus a
+compile-time `static_assert` on `sizeof` in each. That catches size drift but not
+field-order drift, which is the corrupting kind.
 
 ### Decision 2 — the directory arrives at context creation, not through a setter
 
@@ -345,25 +346,35 @@ This keeps the first path concept in the core to pure string handling, which
 preserves the portability constraint in `AGENTS.md` and stays trivially
 NativeAOT-safe.
 
-### Decision 5 — cache directory only; no persistent-files directory yet
+### Decision 5 — ship both directories, matching upstream's pair
 
-Upstream exposes a pair (Android `cacheDirectory` + `persistentFilesDirectory`;
-iOS `cacheDirectory` + `documentDirectory`). Ship only the cache directory.
+**Decided by the operator, 2026-07-25**, against the plan's original
+cache-only proposal. Ship `cache_directory` and `persistent_files_directory`
+together, mirroring Android's `cacheDirectory` + `persistentFilesDirectory` and
+iOS's `cacheDirectory` + `documentDirectory`.
 
-Rationale: the versioned struct is what makes deferring free. Appending
-`persistent_files_directory` in plan 024 needs no signature change and no new
-call sites — one field, one version bump, and the adapters that care fill it in.
-Shipping an unused accessor now would be speculative surface on a hot ABI. The
-wrapper record (Decision 6) is the seam that keeps the addition cheap.
+Consequences:
 
-If plan 024 lands before this one, add both fields at once instead of twice.
+- Plan 024 (local filesystem) needs **no** ABI work. It reads
+  `context.PersistentFilesDirectory` as it already exists.
+- Every rule in this plan applies to both fields equally: both are validated,
+  both throw `AppDirectoryNotConfiguredException` when unconfigured, and either
+  may be unconfigured independently of the other.
+- The two directories are independent. A host MAY supply one and not the other,
+  and the tests SHALL cover that case — an adapter that only has a cache path
+  must not be forced to fabricate a documents path.
 
-### Decision 6 — a small wrapper record, not a bare string parameter
+Name the second one `PersistentFilesDirectory`, following Android. iOS's
+`documentDirectory` means the same thing, but "Documents" on Windows and macOS is
+the user's own Documents folder, which this is not.
 
-Introduce `AppDirectories` even though it carries one property, mirroring iOS's
-`AppContextConfig`. It keeps `DotnetRuntimeContext`'s constructor signature stable
-as Decision 5's second field arrives, and it gives the native-decode logic one
-obvious home. This is the only abstraction this plan adds.
+### Decision 6 — a wrapper record, not bare string parameters
+
+Introduce `AppDirectories`, mirroring iOS's `AppContextConfig`, rather than adding
+two string parameters to `DotnetRuntimeContext`'s constructor. It keeps the
+constructor signature stable if upstream's third directory concept (iOS app-group
+shared directories) ever lands, and it gives the native-decode logic one obvious
+home. This is the only abstraction this plan adds.
 
 ### Decision 7 — which adapters supply a real path
 
@@ -381,25 +392,43 @@ that fails loudly (Decision 3). Which hosts populate it is per-adapter policy,
 and an adapter with no consumer is correctly left unconfigured rather than
 fabricating a path.
 
-### Decision 8 — how each platform resolves its app-scoped path
+### Decision 8 — how each platform resolves its app-scoped paths
 
 **Windows** (`ExpoModulesDotnetInstaller.cpp`, which already holds a
-`winrt::Microsoft::ReactNative::ReactContext` at `:211-274`):
-prefer `winrt::Windows::Storage::ApplicationData::Current().LocalCacheFolder().Path()`.
-That API throws for unpackaged processes, so guard it and fall back to
-`%LOCALAPPDATA%\<executable-stem>\Cache`. Both branches are app-scoped; neither is
-the bare user-wide root.
+`winrt::Microsoft::ReactNative::ReactContext` at `:211-274`), preferring
+`winrt::Windows::Storage::ApplicationData::Current()`:
 
-**macOS** (`ExpoModulesDotnetInstaller.mm`, factory at `:172-182`):
-`NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject`,
-then append `[[NSBundle mainBundle] bundleIdentifier]`. Under App Sandbox the
-search path already resolves inside the app container; appending the bundle
-identifier is Apple's documented convention for the unsandboxed case and is
-harmless in a container. If `bundleIdentifier` is nil, pass "unconfigured" rather
-than the bare user-wide `~/Library/Caches`.
+| Directory | Packaged | Unpackaged fallback |
+| --- | --- | --- |
+| cache | `ApplicationData::Current().LocalCacheFolder().Path()` | `%LOCALAPPDATA%\<executable-stem>\Cache` |
+| persistent files | `ApplicationData::Current().LocalFolder().Path()` | `%LOCALAPPDATA%\<executable-stem>\Data` |
 
-Verify the actual resolved paths on both platforms during Step 6 and record them
-in the delta spec. If either resolves to a bare user-wide root, that is a STOP
+`ApplicationData::Current()` throws for unpackaged processes, so guard it once and
+use the fallbacks for both. Every branch is app-scoped; none is the bare user-wide
+root.
+
+**macOS** (`ExpoModulesDotnetInstaller.mm`, factory at `:172-182`), each resolved
+with `NSSearchPathForDirectoriesInDomains(..., NSUserDomainMask, YES).firstObject`
+and then `[[NSBundle mainBundle] bundleIdentifier]` appended:
+
+| Directory | Search path | Typical unsandboxed result |
+| --- | --- | --- |
+| cache | `NSCachesDirectory` | `~/Library/Caches/<bundle-id>` |
+| persistent files | `NSApplicationSupportDirectory` | `~/Library/Application Support/<bundle-id>` |
+
+Use Application Support, not `NSDocumentDirectory`. Upstream's iOS
+`documentDirectory` is app-private because iOS is always sandboxed, and Android's
+`filesDir` is app-private too; on macOS `NSDocumentDirectory` resolves to the
+user's visible `~/Documents` unless sandboxed, which is not app-private storage.
+Application Support is the correct analogue of both.
+
+Under App Sandbox these search paths already resolve inside the app container;
+appending the bundle identifier is Apple's documented convention for the
+unsandboxed case and is harmless in a container. If `bundleIdentifier` is nil,
+pass "unconfigured" for both rather than a bare user-wide root.
+
+Verify the actual resolved paths on both platforms during Step 6 and record all
+four in the delta spec. If any resolves to a bare user-wide root, that is a STOP
 condition — it is the defect this plan exists to remove.
 
 ## Proposed shape
@@ -413,10 +442,17 @@ typedef struct expo_dotnet_app_directories {
   uint32_t size;     // sizeof(expo_dotnet_app_directories)
   uint32_t version;  // EXPO_DOTNET_HOST_ABI_VERSION
 
-  // UTF-8, not NUL-terminated. Borrowed: valid only for the duration of the
-  // create call. Null pointer with zero length means "not configured".
+  // All strings: UTF-8, not NUL-terminated. Borrowed — valid only for the
+  // duration of the create call. A null pointer or zero length means "not
+  // configured", and each directory is independent of the other.
+
+  // Temporary files the operating system may remove at any time.
   const uint8_t *cache_directory;
   int32_t cache_directory_length;
+
+  // User documents and other files that must survive OS cache eviction.
+  const uint8_t *persistent_files_directory;
+  int32_t persistent_files_directory_length;
 } expo_dotnet_app_directories;
 
 using CreateRuntimeContextFn = void (*)(const expo_jsi_api *,
@@ -440,6 +476,9 @@ public sealed record AppDirectories
 
   /// <summary>Fully qualified app-scoped cache directory, or null if the host supplied none.</summary>
   public string? CacheDirectory { get; init; }
+
+  /// <summary>Fully qualified app-scoped persistent files directory, or null if the host supplied none.</summary>
+  public string? PersistentFilesDirectory { get; init; }
 }
 ```
 
@@ -456,6 +495,12 @@ public DotnetRuntimeContext(JavaScriptRuntime runtimeArgument, AppDirectories di
 /// </summary>
 /// <exception cref="AppDirectoryNotConfiguredException">The host supplied no cache directory.</exception>
 public string CacheDirectory { get; }
+
+/// <summary>
+/// A directory for user documents and other files that must survive cache eviction.
+/// </summary>
+/// <exception cref="AppDirectoryNotConfiguredException">The host supplied no persistent files directory.</exception>
+public string PersistentFilesDirectory { get; }
 ```
 
 Keeping the one-argument constructor means all 650 existing tests and both
@@ -541,7 +586,8 @@ Docs:
 
 **Out of scope**
 
-- A persistent-files or documents directory (Decision 5).
+- App-group shared directories, upstream iOS's third directory concept
+  (`AppContextConfig.appGroupSharedDirectories`). No consumer exists yet.
 - Any filesystem operation in the managed core (Decision 4).
 - Creating, cleaning, or lifetime-managing temp directories in
   `ExpoModuleTestHost`. This plan only lets a test *supply* a directory. Temp-dir
@@ -555,7 +601,7 @@ Docs:
 - Amending plan 022's own cache-root text. That happens when 022 is amended, and
   it must delete `docs/plans/022-expo-asset-dotnet.md:646-651` (including the
   Linux/XDG branch, defect D2) in favor of `context.CacheDirectory`.
-- Exposing the directory to JavaScript. Nothing in this plan adds a `[JS]`
+- Exposing either directory to JavaScript. Nothing in this plan adds a `[JS]`
   member.
 
 ## Git workflow
@@ -563,14 +609,14 @@ Docs:
 Branch from the current work branch. One commit per step, each self-contained and
 passing its own verification. Suggested messages:
 
-1. `docs(specs): specify host-supplied app cache directory`
-2. `docs(plans): plan host-supplied app cache directory`
+1. `docs(specs): specify host-supplied app directories`
+2. `docs(plans): plan host-supplied app directories`
 3. `refactor(native): extract runtime context ABI into shared header`
 4. `feat(native): add app directories to runtime context ABI`
-5. `feat(modules-core): expose host-supplied cache directory on runtime context`
+5. `feat(modules-core): expose host-supplied app directories on runtime context`
 6. `feat(autolinking): pass app directories through the generated aggregator`
-7. `feat(windows, macos): supply app-scoped cache directory to managed core`
-8. `test(modules-core): cover cache directory configuration`
+7. `feat(windows, macos): supply app-scoped directories to managed core`
+8. `test(modules-core): cover app directory configuration`
 9. `docs(specs): merge host app directories delta`
 
 Do not create a PR. Do not push without being asked.
@@ -587,33 +633,33 @@ requirement/scenario style (GIVEN/WHEN/THEN, `SHALL`), covering:
 - Directory strings SHALL be UTF-8, borrowed for the duration of the call.
 - A null struct pointer, a null field pointer, or a zero length SHALL mean "not
   configured".
-- `DotnetRuntimeContext` SHALL expose the cache directory; reading it when
-  unconfigured SHALL throw `AppDirectoryNotConfiguredException`; reading it after
-  disposal SHALL throw `ObjectDisposedException`.
+- `DotnetRuntimeContext` SHALL expose a cache directory and a persistent files
+  directory; reading either when unconfigured SHALL throw
+  `AppDirectoryNotConfiguredException`; reading either after disposal SHALL throw
+  `ObjectDisposedException`.
+- The two directories SHALL be independent; a host MAY supply one and not the
+  other.
 - The managed core SHALL NOT resolve, create, or probe directories.
 - A supplied path SHALL be rejected at creation time when it is empty,
   whitespace, or not fully qualified.
-- Windows and macOS adapters SHALL supply an app-scoped path; iOS, Android, and
+- Windows and macOS adapters SHALL supply app-scoped paths; iOS, Android, and
   the dev console app SHALL pass "not configured" (Decision 7, with its
   rationale).
 
+Also state, per `### Requirement: ABI Carries Only Host Knowledge`
+(`docs/specs/runtime-and-abi.md`), which host-knowledge category the values fall
+into and why portable .NET cannot answer it. The plan's "Why this justifies new
+ABI surface" section has the argument; the delta spec needs it in requirement
+form.
+
 Then write `docs/changes/<yyyy-mm-dd>-host-app-directories/plan.md` mapping
-requirements to Steps 3-9.
+requirements to Steps 2-8.
 
 **Verify**: `scripts/format.sh --check --all` exits 0; no absolute local paths,
 usernames, or machine names in either file. Commit them separately (spec, then
 plan).
 
-### Step 2: Confirm Decision 1 with the reviewer
-
-Decision 1 moves declarations across four native files. Post the intended header
-contents and the include changes, and get a yes before writing native code. If
-the answer is the Alternative, add `static_assert(sizeof(...) == ...)` to each
-copy instead and note the deviation in the delta spec.
-
-**STOP** if no answer arrives; do not start native work on a guess.
-
-### Step 3: Extract the shared native header
+### Step 2: Extract the shared native header
 
 Create `native/include/expo_dotnet_host.h` with `RuntimeContextError`,
 `RuntimeContextResult`, both function-pointer typedefs, and
@@ -629,7 +675,7 @@ No behavior change in this step.
 **Verify**: `rg -n "struct RuntimeContextResult" packages/expo-modules-dotnet`
 returns exactly one definition. Build whichever native platform is available.
 
-### Step 4: Add the struct and the parameter to the ABI
+### Step 3: Add the struct and the parameter to the ABI
 
 Add `expo_dotnet_app_directories` and the third parameter to
 `CreateRuntimeContextFn` in the shared header, with comments stating UTF-8,
@@ -641,19 +687,24 @@ native call site to pass `nullptr` for now so the tree keeps building.
 **Verify**: native build succeeds on the available platform; `git grep -c
 createRuntimeContext` still finds every call site and each compiles.
 
-### Step 5: Managed core
+### Step 4: Managed core
 
 Add `AppDirectories`, `AppDirectoryNotConfiguredException`, and the internal
-native decode. Add the two-argument constructor and the `CacheDirectory`
-accessor. The decode:
+native decode. Add the two-argument constructor and both the `CacheDirectory` and
+`PersistentFilesDirectory` accessors. The decode, applied per directory field:
 
 1. Null struct pointer → `AppDirectories.Unconfigured`.
 2. `version` mismatch → throw, message naming both values.
 3. `size` smaller than the managed mirror → throw.
-4. Null field pointer or zero length → leave `CacheDirectory` null.
+4. Null field pointer or zero length → leave that property null, and keep
+   decoding the other field. One unconfigured directory must not discard a
+   configured one.
 5. Negative length → throw.
 6. Decode strict UTF-8; invalid bytes throw.
 7. Reject empty, whitespace-only, or not-fully-qualified paths.
+
+Write the per-field logic once and apply it to both fields rather than
+duplicating it; the fields differ only in name.
 
 Constructor validation must reject a bad path the same way whether it came from
 the ABI or from a direct managed caller — put the check in the `AppDirectories`
@@ -664,7 +715,7 @@ native decode.
 still passing. The filesystem-access check from the Commands table returns no
 matches.
 
-### Step 6: Codegen and generated artifacts
+### Step 5: Codegen and generated artifacts
 
 Update the template at `generateAggregator.ts:121-284`: the
 `[UnmanagedCallersOnly]` signature gains the pointer parameter, and
@@ -683,7 +734,7 @@ compiling; it passes unconfigured (Decision 7).
 **Verify**: autolinking tests and typecheck exit 0. The regenerated `.g.cs` diffs
 contain only the template change. `scripts/test-managed.sh` still exits 0.
 
-### Step 7: Windows and macOS adapters supply the path
+### Step 6: Windows and macOS adapters supply the path
 
 Implement Decision 8 in each installer, populate the struct in the frame that
 makes the create call, and keep the string alive across it. Record the paths you
@@ -695,7 +746,7 @@ actually observed.
 otherwise confirm the resolved path is app-scoped. State plainly which platform
 you could not build locally.
 
-### Step 8: Tests
+### Step 7: Tests
 
 Add to `Expo.ModulesCore.Tests/Modules/DotnetRuntimeContextTests.cs`:
 
@@ -709,8 +760,17 @@ Add to `Expo.ModulesCore.Tests/Modules/DotnetRuntimeContextTests.cs`:
 7. Disposed context → `CacheDirectory` throws `ObjectDisposedException`, not
    `AppDirectoryNotConfiguredException`. This is the ordering guard: the disposal
    check must come first.
-8. `AppDirectoryNotConfiguredException`'s message names the cache directory, so a
-   module author can tell which directory the host failed to supply.
+8. `AppDirectoryNotConfiguredException`'s message names which directory was
+   missing, so a module author can tell the two apart.
+
+Run cases 1 through 7 against `CacheDirectory` and against
+`PersistentFilesDirectory`, parameterized rather than copy-pasted. Then the case
+that only exists because there are two:
+
+9. Cache directory supplied, persistent files directory not → `CacheDirectory`
+   returns its path **and** `PersistentFilesDirectory` throws. And the reverse.
+   This is Decision 5's independence rule; without it a decode that abandons the
+   whole struct on the first null field would pass everything else.
 
 Cases 4-6 encode Decision 3's intent: a host bug must surface at startup, not as
 files silently written next to the process's working directory.
@@ -725,10 +785,10 @@ assert a supplied directory reaches the context inside `register`. Nothing more
 (see Out of scope).
 
 **Verify**: `scripts/test-managed.sh` exits 0; every new case fails when its
-guard is reverted. Check at least cases 6 and 7 that way — a validation test that
-passes against unvalidated code is worthless.
+guard is reverted. Check at least cases 6, 7, and 9 that way — a validation test
+that passes against unvalidated code is worthless.
 
-### Step 9: Docs and merge
+### Step 8: Docs and merge
 
 Merge the accepted delta into `docs/specs/`:
 
@@ -757,18 +817,20 @@ No local absolute paths, usernames, or machine names anywhere in the staged diff
    exactly once, in `native/include/expo_dotnet_host.h`.
 2. `CreateRuntimeContextFn` carries the struct pointer, and all six native call
    sites compile against it.
-3. `DotnetRuntimeContext.CacheDirectory` returns the host-supplied path, throws
-   `AppDirectoryNotConfiguredException` when unconfigured, and throws
-   `ObjectDisposedException` after disposal.
+3. `DotnetRuntimeContext.CacheDirectory` and `.PersistentFilesDirectory` each
+   return the host-supplied path, throw `AppDirectoryNotConfiguredException` when
+   unconfigured, and throw `ObjectDisposedException` after disposal. Either can
+   be unconfigured while the other is set.
 4. `rg "Directory\.\|File\.\|GetFolderPath\|GetTempPath\|SpecialFolder"
    packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore` returns no
    matches.
-5. Empty, whitespace-only, and relative paths are rejected at construction.
+5. Empty, whitespace-only, and relative paths are rejected at construction, for
+   both directories.
 6. The codegen template emits the new signature; both apps' `EntryPoints.g.cs`
    are regenerated from it and differ only by that change.
-7. Windows and macOS installers supply an app-scoped path, and the observed paths
-   are recorded in the delta spec. Any platform not built locally is named as
-   such.
+7. Windows and macOS installers supply both app-scoped paths, and all four
+   observed paths are recorded in the delta spec. Any platform not built locally
+   is named as such.
 8. `ExpoModuleTestHost.Create` can supply directories without breaking existing
    callers.
 9. `scripts/test-managed.sh`, `pnpm --filter expo-modules-dotnet-autolinking test`,
@@ -782,8 +844,7 @@ No local absolute paths, usernames, or machine names anywhere in the staged diff
 - The iOS local struct declarations differ from `ManagedLoader.h` in field order
   or type. That is a live memory-safety bug that predates this plan; report it
   before touching anything.
-- Decision 1 has not been answered (Step 2).
-- A platform's app-scoped path resolves to a bare user-wide cache root.
+- Any of the four resolved platform paths is a bare user-wide root.
 - Any pre-existing test in the 650-test suite fails.
 - The change appears to require a filesystem call inside `Expo.ModulesCore`.
   Re-read Decision 4; if it still seems necessary, stop and report rather than
@@ -796,8 +857,9 @@ No local absolute paths, usernames, or machine names anywhere in the staged diff
 
 - The whole runtime-context ABI lived in duplicated per-platform headers before
   this plan, and `ios/ExpoModulesDotnetInstaller.mm` had already drifted into an
-  older shape. If Decision 1 is rejected, that hazard stays and the next field
-  addition faces it again.
+  older shape. Step 2 removes that hazard. If a future platform adapter
+  reintroduces a local redeclaration instead of including the shared header, the
+  same silent-corruption risk comes back.
 - Strict version equality (matching `ExpoJsiApi.ExpectedVersion`) is safe only
   because the loader and generated host are built together per app. If loaders
   ever ship independently of generated hosts, this becomes a real compatibility
