@@ -65,6 +65,36 @@ already documents itself as this repo's narrow equivalent of upstream's
 The operator's standing rule applies: "these modules need to be state of the art.
 No workarounds because core is missing a feature. We'll fix core instead."
 
+### Why this justifies new ABI surface
+
+`### Requirement: ABI Carries Only Host Knowledge`
+(`docs/specs/runtime-and-abi.md`) requires any plan adding ABI surface to name
+the host-knowledge category and say why portable .NET cannot answer it. For this
+value:
+
+- **Category**: host identity, plus host-supplied policy.
+- **Why .NET cannot answer it**: .NET's own path APIs are all user-wide.
+  `Environment.GetFolderPath(SpecialFolder.LocalApplicationData)` and
+  `Path.GetTempPath()` do not know which app is asking, so two apps on one
+  machine resolve the same root and clobber each other's cache. Making any of
+  them app-scoped needs an app identity — a bundle identifier on macOS, a package
+  family name on Windows MSIX — and obtaining either from managed code means
+  P/Invoking CoreFoundation or kernel32, or guessing from `__CFBundleIdentifier`
+  and `Info.plist`. That is a platform-specific native dependency inside a
+  package that must stay portable.
+- **Why the host supplies the finished path, not just the identity**: both cost
+  one UTF-8 string. Supplying the identity alone would force the portable core to
+  hard-code each OS's cache-root convention (`~/Library/Caches` on macOS,
+  `%LOCALAPPDATA%` on Windows), which is more managed code for less capability —
+  and it would remove the host's ability to override the directory, which
+  upstream deliberately preserves for scoped hosts.
+
+Everything else plan 022 does stays in .NET: `HttpClient` for the download,
+`System.Security.Cryptography` for MD5, and `File`/`Directory`/`Path` for the
+cache write. One string of host knowledge crosses the ABI; the rest is the base
+class library. If a future plan's ratio inverts, that is the signal to stop and
+rethink rather than add a field.
+
 ## Current state
 
 ### The runtime-context ABI has no options blob

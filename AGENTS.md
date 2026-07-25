@@ -79,6 +79,14 @@ contain machine-specific paths or local workflow notes. Do not commit it.
   managed core or reusable native bridge unless that work is explicitly scoped
   to platform adapter work.
 - Do not expose raw `jsi::Runtime`, `jsi::Value`, or `jsi::Object` layouts to C#.
+- Prefer .NET built-ins over new ABI surface. The C ABI SHALL carry only what the
+  managed runtime cannot know by itself: host identity, host-supplied policy, and
+  host-owned handles. Anything portable .NET can compute from inputs it already
+  holds — filesystem I/O, HTTP, hashing, culture, time — stays in managed code.
+  Any plan or delta spec proposing new ABI surface SHALL name which of those three
+  categories the value falls into and why .NET cannot answer it. Normative in
+  `### Requirement: ABI Carries Only Host Knowledge` in
+  `docs/specs/runtime-and-abi.md`.
 - Do not use runtime hot-path reflection for v2 generated bindings.
 - Treat HostFXR as a development loader; keep ABI and generated bindings
   NativeAOT-compatible.

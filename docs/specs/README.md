@@ -12,6 +12,20 @@ Source priority when specs and other materials disagree:
 4. Archived specs, plans, and spike results.
 5. Learning guides and historical references.
 
+## Cross-cutting rules
+
+Read these before designing any capability, because they constrain every spec
+below:
+
+- **Prefer .NET built-ins over new ABI surface.** The ABI carries only host
+  identity, host-supplied policy, and host-owned handles. Filesystem I/O, HTTP,
+  hashing, culture, and time belong in managed code. Normative in
+  `### Requirement: ABI Carries Only Host Knowledge`
+  (`runtime-and-abi.md`), and repeated as a constraint in `AGENTS.md`.
+- **Opaque handles only.** Raw `jsi::Runtime`, `jsi::Value`, and `jsi::Object`
+  layouts never reach C# — `### Requirement: Opaque Handle Boundary`
+  (`runtime-and-abi.md`).
+
 ## Capabilities
 
 - `runtime-and-abi.md`: C ABI contract, opaque handles, function table, and native

@@ -6,6 +6,13 @@ Execute in
 the order below unless dependencies say otherwise. Each executor: read the plan
 fully before starting, honor its STOP conditions, and update your row when done.
 
+Any plan that adds native ABI surface must first satisfy
+`### Requirement: ABI Carries Only Host Knowledge` in
+`docs/specs/runtime-and-abi.md`: prefer .NET built-ins, and justify every new ABI
+field as host identity, host-supplied policy, or a host-owned handle. Plan 027 is
+the worked example of a value that passes that test; a value that fails it is a
+STOP condition.
+
 ## Execution order & status
 
 | Plan | Title | Priority | Effort | Depends on | Status |
