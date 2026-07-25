@@ -949,13 +949,23 @@ native installer with `vi.mock` and `vi.resetModules()`.
 31. `src/__tests__/index.test.ts`: the facade requests the module by the exact
     name `'ExpoAsset'`, and forwards `(url, md5Hash, type)` in that order,
     including a `null` `md5Hash`, to the native function.
-32. `src/__tests__/autolinking.test.ts`: import `buildDotnetManifest` from
-    `expo-modules-dotnet-autolinking`, feed it the **real**
-    `packages/expo-asset-dotnet` package root and its real
-    `expo-module.config.json`, and assert it yields exactly one project with
-    `assemblyName` `ExpoAssetDotnet` whose csproj exists on disk. This is the
-    autolinking proof, and it needs no app and no lockfile change beyond the new
-    package itself.
+32. `src/__tests__/autolinking.test.ts`: read this package's **real**
+    `expo-module.config.json` from disk and assert (a) `platforms` contains
+    `"dotnet"`, (b) `dotnet.projects` has exactly one entry, (c) its
+    `assemblyName` is `ExpoAssetDotnet`, and (d) the `path` it declares resolves
+    to a file that exists. Together those are precisely the conditions
+    `buildDotnetManifest` enforces, so the package is provably autolinkable
+    without an app and without a cross-package import.
+
+    **Do not** try `import { buildDotnetManifest } from 'expo-modules-dotnet-autolinking'`.
+    That function is defined in that package's `src/resolveDotnetModules.ts` and
+    is **not** re-exported from its `src/index.ts`, while the package's `main` is
+    `bootstrap.cjs` and its published `files` list is `["bin", "bootstrap.cjs", "build"]`.
+    The import does not resolve. If you want the real manifest builder exercised
+    against this package, that belongs in
+    `packages/expo-modules-dotnet-autolinking/src/__tests__/resolveDotnetModules.test.ts`,
+    which is out of scope here — raise it as a follow-up instead of reaching
+    across the package boundary.
 
 ## Done criteria
 
