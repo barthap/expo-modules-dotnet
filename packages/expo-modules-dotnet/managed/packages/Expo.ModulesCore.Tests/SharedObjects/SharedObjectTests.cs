@@ -62,6 +62,29 @@ public sealed class GeneratedSharedObjectTests
   }
 
   [Fact]
+  public void SharedObjectMembersUseTheSameNullableReferenceCodecPathAsModuleMembers()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var result = fixture.Evaluate(
+          "const entry = new globalThis._expoDotnet.modules.SharedThings.Sibling(); " +
+          "entry.label = 'kept'; const kept = entry.label; entry.label = null; " +
+          "[kept, entry.label === null, entry.echoLabel(null) === null, entry.echoLabel('back')].join(':')",
+          "generated-shared-object-nullable-members.js"
+      );
+
+      Assert.Equal("kept:true:true:back", result.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
   public void ImplicitAndExplicitClassNamesAreExposedOnlyForConstructibleClasses()
   {
     using var fixture = HermesRuntimeFixture.Create();

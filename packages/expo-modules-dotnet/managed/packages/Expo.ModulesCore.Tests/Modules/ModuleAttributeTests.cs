@@ -546,6 +546,211 @@ public sealed class GeneratedAttributeModuleTests
     });
   }
 
+  [Theory]
+  [InlineData("null")]
+  [InlineData("undefined")]
+  public void GeneratedProviderDecodesNullishIntoRequiredNullableStringParameters(string argument)
+  {
+    Assert.Equal(
+        "null",
+        EvaluateNullableModule(
+            $"m.storeText({argument}); m.readText() === null ? 'null' : String(m.readText())",
+            "generated-nullable-required-argument.js"
+        )
+    );
+
+    Assert.Equal(
+        "kept",
+        EvaluateNullableModule(
+            "m.storeText('kept'); m.readText()",
+            "generated-nullable-required-argument-value.js"
+        )
+    );
+  }
+
+  [Fact]
+  public void GeneratedProviderEncodesNullNullableStringReturnsAsJavaScriptNull()
+  {
+    Assert.Equal(
+        "object:null",
+        EvaluateNullableModule(
+            "m.storeText(null); [typeof m.readText(), m.readText() === null ? 'null' : 'other'].join(':')",
+            "generated-nullable-return.js"
+        )
+    );
+  }
+
+  // Without this the change could silently turn every existing `string` parameter into `string?`
+  // and move failures from decode time into authored code.
+  [Fact]
+  public void GeneratedProviderStillRejectsNullForNonNullableStringParameters()
+  {
+    Assert.Equal(
+        "rejected:false",
+        EvaluateNullableModule(
+            "const outcome = (() => { try { m.requireText(null); return 'no error'; } " +
+            "catch (error) { return 'rejected'; } })(); " +
+            "[outcome, m.readStrictCallSeen()].join(':')",
+            "generated-nullable-strict-parameter.js"
+        )
+    );
+  }
+
+  [Theory]
+  [InlineData("", "fallback")]
+  [InlineData("undefined", "fallback")]
+  [InlineData("null", "null")]
+  public void GeneratedProviderHonoursDefaultsForOptionalNullableStringParameters(
+      string argument,
+      string expected)
+  {
+    Assert.Equal(
+        expected,
+        EvaluateNullableModule(
+            $"m.storeTextWithDefault({argument}); m.readText() === null ? 'null' : m.readText()",
+            "generated-nullable-optional-argument.js"
+        )
+    );
+  }
+
+  [Fact]
+  public void GeneratedProviderRoundTripsNullableStringProperties()
+  {
+    Assert.Equal(
+        "kept:true",
+        EvaluateNullableModule(
+            "m.text = 'kept'; const kept = m.text; m.text = null; [kept, m.text === null].join(':')",
+            "generated-nullable-property.js"
+        )
+    );
+  }
+
+  [Fact]
+  public void GeneratedProviderRoundTripsNullableRecordsAndNullableRecordFields()
+  {
+    Assert.Equal(
+        "true:kept",
+        EvaluateNullableModule(
+            "[m.echoLabel(null) === null, m.echoLabel({ text: 'kept' }).text].join(':')",
+            "generated-nullable-record.js"
+        )
+    );
+
+    Assert.Equal(
+        "true:nick",
+        EvaluateNullableModule(
+            "[m.echoProfile({ name: 'a', nickname: null }).nickname === null, " +
+            "m.echoProfile({ name: 'a', nickname: 'nick' }).nickname].join(':')",
+            "generated-nullable-record-field.js"
+        )
+    );
+  }
+
+  [Fact]
+  public void GeneratedProviderRoundTripsNullableCollectionContainers()
+  {
+    Assert.Equal(
+        "true:true:true:one:1:1",
+        EvaluateNullableModule(
+            "[m.echoList(null) === null, m.echoMap(null) === null, m.echoReadOnlyMap(null) === null, " +
+            "m.echoList(['one'])[0], Object.keys(m.echoMap({ a: 'b' })).length, " +
+            "Object.keys(m.echoReadOnlyMap({ a: 'b' })).length].join(':')",
+            "generated-nullable-containers.js"
+        )
+    );
+  }
+
+  [Fact]
+  public void GeneratedProviderPreservesNullsInsideCollectionContents()
+  {
+    Assert.Equal(
+        "one:null:true",
+        EvaluateNullableModule(
+            "const elements = m.echoElements(['one', null]); " +
+            "const values = m.echoValues({ kept: 'one', missing: null }); " +
+            "[elements[0], elements[1] === null ? 'null' : 'other', values.missing === null].join(':')",
+            "generated-nullable-contents.js"
+        )
+    );
+  }
+
+  [Fact]
+  public void GeneratedProviderRoundTripsNullableByteArrays()
+  {
+    Assert.Equal(
+        "true:1,2,3",
+        EvaluateNullableModule(
+            "[m.echoBytes(null) === null, " +
+            "Array.from(new Uint8Array(m.echoBytes(new Uint8Array([1, 2, 3]).buffer))).join(',')].join(':')",
+            "generated-nullable-byte-array.js"
+        )
+    );
+  }
+
+  [Fact]
+  public async Task GeneratedProviderResolvesNullableStringTaskResultsWithJavaScriptNull()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var started = fixture.Evaluate(
+          "const m = globalThis._expoDotnet.modules.GeneratedNullable; " +
+          "m.storeText(null); globalThis.__nullableAsync = 'pending'; " +
+          "m.readTextAsync().then(value => { globalThis.__nullableAsync = value === null ? 'null' : 'other'; }); true",
+          "generated-nullable-async.js"
+      );
+      Assert.True(started.AsBool());
+      return true;
+    });
+
+    var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+    while (DateTime.UtcNow < deadline)
+    {
+      fixture.DrainTasks();
+      var settled = fixture.Runtime.Execute(_ =>
+      {
+        using var value = fixture.Evaluate(
+            "globalThis.__nullableAsync",
+            "generated-nullable-async-outcome.js"
+        );
+        return value.AsString();
+      });
+
+      if (settled != "pending")
+      {
+        Assert.Equal("null", settled);
+        return;
+      }
+
+      await Task.Delay(10, TestContext.Current.CancellationToken);
+    }
+
+    Assert.Fail("Timed out waiting for the nullable async result.");
+  }
+
+  private static string EvaluateNullableModule(string script, string sourceUrl)
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    return fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+
+      using var result = fixture.Evaluate(
+          "const m = globalThis._expoDotnet.modules.GeneratedNullable; " + script,
+          sourceUrl
+      );
+      return result.AsString();
+    });
+  }
+
   private static async Task WaitForGeneratedValueOutcomeAsync(HermesRuntimeFixture fixture)
   {
     var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
