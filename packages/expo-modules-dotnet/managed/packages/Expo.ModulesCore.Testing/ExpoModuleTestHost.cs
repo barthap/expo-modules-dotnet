@@ -35,10 +35,30 @@ public sealed class ExpoModuleTestHost : IDisposable
     }
   }
 
+  /// <summary>
+  /// Creates a host whose runtime context has no app-scoped directories.
+  /// </summary>
+  /// <param name="register">Callback that registers modules on the created context.</param>
   public static ExpoModuleTestHost Create(
+      Action<DotnetRuntimeContext, JavaScriptObject> register
+  ) => Create(AppDirectories.Unconfigured, register);
+
+  /// <summary>
+  /// Creates a host whose runtime context carries the given app-scoped directories.
+  /// </summary>
+  /// <remarks>
+  /// The directories are passed through unchanged. This host does not create,
+  /// clean, or otherwise manage the lifetime of any directory, so a test that needs
+  /// real files on disk owns that fixture itself.
+  /// </remarks>
+  /// <param name="directories">Directories to expose on the created context.</param>
+  /// <param name="register">Callback that registers modules on the created context.</param>
+  public static ExpoModuleTestHost Create(
+      AppDirectories directories,
       Action<DotnetRuntimeContext, JavaScriptObject> register
   )
   {
+    ArgumentNullException.ThrowIfNull(directories);
     ArgumentNullException.ThrowIfNull(register);
     HermesTestRuntime? testRuntime = null;
     try
@@ -46,7 +66,7 @@ public sealed class ExpoModuleTestHost : IDisposable
       testRuntime = HermesTestRuntime.Create();
       var context = testRuntime.Runtime.Execute(runtime =>
       {
-        var created = new DotnetRuntimeContext(runtime);
+        var created = new DotnetRuntimeContext(runtime, directories);
         try
         {
           using var modules = created.ModuleRegistry.GetOrCreateDotnetModulesObject();

@@ -43,12 +43,36 @@ public sealed class DotnetRuntimeContext : IDisposable
   private readonly JavaScriptObjectFactory objects;
   private readonly ModuleEventEmitter events;
   private readonly SharedObjectRegistry sharedObjects;
+  private readonly AppDirectories appDirectories;
   private LifecycleState state = LifecycleState.Active;
   private int disposingThreadId;
 
+  /// <summary>
+  /// Creates a context whose host supplied no app-scoped directories.
+  /// </summary>
+  /// <param name="runtimeArgument">The JavaScript runtime this context owns state for.</param>
   public DotnetRuntimeContext(JavaScriptRuntime runtimeArgument)
+      : this(runtimeArgument, AppDirectories.Unconfigured)
+  {
+  }
+
+  /// <summary>
+  /// Creates a context with the app-scoped directories a platform host supplied.
+  /// </summary>
+  /// <remarks>
+  /// The directories arrive at construction because module registration runs
+  /// inside context creation, so a module constructor can observe the context
+  /// before any post-creation setter would have run.
+  /// </remarks>
+  /// <param name="runtimeArgument">The JavaScript runtime this context owns state for.</param>
+  /// <param name="directories">
+  /// Host-supplied app-scoped directories. Pass
+  /// <see cref="AppDirectories.Unconfigured" /> when the host has none.
+  /// </param>
+  public DotnetRuntimeContext(JavaScriptRuntime runtimeArgument, AppDirectories directories)
   {
     runtime = runtimeArgument ?? throw new ArgumentNullException(nameof(runtimeArgument));
+    appDirectories = directories ?? throw new ArgumentNullException(nameof(directories));
     objects = new JavaScriptObjectFactory(runtime);
     events = new ModuleEventEmitter(this);
     moduleRegistry = new ModuleRegistry(this, objects);
@@ -109,6 +133,42 @@ public sealed class DotnetRuntimeContext : IDisposable
       {
         ThrowIfNotActiveLocked();
         return events;
+      }
+    }
+  }
+
+  /// <summary>
+  /// A directory for temporary files the operating system may remove at any time.
+  /// </summary>
+  /// <exception cref="ObjectDisposedException">This context is disposed.</exception>
+  /// <exception cref="AppDirectoryNotConfiguredException">The host supplied no cache directory.</exception>
+  public string CacheDirectory
+  {
+    get
+    {
+      lock (gate)
+      {
+        ThrowIfNotActiveLocked();
+        return appDirectories.CacheDirectory
+            ?? throw new AppDirectoryNotConfiguredException(nameof(CacheDirectory));
+      }
+    }
+  }
+
+  /// <summary>
+  /// A directory for app files that must survive cache eviction.
+  /// </summary>
+  /// <exception cref="ObjectDisposedException">This context is disposed.</exception>
+  /// <exception cref="AppDirectoryNotConfiguredException">The host supplied no persistent files directory.</exception>
+  public string PersistentFilesDirectory
+  {
+    get
+    {
+      lock (gate)
+      {
+        ThrowIfNotActiveLocked();
+        return appDirectories.PersistentFilesDirectory
+            ?? throw new AppDirectoryNotConfiguredException(nameof(PersistentFilesDirectory));
       }
     }
   }

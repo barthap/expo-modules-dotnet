@@ -330,6 +330,51 @@ public sealed partial class ExpoModuleTestHostTests
     Assert.Equal(0, host.ActivePromiseEvaluationCount);
   }
 
+  [Fact]
+  public void CreateWithAppDirectoriesExposesHostSuppliedPathsDuringRegistration()
+  {
+    var cache = TestDirectory("cache");
+    var persistent = TestDirectory("files");
+    string? observedCache = null;
+    string? observedPersistent = null;
+
+    using var host = ExpoModuleTestHost.Create(
+        new AppDirectories(cache, persistent),
+        (context, _) =>
+        {
+          // Registration is where module constructors run, so a module can already
+          // read the context here. The directories have to be in place by this point
+          // or a module would observe an unconfigured context and fail.
+          observedCache = context.CacheDirectory;
+          observedPersistent = context.PersistentFilesDirectory;
+        }
+    );
+
+    Assert.Equal(cache, observedCache);
+    Assert.Equal(persistent, observedPersistent);
+  }
+
+  [Fact]
+  public void CreateWithoutAppDirectoriesLeavesBothDirectoriesUnconfigured()
+  {
+    // The one-argument factory keeps compiling for every existing caller, and its
+    // meaning is "no directories configured" rather than "some default path". A
+    // silent default here would hide a missing host adapter change.
+    using var host = ExpoModuleTestHost.Create((context, modules) =>
+    {
+      Assert.Throws<AppDirectoryNotConfiguredException>(() => _ = context.CacheDirectory);
+      Assert.Throws<AppDirectoryNotConfiguredException>(
+          () => _ = context.PersistentFilesDirectory
+      );
+    });
+  }
+
+  private static string TestDirectory(string leaf) => Path.Combine(
+      Path.GetPathRoot(Environment.CurrentDirectory)!,
+      "expo-dotnet-tests",
+      leaf
+  );
+
   private sealed class LifecycleProbe(
       List<string> callbacks,
       Expo.JSI.JavaScriptRuntime runtime
