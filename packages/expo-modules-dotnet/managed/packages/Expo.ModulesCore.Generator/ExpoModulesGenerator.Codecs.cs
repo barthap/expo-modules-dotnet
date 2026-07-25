@@ -38,6 +38,17 @@ public sealed partial class ExpoModulesGenerator
     };
   }
 
+  // Codec type arguments keep their nullable reference annotations. A nullable inner codec
+  // implements IJavaScriptCodec<T?>, so an annotation-erased type argument would leave the
+  // generated code warning with CS8631 about an unsatisfied constraint.
+  private static readonly SymbolDisplayFormat CodecTypeArgumentFormat =
+      SymbolDisplayFormat.FullyQualifiedFormat.AddMiscellaneousOptions(
+          SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier
+      );
+
+  private static string GetCodecTypeArgumentName(ITypeSymbol typeSymbol) =>
+      typeSymbol.ToDisplayString(CodecTypeArgumentFormat);
+
   private static string GetNumberCodecExpression(ITypeSymbol typeSymbol) =>
       $"NumberCodec<{typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>";
 
@@ -113,8 +124,105 @@ public sealed partial class ExpoModulesGenerator
       return null;
     }
 
-    var valueTypeName = valueType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    var valueTypeName = GetCodecTypeArgumentName(valueType);
     return $"NullableCodec<{valueTypeName}, {valueCodec}>";
+  }
+
+  // Ownership-bearing and runtime-context-bearing wrappers keep their non-nullable conversion
+  // rules. Their retain, transfer, and release-exactly-once states are not widened with a null
+  // axis in this slice, so an annotated use is rejected instead of silently converted.
+  private static bool IsExcludedFromNullableReference(ITypeSymbol typeSymbol)
+  {
+    if (IsJavaScriptCallbackType(typeSymbol))
+    {
+      return true;
+    }
+
+    return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+        is JavaScriptValueMetadataName or ArrayBufferMetadataName;
+  }
+
+  /// <summary>
+  /// Resolves the codec of an annotated nullable reference type.
+  /// </summary>
+  /// <returns>
+  /// <see langword="false"/> when the type is not an annotated reference, so ordinary dispatch
+  /// continues. <see langword="true"/> when the annotated reference was handled, either with a
+  /// codec expression or with a <see langword="null"/> expression that tells the calling analysis
+  /// to report its own context-specific unsupported-type diagnostic. A handled type never falls
+  /// through to the codec of its non-nullable form.
+  /// </returns>
+  private static bool TryGetNullableReferenceCodec(
+      ITypeSymbol typeSymbol,
+      List<ExpoDiagnosticModel> diagnostics,
+      List<ExpoGeneratedRecordCodecModel> recordCodecs,
+      out string? codecExpression)
+  {
+    codecExpression = null;
+
+    // Only an explicit annotation activates nullable reference handling. A non-nullable reference
+    // and an oblivious reference from a disabled nullable context keep their strict codec, and
+    // Nullable<T> stays with TryGetNullableCodec because it is not a reference type.
+    if (typeSymbol.NullableAnnotation != NullableAnnotation.Annotated || !typeSymbol.IsReferenceType)
+    {
+      return false;
+    }
+
+    // Only the top-level annotation is removed; nested annotations on type arguments and record
+    // fields stay so they resolve their own nullable codecs. Resolving the inner codec from the
+    // non-annotated symbol is also what stops this helper from matching its own input.
+    var valueType = typeSymbol.WithNullableAnnotation(NullableAnnotation.NotAnnotated);
+    if (IsExcludedFromNullableReference(valueType))
+    {
+      return true;
+    }
+
+    if (valueType is INamedTypeSymbol namedType)
+    {
+      var constructedType = namedType.ConstructedFrom.ToDisplayString(
+          SymbolDisplayFormat.FullyQualifiedFormat
+      );
+      if (constructedType == "global::System.Collections.Generic.IReadOnlyList<T>")
+      {
+        var elementType = namedType.TypeArguments.Single();
+        if (GetCodecExpression(elementType, diagnostics, recordCodecs) is { } elementCodec)
+        {
+          codecExpression =
+              $"NullableReadOnlyListCodec<{GetCodecTypeArgumentName(elementType)}, {elementCodec}>";
+        }
+
+        return true;
+      }
+
+      if (constructedType is "global::System.Collections.Generic.Dictionary<TKey, TValue>" or
+          "global::System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>")
+      {
+        if (namedType.TypeArguments[0].SpecialType != SpecialType.System_String)
+        {
+          return true;
+        }
+
+        var dictionaryValueType = namedType.TypeArguments[1];
+        if (GetCodecExpression(dictionaryValueType, diagnostics, recordCodecs) is { } dictionaryValueCodec)
+        {
+          var codecName =
+              constructedType == "global::System.Collections.Generic.Dictionary<TKey, TValue>"
+                  ? "NullableDictionaryCodec"
+                  : "NullableReadOnlyDictionaryCodec";
+          codecExpression =
+              $"{codecName}<{GetCodecTypeArgumentName(dictionaryValueType)}, {dictionaryValueCodec}>";
+        }
+
+        return true;
+      }
+    }
+
+    if (GetCodecExpression(valueType, diagnostics, recordCodecs) is { } valueCodec)
+    {
+      codecExpression = $"NullableReferenceCodec<{GetCodecTypeArgumentName(valueType)}, {valueCodec}>";
+    }
+
+    return true;
   }
 
   private static string? TryGetReadOnlyListCodec(
@@ -136,7 +244,7 @@ public sealed partial class ExpoModulesGenerator
       return null;
     }
 
-    var elementTypeName = elementType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    var elementTypeName = GetCodecTypeArgumentName(elementType);
     return $"JavaScriptArrayCodec<{elementTypeName}, {elementCodec}>";
   }
 
@@ -169,7 +277,7 @@ public sealed partial class ExpoModulesGenerator
       return null;
     }
 
-    var valueTypeName = valueType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    var valueTypeName = GetCodecTypeArgumentName(valueType);
     return $"JavaScriptDictionaryCodec<{valueTypeName}, {valueCodec}>";
   }
 
@@ -295,6 +403,14 @@ public sealed partial class ExpoModulesGenerator
       List<ExpoGeneratedRecordCodecModel> recordCodecs,
       IEnumerable<AttributeData>? usageAttributes = null)
   {
+    // An annotated reference must be classified before any concrete type match, because `string?`
+    // and `string` are the same symbol and differ only by their nullable annotation.
+    if (TryGetNullableReferenceCodec(
+            typeSymbol, diagnostics, recordCodecs, out var nullableReferenceCodec))
+    {
+      return nullableReferenceCodec;
+    }
+
     if (TryGetJavaScriptCallbackCodec(typeSymbol, diagnostics, recordCodecs) is { } callbackCodec)
     {
       return callbackCodec;
@@ -495,7 +611,7 @@ public sealed partial class ExpoModulesGenerator
         return null;
       }
 
-      return $"JavaScriptCallbackCodec<{zeroArgResultType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}, {zeroArgResultCodec}>";
+      return $"JavaScriptCallbackCodec<{GetCodecTypeArgumentName(zeroArgResultType)}, {zeroArgResultCodec}>";
     }
 
     var argsType = namedType.TypeArguments[0];
@@ -507,7 +623,7 @@ public sealed partial class ExpoModulesGenerator
       return null;
     }
 
-    return $"JavaScriptCallbackCodec<{argsType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}, {argsCodec}, {resultType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}, {resultCodec}>";
+    return $"JavaScriptCallbackCodec<{GetCodecTypeArgumentName(argsType)}, {argsCodec}, {GetCodecTypeArgumentName(resultType)}, {resultCodec}>";
   }
 
   private static string? TryGetValueTupleArgsCodec(
@@ -535,7 +651,7 @@ public sealed partial class ExpoModulesGenerator
         return null;
       }
 
-      codecParts.Add(element.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+      codecParts.Add(GetCodecTypeArgumentName(element));
       codecParts.Add(codec);
     }
 

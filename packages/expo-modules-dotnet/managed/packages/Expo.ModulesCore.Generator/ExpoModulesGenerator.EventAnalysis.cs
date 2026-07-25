@@ -199,7 +199,9 @@ public sealed partial class ExpoModulesGenerator
 
       if (payloadType is not null)
       {
-        payloadTypeName = payloadType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        // The payload type name becomes a type argument of the emitter's EmitAsync<TCodec, T>, so
+        // it must carry the same nullable annotation as the codec it is paired with.
+        payloadTypeName = GetCodecTypeArgumentName(payloadType);
       }
 
       if (propertyReason is null && payloadType is not null && payloadKind == ExpoEventPayloadKind.Codec)
@@ -266,7 +268,9 @@ public sealed partial class ExpoModulesGenerator
           GetEventAccessorText(declaration, SyntaxKind.SetAccessorDeclaration, SyntaxKind.InitAccessorDeclaration),
           property.IsStatic,
           property.SetMethod is not null,
-          property.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+          // The emitted delegate type reproduces the authored partial declaration, so it keeps the
+          // nullable annotations of its payload.
+          GetCodecTypeArgumentName(property.Type),
           payloadTypeName,
           payloadKind,
           codecExpression,
@@ -378,7 +382,14 @@ public sealed partial class ExpoModulesGenerator
       if (IsJavaScriptCallbackType(typeSymbol)) return "it contains JavaScriptCallback, which is decode-only";
       var typeName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
       if (typeName is JavaScriptValueMetadataName or ArrayBufferMetadataName)
-        return isTopLevel ? null : "it contains a nested transfer-sensitive wrapper";
+      {
+        // A transfer-sensitive wrapper keeps its non-nullable transfer rules, and its payload kind
+        // bypasses codec resolution, so the nullable annotation has to be rejected here.
+        if (isTopLevel && typeSymbol.NullableAnnotation != NullableAnnotation.Annotated) return null;
+        return isTopLevel
+            ? "it applies a nullable annotation to a transfer-sensitive wrapper"
+            : "it contains a nested transfer-sensitive wrapper";
+      }
       if (typeSymbol is not INamedTypeSymbol namedType) return null;
       if (namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
         return GetUnsupportedEventPayload(namedType.TypeArguments.Single(), false, visitedTypes);
