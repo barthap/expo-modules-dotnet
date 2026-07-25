@@ -128,15 +128,25 @@ using Expo.ModulesCore;
 
 namespace Expo.ModulesCore.Generated;
 
-public static class EntryPoints
+// Partial so the autolinking ABI harness fixture, compiled into the same
+// assembly, can exercise the private app-directories decoder without widening
+// its visibility in a shipped app.
+public static partial class EntryPoints
 {
+    private const uint ExpectedHostAbiVersion = 1;
+
+    // Strict decoding, matching Expo.JSI: an invalid UTF-8 host path is a bug to
+    // report, never something to silently repair with replacement characters.
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+
     [UnmanagedCallersOnly(
-        EntryPoint = "expo_dotnet_create_runtime_context_result",
+        EntryPoint = "expo_dotnet_create_runtime_context_result_v2",
         CallConvs = new[] { typeof(CallConvCdecl) }
     )]
-    public static unsafe void CreateRuntimeContextResult(
+    public static unsafe void CreateRuntimeContextResultV2(
         nint api,
         nint runtimeHandle,
+        nint appDirectories,
         RuntimeContextResult* result)
     {
         if (result is null)
@@ -146,7 +156,7 @@ public static class EntryPoints
 
         try
         {
-            var context = CreateRuntimeContextCore(api, runtimeHandle);
+            var context = CreateRuntimeContextCore(api, runtimeHandle, appDirectories);
             result->Ok = 1;
             result->RuntimeContext = context;
             result->Error = default;
@@ -174,10 +184,17 @@ public static class EntryPoints
         }
     }
 
-    private static nint CreateRuntimeContextCore(nint api, nint runtimeHandle)
+    private static unsafe nint CreateRuntimeContextCore(
+        nint api,
+        nint runtimeHandle,
+        nint appDirectories)
     {
+        // Decode first: the directories must be present before
+        // LinkedExpoModulesProvider.Register runs, because a module constructor
+        // can already observe the context there.
+        var directories = DecodeAppDirectories(appDirectories);
         var runtime = JavaScriptRuntime.FromNative(api, runtimeHandle);
-        var context = new DotnetRuntimeContext(runtime);
+        var context = new DotnetRuntimeContext(runtime, directories);
         try
         {
             LinkedExpoModulesProvider.Register(context);
@@ -261,6 +278,75 @@ public static class EntryPoints
         {
             Marshal.FreeHGlobal(releaseContext);
         }
+    }
+
+    // Mirrors expo_dotnet_app_directories in
+    // expo-modules-dotnet/native/include/expo_dotnet_host.h. The field order and
+    // types must match that header exactly; the header carries static_assert
+    // checks for its own layout, and the autolinking ABI harness asserts this
+    // one.
+    [StructLayout(LayoutKind.Sequential)]
+    private unsafe struct NativeAppDirectories
+    {
+        public uint Size;
+        public uint Version;
+        public byte* CacheDirectory;
+        public int CacheDirectoryLength;
+        public byte* PersistentFilesDirectory;
+        public int PersistentFilesDirectoryLength;
+    }
+
+    // A null struct pointer means the host configured neither directory. Size is
+    // checked before Version, and both before any pointer field is read.
+    private static unsafe AppDirectories DecodeAppDirectories(nint pointer)
+    {
+        if (pointer == 0)
+        {
+            return AppDirectories.Unconfigured;
+        }
+
+        var native = (NativeAppDirectories*)pointer;
+        var expectedSize = (uint)sizeof(NativeAppDirectories);
+        if (native->Size < expectedSize)
+        {
+            throw new InvalidOperationException(
+                $"Expo .NET host app-directories struct is too small. Expected at least {expectedSize}, got {native->Size}."
+            );
+        }
+        if (native->Version != ExpectedHostAbiVersion)
+        {
+            throw new InvalidOperationException(
+                $"Expo .NET host ABI version mismatch: native={native->Version} managed={ExpectedHostAbiVersion}."
+            );
+        }
+
+        return new AppDirectories(
+            DecodeDirectory(native->CacheDirectory, native->CacheDirectoryLength, "cache_directory"),
+            DecodeDirectory(
+                native->PersistentFilesDirectory,
+                native->PersistentFilesDirectoryLength,
+                "persistent_files_directory"
+            )
+        );
+    }
+
+    // The strings are borrowed for the duration of the create call, so copy them
+    // into managed strings here rather than holding the pointers.
+    private static unsafe string? DecodeDirectory(byte* data, int length, string fieldName)
+    {
+        if (length < 0)
+        {
+            throw new InvalidOperationException($"{fieldName} has a negative byte length.");
+        }
+        if (data == null)
+        {
+            if (length == 0)
+            {
+                return null;
+            }
+            throw new InvalidOperationException($"{fieldName} has a byte length but no data.");
+        }
+        return StrictUtf8.GetString(new ReadOnlySpan<byte>(data, length));
     }
 
     [StructLayout(LayoutKind.Sequential)]

@@ -88,7 +88,7 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
   {
     auto entryPoints = expo::modules::dotnet::resolveRuntimeContextEntryPoints(moduleConfig);
 
-    if (entryPoints.createRuntimeContext == nullptr ||
+    if (entryPoints.createRuntimeContextV2 == nullptr ||
         entryPoints.teardownRuntimeContext == nullptr) {
       error = expo::modules::dotnet::managedLoaderLastError();
       if (error.empty()) {
@@ -100,7 +100,9 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
     }
 
     expo::modules::dotnet::RuntimeContextResult result;
-    entryPoints.createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, &result);
+    // A null app-directories pointer means both directories are unconfigured.
+    entryPoints.createRuntimeContextV2(
+      expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, nullptr, &result);
     if (result.ok == 0 || result.runtimeContext == nullptr) {
       error = takeRuntimeContextError(result.error);
       if (error.empty()) {

@@ -13,7 +13,7 @@ enum class ManagedLoaderKind {
 };
 
 struct ManagedRuntimeContextEntryPoints {
-  CreateRuntimeContextFn createRuntimeContext = nullptr;
+  CreateRuntimeContextV2Fn createRuntimeContextV2 = nullptr;
   TeardownRuntimeContextFn teardownRuntimeContext = nullptr;
 };
 

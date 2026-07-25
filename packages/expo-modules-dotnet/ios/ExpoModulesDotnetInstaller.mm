@@ -56,10 +56,10 @@ void *resolveAggregatorSymbol(const char *symbolName)
   return symbol;
 }
 
-expo::modules::dotnet::CreateRuntimeContextFn resolveCreateRuntimeContext()
+expo::modules::dotnet::CreateRuntimeContextV2Fn resolveCreateRuntimeContextV2()
 {
-  auto *symbol = resolveAggregatorSymbol("expo_dotnet_create_runtime_context_result");
-  return reinterpret_cast<expo::modules::dotnet::CreateRuntimeContextFn>(symbol);
+  auto *symbol = resolveAggregatorSymbol("expo_dotnet_create_runtime_context_result_v2");
+  return reinterpret_cast<expo::modules::dotnet::CreateRuntimeContextV2Fn>(symbol);
 }
 
 expo::modules::dotnet::TeardownRuntimeContextFn resolveTeardownRuntimeContext()
@@ -129,9 +129,9 @@ public:
     }
 
     try {
-      auto createRuntimeContext = resolveCreateRuntimeContext();
+      auto createRuntimeContextV2 = resolveCreateRuntimeContextV2();
       auto teardownRuntimeContext = resolveTeardownRuntimeContext();
-      if (createRuntimeContext == nullptr || teardownRuntimeContext == nullptr) {
+      if (createRuntimeContextV2 == nullptr || teardownRuntimeContext == nullptr) {
         const std::string lastError =
           "Failed to resolve structured create/teardown runtime context entry points. "
           "Run the expo-modules-dotnet-autolinking link command (or a full app build, "
@@ -146,7 +146,9 @@ public:
       }
 
       expo::modules::dotnet::RuntimeContextResult result;
-      createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, &result);
+      // A null app-directories pointer means both directories are unconfigured.
+      createRuntimeContextV2(
+        expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, nullptr, &result);
       if (result.ok == 0 || result.runtimeContext == nullptr) {
         auto lastError = takeRuntimeContextError(result.error);
         if (lastError.empty()) {

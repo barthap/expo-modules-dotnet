@@ -103,10 +103,10 @@ void *resolveDotnetAppSymbol(const char *symbolName, std::string &error)
   return symbol;
 }
 
-expo::modules::dotnet::CreateRuntimeContextFn resolveCreateRuntimeContext(std::string &error)
+expo::modules::dotnet::CreateRuntimeContextV2Fn resolveCreateRuntimeContextV2(std::string &error)
 {
-  auto *symbol = resolveDotnetAppSymbol("expo_dotnet_create_runtime_context_result", error);
-  return reinterpret_cast<expo::modules::dotnet::CreateRuntimeContextFn>(symbol);
+  auto *symbol = resolveDotnetAppSymbol("expo_dotnet_create_runtime_context_result_v2", error);
+  return reinterpret_cast<expo::modules::dotnet::CreateRuntimeContextV2Fn>(symbol);
 }
 
 expo::modules::dotnet::TeardownRuntimeContextFn resolveTeardownRuntimeContext(std::string &error)
@@ -122,11 +122,11 @@ bool registerDotnetModules(InstalledRuntime &installedRuntime)
   }
 
   std::string createError;
-  auto createRuntimeContext = resolveCreateRuntimeContext(createError);
+  auto createRuntimeContextV2 = resolveCreateRuntimeContextV2(createError);
   std::string teardownError;
   auto teardownRuntimeContext = resolveTeardownRuntimeContext(teardownError);
-  if (createRuntimeContext == nullptr || teardownRuntimeContext == nullptr) {
-    auto detail = createRuntimeContext == nullptr ? createError : teardownError;
+  if (createRuntimeContextV2 == nullptr || teardownRuntimeContext == nullptr) {
+    auto detail = createRuntimeContextV2 == nullptr ? createError : teardownError;
     setLastError("Failed to resolve structured expo_dotnet_create/teardown_runtime_context. " +
                  detail +
                  " Run the expo-modules-dotnet-autolinking link command (or a full app build, "
@@ -135,8 +135,9 @@ bool registerDotnetModules(InstalledRuntime &installedRuntime)
   }
 
   expo::modules::dotnet::RuntimeContextResult result;
-  createRuntimeContext(
-    expo::dotnet::reactNativeExpoJsiApi(), installedRuntime.runtimeHandle, &result);
+  // A null app-directories pointer means both directories are unconfigured.
+  createRuntimeContextV2(
+    expo::dotnet::reactNativeExpoJsiApi(), installedRuntime.runtimeHandle, nullptr, &result);
   installedRuntime.teardownRuntimeContext = teardownRuntimeContext;
   if (result.ok == 0 || result.runtimeContext == nullptr) {
     auto managedError = takeRuntimeContextError(result.error);
