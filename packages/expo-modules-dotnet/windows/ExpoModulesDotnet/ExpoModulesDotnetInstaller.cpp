@@ -3,6 +3,7 @@
 #include "ExpoModulesDotnetInstaller.h"
 
 #include <ReactNotificationService.h>
+#include <winrt/Windows.Storage.h>
 
 #include <sstream>
 #include <stdexcept>
@@ -66,6 +67,71 @@ std::wstring takeRuntimeContextError(expo::modules::dotnet::RuntimeContextError 
   return message;
 }
 
+// App-scoped directories this host resolved, as UTF-8. An empty string means the
+// host could not resolve that directory, and the managed side is told nothing
+// rather than being handed a user-wide root.
+struct ResolvedAppDirectories {
+  std::string cacheDirectory;
+  std::string persistentFilesDirectory;
+
+  bool isConfigured() const
+  {
+    return !cacheDirectory.empty() && !persistentFilesDirectory.empty();
+  }
+};
+
+// Accepts a drive-rooted or UNC path only. A relative path would anchor to the
+// process working directory, which is not the app scope the host means.
+bool isFullyQualifiedPath(const std::string &path)
+{
+  if (path.find('\0') != std::string::npos) {
+    return false;
+  }
+  if (path.size() >= 2 && path[0] == '\\' && path[1] == '\\') {
+    return true;
+  }
+  if (path.size() < 3 || path[1] != ':' || (path[2] != '\\' && path[2] != '/')) {
+    return false;
+  }
+  const char drive = path[0];
+  return (drive >= 'A' && drive <= 'Z') || (drive >= 'a' && drive <= 'z');
+}
+
+// Only the host knows the app identity, so only the host can name a directory
+// that belongs to this app alone. `ApplicationData::Current()` is per-package by
+// definition and throws without package identity, so its folders are app-scoped
+// whenever this succeeds; there is no unpackaged fallback, because an executable
+// name is not a stable app identity.
+ResolvedAppDirectories resolveAppDirectories()
+{
+  ResolvedAppDirectories directories;
+  try {
+    const auto applicationData = winrt::Windows::Storage::ApplicationData::Current();
+    directories.cacheDirectory = winrt::to_string(applicationData.LocalCacheFolder().Path());
+    directories.persistentFilesDirectory = winrt::to_string(applicationData.LocalFolder().Path());
+  } catch (const winrt::hresult_error &) {
+    logMessage(L"[ExpoModulesDotnet] Unpackaged host supplied no app identity, so app directories "
+               L"stay unconfigured.");
+    return {};
+  }
+
+  if (!directories.isConfigured()) {
+    logMessage(L"[ExpoModulesDotnet] Host did not resolve both app directories, so they stay "
+               L"unconfigured.");
+    return {};
+  }
+
+  if (!isFullyQualifiedPath(directories.cacheDirectory) ||
+      !isFullyQualifiedPath(directories.persistentFilesDirectory) ||
+      directories.cacheDirectory == directories.persistentFilesDirectory) {
+    logMessage(L"[ExpoModulesDotnet] Resolved app directories are not distinct fully qualified "
+               L"paths, so they stay unconfigured.");
+    return {};
+  }
+
+  return directories;
+}
+
 } // namespace
 
 struct ExpoModulesDotnetInstaller::InstalledRuntime final
@@ -99,10 +165,31 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
       return false;
     }
 
+    // The struct borrows these strings for the duration of the create call, so
+    // both must live in this frame until the call returns. A null pointer means
+    // both directories are unconfigured.
+    const auto appDirectories = resolveAppDirectories();
+    expo::modules::dotnet::expo_dotnet_app_directories directories{};
+    const expo::modules::dotnet::expo_dotnet_app_directories *directoriesPointer = nullptr;
+    if (appDirectories.isConfigured()) {
+      directories.size = sizeof(directories);
+      directories.version = EXPO_DOTNET_HOST_ABI_VERSION;
+      directories.cache_directory =
+        reinterpret_cast<const uint8_t *>(appDirectories.cacheDirectory.data());
+      directories.cache_directory_length =
+        static_cast<int32_t>(appDirectories.cacheDirectory.size());
+      directories.persistent_files_directory =
+        reinterpret_cast<const uint8_t *>(appDirectories.persistentFilesDirectory.data());
+      directories.persistent_files_directory_length =
+        static_cast<int32_t>(appDirectories.persistentFilesDirectory.size());
+      directoriesPointer = &directories;
+      logMessage(L"[ExpoModulesDotnet] App directories configured: cache=app-scoped, "
+                 L"persistent=app-scoped.");
+    }
+
     expo::modules::dotnet::RuntimeContextResult result;
-    // A null app-directories pointer means both directories are unconfigured.
     entryPoints.createRuntimeContextV2(
-      expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, nullptr, &result);
+      expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, directoriesPointer, &result);
     if (result.ok == 0 || result.runtimeContext == nullptr) {
       error = takeRuntimeContextError(result.error);
       if (error.empty()) {
