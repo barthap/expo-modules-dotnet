@@ -110,8 +110,12 @@ proof the inner codecs are not null-tolerant by design. Keep that property.
 
 ### Four traps in the dispatch chain
 
-`GetCodecExpression` in the same file is an ordered chain. The tail, verbatim
-from `ExpoModulesGenerator.Codecs.cs:325-333`:
+`GetCodecExpression` in the same file is an ordered chain. Its head order is
+callback, `ArrayBuffer`, `byte[]`, `Memory<byte>`, `ReadOnlyMemory<byte>`,
+`JavaScriptValue`, then `TryGetNullableCodec`; `TryGetConvertibleCodec`, the enum
+branch, records, primitives, and collections all come after. The
+`JavaScriptValue` and `TryGetNullableCodec` pair, verbatim from
+`ExpoModulesGenerator.Codecs.cs:324-332`:
 
 ```csharp
     if (typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == JavaScriptValueMetadataName)
@@ -126,11 +130,12 @@ from `ExpoModulesGenerator.Codecs.cs:325-333`:
 ```
 
 **Trap 1 — placement.** `string?` and `string` are the *same* symbol; they differ
-only by `NullableAnnotation`. The concrete matches (`string`, `Uri`, byte
-buffers, `JavaScriptValue`) come *earlier* in the chain, so a nullable-reference
-check appended near `TryGetNullableCodec` never runs — `string?` returns
-`StringCodec` first. The new check must sit at the **top** of
-`GetCodecExpression`, before any concrete type match.
+only by `NullableAnnotation`. Concrete matches come *earlier* in the chain than
+any nullable handling, so a nullable-reference check appended near
+`TryGetNullableCodec` never runs: byte buffers and `JavaScriptValue` match above
+it, and `string` and `Uri` match below it through `TryGetConvertibleCodec`, which
+would still return `StringCodec` for `string?`. The new check must sit at the
+**top** of `GetCodecExpression`, before any concrete type match.
 
 **Trap 2 — recursion.** Resolving the inner codec must strip the annotation
 (`typeSymbol.WithNullableAnnotation(NullableAnnotation.NotAnnotated)`), or the
