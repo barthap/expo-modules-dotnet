@@ -9,6 +9,7 @@
 #include <string>
 
 #include "ReactNativeRuntimeConnector.h"
+#include "expo_dotnet_host.h"
 
 @protocol ExpoModulesDotnetInstalling
 - (BOOL)installModules;
@@ -17,24 +18,7 @@
 
 namespace {
 
-struct RuntimeContextError {
-  const char *message = nullptr;
-  int32_t messageLength = 0;
-  void *releaseContext = nullptr;
-  void (*release)(void *) = nullptr;
-};
-
-struct RuntimeContextResult {
-  int32_t ok = 0;
-  void *runtimeContext = nullptr;
-  RuntimeContextError error;
-};
-
-using CreateRuntimeContextFn =
-  void (*)(const expo_jsi_api *, expo_jsi_runtime_handle, RuntimeContextResult *);
-using TeardownRuntimeContextFn = void (*)(void *);
-
-std::string takeRuntimeContextError(RuntimeContextError &error)
+std::string takeRuntimeContextError(expo::modules::dotnet::RuntimeContextError &error)
 {
   std::string message;
   if (error.message != nullptr && error.messageLength > 0) {
@@ -72,16 +56,16 @@ void *resolveAggregatorSymbol(const char *symbolName)
   return symbol;
 }
 
-CreateRuntimeContextFn resolveCreateRuntimeContext()
+expo::modules::dotnet::CreateRuntimeContextFn resolveCreateRuntimeContext()
 {
   auto *symbol = resolveAggregatorSymbol("expo_dotnet_create_runtime_context_result");
-  return reinterpret_cast<CreateRuntimeContextFn>(symbol);
+  return reinterpret_cast<expo::modules::dotnet::CreateRuntimeContextFn>(symbol);
 }
 
-TeardownRuntimeContextFn resolveTeardownRuntimeContext()
+expo::modules::dotnet::TeardownRuntimeContextFn resolveTeardownRuntimeContext()
 {
   auto *symbol = resolveAggregatorSymbol("expo_dotnet_teardown_runtime_context");
-  return reinterpret_cast<TeardownRuntimeContextFn>(symbol);
+  return reinterpret_cast<expo::modules::dotnet::TeardownRuntimeContextFn>(symbol);
 }
 
 class InstalledRuntime final {
@@ -98,7 +82,7 @@ public:
     std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector;
     expo_jsi_runtime_handle runtimeHandle = nullptr;
     void *managedRuntimeContext = nullptr;
-    TeardownRuntimeContextFn teardownRuntimeContext = nullptr;
+    expo::modules::dotnet::TeardownRuntimeContextFn teardownRuntimeContext = nullptr;
 
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -161,7 +145,7 @@ public:
         return false;
       }
 
-      RuntimeContextResult result;
+      expo::modules::dotnet::RuntimeContextResult result;
       createRuntimeContext(expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, &result);
       if (result.ok == 0 || result.runtimeContext == nullptr) {
         auto lastError = takeRuntimeContextError(result.error);
@@ -208,7 +192,7 @@ private:
   std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector_;
   expo_jsi_runtime_handle runtimeHandle_ = nullptr;
   void *managedRuntimeContext_ = nullptr;
-  TeardownRuntimeContextFn teardownRuntimeContext_ = nullptr;
+  expo::modules::dotnet::TeardownRuntimeContextFn teardownRuntimeContext_ = nullptr;
   std::string lastError_;
   bool registered_ = false;
   bool registrationInProgress_ = false;

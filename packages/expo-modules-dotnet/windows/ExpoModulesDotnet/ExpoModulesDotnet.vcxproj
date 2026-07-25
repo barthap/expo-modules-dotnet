@@ -115,6 +115,7 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="..\..\native\include\expo_dotnet_host.h" />
     <ClInclude Include="..\..\native\include\expo_jsi.h" />
     <ClInclude Include="..\..\native\packages\jsi\include\ExpoJsiBridge.h" />
     <ClInclude Include="..\..\native\packages\jsi\include\JsiRuntimeConnector.h" />

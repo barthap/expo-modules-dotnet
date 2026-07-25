@@ -7,34 +7,17 @@
 #include <string>
 
 #include "ReactNativeRuntimeConnector.h"
+#include "expo_dotnet_host.h"
 
 namespace {
 
 constexpr const char *kLogTag = "ExpoModulesDotnet";
 
-struct RuntimeContextError {
-  const char *message = nullptr;
-  int32_t messageLength = 0;
-  void *releaseContext = nullptr;
-  void (*release)(void *) = nullptr;
-};
-
-struct RuntimeContextResult {
-  int32_t ok = 0;
-  void *runtimeContext = nullptr;
-  RuntimeContextError error;
-};
-
-using CreateRuntimeContextFn = void (*)(const expo_jsi_api *,
-                                        expo_jsi_runtime_handle,
-                                        RuntimeContextResult *);
-using TeardownRuntimeContextFn = void (*)(void *);
-
 struct InstalledRuntime {
   std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector;
   expo_jsi_runtime_handle runtimeHandle = nullptr;
   void *managedRuntimeContext = nullptr;
-  TeardownRuntimeContextFn teardownRuntimeContext = nullptr;
+  expo::modules::dotnet::TeardownRuntimeContextFn teardownRuntimeContext = nullptr;
   bool registered = false;
 
   InstalledRuntime(std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector,
@@ -77,7 +60,7 @@ void clearLastError()
   lastError.clear();
 }
 
-std::string takeRuntimeContextError(RuntimeContextError &error)
+std::string takeRuntimeContextError(expo::modules::dotnet::RuntimeContextError &error)
 {
   std::string message;
   if (error.message != nullptr && error.messageLength > 0) {
@@ -120,16 +103,16 @@ void *resolveDotnetAppSymbol(const char *symbolName, std::string &error)
   return symbol;
 }
 
-CreateRuntimeContextFn resolveCreateRuntimeContext(std::string &error)
+expo::modules::dotnet::CreateRuntimeContextFn resolveCreateRuntimeContext(std::string &error)
 {
   auto *symbol = resolveDotnetAppSymbol("expo_dotnet_create_runtime_context_result", error);
-  return reinterpret_cast<CreateRuntimeContextFn>(symbol);
+  return reinterpret_cast<expo::modules::dotnet::CreateRuntimeContextFn>(symbol);
 }
 
-TeardownRuntimeContextFn resolveTeardownRuntimeContext(std::string &error)
+expo::modules::dotnet::TeardownRuntimeContextFn resolveTeardownRuntimeContext(std::string &error)
 {
   auto *symbol = resolveDotnetAppSymbol("expo_dotnet_teardown_runtime_context", error);
-  return reinterpret_cast<TeardownRuntimeContextFn>(symbol);
+  return reinterpret_cast<expo::modules::dotnet::TeardownRuntimeContextFn>(symbol);
 }
 
 bool registerDotnetModules(InstalledRuntime &installedRuntime)
@@ -151,7 +134,7 @@ bool registerDotnetModules(InstalledRuntime &installedRuntime)
     return false;
   }
 
-  RuntimeContextResult result;
+  expo::modules::dotnet::RuntimeContextResult result;
   createRuntimeContext(
     expo::dotnet::reactNativeExpoJsiApi(), installedRuntime.runtimeHandle, &result);
   installedRuntime.teardownRuntimeContext = teardownRuntimeContext;
