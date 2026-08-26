@@ -1,42 +1,30 @@
 using Expo.JSI;
+using Expo.ModulesCore.Testing;
+using Expo.ModulesCore.Testing.Internal;
 
 namespace Expo.ModulesCore.Tests.Fixtures;
 
 public sealed class HermesRuntimeFixture : IDisposable
 {
-  private nint testHostRuntime;
+  private readonly HermesTestRuntime testRuntime;
 
-  private HermesRuntimeFixture(JavaScriptRuntime runtime, nint testHostRuntime)
+  private HermesRuntimeFixture(HermesTestRuntime testRuntime)
   {
-    Runtime = runtime;
-    this.testHostRuntime = testHostRuntime;
-    TestRuntime = new JavaScriptTestRuntime(runtime, testHostRuntime);
+    this.testRuntime = testRuntime;
   }
 
-  public JavaScriptRuntime Runtime { get; }
+  public JavaScriptRuntime Runtime => testRuntime.Runtime;
 
-  public JavaScriptTestRuntime TestRuntime { get; }
-
-  internal NativeTestHost.Counters Counters => NativeTestHost.GetCounters(testHostRuntime);
+  internal NativeTestHost.Counters Counters => testRuntime.Counters;
 
   public static HermesRuntimeFixture Create()
   {
-    var result = NativeTestHost.CreateRuntime();
-    if (result.Ok == 0 || result.Api == 0 || result.Runtime == 0 || result.TestHostRuntime == 0)
-    {
-      var message = result.Error.GetMessageAndRelease();
-      throw new InvalidOperationException(
-          string.IsNullOrEmpty(message) ? "Failed to create Hermes test runtime." : message
-      );
-    }
-
-    var runtime = JavaScriptRuntime.FromNative(result.Api, result.Runtime);
-    return new HermesRuntimeFixture(runtime, result.TestHostRuntime);
+    return new HermesRuntimeFixture(HermesTestRuntime.Create());
   }
 
   public void ResetCounters()
   {
-    NativeTestHost.ResetCounters(testHostRuntime);
+    testRuntime.ResetCounters();
   }
 
   public void DrainTasks()
@@ -46,10 +34,10 @@ public sealed class HermesRuntimeFixture : IDisposable
 
   public void WaitUntilIdle()
   {
-    NativeTestHost.WaitUntilIdle(testHostRuntime);
+    testRuntime.WaitUntilIdle();
   }
 
-  public void CollectGarbageForTesting() => NativeTestHost.CollectGarbageForTesting(testHostRuntime);
+  public void CollectGarbageForTesting() => testRuntime.CollectGarbageForTesting();
 
   public void DisableSyncExecutionForTesting()
   {
@@ -58,46 +46,42 @@ public sealed class HermesRuntimeFixture : IDisposable
 
   public void SetSyncExecutionSupportedForTesting(bool supported)
   {
-    NativeTestHost.SetSyncExecutionSupported(testHostRuntime, supported);
+    testRuntime.SetSyncExecutionSupportedForTesting(supported);
   }
 
-  public void PauseRuntimeExecutor() => NativeTestHost.PauseRuntimeExecutor(testHostRuntime);
+  public void PauseRuntimeExecutor() => testRuntime.PauseRuntimeExecutor();
 
-  public void ResumeRuntimeExecutor() => NativeTestHost.ResumeRuntimeExecutor(testHostRuntime);
+  public void ResumeRuntimeExecutor() => testRuntime.ResumeRuntimeExecutor();
 
   public void DropNextRuntimeTask(JavaScriptTaskPriority priority) =>
-      NativeTestHost.DropNextRuntimeTask(testHostRuntime, priority);
+      testRuntime.DropNextRuntimeTask(priority);
 
   public void WaitUntilRuntimeTaskQueued(JavaScriptTaskPriority priority) =>
-      NativeTestHost.WaitUntilRuntimeTaskQueued(testHostRuntime, priority);
+      testRuntime.WaitUntilRuntimeTaskQueued(priority);
 
   public void DropQueuedRuntimeTask(JavaScriptTaskPriority priority) =>
-      NativeTestHost.DropQueuedRuntimeTask(testHostRuntime, priority);
+      testRuntime.DropQueuedRuntimeTask(priority);
 
   public void ReleaseBridgeRuntimeHandle() =>
-      NativeTestHost.ReleaseBridgeRuntimeHandle(testHostRuntime);
+      testRuntime.ReleaseBridgeRuntimeHandle();
 
   public void InvalidateRuntimeForTesting()
   {
-    NativeTestHost.InvalidateRuntime(testHostRuntime);
+    testRuntime.InvalidateRuntimeForTesting();
   }
 
   public void PrepareRuntimeForInvalidation()
   {
-    NativeTestHost.PrepareRuntimeForInvalidation(testHostRuntime);
+    testRuntime.PrepareRuntimeForInvalidation();
   }
 
   public JavaScriptValue Evaluate(string source, string sourceUrl = "expo-jsi-test.js")
   {
-    return TestRuntime.Evaluate(source, sourceUrl);
+    return testRuntime.Evaluate(source, sourceUrl);
   }
 
   public void Dispose()
   {
-    if (testHostRuntime != 0)
-    {
-      NativeTestHost.ReleaseRuntime(testHostRuntime);
-      testHostRuntime = 0;
-    }
+    testRuntime.Dispose();
   }
 }

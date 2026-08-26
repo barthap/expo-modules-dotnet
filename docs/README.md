@@ -44,12 +44,15 @@ exception rules.
   contains generator source-output and diagnostic tests.
 - `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests/`
   contains Hermes-backed module dispatch and conversion tests.
+- `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Testing/`
+  contains the repo-local, non-packable Hermes runtime and module test host for
+  authored module tests.
 - `packages/expo-modules-dotnet-autolinking/` contains the CLI that resolves
   dotnet Expo module packages, generates the `ExpoDotnetHost` aggregator,
   builds it, and stages loader-expected artifacts for app builds.
 - `packages/example-module/` is an authored .NET Expo module package used by
-  example apps. It owns the example C# module source, JavaScript facade, and
-  dotnet autolinking metadata.
+  example apps. It owns the example C# module source, JavaScript facade,
+  dotnet autolinking metadata, and its `ExampleModule.Tests` behavior tests.
 - `apps/mobile-app/` is the NativeAOT React Native integration example app. It
   consumes `expo-modules-dotnet` and `example-module` as workspace
   dependencies.

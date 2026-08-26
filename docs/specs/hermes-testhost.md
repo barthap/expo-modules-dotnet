@@ -62,21 +62,46 @@ testhost and run the same managed test projects. All runners SHALL pass
 
 - **GIVEN** a developer runs `scripts/test-managed.sh`
 - **WHEN** the script runs on macOS or Linux
-- **THEN** it SHALL build the native Hermes testhost, pass
-  `EXPO_JSI_TESTHOST_LIBRARY` to managed tests, and run both `Expo.JSI.Tests`
-  and `Expo.ModulesCore.Tests`
+- **THEN** it SHALL deterministically discover
+  `packages/*/dotnet/*.Tests/*.Tests.csproj`
+- **AND** it SHALL build one native Hermes testhost, pass
+  `EXPO_JSI_TESTHOST_LIBRARY` to managed tests, and run
+  `Expo.ModulesCore.Generator.Tests`, `Expo.JSI.Tests`,
+  `Expo.ModulesCore.Tests`, and the discovered authored-module test projects
 - **AND** the testhost library name SHALL be `libexpo_jsi_testhost.dylib` on
   macOS and `libexpo_jsi_testhost.so` on Linux
+
+#### Scenario: macOS / Linux runner selects test projects
+
+- **GIVEN** a developer passes one or more repo-relative test project paths
+  with `--project`
+- **WHEN** `scripts/test-managed.sh` validates the selection
+- **THEN** it SHALL reject a missing, duplicate, outside-repository, symlink,
+  or non-`*.Tests.csproj` path before native setup
+- **AND** it SHALL build the shared native testhost path once and run only the
+  selected test projects
 
 #### Scenario: Windows test runner executes
 - **GIVEN** a Windows Hermes prebuilt exists under the configured
   `HERMES_PREBUILT_ROOT`
 - **WHEN** a developer runs `scripts/test-managed.ps1`
 - **THEN** it SHALL build the native Windows Hermes testhost
+- **AND** it SHALL deterministically discover
+  `packages/*/dotnet/*.Tests/*.Tests.csproj`
 - **AND** it SHALL run `Expo.ModulesCore.Generator.Tests`, `Expo.JSI.Tests`,
-  and `Expo.ModulesCore.Tests`
+  `Expo.ModulesCore.Tests`, and the discovered authored-module test projects
 - **AND** it SHALL pass the built testhost DLL through
   `EXPO_JSI_TESTHOST_LIBRARY`
+
+#### Scenario: Windows runner selects test projects
+
+- **GIVEN** a developer passes one or more repo-relative test project paths
+  with `-Project`
+- **WHEN** `scripts/test-managed.ps1` validates the selection
+- **THEN** it SHALL reject a missing, duplicate, outside-repository, symlink,
+  or non-`*.Tests.csproj` path before native setup
+- **AND** it SHALL build the shared native testhost path once and run only the
+  selected test projects
 
 ### Requirement: Headless Hermes Console Runners
 
@@ -133,15 +158,40 @@ host-function, scheduling, promise, and testhost behavior.
   `packages/expo-modules-dotnet/managed/packages/Expo.JSI.Tests` unless the
   behavior belongs to the future module layer
 
+### Requirement: Module-Layer Testhost Ownership
+
+`Expo.ModulesCore.Testing` SHALL own the repo-local public Hermes runtime and
+module test host used by authored module tests. It SHALL remain non-packable in
+v1. `Expo.JSI.Tests` SHALL remain independent of `Expo.ModulesCore.Testing`.
+
+#### Scenario: Authored module test uses the testhost
+- **GIVEN** an authored package needs Hermes-backed generated module behavior
+- **WHEN** its `.Tests` project creates an `ExpoModuleTestHost`
+- **THEN** it SHALL use `Expo.ModulesCore.Testing`
+- **AND** it SHALL pass its generated provider registration explicitly
+
+#### Scenario: Low-level JSI test remains independent
+- **GIVEN** `Expo.JSI.Tests` verifies low-level ABI and wrapper behavior
+- **WHEN** module-layer testhost support exists
+- **THEN** `Expo.JSI.Tests` SHALL retain its low-level fixture
+- **AND** it SHALL NOT reference `Expo.ModulesCore.Testing`
+
 ### Requirement: Module Test Ownership
 
-Module behavior tests SHALL live under `Expo.ModulesCore.Tests`.
+Framework module behavior SHALL live in `Expo.ModulesCore.Tests`; behavior
+specific to an authored module SHALL live in that package's `.Tests` project.
 
 #### Scenario: Module behavior is tested
-- **GIVEN** generated-looking module dispatch or conversion behavior is tested
+- **GIVEN** a test proves generated binding, codec, registry, lifecycle, event,
+  callback, or shared-object behavior independent of one authored package
 - **WHEN** the behavior is above low-level `Expo.JSI`
 - **THEN** coverage SHALL live under
   `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests`
+
+#### Scenario: Authored module behavior is tested
+- **GIVEN** a test proves behavior defined by one authored module package
+- **WHEN** the test is added
+- **THEN** coverage SHALL live in that package's `.Tests` project
 
 ### Requirement: Deterministic Runtime Queue Controls
 

@@ -1177,14 +1177,41 @@ dotnet autolinking aggregates generated providers.
 - **AND** state that module class discovery remains owned by each library's
   Roslyn generation step
 
-### Requirement: ModulesCore Owns Module Tests
+### Requirement: ModulesCore Owns Framework Module Tests
 
-`Expo.ModulesCore.Tests` SHALL own module dispatch and conversion behavior.
+`Expo.ModulesCore.Tests` SHALL own generated binding, codec, registry,
+lifecycle, event, callback, and shared-object behavior that is independent of
+one authored package.
 
-#### Scenario: Module conversion behavior is tested
-- **GIVEN** a test proves generated-looking module conversion behavior
+#### Scenario: Framework module behavior is tested
+- **GIVEN** a test proves module-layer behavior that is independent of one
+  authored package
 - **WHEN** the behavior is above low-level `Expo.JSI`
 - **THEN** the test SHALL live in `Expo.ModulesCore.Tests`
+
+### Requirement: Authored Packages Own Their Behavior Tests
+
+Each repo-local authored module package SHALL own its module-specific tests in
+a `.Tests` project and MAY combine pure C# tests with Hermes-backed
+`Expo.ModulesCore.Testing` tests.
+
+#### Scenario: ExampleModule behavior is tested
+- **GIVEN** a test proves behavior specific to `ExampleModule`
+- **WHEN** the test is added
+- **THEN** it SHALL live in
+  `packages/example-module/dotnet/ExampleModule.Tests`
+- **AND** `Expo.ModulesCore.Tests` SHALL NOT reference `ExampleModule` or own
+  its package-specific tests
+
+#### Scenario: Authored package registers its generated provider
+- **GIVEN** an authored package test creates an `ExpoModuleTestHost`
+- **WHEN** it needs its generated module surface in Hermes
+- **THEN** it SHALL pass the package's generated provider `Register` method
+  explicitly to the host
+- **AND** the host SHALL register the provider against its normal
+  `_expoDotnet.modules` object
+- **AND** `Expo.ModulesCore.Testing` SHALL NOT discover providers through
+  runtime reflection
 
 ### Requirement: Runtime-Scoped Dotnet Runtime Contexts
 

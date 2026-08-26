@@ -101,6 +101,11 @@ Completed scope:
      exposes a JavaScript accessor property, writable when the C# property has
      a setter.
 
+6. **External authored-module testing**
+   - Package `Expo.ModulesCore.Testing` for separate repositories.
+   - Deliver RID-specific Hermes/testhost native assets.
+   - Provide a standalone test command that provisions the native runtime.
+
 ### P2: Interactive Module Capabilities
 
 1. **Function calling from C#** (complete)

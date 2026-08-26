@@ -7,6 +7,7 @@ param(
   [string]$HermesPrebuiltRoot = $env:HERMES_PREBUILT_ROOT,
   [ValidateSet('x64', 'x86', 'arm64', 'arm64ec')]
   [string]$Arch = 'x64',
+  [string[]]$Project = @(),
   [Parameter(ValueFromRemainingArguments = $true)]
   [string[]]$DotNetTestArgs = @()
 )
@@ -35,6 +36,85 @@ function Invoke-Process {
   & $FilePath @ArgumentList
   if ($LASTEXITCODE -ne 0) {
     throw "$FilePath exited with code $LASTEXITCODE"
+  }
+}
+
+$testProjects = [System.Collections.Generic.List[string]]::new()
+$seenTestProjects = [System.Collections.Generic.HashSet[string]]::new(
+  [System.StringComparer]::OrdinalIgnoreCase
+)
+
+function Add-TestProject {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ProjectPath,
+    [Parameter(Mandatory = $true)]
+    [string]$DisplayPath
+  )
+
+  $projectPath = [IO.Path]::GetFullPath($ProjectPath)
+  $repoRootWithSeparator = $repoRoot + [IO.Path]::DirectorySeparatorChar
+  if (!$projectPath.StartsWith($repoRootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Invalid test project path: $DisplayPath (must resolve inside the repository)."
+  }
+  if (!(Test-Path -LiteralPath $projectPath -PathType Leaf)) {
+    throw "Invalid test project path: $DisplayPath (must be an existing regular file)."
+  }
+
+  $ancestorPath = $projectPath
+  while ($true) {
+    $ancestorItem = Get-Item -LiteralPath $ancestorPath -Force
+    if ($ancestorItem.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+      throw "Invalid test project path: $DisplayPath (must not traverse a reparse point)."
+    }
+    if ($ancestorPath.Equals($repoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+      break
+    }
+
+    $parent = [IO.Directory]::GetParent($ancestorPath)
+    if ($null -eq $parent) {
+      throw "Invalid test project path: $DisplayPath (must resolve inside the repository)."
+    }
+    $ancestorPath = $parent.FullName
+  }
+
+  $projectItem = Get-Item -LiteralPath $projectPath -Force
+  if ($projectItem -isnot [System.IO.FileInfo]) {
+    throw "Invalid test project path: $DisplayPath (must be an existing regular file)."
+  }
+  if (!$projectItem.Name.EndsWith('.Tests.csproj', [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Invalid test project path: $DisplayPath (must name a *.Tests.csproj file)."
+  }
+  if (!$seenTestProjects.Add($projectPath)) {
+    throw "Invalid test project path: $DisplayPath (duplicate selection)."
+  }
+
+  $testProjects.Add($projectPath)
+}
+
+if ($Project.Count -gt 0) {
+  foreach ($selectedProject in $Project) {
+    if ([IO.Path]::IsPathRooted($selectedProject)) {
+      throw "Invalid test project path: $selectedProject (paths must be repo-relative)."
+    }
+
+    Add-TestProject (Join-Path $repoRoot $selectedProject) $selectedProject
+  }
+} else {
+  Add-TestProject (Join-Path $repoRoot 'packages\expo-modules-dotnet\managed\packages\Expo.ModulesCore.Generator.Tests\Expo.ModulesCore.Generator.Tests.csproj') 'Expo.ModulesCore.Generator.Tests'
+  Add-TestProject (Join-Path $repoRoot 'packages\expo-modules-dotnet\managed\packages\Expo.JSI.Tests\Expo.JSI.Tests.csproj') 'Expo.JSI.Tests'
+  Add-TestProject (Join-Path $repoRoot 'packages\expo-modules-dotnet\managed\packages\Expo.ModulesCore.Tests\Expo.ModulesCore.Tests.csproj') 'Expo.ModulesCore.Tests'
+
+  foreach ($packageDirectory in Get-ChildItem -LiteralPath (Join-Path $repoRoot 'packages') -Directory -Force | Sort-Object FullName) {
+    $dotnetDirectory = Join-Path $packageDirectory.FullName 'dotnet'
+    if (Test-Path -LiteralPath $dotnetDirectory -PathType Container) {
+      foreach ($projectDirectory in Get-ChildItem -LiteralPath $dotnetDirectory -Directory -Filter '*.Tests' -Force | Sort-Object FullName) {
+        $projectPath = Join-Path $projectDirectory.FullName "$($projectDirectory.Name).csproj"
+        if (Test-Path -LiteralPath $projectPath -PathType Leaf) {
+          Add-TestProject $projectPath $projectPath
+        }
+      }
+    }
   }
 }
 
@@ -78,15 +158,6 @@ Invoke-Process -FilePath 'dotnet' -ArgumentList @(
 )
 
 Write-Host
-Write-Host '==> Running Expo.ModulesCore.Generator.Tests'
-Invoke-Process -FilePath 'dotnet' -ArgumentList (@(
-  'test',
-  (Join-Path $repoRoot 'packages\expo-modules-dotnet\managed\packages\Expo.ModulesCore.Generator.Tests\Expo.ModulesCore.Generator.Tests.csproj'),
-  '-c',
-  $Configuration
-) + $DotNetTestArgs)
-
-Write-Host
 Write-Host '==> Configuring native testhost'
 if (Test-Path -LiteralPath $buildDir) {
   Remove-Item -LiteralPath $buildDir -Recurse -Force
@@ -121,20 +192,13 @@ if (!(Test-Path -LiteralPath $testhostDll)) {
 
 $env:EXPO_JSI_TESTHOST_LIBRARY = $testhostDll
 
-Write-Host
-Write-Host '==> Running Expo.JSI.Tests'
-Invoke-Process -FilePath 'dotnet' -ArgumentList (@(
-  'test',
-  (Join-Path $repoRoot 'packages\expo-modules-dotnet\managed\packages\Expo.JSI.Tests\Expo.JSI.Tests.csproj'),
-  '-c',
-  $Configuration
-) + $DotNetTestArgs)
-
-Write-Host
-Write-Host '==> Running Expo.ModulesCore.Tests'
-Invoke-Process -FilePath 'dotnet' -ArgumentList (@(
-  'test',
-  (Join-Path $repoRoot 'packages\expo-modules-dotnet\managed\packages\Expo.ModulesCore.Tests\Expo.ModulesCore.Tests.csproj'),
-  '-c',
-  $Configuration
-) + $DotNetTestArgs)
+foreach ($testProject in $testProjects) {
+  Write-Host
+  Write-Host "==> Running $([IO.Path]::GetFileNameWithoutExtension($testProject))"
+  Invoke-Process -FilePath 'dotnet' -ArgumentList (@(
+    'test',
+    $testProject,
+    '-c',
+    $Configuration
+  ) + $DotNetTestArgs)
+}
