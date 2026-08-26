@@ -3,7 +3,10 @@ import * as path from 'path';
 export function findPackageProjectPath(solution: string, solutionPath: string): string {
   const matches = Array.from(
     solution.matchAll(/^Project\("[^"]+"\) = "[^"]+", "([^"]+\.wapproj)", "\{[^}]+\}"/gim),
-    (match) => path.resolve(path.dirname(solutionPath), match[1])
+    // A solution file always separates path segments with a backslash. path.resolve
+    // only treats that as a separator on Windows, so convert first or a POSIX host
+    // returns one segment with an embedded backslash.
+    (match) => path.resolve(path.dirname(solutionPath), match[1].split('\\').join(path.sep))
   );
   if (matches.length !== 1) {
     throw new Error(
