@@ -31,6 +31,10 @@ fully before starting, honor its STOP conditions, and update your row when done.
 | 019 | Typed `[Event]` members on shared objects | P2 | M | 017, 021 | DONE |
 | 020 | hermes-console-app Linux port + end-to-end loader lane in CI (hostfxr + nativeaot) | P1 | M | 016 | DONE — Linux HostFXR and NativeAOT Docker proofs, macOS regressions, managed tests, formatting, and workflow lint passed; implemented at `be4ac86f`, `dc526e83`, `819d8622`, and `b21f3d9b`. |
 | 021 | Exactly-once owned callback-state disposal for host functions (`Expo.JSI`) | P2 | S–M | — | DONE — preserved the four-parameter API, added the owned-state overload, and verified GC, teardown, failure, and concurrent release. |
+| 022 | `expo-asset-dotnet` for Windows and macOS | P1 | M | — | TODO — first authored module; normal `_expoDotnet` registration only. |
+| 023 | `expo-constants-dotnet` for Windows and macOS | P1 | M | — (022 recommended first) | TODO — typed metadata only; no generic JSON shortcut. |
+| 024 | `expo-file-system-dotnet` local files core for Windows and macOS | P1 | L | — (022, 023 recommended first) | TODO — `Paths`, `File`, `Directory`; no network or compatibility claim. |
+| 025 | `expo-crypto-dotnet` for Windows and macOS | P1 | M | 006 complete (024 recommended first) | TODO — ArrayBuffer plus offset/length native boundary. |
 
 Status values: TODO | IN PROGRESS | DONE | OPEN (follow-up) | BACKLOG (nice-to-have) | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -127,6 +131,21 @@ counter stay armed. Detail in `009-windows-testhost-teardown-crash.md`.
   `EnableWindowsTargeting` on linux) — not a plan finding.
 
 ## Dependency notes
+
+- 022–025 planned 2026-07-24 at `9247d75d` after the operator chose the first
+  authored C# package sequence: asset, constants, local file system, then
+  crypto. They are intentionally separate future plans, not one combined
+  implementation slice. Each executor must start the living-spec workflow and
+  receive approval for its own delta spec before source changes.
+- All four initial packages use normal `_expoDotnet.modules` registration and
+  support Windows/macOS only. Module aliasing, upstream package resolution, and
+  selected registration into `globalThis.expo.modules` remain a separate future
+  area and are explicitly out of these plans.
+- 022 provides the first package-layout and autolinking validation. 023 has no
+  technical dependency on it but follows it to avoid solving metadata design
+  alongside a new package pattern. 024 proves the first local binary/file API.
+  025 relies on the already-complete ArrayBuffer work and follows 024 as the
+  fourth agreed authored-module slice.
 
 - 015–019 planned 2026-07-20 at `ea07d69d` from the synchronized
   `docs/roadmap.md` (operator selected the four candidates; 019 split out of
