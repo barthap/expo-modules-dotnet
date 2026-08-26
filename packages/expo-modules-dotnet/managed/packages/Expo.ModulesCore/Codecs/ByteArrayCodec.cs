@@ -2,7 +2,7 @@ using Expo.JSI;
 
 namespace Expo.ModulesCore.Codecs;
 
-public static class ByteArrayCodec
+public readonly struct ByteArrayCodec : IJavaScriptCodec<byte[]>
 {
   public static byte[] Decode(JavaScriptValueRef value, JavaScriptRuntime runtime)
   {

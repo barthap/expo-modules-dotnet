@@ -140,6 +140,27 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
 - `JavaScriptCallback<TResult>` / `JavaScriptCallback<TArgs, TResult>` for
   JS function arguments (see Callbacks below).
 
+Nullable reference types work for the codecs that carry no JSI ownership:
+`string?`, `Uri?`, `byte[]?`, positional reference records, and the
+`IReadOnlyList<T>?`, `Dictionary<string, T>?`, and
+`IReadOnlyDictionary<string, T>?` containers. Nullable elements and dictionary
+values work wherever the nested type is supported, so `IReadOnlyList<string?>?`
+composes. `List<T>` stays unsupported in both forms, because its non-nullable
+form has no codec either.
+
+`JavaScriptValue?`, `ArrayBuffer?`, `JavaScriptCallback<...>?`, `SharedObject?`,
+`SharedRef<T>?`, and a nullable concrete `[ExpoSharedObject]` class are build
+diagnostics. Their conversion carries JSI ownership, retained callback state, or
+shared-object identity, and a null axis multiplies those states.
+
+Decoding treats JavaScript `null` and `undefined` alike as C# `null`, and C#
+`null` encodes as JavaScript `null`, never `undefined`. A non-nullable reference
+stays strict: JavaScript `null` fails the argument decode before your code runs.
+For an optional nullable parameter, omission or explicit `undefined` uses your
+C# default, while explicit `null` arrives as `null`. Only an explicit `?`
+annotation turns any of this on. In a file with `#nullable disable`, an
+unannotated reference keeps its strict codec.
+
 Unsupported parameter, return, constructor, method, and property shapes and
 duplicate exported names are reported as generator build diagnostics, not
 runtime failures.

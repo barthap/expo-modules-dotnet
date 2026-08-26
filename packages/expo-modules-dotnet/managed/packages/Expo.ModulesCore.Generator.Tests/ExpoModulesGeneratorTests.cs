@@ -3916,6 +3916,589 @@ public sealed class ExpoModulesGeneratorTests
     );
   }
 
+  [Fact]
+  public void GeneratorWrapsSupportedNullableReferenceValuesInTheNullableReferenceCodec()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        #nullable enable
+        using System;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public sealed record Label(string Text);
+
+        [ExpoModule("Nullable")]
+        public sealed partial class NullableModule
+        {
+          [JS] public string? EchoText(string? value) => value;
+          [JS] public Uri? EchoUri(Uri? value) => value;
+          [JS] public byte[]? EchoBytes(byte[]? value) => value;
+          [JS] public Label? EchoLabel(Label? value) => value;
+        }
+        """
+    );
+
+    AssertNoCompilerDiagnostics(result);
+    var source = GeneratedText(result);
+    Assert.Contains(
+        "NullableReferenceCodec<string, StringCodec>.Decode(arguments.GetValue(0), runtime)",
+        source
+    );
+    Assert.Contains(
+        "NullableReferenceCodec<string, StringCodec>.Encode(module.EchoText(__expoArg0), runtime)",
+        source
+    );
+    Assert.Contains("NullableReferenceCodec<global::System.Uri, UriCodec>", source);
+    Assert.Contains("NullableReferenceCodec<byte[], ByteArrayCodec>", source);
+    Assert.Contains(
+        $"NullableReferenceCodec<global::Expo.TestModules.Label, {RecordCodecName("Label", "global::Expo.TestModules.Label")}>",
+        source
+    );
+  }
+
+  [Fact]
+  public void GeneratorEmitsDedicatedAdaptersForNullableCollectionContainers()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        #nullable enable
+        using System.Collections.Generic;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("NullableCollections")]
+        public sealed partial class NullableCollectionsModule
+        {
+          [JS] public IReadOnlyList<string>? EchoList(IReadOnlyList<string>? values) => values;
+          [JS] public Dictionary<string, double>? EchoMap(Dictionary<string, double>? values) => values;
+          [JS] public IReadOnlyDictionary<string, double>? EchoReadOnlyMap(
+              IReadOnlyDictionary<string, double>? values) => values;
+        }
+        """
+    );
+
+    AssertNoCompilerDiagnostics(result);
+    var source = GeneratedText(result);
+    // The adapters expose the plain Decode shape, so generated dispatch must not reach for the
+    // DecodeToArray and DecodeToDictionary helpers of the non-nullable collection codecs.
+    Assert.Contains(
+        "NullableReadOnlyListCodec<string, StringCodec>.Decode(arguments.GetValue(0), runtime)",
+        source
+    );
+    Assert.Contains(
+        "NullableDictionaryCodec<double, NumberCodec<double>>.Decode(arguments.GetValue(0), runtime)",
+        source
+    );
+    Assert.Contains(
+        "NullableReadOnlyDictionaryCodec<double, NumberCodec<double>>.Decode(arguments.GetValue(0), runtime)",
+        source
+    );
+    Assert.DoesNotContain("NullableReadOnlyListCodec<string, StringCodec>.DecodeToArray", source);
+  }
+
+  [Fact]
+  public void GeneratorComposesNullableCollectionContentsRecursively()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        #nullable enable
+        using System.Collections.Generic;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("NullableContents")]
+        public sealed partial class NullableContentsModule
+        {
+          [JS] public IReadOnlyList<string?> EchoElements(IReadOnlyList<string?> values) => values;
+          [JS] public Dictionary<string, string?> EchoValues(Dictionary<string, string?> values) => values;
+          [JS] public IReadOnlyDictionary<string, string?> EchoReadOnlyValues(
+              IReadOnlyDictionary<string, string?> values) => values;
+          [JS] public IReadOnlyList<IReadOnlyList<string?>?>? EchoNested(
+              IReadOnlyList<IReadOnlyList<string?>?>? values) => values;
+        }
+        """
+    );
+
+    AssertNoCompilerDiagnostics(result);
+    var source = GeneratedText(result);
+    Assert.Contains(
+        "JavaScriptArrayCodec<string?, NullableReferenceCodec<string, StringCodec>>",
+        source
+    );
+    Assert.Contains(
+        "JavaScriptDictionaryCodec<string?, NullableReferenceCodec<string, StringCodec>>",
+        source
+    );
+    Assert.Contains(
+        "NullableReadOnlyListCodec<global::System.Collections.Generic.IReadOnlyList<string?>?, " +
+        "NullableReadOnlyListCodec<string?, NullableReferenceCodec<string, StringCodec>>>",
+        source
+    );
+  }
+
+  [Fact]
+  public void GeneratorUsesTheNullableReferenceCodecForNullableRecordFields()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        #nullable enable
+        using System.Collections.Generic;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public sealed record Profile(string Name, string? Nickname, IReadOnlyList<string>? Tags);
+
+        [ExpoModule("Profiles")]
+        public sealed partial class ProfilesModule
+        {
+          [JS] public Profile Echo(Profile value) => value;
+        }
+        """
+    );
+
+    AssertNoCompilerDiagnostics(result);
+    var source = GeneratedText(result);
+    Assert.Contains(
+        "var nickname = NullableReferenceCodec<string, StringCodec>.Decode(obj.GetProperty(\"nickname\"), runtime)",
+        source
+    );
+    Assert.Contains(
+        "var tags = NullableReadOnlyListCodec<string, StringCodec>.Decode(obj.GetProperty(\"tags\"), runtime)",
+        source
+    );
+    Assert.Contains("var name = StringCodec.Decode(obj.GetProperty(\"name\"), runtime)", source);
+  }
+
+  [Fact]
+  public void GeneratorCarriesNullableReferenceCodecsAcrossEveryGeneratedSurface()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        #nullable enable
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject("Entry")]
+        public sealed partial class Entry : SharedObject
+        {
+          [JS] public Entry(string? label) => Label = label;
+          [JS] public string? Label { get; set; }
+          [JS] public string? Read(string? value) => value;
+          [Event] public partial Func<string?, Task> OnChanged { get; }
+        }
+
+        [ExpoModule("Surfaces", Classes = new[] { typeof(Entry) })]
+        [Events("onLegacy")]
+        public sealed partial class SurfacesModule
+        {
+          [JS] public string? Sync() => null;
+          [JS] public Task<string?> Async() => Task.FromResult<string?>(null);
+          [JS] public string? WithDefault(string? value = "fallback") => value;
+          [JS] public string? Text { get; set; }
+          [JS] public Entry Make(string? label) => new(label);
+          [Event] public partial Func<string?, Task> OnText { get; }
+        }
+        """
+    );
+
+    AssertNoCompilerDiagnostics(result);
+    var source = GeneratedText(result);
+    Assert.Contains(
+        "NullableReferenceCodec<string, StringCodec>.Encode(module.Sync(), runtime)",
+        source
+    );
+    Assert.Contains(
+        "NullableReferenceCodec<string, StringCodec>.Encode(__expoResult, runtime)",
+        source
+    );
+    Assert.Contains(
+        "arguments.GetValue(0).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? \"fallback\" : " +
+        "NullableReferenceCodec<string, StringCodec>.Decode(arguments.GetValue(0), runtime)",
+        source
+    );
+    Assert.Contains(
+        "NullableReferenceCodec<string, StringCodec>.Encode(module.Text, runtime)",
+        source
+    );
+    Assert.Contains(
+        "__expoValue = NullableReferenceCodec<string, StringCodec>.Decode(arguments.GetValue(0), runtime)",
+        source
+    );
+    Assert.Contains(
+        "emitter.EmitAsync<NullableReferenceCodec<string, StringCodec>, string?>(module, \"onText\"",
+        source
+    );
+    Assert.Contains(
+        "GeneratedSharedObjectEvents.EmitAsync<NullableReferenceCodec<string, StringCodec>, string?>(" +
+        "context, sharedObject, \"onChanged\"",
+        source
+    );
+    Assert.Contains(
+        "NullableReferenceCodec<string, StringCodec>.Encode(module.Read(__expoArg0), runtime)",
+        source
+    );
+    Assert.Contains(
+        "NullableReferenceCodec<string, StringCodec>.Encode(module.Label, runtime)",
+        source
+    );
+  }
+
+  [Fact]
+  public void GeneratorKeepsStrictCodecsForNonNullableAndObliviousReferences()
+  {
+    var annotated = GeneratorTestHost.Run(
+        """
+        #nullable enable
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Strict")]
+        public sealed partial class StrictModule
+        {
+          [JS] public string Echo(string value) => value;
+          [JS] public int? EchoNullableInt(int? value) => value;
+        }
+        """
+    );
+
+    AssertNoCompilerDiagnostics(annotated);
+    var annotatedSource = GeneratedText(annotated);
+    // A non-nullable reference keeps the strict codec, so JavaScript null still fails at decode
+    // time instead of reaching authored code.
+    Assert.Contains("StringCodec.Decode(arguments.GetValue(0), runtime)", annotatedSource);
+    Assert.DoesNotContain("NullableReferenceCodec<string", annotatedSource);
+    Assert.Contains("NullableCodec<int, NumberCodec<int>>", annotatedSource);
+    Assert.DoesNotContain("NullableReferenceCodec<int", annotatedSource);
+
+    var oblivious = GeneratorTestHost.Run(
+        """
+        #nullable disable
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Oblivious")]
+        public sealed partial class ObliviousModule
+        {
+          [JS] public string Echo(string value) => value;
+        }
+        """
+    );
+
+    AssertNoCompilerDiagnostics(oblivious);
+    var obliviousSource = GeneratedText(oblivious);
+    Assert.Contains("StringCodec.Decode(arguments.GetValue(0), runtime)", obliviousSource);
+    Assert.DoesNotContain("NullableReferenceCodec", obliviousSource);
+  }
+
+  [Theory]
+  [InlineData("JavaScriptValue", "global::Expo.JSI.JavaScriptValue", "JavaScriptValueCodec")]
+  [InlineData("ArrayBuffer", "global::Expo.ModulesCore.ArrayBuffer", "ArrayBufferCodec")]
+  public void GeneratorReportsMethodDiagnosticsForExcludedNullableParametersAndReturns(
+      string declaredType,
+      string diagnosticType,
+      string forbiddenCodec)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        #nullable enable
+        using Expo.ModulesCore;
+        using Expo.JSI;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Excluded")]
+        public sealed partial class ExcludedModule
+        {
+          [JS] public string TakesIt({{declaredType}}? value) => "x";
+          [JS] public {{declaredType}}? ReturnsIt() => null;
+        }
+        """
+    );
+
+    var parameterDiagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI001");
+    Assert.Contains(diagnosticType, parameterDiagnostic.GetMessage());
+    var returnDiagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI002");
+    Assert.Contains(diagnosticType, returnDiagnostic.GetMessage());
+    var source = GeneratedText(result);
+    Assert.DoesNotContain(forbiddenCodec, source);
+    Assert.DoesNotContain("\"takesIt\"", source);
+    Assert.DoesNotContain("\"returnsIt\"", source);
+    AssertNoCompilerErrors(result);
+  }
+
+  [Fact]
+  public void GeneratorReportsCallbackDiagnosticForNullableCallbackParameter()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        #nullable enable
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Callbacks")]
+        public sealed partial class CallbacksModule
+        {
+          [JS] public string CallIt(JavaScriptCallback<string>? callback) => "x";
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI008");
+    Assert.Contains("callback", diagnostic.GetMessage());
+    var source = GeneratedText(result);
+    Assert.DoesNotContain("JavaScriptCallbackCodec", source);
+    Assert.DoesNotContain("\"callIt\"", source);
+    AssertNoCompilerErrors(result);
+  }
+
+  [Fact]
+  public void GeneratorReportsPropertyDiagnosticForExcludedNullableProperty()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        #nullable enable
+        using Expo.ModulesCore;
+        using Expo.JSI;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Properties")]
+        public sealed partial class PropertiesModule
+        {
+          [JS] public JavaScriptValue? Value { get; set; }
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI015");
+    Assert.Contains("global::Expo.JSI.JavaScriptValue", diagnostic.GetMessage());
+    var source = GeneratedText(result);
+    Assert.DoesNotContain("JavaScriptValueCodec", source);
+    Assert.DoesNotContain("\"value\"", source);
+    AssertNoCompilerErrors(result);
+  }
+
+  [Fact]
+  public void GeneratorReportsRecordDiagnosticForExcludedNullableRecordField()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        #nullable enable
+        using Expo.ModulesCore;
+        using Expo.JSI;
+
+        namespace Expo.TestModules;
+
+        public sealed record Holder(JavaScriptValue? Value);
+
+        [ExpoModule("Holders")]
+        public sealed partial class HoldersModule
+        {
+          [JS] public string TakeIt(Holder value) => "x";
+        }
+        """
+    );
+
+    var recordDiagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI007");
+    Assert.Contains("Holder", recordDiagnostic.GetMessage());
+    Assert.Contains("Value", recordDiagnostic.GetMessage());
+    // The layered report stays as it is: the record field and the containing parameter both report.
+    Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI001");
+    var source = GeneratedText(result);
+    Assert.DoesNotContain("JavaScriptValueCodec", source);
+    Assert.DoesNotContain("HolderCodec_", source);
+    AssertNoCompilerErrors(result);
+  }
+
+  [Fact]
+  public void GeneratorReportsEventDiagnosticsForExcludedNullablePayloads()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        #nullable enable
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+        using Expo.JSI;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject("Entry")]
+        public sealed partial class Entry : SharedObject
+        {
+          [Event] public partial Func<JavaScriptValue?, Task> OnSharedValue { get; }
+        }
+
+        [ExpoModule("Events", Classes = new[] { typeof(Entry) })]
+        public sealed partial class EventsModule
+        {
+          [Event] public partial Func<ArrayBuffer?, Task> OnBuffer { get; }
+        }
+        """
+    );
+
+    var moduleDiagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI019");
+    Assert.Contains("OnBuffer", moduleDiagnostic.GetMessage());
+    Assert.Contains("nullable annotation", moduleDiagnostic.GetMessage());
+    var sharedDiagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI027");
+    Assert.Contains("OnSharedValue", sharedDiagnostic.GetMessage());
+    var source = GeneratedText(result);
+    Assert.DoesNotContain("\"onBuffer\"", source);
+    Assert.DoesNotContain("\"onSharedValue\"", source);
+    AssertNoCompilerErrors(result);
+  }
+
+  [Theory]
+  [InlineData("SharedRef<string>? value", "which is the SharedRef<T> managed carrier base")]
+  [InlineData("Entry? value", "which must be used without a nullable annotation")]
+  public void GeneratorKeepsSharedObjectDiagnosticsForNullableSharedObjectBoundaries(
+      string parameter,
+      string expectedReason)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        #nullable enable
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject("Entry")]
+        public sealed partial class Entry : SharedObject
+        {
+          [JS] public Entry() { }
+        }
+
+        [ExpoModule("Shared", Classes = new[] { typeof(Entry) })]
+        public sealed partial class SharedModule
+        {
+          [JS] public string TakeIt({{parameter}}) => "x";
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(
+        result.Diagnostics,
+        item => item.Id == "EXPOJSI023" && item.GetMessage().Contains("TakeIt", StringComparison.Ordinal)
+    );
+    Assert.Contains(expectedReason, diagnostic.GetMessage());
+    var source = GeneratedText(result);
+    Assert.DoesNotContain("\"takeIt\"", source);
+    AssertNoCompilerErrors(result);
+  }
+
+  // `SharedObject?` never reaches shared-object boundary analysis, because the identity check
+  // compares a display string that carries the nullable annotation. It reports the parameter code
+  // instead of EXPOJSI023. That predates nullable reference codecs and is left as it is here: the
+  // member is still rejected as an error, no binding is emitted, and no shared-object codec is
+  // selected.
+  [Fact]
+  public void GeneratorRejectsANullablePolymorphicSharedObjectParameter()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        #nullable enable
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Shared")]
+        public sealed partial class SharedModule
+        {
+          [JS] public string TakeIt(SharedObject? value) => "x";
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI001");
+    Assert.Contains("global::Expo.ModulesCore.SharedObject", diagnostic.GetMessage());
+    var source = GeneratedText(result);
+    Assert.DoesNotContain("SharedObjectCodec<", source);
+    Assert.DoesNotContain("\"takeIt\"", source);
+    AssertNoCompilerErrors(result);
+  }
+
+  [Theory]
+  [InlineData("System.Collections.Generic.List<string>", "global::System.Collections.Generic.List<string>")]
+  [InlineData("System.Collections.Generic.Dictionary<int, string>", "global::System.Collections.Generic.Dictionary<int, string>")]
+  [InlineData("System.Text.StringBuilder", "global::System.Text.StringBuilder")]
+  public void GeneratorReportsUnsupportedTypeForAnnotatedReferencesWithoutAnInnerCodec(
+      string declaredType,
+      string diagnosticType)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        #nullable enable
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Unsupported")]
+        public sealed partial class UnsupportedModule
+        {
+          [JS] public string TakeIt({{declaredType}}? value) => "x";
+        }
+        """
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI001");
+    Assert.Contains(diagnosticType, diagnostic.GetMessage());
+    var source = GeneratedText(result);
+    Assert.DoesNotContain("NullableReferenceCodec", source);
+    Assert.DoesNotContain("\"takeIt\"", source);
+    AssertNoCompilerErrors(result);
+  }
+
+  [Fact]
+  public void GeneratorKeepsListUnsupportedWithAndWithoutANullableAnnotation()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        #nullable enable
+        using System.Collections.Generic;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Lists")]
+        public sealed partial class ListsModule
+        {
+          [JS] public string TakeStrict(List<string> values) => "x";
+          [JS] public string TakeNullable(List<string>? values) => "x";
+        }
+        """
+    );
+
+    Assert.Equal(2, result.Diagnostics.Count(item => item.Id == "EXPOJSI001"));
+    var source = GeneratedText(result);
+    Assert.DoesNotContain("NullableReadOnlyListCodec", source);
+    Assert.DoesNotContain("\"takeStrict\"", source);
+    Assert.DoesNotContain("\"takeNullable\"", source);
+    AssertNoCompilerErrors(result);
+  }
+
+  private static void AssertNoCompilerErrors(GeneratorRunResult result) =>
+      Assert.DoesNotContain(result.Diagnostics, item =>
+          item.Id.StartsWith("CS", StringComparison.Ordinal) &&
+          item.Severity == DiagnosticSeverity.Error);
+
+  // Generated nullable glue must compile clean, not merely without errors. An annotation-erased
+  // codec type argument would still compile but warn with CS8631 about the codec constraint.
+  private static void AssertNoCompilerDiagnostics(GeneratorRunResult result) =>
+      Assert.DoesNotContain(result.Diagnostics, item =>
+          item.Id.StartsWith("CS", StringComparison.Ordinal) &&
+          item.Severity is DiagnosticSeverity.Error or DiagnosticSeverity.Warning);
+
   private static string GeneratedText(GeneratorRunResult result) =>
       string.Join("\n", result.GeneratedSources.Select(source => source.Text));
 

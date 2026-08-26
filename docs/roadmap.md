@@ -223,8 +223,10 @@ ABI support.
 
 - **P1 — `int` / integer types** (complete): Signed and unsigned integer
   primitives are supported through the generic number codec.
-- **P1 — Nullable types** (complete for value primitives): `T?` support exists
-  for optional parameters and return values over supported value codecs.
+- **P1 — Nullable types** (complete): `T?` support exists for optional
+  parameters and return values over supported value codecs, and for annotated
+  reference types such as `string?`, `Uri?`, records, and collections.
+  Ownership-bearing types are excluded by design and report a build diagnostic.
 - **P2/P3 — binary codecs** (complete): `ArrayBuffer`, `byte[]`,
   `Span<byte>`, `ReadOnlySpan<byte>`, `Memory<byte>`, and
   `ReadOnlyMemory<byte>` are supported. Memory codecs use independent

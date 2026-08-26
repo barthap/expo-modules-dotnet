@@ -294,6 +294,76 @@ public sealed partial class GeneratedRecordsModule
   public CodecNullableUser RenameNullable(CodecNullableUser user) => user;
 }
 
+public record NullableLabel(string Text);
+
+public record NullableProfile(string Name, string? Nickname);
+
+[ExpoModule("GeneratedNullable")]
+public sealed partial class GeneratedNullableModule
+{
+  public string? LastText { get; private set; }
+
+  public bool StrictCallSeen { get; private set; }
+
+  [JS]
+  public void StoreText(string? value)
+  {
+    LastText = value;
+  }
+
+  [JS]
+  public void StoreTextWithDefault(string? value = "fallback")
+  {
+    LastText = value;
+  }
+
+  [JS]
+  public string? ReadText() => LastText;
+
+  [JS]
+  public Task<string?> ReadTextAsync() => Task.FromResult(LastText);
+
+  // The non-nullable counterpart proves the decode boundary stayed strict: authored code must not
+  // run at all when JavaScript passes null.
+  [JS]
+  public string RequireText(string value)
+  {
+    StrictCallSeen = true;
+    return value;
+  }
+
+  [JS]
+  public bool ReadStrictCallSeen() => StrictCallSeen;
+
+  [JS]
+  public string? Text { get; set; }
+
+  [JS]
+  public NullableLabel? EchoLabel(NullableLabel? value) => value;
+
+  [JS]
+  public NullableProfile EchoProfile(NullableProfile value) => value;
+
+  [JS]
+  public IReadOnlyList<string>? EchoList(IReadOnlyList<string>? values) => values;
+
+  [JS]
+  public Dictionary<string, string>? EchoMap(Dictionary<string, string>? values) => values;
+
+  [JS]
+  public IReadOnlyDictionary<string, string>? EchoReadOnlyMap(
+      IReadOnlyDictionary<string, string>? values) => values;
+
+  [JS]
+  public IReadOnlyList<string?> EchoElements(IReadOnlyList<string?> values) => values;
+
+  [JS]
+  public Dictionary<string, string?> EchoValues(Dictionary<string, string?> values) => values;
+
+  [JS]
+  public byte[]? EchoBytes(byte[]? value) => value;
+}
+
 [ExpoModule("GeneratedEvents")]
 [Events("onChange", "onReady")]
 public sealed partial class GeneratedEventsModule : Module
@@ -372,6 +442,9 @@ public sealed partial class GeneratedTypedEventsModule : Module
 
   [Event]
   public partial Func<ArrayBuffer, Task> OnBuffer { get; }
+
+  [Event]
+  public partial Func<string?, Task> OnText { get; }
 
   public string? ConstructorEventError { get; }
 
@@ -534,4 +607,10 @@ public sealed partial class SiblingEntry : SharedObject
 
   [JS]
   public double Kind => 1;
+
+  [JS]
+  public string? Label { get; set; }
+
+  [JS]
+  public string? EchoLabel(string? value) => value;
 }

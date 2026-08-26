@@ -164,6 +164,28 @@ public sealed class GeneratedEventModuleTests
   }
 
   [Fact]
+  public async Task TypedNullableStringEventPayloadReachesJavaScriptAsNull()
+  {
+    using var typed = TypedEventsFixture.Create();
+    typed.Evaluate(
+        """
+        const events = globalThis._expoDotnet.modules.GeneratedTypedEvents;
+        events.addListener('onText', value => {
+          globalThis.__typedText = value === null ? 'null' : String(value);
+        });
+        true
+        """,
+        "typed-events-nullable-listener.js"
+    );
+
+    await typed.Module.OnText(null);
+    Assert.Equal("null", typed.ReadString("globalThis.__typedText"));
+
+    await typed.Module.OnText("kept");
+    Assert.Equal("kept", typed.ReadString("globalThis.__typedText"));
+  }
+
+  [Fact]
   public void TypedEventsTriggerFirstAndLastListenerHooks()
   {
     using var typed = TypedEventsFixture.Create();
@@ -254,6 +276,7 @@ public sealed class GeneratedEventModuleTests
           typed.Module.__ExpoModulesCoreInitializeEvents(
               secondContext,
               static () => Task.CompletedTask,
+              static _ => Task.CompletedTask,
               static _ => Task.CompletedTask,
               static _ => Task.CompletedTask,
               static _ => Task.CompletedTask,

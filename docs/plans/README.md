@@ -38,12 +38,13 @@ STOP condition.
 | 019 | Typed `[Event]` members on shared objects | P2 | M | 017, 021 | DONE |
 | 020 | hermes-console-app Linux port + end-to-end loader lane in CI (hostfxr + nativeaot) | P1 | M | 016 | DONE — Linux HostFXR and NativeAOT Docker proofs, macOS regressions, managed tests, formatting, and workflow lint passed; implemented at `be4ac86f`, `dc526e83`, `819d8622`, and `b21f3d9b`. |
 | 021 | Exactly-once owned callback-state disposal for host functions (`Expo.JSI`) | P2 | S–M | — | DONE — preserved the four-parameter API, added the owned-state overload, and verified GC, teardown, failure, and concurrent release. |
-| 022 | `expo-asset-dotnet` for Windows and macOS | P1 | M | 026, 027 | BLOCKED — needs nullable reference codecs (026) and a host-supplied app-scoped cache directory (027). Contract also has 5 defects to amend; see Dependency notes. |
-| 026 | Nullable reference-type codecs in `Expo.ModulesCore` | P1 | M | — | TODO — blocks 022's upstream-compatible `md5Hash: string \| null`. |
+| 022 | `expo-asset-dotnet` for Windows and macOS | P1 | M | 027 | BLOCKED — 026 landed, so `md5Hash: string \| null` is now expressible; still needs a host-supplied app-scoped cache directory (027). Contract also has 5 defects to amend; see Dependency notes. |
+| 026 | Nullable reference-type codecs in `Expo.ModulesCore` | P1 | M | — | DONE — `dac63381` (delta spec), `db6a14c3` (change plan), `1573ac97` (codecs), `e57cdf03` (generator), `00cb296b` (tests). 698 managed tests pass (+48 new), format check clean. Two accepted deviations recorded in `docs/specs/modules-core-boundary.md`; follow-up 028 filed. |
 | 027 | Host-supplied app-scoped directories on `DotnetRuntimeContext` | P1 | M | — | TODO — planned and fully decided; ready to execute. Blocks 022, because user-wide cache paths must not ship. Adds a versioned app-directories struct to the runtime-context ABI and exposes `context.CacheDirectory` and `.PersistentFilesDirectory`, mirroring upstream `AppContext`. Extracts the thrice-duplicated runtime-context ABI into `native/include/expo_dotnet_host.h` first (operator-approved 2026-07-25). |
 | 023 | `expo-constants-dotnet` for Windows and macOS | P1 | M | — (022 recommended first) | TODO — typed metadata only; no generic JSON shortcut. |
 | 024 | `expo-file-system-dotnet` local files core for Windows and macOS | P1 | L | 027 | TODO — `Paths`, `File`, `Directory`; no network or compatibility claim. 027 supplies `context.PersistentFilesDirectory`, so no ABI work is needed here. |
 | 025 | `expo-crypto-dotnet` for Windows and macOS | P1 | M | 006 complete (024 recommended first) | TODO — ArrayBuffer plus offset/length native boundary. |
+| 028 | Annotation-insensitive shared-object boundary detection | P2 | S | — | TODO — one-line comparison fix in `ExpoModulesGenerator.SharedObjectValidation.cs`, but it needs a diagnostic-code regression sweep, because it may move other annotated shared-object cases from `EXPOJSI001` to `EXPOJSI023`. Filed from 026; no plan file written yet. |
 
 Status values: TODO | IN PROGRESS | DONE | OPEN (follow-up) | BACKLOG (nice-to-have) | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -185,6 +186,34 @@ counter stay armed. Detail in `009-windows-testhost-teardown-crash.md`.
      `ExpoAsset` during module evaluation. The claim must be removed.
   5. It cites `expo-asset@57.0.2`, a version this repo does not consume. The
      implementation target needs an explicit pin.
+- 026 completed 2026-07-25. 022 now depends only on 027 and on amending the five
+  contract defects above, and it SHALL declare `string? md5Hash` rather than a
+  `JavaScriptValue` parameter, a sentinel string, or hand-rolled argument
+  decoding. The merged requirements are in `docs/specs/modules-core-boundary.md`
+  under the five `Nullable ...` headings.
+- Accepted 026 deviation: the change plan listed typed event analysis out of
+  scope, but nullable typed event payloads needed
+  `ExpoModulesGenerator.EventAnalysis.cs` after all. Codec expressions are used
+  as generic type arguments under `where TCodec : IJavaScriptCodec<T>`, so an
+  annotation-erased `T` paired with a nullable codec emitted real `CS8631`
+  warnings, and the reproduced authored partial property emitted `CS9256`. A
+  `Func<JavaScriptValue?, Task>` or `Func<ArrayBuffer?, Task>` payload also
+  bypasses codec resolution, so the exclusion had to be checked in
+  `GetUnsupportedEventPayload` for `EXPOJSI019` / `EXPOJSI027` to be reported at
+  all. No new diagnostic descriptor was added.
+- Accepted 026 deviation: the delta spec claimed `SharedObject?`,
+  `SharedRef<T>?`, and concrete `[ExpoSharedObject]?` all report `EXPOJSI023`.
+  That is wrong about the polymorphic base, which reports `EXPOJSI001`. The
+  living spec documents the shipped behavior; the cause is 028.
+- 028 was filed from 026's implementation. `IsSharedObjectRelatedType` in
+  `ExpoModulesGenerator.SharedObjectValidation.cs` compares
+  `typeSymbol.ToDisplayString()` in the default format, which carries the
+  nullable annotation, so `SharedObject?` never enters shared-object boundary
+  analysis and reports `EXPOJSI001` instead of `EXPOJSI023`. The behavior is
+  otherwise correct — error severity, no binding, no shared-object codec — so
+  026 documented it rather than changing diagnostic codes late in a codec slice.
+  The fix is small; the regression sweep over every annotated shared-object case
+  is the real work.
 - Upstream-compatibility work (`globalThis.expo.modules` registration, Metro and
   package-specifier aliasing) remains a separate later milestone. Direction
   already settled: registration is **opt-in per module**, never automatic, and
