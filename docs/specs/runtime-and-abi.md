@@ -25,6 +25,47 @@ argument concepts to C# only as opaque handles.
 - **THEN** it SHALL call an `expo_jsi_api` function pointer instead of reading a
   `facebook::jsi::*` layout
 
+### Requirement: ABI Carries Only Host Knowledge
+
+The ABI SHALL carry only values the managed runtime cannot determine by itself:
+host identity, host-supplied policy, and host-owned handles. Capabilities that
+portable .NET can implement from inputs it already holds SHALL stay in managed
+code.
+
+The point of a C#/.NET bridge is that module logic is written in .NET, using
+.NET. Growing the ABI for work the base class library already does inverts that
+and leaves a C++ project wearing a C# coat.
+
+#### Scenario: A capability exists in portable .NET
+- **GIVEN** a module needs filesystem I/O, HTTP, hashing, culture, or time
+- **WHEN** the capability is designed
+- **THEN** it SHALL use .NET APIs in managed code
+- **AND** it SHALL NOT add ABI surface
+
+#### Scenario: A value depends on the host
+- **GIVEN** a value depends on app identity, app packaging, host policy, or a
+  host-owned handle
+- **WHEN** managed code needs it
+- **THEN** the host SHALL supply it across the ABI
+- **AND** managed code SHALL NOT reconstruct it from platform-specific APIs or
+  environment heuristics
+
+#### Scenario: A plan proposes new ABI surface
+- **GIVEN** a plan or delta spec adds a field or parameter to the ABI
+- **WHEN** it is reviewed
+- **THEN** it SHALL name which of the three host-knowledge categories the value
+  falls into and why portable .NET cannot answer it
+- **AND** a proposal that cannot pass that test is a STOP condition rather than a
+  judgment call
+
+#### Scenario: A host needs to override a value it already supplies
+- **GIVEN** a host such as a scoped or embedding host must redirect a
+  host-supplied value
+- **WHEN** the value is resolved
+- **THEN** the ABI SHALL let the host supply the final value
+- **AND** managed code SHALL NOT compose it from parts in a way that removes the
+  host's ability to override it
+
 ### Requirement: Value Handle Model
 
 The ABI SHALL use `expo_jsi_value_handle` for ordinary JavaScript values,

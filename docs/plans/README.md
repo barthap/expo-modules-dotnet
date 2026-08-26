@@ -6,6 +6,13 @@ Execute in
 the order below unless dependencies say otherwise. Each executor: read the plan
 fully before starting, honor its STOP conditions, and update your row when done.
 
+Any plan that adds native ABI surface must first satisfy
+`### Requirement: ABI Carries Only Host Knowledge` in
+`docs/specs/runtime-and-abi.md`: prefer .NET built-ins, and justify every new ABI
+field as host identity, host-supplied policy, or a host-owned handle. Plan 027 is
+the worked example of a value that passes that test; a value that fails it is a
+STOP condition.
+
 ## Execution order & status
 
 | Plan | Title | Priority | Effort | Depends on | Status |
@@ -33,9 +40,9 @@ fully before starting, honor its STOP conditions, and update your row when done.
 | 021 | Exactly-once owned callback-state disposal for host functions (`Expo.JSI`) | P2 | S–M | — | DONE — preserved the four-parameter API, added the owned-state overload, and verified GC, teardown, failure, and concurrent release. |
 | 022 | `expo-asset-dotnet` for Windows and macOS | P1 | M | 026, 027 | BLOCKED — needs nullable reference codecs (026) and a host-supplied app-scoped cache directory (027). Contract also has 5 defects to amend; see Dependency notes. |
 | 026 | Nullable reference-type codecs in `Expo.ModulesCore` | P1 | M | — | TODO — blocks 022's upstream-compatible `md5Hash: string \| null`. |
-| 027 | Host-supplied app-scoped storage directories on the runtime context | P1 | M | — | TODO — blocks 022; user-wide cache paths must not ship. |
+| 027 | Host-supplied app-scoped directories on `DotnetRuntimeContext` | P1 | M | — | TODO — planned and fully decided; ready to execute. Blocks 022, because user-wide cache paths must not ship. Adds a versioned app-directories struct to the runtime-context ABI and exposes `context.CacheDirectory` and `.PersistentFilesDirectory`, mirroring upstream `AppContext`. Extracts the thrice-duplicated runtime-context ABI into `native/include/expo_dotnet_host.h` first (operator-approved 2026-07-25). |
 | 023 | `expo-constants-dotnet` for Windows and macOS | P1 | M | — (022 recommended first) | TODO — typed metadata only; no generic JSON shortcut. |
-| 024 | `expo-file-system-dotnet` local files core for Windows and macOS | P1 | L | — (022, 023 recommended first) | TODO — `Paths`, `File`, `Directory`; no network or compatibility claim. |
+| 024 | `expo-file-system-dotnet` local files core for Windows and macOS | P1 | L | 027 | TODO — `Paths`, `File`, `Directory`; no network or compatibility claim. 027 supplies `context.PersistentFilesDirectory`, so no ABI work is needed here. |
 | 025 | `expo-crypto-dotnet` for Windows and macOS | P1 | M | 006 complete (024 recommended first) | TODO — ArrayBuffer plus offset/length native boundary. |
 
 Status values: TODO | IN PROGRESS | DONE | OPEN (follow-up) | BACKLOG (nice-to-have) | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
