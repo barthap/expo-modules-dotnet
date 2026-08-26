@@ -31,6 +31,83 @@ std::string takeRuntimeContextError(expo::modules::dotnet::RuntimeContextError &
   return message;
 }
 
+// App-scoped directories this host resolved, as UTF-8. An empty string means the
+// host could not resolve that directory, and the managed side is told nothing
+// rather than being handed a user-wide root.
+struct ResolvedAppDirectories {
+  std::string cacheDirectory;
+  std::string persistentFilesDirectory;
+
+  bool isConfigured() const
+  {
+    return !cacheDirectory.empty() && !persistentFilesDirectory.empty();
+  }
+};
+
+// Rejects anything that is not a fully qualified path ending in the host's app
+// identity. A bare user-wide root is shared by every app on the machine, which
+// is the collision this bridge exists to avoid.
+bool isAppScopedPath(const std::string &path, const std::string &appIdentity)
+{
+  if (path.empty() || path.front() != '/' || path.find('\0') != std::string::npos) {
+    return false;
+  }
+  const std::string suffix = "/" + appIdentity;
+  return path.size() > suffix.size() &&
+    path.compare(path.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+std::string resolveAppScopedDirectory(NSSearchPathDirectory searchPath, NSString *appIdentity)
+{
+  NSArray<NSURL *> *roots = [[NSFileManager defaultManager] URLsForDirectory:searchPath
+                                                                  inDomains:NSUserDomainMask];
+  NSURL *root = roots.firstObject;
+  if (root == nil) {
+    return "";
+  }
+  NSString *path = [root URLByAppendingPathComponent:appIdentity isDirectory:YES].path;
+  const char *utf8 = path.UTF8String;
+  if (utf8 == nullptr) {
+    return "";
+  }
+  return std::string(utf8);
+}
+
+// Only the host knows the app identity, so only the host can name a directory
+// that belongs to this app alone. Caches and Application Support are the macOS
+// analogues of upstream's cache and persistent-files directories; the visible
+// ~/Documents is not app-private storage on macOS, so it is not used here.
+ResolvedAppDirectories resolveAppDirectories()
+{
+  NSString *appIdentity = [[NSBundle mainBundle] bundleIdentifier];
+  if (appIdentity.length == 0) {
+    NSLog(@"[ExpoModulesDotnet] Host supplied no app identity, so app directories stay "
+          @"unconfigured.");
+    return {};
+  }
+
+  ResolvedAppDirectories directories{
+    resolveAppScopedDirectory(NSCachesDirectory, appIdentity),
+    resolveAppScopedDirectory(NSApplicationSupportDirectory, appIdentity),
+  };
+  if (!directories.isConfigured()) {
+    NSLog(@"[ExpoModulesDotnet] Host did not resolve both app directories, so they stay "
+          @"unconfigured.");
+    return {};
+  }
+
+  const std::string identity(appIdentity.UTF8String == nullptr ? "" : appIdentity.UTF8String);
+  if (identity.empty() || !isAppScopedPath(directories.cacheDirectory, identity) ||
+      !isAppScopedPath(directories.persistentFilesDirectory, identity) ||
+      directories.cacheDirectory == directories.persistentFilesDirectory) {
+    NSLog(@"[ExpoModulesDotnet] Resolved app directories are not distinct app-scoped paths, so "
+          @"they stay unconfigured.");
+    return {};
+  }
+
+  return directories;
+}
+
 class InstalledRuntime final {
 public:
   InstalledRuntime(std::unique_ptr<expo::dotnet::ReactNativeRuntimeConnector> connector,
@@ -95,7 +172,7 @@ public:
 
     try {
       auto entryPoints = expo::modules::dotnet::resolveRuntimeContextEntryPoints(moduleConfig_);
-      if (entryPoints.createRuntimeContext == nullptr ||
+      if (entryPoints.createRuntimeContextV2 == nullptr ||
           entryPoints.teardownRuntimeContext == nullptr) {
         auto lastError = expo::modules::dotnet::managedLoaderLastError();
         if (lastError.empty()) {
@@ -112,9 +189,31 @@ public:
         return false;
       }
 
+      // The struct borrows these strings for the duration of the create call, so
+      // both must live in this frame until the call returns. A null pointer means
+      // both directories are unconfigured.
+      const auto appDirectories = resolveAppDirectories();
+      expo::modules::dotnet::expo_dotnet_app_directories directories{};
+      const expo::modules::dotnet::expo_dotnet_app_directories *directoriesPointer = nullptr;
+      if (appDirectories.isConfigured()) {
+        directories.size = sizeof(directories);
+        directories.version = EXPO_DOTNET_HOST_ABI_VERSION;
+        directories.cache_directory =
+          reinterpret_cast<const uint8_t *>(appDirectories.cacheDirectory.data());
+        directories.cache_directory_length =
+          static_cast<int32_t>(appDirectories.cacheDirectory.size());
+        directories.persistent_files_directory =
+          reinterpret_cast<const uint8_t *>(appDirectories.persistentFilesDirectory.data());
+        directories.persistent_files_directory_length =
+          static_cast<int32_t>(appDirectories.persistentFilesDirectory.size());
+        directoriesPointer = &directories;
+        NSLog(@"[ExpoModulesDotnet] App directories configured: cache=app-scoped, "
+              @"persistent=app-scoped.");
+      }
+
       expo::modules::dotnet::RuntimeContextResult result;
-      entryPoints.createRuntimeContext(
-        expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, &result);
+      entryPoints.createRuntimeContextV2(
+        expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, directoriesPointer, &result);
       if (result.ok == 0 || result.runtimeContext == nullptr) {
         auto lastError = takeRuntimeContextError(result.error);
         if (lastError.empty()) {
