@@ -31,7 +31,9 @@ fully before starting, honor its STOP conditions, and update your row when done.
 | 019 | Typed `[Event]` members on shared objects | P2 | M | 017, 021 | DONE |
 | 020 | hermes-console-app Linux port + end-to-end loader lane in CI (hostfxr + nativeaot) | P1 | M | 016 | DONE — Linux HostFXR and NativeAOT Docker proofs, macOS regressions, managed tests, formatting, and workflow lint passed; implemented at `be4ac86f`, `dc526e83`, `819d8622`, and `b21f3d9b`. |
 | 021 | Exactly-once owned callback-state disposal for host functions (`Expo.JSI`) | P2 | S–M | — | DONE — preserved the four-parameter API, added the owned-state overload, and verified GC, teardown, failure, and concurrent release. |
-| 022 | `expo-asset-dotnet` for Windows and macOS | P1 | M | — | TODO — first authored module; normal `_expoDotnet` registration only. |
+| 022 | `expo-asset-dotnet` for Windows and macOS | P1 | M | 026, 027 | BLOCKED — needs nullable reference codecs (026) and a host-supplied app-scoped cache directory (027). Contract also has 5 defects to amend; see Dependency notes. |
+| 026 | Nullable reference-type codecs in `Expo.ModulesCore` | P1 | M | — | TODO — blocks 022's upstream-compatible `md5Hash: string \| null`. |
+| 027 | Host-supplied app-scoped storage directories on the runtime context | P1 | M | — | TODO — blocks 022; user-wide cache paths must not ship. |
 | 023 | `expo-constants-dotnet` for Windows and macOS | P1 | M | — (022 recommended first) | TODO — typed metadata only; no generic JSON shortcut. |
 | 024 | `expo-file-system-dotnet` local files core for Windows and macOS | P1 | L | — (022, 023 recommended first) | TODO — `Paths`, `File`, `Directory`; no network or compatibility claim. |
 | 025 | `expo-crypto-dotnet` for Windows and macOS | P1 | M | 006 complete (024 recommended first) | TODO — ArrayBuffer plus offset/length native boundary. |
@@ -146,6 +148,59 @@ counter stay armed. Detail in `009-windows-testhost-teardown-crash.md`.
   alongside a new package pattern. 024 proves the first local binary/file API.
   025 relies on the already-complete ArrayBuffer work and follows 024 as the
   fourth agreed authored-module slice.
+- 022 was refined 2026-07-24 at `a0ac5b8d` against the authored-module test core,
+  then reconciled 2026-07-25 at `07311a59` once that core landed and went green
+  (650 tests, discovery confirmed). The core supplies `Expo.ModulesCore.Testing`
+  plus glob discovery of `packages/*/dotnet/*.Tests/*.Tests.csproj` in both
+  canonical managed runners. Because discovery is automatic, 022 must NOT
+  hand-edit `scripts/test-managed.sh`, `scripts/test-managed.ps1`, or any
+  workflow file — doing so is a scope violation. The same constraint applies to
+  023–025 once they are refined.
+- 022 was moved to BLOCKED on 2026-07-25 after a context handoff from the agent
+  that planned the authored-module sequence. Its milestone boundary is correct
+  and deliberate — real modules come before upstream-compatibility work, because
+  there is nothing to test compatibility against until a real module exists — so
+  registering only into `_expoDotnet.modules` stays right. But five defects in
+  its contract must be amended before implementation:
+  1. The cache root it specifies is user-wide. The Windows reference uses the
+     app-scoped `ApplicationData::Current().LocalCacheFolder()`, and upstream
+     takes this from the app context (`appContext.cacheDirectory` on Android,
+     `appContext.fileSystem.cachesDirectory` on iOS). A module SHALL NOT resolve
+     OS paths itself; the host supplies them. Hence plan 027.
+  2. It defines Linux/XDG cache behavior while describing itself as a
+     Windows/macOS package.
+  3. Its strict `type` and `md5Hash` validation is an intentional, documented
+     divergence from upstream, which accepts arbitrary strings. It is kept
+     because both values are interpolated into a cache file name, so accepting
+     arbitrary input reproduces a path-traversal bug rather than a behavior.
+  4. Its claim to "reuse Expo's existing `Asset` class" is not achievable from a
+     standalone facade: importing upstream `expo-asset` resolves upstream's own
+     `ExpoAsset` during module evaluation. The claim must be removed.
+  5. It cites `expo-asset@57.0.2`, a version this repo does not consume. The
+     implementation target needs an explicit pin.
+- Upstream-compatibility work (`globalThis.expo.modules` registration, Metro and
+  package-specifier aliasing) remains a separate later milestone. Direction
+  already settled: registration is **opt-in per module**, never automatic, and
+  autolinking owns the policy while `Expo.ModulesCore` keeps the primitive
+  generic. Startup ordering is undecided — expo-desktop eagerly creates
+  `globalThis.expo`, so Expo's `ensureNativeModulesAreInstalled()` returns before
+  the .NET installer runs. Replacing expo-desktop's whole `MainRuntimeInstaller`
+  needs constants, `NativeModulesProxy`, and Expo base-class installation too,
+  so it is not a defined milestone yet.
+- Reconciliation corrected two commands the `a0ac5b8d` revision got wrong, and
+  the same traps apply to 023–025: there is **no** trait-based test
+  categorisation in this repo (zero `[Trait(` attributes exist), so
+  `dotnet test --filter "Category!=Hermes"` is meaningless; and runner project
+  selection is `scripts/test-managed.sh --project <repo-relative-path>` /
+  `scripts/test-managed.ps1 -Project <path>`, not a bare positional argument.
+  Pure and Hermes-backed tests share one project, separated only by whether a
+  test body calls `ExpoModuleTestHost.Create`.
+- The refinement also dropped two requirements from the original 022 draft that
+  could not be built as written: a runtime `PlatformNotSupportedException`
+  platform gate (platform support is a link-time concern, and the dotnet
+  autolinking schema has no platform selector), and MD5 verification of freshly
+  downloaded bytes (upstream `expo-asset` verifies only the cached file and never
+  rejects on a hash mismatch).
 
 - 015–019 planned 2026-07-20 at `ea07d69d` from the synchronized
   `docs/roadmap.md` (operator selected the four candidates; 019 split out of
