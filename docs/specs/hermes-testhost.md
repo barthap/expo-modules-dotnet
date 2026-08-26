@@ -176,6 +176,28 @@ v1. `Expo.JSI.Tests` SHALL remain independent of `Expo.ModulesCore.Testing`.
 - **THEN** `Expo.JSI.Tests` SHALL retain its low-level fixture
 - **AND** it SHALL NOT reference `Expo.ModulesCore.Testing`
 
+### Requirement: Test Hosts Pass App Directories Through Without Managing Them
+
+`ExpoModuleTestHost` SHALL offer a `Create` overload that accepts an
+`AppDirectories` model and makes it observable through the runtime context inside
+the existing registration callback. The existing overload SHALL stay source- and
+binary-compatible and SHALL mean both directories are unconfigured.
+
+The test host SHALL NOT create, clean, or lifetime-manage a directory. A test that
+needs real files on disk owns that fixture itself.
+
+#### Scenario: A test supplies directories
+- **GIVEN** a test calls the directory-aware overload with configured values
+- **WHEN** the registration callback runs
+- **THEN** the runtime context SHALL return those values
+- **AND** the test host SHALL NOT have created either directory
+
+#### Scenario: The existing overload keeps working
+- **GIVEN** an existing test calls the current `Create` overload
+- **WHEN** it reads either directory accessor
+- **THEN** it SHALL observe the unconfigured state
+- **AND** the existing overload's signature SHALL be unchanged
+
 ### Requirement: Module Test Ownership
 
 Framework module behavior SHALL live in `Expo.ModulesCore.Tests`; behavior

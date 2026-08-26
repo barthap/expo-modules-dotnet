@@ -165,7 +165,7 @@ Stage 2 is app-level aggregation implemented by
 - The tool generates one app-level `ExpoDotnetHost` project.
 - The app-level provider calls each linked library's generated provider.
 - App startup calls the aggregate provider through the generated
-  `expo_dotnet_create_runtime_context_result` entry point.
+  `expo_dotnet_create_runtime_context_result_v2` entry point.
 
 Illustrative app-level output:
 

@@ -250,6 +250,113 @@ through a context-owned `ModuleRegistry`.
 - **WHEN** generated registration constructs the module
 - **THEN** generated registration SHALL NOT require inheritance
 
+### Requirement: Runtime Context Exposes Host-Supplied App Directories
+
+`DotnetRuntimeContext` SHALL expose a `CacheDirectory` accessor for temporary
+files the operating system may remove, and a `PersistentFilesDirectory` accessor
+for app files that must survive cache eviction. Both SHALL be non-nullable
+`string`. Neither SHALL be exposed to JavaScript.
+
+The directories SHALL arrive at construction, not through a setter. Module
+registration runs inside context creation, so a module constructor can already
+observe the context, and a setter would leave a window where the directories are
+silently absent. The one-argument constructor SHALL remain and SHALL mean both
+directories are unconfigured. A second constructor SHALL accept an
+`AppDirectories` model and SHALL throw `ArgumentNullException` for a null
+argument.
+
+Each accessor SHALL throw `AppDirectoryNotConfiguredException` when the host
+supplied no value for it. That exception SHALL be publicly catchable, SHALL derive
+from `InvalidOperationException`, and SHALL name the accessor that was
+unconfigured so the two are distinguishable. Neither accessor SHALL fall back to a
+user-wide or process-wide path. Every path a portable runtime can resolve on its
+own is shared by every app on the machine, which is the collision these accessors
+exist to remove. Upstream Android behaves the same way and throws when its
+`AppDirectoriesService` is not registered.
+
+Each accessor SHALL take the context's existing lock and run the existing
+active-state check first, so a disposed context throws `ObjectDisposedException`
+before configuration is consulted.
+
+The two directories SHALL be independent. A host MAY supply one and leave the
+other unconfigured, and coverage SHALL include both mixed cases.
+
+#### Scenario: Configured directory is returned verbatim
+- **GIVEN** a host supplied a fully qualified path for a directory
+- **WHEN** module code reads that accessor
+- **THEN** it SHALL return the supplied path unchanged
+- **AND** it SHALL NOT canonicalize or rewrite it
+
+#### Scenario: Unconfigured directory throws a specific exception
+- **GIVEN** a runtime context whose host supplied no value for a directory
+- **WHEN** module code reads that accessor
+- **THEN** it SHALL throw `AppDirectoryNotConfiguredException`
+- **AND** the exception SHALL identify which accessor was unconfigured
+- **AND** it SHALL NOT return a user-wide or process-wide path
+
+#### Scenario: Disposed context throws before checking configuration
+- **GIVEN** a runtime context has been disposed
+- **WHEN** either directory accessor is read
+- **THEN** it SHALL throw `ObjectDisposedException`
+- **AND** it SHALL NOT throw `AppDirectoryNotConfiguredException` instead
+
+#### Scenario: Existing single-argument construction still compiles
+- **GIVEN** an existing caller constructs a runtime context with only a runtime
+- **WHEN** the code compiles and runs
+- **THEN** construction SHALL succeed
+- **AND** both directories SHALL report the unconfigured state
+
+#### Scenario: One directory configured, the other not
+- **GIVEN** a host supplies only one of the two directories
+- **WHEN** the runtime context is created
+- **THEN** the supplied accessor SHALL return that path
+- **AND** the other accessor SHALL throw `AppDirectoryNotConfiguredException`
+
+### Requirement: App Directory Validation Never Touches The Filesystem
+
+`Expo.ModulesCore` SHALL NOT resolve, create, canonicalize, or probe a directory.
+It SHALL NOT call `Environment.GetFolderPath`, `Path.GetTempPath`,
+`Path.GetFullPath`, `Directory.*`, or `File.*`. Creating a subdirectory before
+writing belongs to the consuming module, matching upstream iOS, which creates the
+directory at use time rather than at configuration time.
+
+`AppDirectories` SHALL reject a supplied path that is empty, whitespace-only,
+contains a NUL character, or is not fully qualified, and SHALL name the offending
+parameter. Validation SHALL be a pure string check, so
+`Path.IsPathFullyQualified` is used and no disk is touched. Both an ABI-decoded
+value and a direct managed caller's value SHALL flow through the same validation.
+
+`AppDirectories` SHALL be immutable after construction, so no caller can change a
+context's directory policy after module registration. It SHALL expose a shared
+`Unconfigured` instance for hosts that supply neither directory. A `null` value for
+either member means the host supplied nothing for that directory.
+
+#### Scenario: Invalid supplied path is rejected at construction
+- **GIVEN** a supplied path is empty, whitespace-only, contains NUL, or is
+  relative
+- **WHEN** the directory model is constructed
+- **THEN** construction SHALL throw and SHALL name the offending parameter
+- **AND** no runtime context SHALL be created with that value
+
+#### Scenario: Validation performs no disk access
+- **GIVEN** a supplied path is fully qualified but does not exist on disk
+- **WHEN** the directory model is constructed
+- **THEN** construction SHALL succeed
+- **AND** validation SHALL NOT create, stat, or probe the path
+
+#### Scenario: The core holds no filesystem API
+- **GIVEN** `Expo.ModulesCore` sources are scanned for filesystem and
+  special-folder APIs
+- **WHEN** the scan runs
+- **THEN** it SHALL report no matches
+- **AND** a new filesystem call in the core SHALL be treated as a defect
+
+#### Scenario: The model cannot be mutated after registration
+- **GIVEN** a runtime context was created with a directory model
+- **WHEN** module registration has run
+- **THEN** no public member SHALL change either configured value
+- **AND** the context SHALL keep serving the values it was constructed with
+
 ### Requirement: Sync Function Generation Uses Direct Calls
 
 Generated sync function glue SHALL decode arguments, call authored methods

@@ -3,6 +3,8 @@ Pods/
 
 # Xcode
 build/
+# The NativeAOT loader lane builds into its own derived-data directory.
+build-nativeaot/
 *.pbxuser
 !default.pbxuser
 *.mode1v3

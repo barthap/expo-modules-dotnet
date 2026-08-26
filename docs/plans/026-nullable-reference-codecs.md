@@ -248,7 +248,7 @@ before running the format check** or it will not see them.
 
 Write `docs/changes/<yyyy-mm-dd>-nullable-reference-codecs/spec.md` per
 `.agents/skills/living-spec-workflow/SKILL.md`, matching the structure of
-`docs/changes/2026-07-24-authored-module-test-core/spec.md`. Obtain operator
+`docs/archive/changes/2026-07-24-authored-module-test-core/spec.md`. Obtain operator
 approval for the delta before committing it. Then write the change-local
 `plan.md`, obtain approval, and commit it separately.
 

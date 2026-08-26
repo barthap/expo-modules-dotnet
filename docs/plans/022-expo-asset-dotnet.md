@@ -550,7 +550,7 @@ this repo, and inventing one here would diverge from `ExampleModule.Tests`.
 - `docs/module-authoring-guide.md` — sections 1-4 and 9 cover everything this
   module needs. Sections 5, 7, 8 (events, callbacks, shared objects) do not
   apply.
-- `docs/changes/2026-07-24-authored-module-test-core/spec.md` — read the
+- `docs/archive/changes/2026-07-24-authored-module-test-core/spec.md` — read the
   "Public runtime API", "Promise evaluation", and "Managed runners" sections
   before writing any Hermes-backed test.
 
