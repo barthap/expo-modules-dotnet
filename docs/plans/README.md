@@ -42,7 +42,7 @@ STOP condition.
 | 021 | Exactly-once owned callback-state disposal for host functions (`Expo.JSI`) | P2 | S–M | — | DONE — preserved the four-parameter API, added the owned-state overload, and verified GC, teardown, failure, and concurrent release. |
 | 022 | `expo-asset-dotnet` for Windows and macOS | P1 | M | 027 | BLOCKED on its own contract, no longer on core. 026 made `md5Hash: string \| null` expressible and 027 shipped `context.CacheDirectory`, so both core blockers are gone. Amend the contract before executing: delete the user-wide cache-root resolution at `022-expo-asset-dotnet.md:646-651` (including the Linux/XDG branch, defect D2) and read `context.CacheDirectory` instead, then clear the other 4 defects. See Dependency notes. |
 | 026 | Nullable reference-type codecs in `Expo.ModulesCore` | P1 | M | — | DONE — `dac63381` (delta spec), `db6a14c3` (change plan), `1573ac97` (codecs), `e57cdf03` (generator), `00cb296b` (tests). 698 managed tests pass (+48 new), format check clean. Two accepted deviations recorded in `docs/specs/modules-core-boundary.md`; follow-up 028 filed. |
-| 027 | Host-supplied app-scoped directories on `DotnetRuntimeContext` | P1 | L | — | AWAITING PLATFORM VERIFICATION — implemented and merged at `e3acf1cd`, `45b6f075`, `9cea84c3`, `9e8e6057`, `6968a645`, `cac93fee`, `7a6da3da`. `context.CacheDirectory` and `.PersistentFilesDirectory` ship, fed by a versioned app-directories struct on a renamed v2 create entry point. Passing on macOS: 717 managed tests, 102 codegen tests including a compiled ABI harness, all four adapter compiles except Windows, and HostFXR, NativeAOT, Android, and iOS all launching with result `42`. **Windows was never built or run**, so the four Windows gates and `test-managed.ps1` are unverified and this row is not DONE. The delta package stays live in `docs/changes/` until they pass. |
+| 027 | Host-supplied app-scoped directories on `DotnetRuntimeContext` | P1 | L | — | DONE — implemented at `e3acf1cd`, `45b6f075`, `9cea84c3`, `9e8e6057`, `6968a645`, `cac93fee`, `7a6da3da`; Windows verification completed 2026-08-26. HostFXR and NativeAOT solution builds pass, and both packaged launches report `42` plus the path-free app-scoped marker. `scripts/test-managed.ps1` passes all 717 tests, including discovered `ExampleModule.Tests`. Compiling the Windows installer proves the explicit `winrt::to_string` / `winrt::hresult_error` availability and its `hstring` conversion. The archived delta records only the approved sanitized directory shape. |
 | 023 | `expo-constants-dotnet` for Windows and macOS | P1 | M | — (022 recommended first) | TODO — typed metadata only; no generic JSON shortcut. |
 | 024 | `expo-file-system-dotnet` local files core for Windows and macOS | P1 | L | — | TODO — `Paths`, `File`, `Directory`; no network or compatibility claim. 027 shipped `context.PersistentFilesDirectory`, so no ABI work is needed here and the dependency is discharged. |
 | 025 | `expo-crypto-dotnet` for Windows and macOS | P1 | M | 006 complete (024 recommended first) | TODO — ArrayBuffer plus offset/length native boundary. |
@@ -221,19 +221,15 @@ counter stay armed. Detail in `009-windows-testhost-teardown-crash.md`.
   026 documented it rather than changing diagnostic codes late in a codec slice.
   The fix is small; the regression sweep over every annotated shared-object case
   is the real work.
-- 027 shipped everything except Windows proof. Whoever has a Windows host owes
-  four gates: the HostFXR and NativeAOT solution builds, both packaged runtime
-  launches reporting the C# result `42`, and `scripts/test-managed.ps1`. The
-  packaged app must also log
-  `[ExpoModulesDotnet] App directories configured: cache=app-scoped, persistent=app-scoped.`
-  Record only sanitized shapes such as
-  `<local-app-data>/Packages/<package-family>/LocalCache`; a real package
-  identity must not be committed. Two Windows-only risks were never compiled:
-  whether `winrt::to_string` and `winrt::hresult_error` reach
-  `ExpoModulesDotnetInstaller.cpp` through `pch.h`, and whether `hstring`
-  converts implicitly to the `std::wstring_view` that `winrt::to_string` takes.
-  When those pass, mark 027 DONE and move `docs/changes/2026-07-25-host-app-directories`
-  to `docs/archive/changes/`.
+- 027's Windows proof completed 2026-08-26: HostFXR and NativeAOT solution
+  builds pass; both packaged launches report the C# result `42` and the
+  path-free configured marker; and `scripts/test-managed.ps1` passes all 717
+  tests, including discovered `ExampleModule.Tests`. Compiling the Windows
+  installer proves that its explicit `winrt::to_string` and
+  `winrt::hresult_error` uses are available and that the `hstring` conversion
+  matches `winrt::to_string`. The archived delta retains only the approved
+  sanitized directory shape
+  `<local-app-data>/Packages/<package-family>/LocalCache`.
 - 028–033 are one serial follow-up chain. 028 first stabilizes the diagnostic
   baseline for annotated shared-object symbols. 029 then replaces codec-name
   parsing with typed decode, context, ownership, encode, and capability policy.

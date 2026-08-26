@@ -130,6 +130,7 @@ Global
 		{0B3BAA69-EB54-50EB-B155-ECEB133F18E8}.Release|x64.ActiveCfg = Release|Any CPU
 		{0B3BAA69-EB54-50EB-B155-ECEB133F18E8}.Release|x86.ActiveCfg = Release|Any CPU
 		{0B3BAA69-EB54-50EB-B155-ECEB133F18E8}.Release|ARM64.ActiveCfg = Release|Any CPU
+		{A7B9E08A-8F3B-4B3B-A521-2E6D6BB55F40}.Release|ARM64.Build.0 = Release|ARM64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
