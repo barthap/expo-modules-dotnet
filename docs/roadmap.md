@@ -247,8 +247,8 @@ The first authored C# packages are separate Windows/macOS work items. They use
 the normal `_expoDotnet.modules` registry and do not yet claim upstream Expo
 package compatibility or install aliases into `globalThis.expo.modules`.
 
-1. [`expo-asset-dotnet`](plans/022-expo-asset-dotnet.md): native cache/download
-   operation behind Expo's existing JavaScript asset resolution.
+1. [`expo-asset-dotnet`](plans/022-expo-asset-dotnet.md) (complete): standalone
+   validated download and app-scoped cache package.
 2. [`expo-constants-dotnet`](plans/023-expo-constants-dotnet.md): typed host
    metadata with explicit provenance.
 3. [`expo-file-system-dotnet`](plans/024-expo-file-system-dotnet.md): local

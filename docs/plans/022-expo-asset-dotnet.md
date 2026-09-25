@@ -38,6 +38,11 @@
   user-wide and Linux/XDG cache resolution, pins `expo-asset@57.0.2`, documents
   strict filename validation as a security divergence, and removes the
   impossible upstream `Asset` reuse claim.
+- **Completed**: 2026-08-27 — the standalone package, generated module,
+  app-scoped cache, offline download service, cancellation cleanup, and living
+  spec merge are implemented. All 43 package managed tests and all 760 managed
+  tests pass without skips; the facade, autolinking, typecheck, format, scope,
+  and policy checks also pass.
 
 ## Dependency
 

@@ -50,6 +50,8 @@ exception rules.
 - `packages/expo-modules-dotnet-autolinking/` contains the CLI that resolves
   dotnet Expo module packages, generates the `ExpoDotnetHost` aggregator,
   builds it, and stages loader-expected artifacts for app builds.
+- `packages/expo-asset-dotnet/` is the standalone Windows/macOS authored module
+  package for validated asset download and app-scoped caching.
 - `packages/example-module/` is an authored .NET Expo module package used by
   example apps. It owns the example C# module source, JavaScript facade,
   dotnet autolinking metadata, and its `ExampleModule.Tests` behavior tests.
