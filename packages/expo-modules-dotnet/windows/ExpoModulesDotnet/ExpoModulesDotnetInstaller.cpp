@@ -154,7 +154,7 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
   {
     auto entryPoints = expo::modules::dotnet::resolveRuntimeContextEntryPoints(moduleConfig);
 
-    if (entryPoints.createRuntimeContextV2 == nullptr ||
+    if (entryPoints.createRuntimeContextV3 == nullptr ||
         entryPoints.teardownRuntimeContext == nullptr) {
       error = expo::modules::dotnet::managedLoaderLastError();
       if (error.empty()) {
@@ -167,29 +167,29 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
 
     // The struct borrows these strings for the duration of the create call, so
     // both must live in this frame until the call returns. A null pointer means
-    // both directories are unconfigured.
+    // all host-context fields are unconfigured.
     const auto appDirectories = resolveAppDirectories();
-    expo::modules::dotnet::expo_dotnet_app_directories directories{};
-    const expo::modules::dotnet::expo_dotnet_app_directories *directoriesPointer = nullptr;
+    expo::modules::dotnet::expo_dotnet_host_context hostContext{};
+    const expo::modules::dotnet::expo_dotnet_host_context *hostContextPointer = nullptr;
     if (appDirectories.isConfigured()) {
-      directories.size = sizeof(directories);
-      directories.version = EXPO_DOTNET_HOST_ABI_VERSION;
-      directories.cache_directory =
+      hostContext.size = sizeof(hostContext);
+      hostContext.version = EXPO_DOTNET_HOST_ABI_VERSION;
+      hostContext.cache_directory =
         reinterpret_cast<const uint8_t *>(appDirectories.cacheDirectory.data());
-      directories.cache_directory_length =
+      hostContext.cache_directory_length =
         static_cast<int32_t>(appDirectories.cacheDirectory.size());
-      directories.persistent_files_directory =
+      hostContext.persistent_files_directory =
         reinterpret_cast<const uint8_t *>(appDirectories.persistentFilesDirectory.data());
-      directories.persistent_files_directory_length =
+      hostContext.persistent_files_directory_length =
         static_cast<int32_t>(appDirectories.persistentFilesDirectory.size());
-      directoriesPointer = &directories;
+      hostContextPointer = &hostContext;
       logMessage(L"[ExpoModulesDotnet] App directories configured: cache=app-scoped, "
                  L"persistent=app-scoped.");
     }
 
     expo::modules::dotnet::RuntimeContextResult result;
-    entryPoints.createRuntimeContextV2(
-      expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, directoriesPointer, &result);
+    entryPoints.createRuntimeContextV3(
+      expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, hostContextPointer, &result);
     if (result.ok == 0 || result.runtimeContext == nullptr) {
       error = takeRuntimeContextError(result.error);
       if (error.empty()) {
