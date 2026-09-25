@@ -145,13 +145,13 @@ std::optional<std::string> resolveNativeBuildVersion()
     return std::nullopt;
   }
   if (packageStatus != ERROR_INSUFFICIENT_BUFFER) {
-    throw std::runtime_error(
-      "GetCurrentPackageId failed with Windows error " + std::to_string(packageStatus) + ".");
+    throw std::runtime_error("GetCurrentPackageId failed with Windows error " +
+                             std::to_string(packageStatus) + ".");
   }
 
   const auto version = winrt::Windows::ApplicationModel::Package::Current().Id().Version();
   return std::to_string(version.Major) + "." + std::to_string(version.Minor) + "." +
-    std::to_string(version.Build) + "." + std::to_string(version.Revision);
+         std::to_string(version.Build) + "." + std::to_string(version.Revision);
 }
 
 } // namespace
@@ -207,8 +207,7 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
                  L"persistent=app-scoped.");
     }
     if (buildVersion.has_value()) {
-      hostContext.native_build_version =
-        reinterpret_cast<const uint8_t *>(buildVersion->data());
+      hostContext.native_build_version = reinterpret_cast<const uint8_t *>(buildVersion->data());
       hostContext.native_build_version_length = static_cast<int32_t>(buildVersion->size());
     }
 
