@@ -1,0 +1,20 @@
+{
+  "name": "expo-asset-dotnet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Asset download and cache module for Expo .NET hosts",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "expo-modules-dotnet": "*"
+  },
+  "devDependencies": {
+    "expo-modules-dotnet": "workspace:*",
+    "typescript": "catalog:react-native-86",
+    "vitest": "^3.0.0"
+  }
+}
