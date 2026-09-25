@@ -228,6 +228,24 @@ public static partial class EntryPoints
       CheckEqual("1.0.0.0", metadata.NativeBuildVersion, "build only: build version");
     });
 
+    WithHostContext(null, null, null, null, (nint pointer) =>
+    {
+      var (_, metadata) = DecodeHostContext(pointer);
+      Check(metadata.NativeAppVersion is null, "full null context configured app version");
+      Check(metadata.NativeBuildVersion is null, "full null context configured build version");
+    });
+
+    Expo.ModulesCore.HostAppMetadata? copiedMetadata = null;
+    WithHostContext(null, null, "3.1", "12", (nint pointer) =>
+    {
+      var (_, metadata) = DecodeHostContext(pointer);
+      copiedMetadata = metadata;
+      ((NativeHostContext*)pointer)->NativeAppVersion[0] = (byte)'X';
+      ((NativeHostContext*)pointer)->NativeBuildVersion[0] = (byte)'Y';
+    });
+    CheckEqual("3.1", copiedMetadata?.NativeAppVersion, "app version copied before buffer mutation");
+    CheckEqual("12", copiedMetadata?.NativeBuildVersion, "build version copied before buffer mutation");
+
     WithHostContext(null, null, "vęrsion-π", "9", (nint pointer) =>
     {
       var native = (NativeHostContext*)pointer;
