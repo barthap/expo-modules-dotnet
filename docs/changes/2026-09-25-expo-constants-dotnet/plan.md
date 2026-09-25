@@ -4,7 +4,7 @@
 
 **Goal:** Ship a Windows/macOS `expo-constants-dotnet` package with six typed, read-only values whose native version strings come from the embedding app.
 
-**Architecture:** The Windows and macOS adapters read their own app metadata and pass two optional strings through a v3 runtime-context create call. The generated host validates and copies those strings into `DotnetRuntimeContext`; a generated authored module projects them with OS and runtime-scoped values. The package facade resolves only `_expoDotnet.modules.ExponentConstants`.
+**Architecture:** The Windows and macOS adapters read their own app metadata and pass it through one size-extensible host-context struct in the four-argument v3 create call. The generated host validates and copies the available strings into `DotnetRuntimeContext`; a generated authored module projects them with OS and runtime-scoped values. The package facade resolves only `_expoDotnet.modules.ExponentConstants`.
 
 **Tech Stack:** C++/Objective-C++ native adapters, C ABI, .NET 10, Expo.ModulesCore Roslyn generator, TypeScript, Vitest, xUnit v3, Hermes testhost.
 
@@ -18,7 +18,8 @@
 - `sessionId` is one canonical GUID per runtime context that instantiates the module, with no persistence.
 - The ABI carries native app versions as host identity only. Platform detection, GUID generation, and the fixed `bare` value stay in .NET.
 - All create-call strings are borrowed UTF-8 pointer/length pairs. The generated host copies them before returning and rejects malformed input through `RuntimeContextResult`.
-- Keep the existing app-directory struct and version intact. Rename the create symbol and HostFXR method to v3; do not export v2 from the final generated host.
+- Keep the directory fields at their existing offsets in one `expo_dotnet_host_context` struct. Append optional version pairs, accept complete known prefixes and unknown trailing bytes, and reject sizes ending inside a known pair. Keep struct version 1 for compatible additions.
+- Keep the create call at four arguments. Rename the create symbol and HostFXR method to v3; do not export v2 from the final generated host.
 - Do not add Expo global registration, Metro aliases, general JSON codecs, mobile support, or machine-local paths to committed files.
 - Before every commit, scan staged content for local absolute paths, usernames, machine names, and private hostnames.
 
@@ -27,7 +28,7 @@
 1. A host supplies an empty, whitespace, or NUL-bearing version string: startup reports malformed metadata, not a fabricated version (Tasks 1 and 2 tests).
 2. Windows has no package identity: both native versions are null and app registration still succeeds (Task 3 Windows proof).
 3. One metadata field is missing while the other is present: the present value survives independently (Tasks 1 and 2 tests).
-4. Metadata bytes contain invalid UTF-8, NUL, or pointer/length mismatch: the unmanaged create call returns a releasable structured error before registration (Task 2 harness).
+4. A host sends a truncated known prefix, invalid UTF-8, NUL, or pointer/length mismatch: the unmanaged create call returns a releasable structured error before registration (Task 2 harness).
 5. React Native replaces its runtime: the next context gets a different session ID while the old one stays stable until teardown (Task 4 Hermes tests).
 
 ---
@@ -37,8 +38,8 @@
 - `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/HostAppMetadata.cs`: immutable version pair and validation.
 - `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/DotnetRuntimeContext.cs`: constructor input and active-state checked accessor.
 - `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Testing/ExpoModuleTestHost.cs`: explicit metadata input for Hermes tests.
-- `packages/expo-modules-dotnet/native/include/expo_dotnet_host.h`: shared metadata layout and v3 function pointer.
-- `packages/expo-modules-dotnet-autolinking/src/codegen/generateAggregator.ts`: v3 export, metadata decoder, and context construction.
+- `packages/expo-modules-dotnet/native/include/expo_dotnet_host.h`: extensible host-context layout and v3 function pointer.
+- `packages/expo-modules-dotnet-autolinking/src/codegen/generateAggregator.ts`: v3 export, size-aware host-context decoder, and context construction.
 - `packages/expo-modules-dotnet-autolinking/src/__tests__/fixtures/entry-points-abi-harness.cs`: executable ABI and malformed-input checks.
 - `packages/expo-modules-dotnet/{macos,windows,ios,android}/...`: v3 loader use; desktop adapters resolve metadata, mobile adapters pass null.
 - `packages/expo-constants-dotnet/`: C# module/tests, TypeScript facade/tests, package metadata, and autolinking declaration.
@@ -120,18 +121,18 @@ Before the commit command, inspect the staged diff for local absolute paths, rea
 
 **Interfaces:**
 - Consumes: `HostAppMetadata` and the new context constructor from Task 1.
-- Produces: `expo_dotnet_app_metadata` and `CreateRuntimeContextV3Fn(api, runtime, appDirectories, appMetadata, result)`. The managed HostFXR method is `CreateRuntimeContextResultV3`; the NativeAOT export is `expo_dotnet_create_runtime_context_result_v3`.
+- Produces: `expo_dotnet_host_context` and `CreateRuntimeContextV3Fn(api, runtime, hostContext, result)`. The managed HostFXR method is `CreateRuntimeContextResultV3`; the NativeAOT export is `expo_dotnet_create_runtime_context_result_v3`.
 
-- [ ] **Step 1: Update tests and the executable harness first.** Assert five create parameters, v3-only symbol and method resolution, metadata decode before context construction, and metadata mirror offsets equal to the existing two-pair app-directory layout: `0, 4, 8, 8 + pointerSize, 24/16, 32/20`, with total size `40/24`. Run the harness through a five-parameter unmanaged function pointer. Test null metadata, each field alone, non-ASCII UTF-8, undersized/wrong-version structs, negative length, null/nonzero pair, non-null/zero pair, invalid UTF-8, NUL, and whitespace.
+- [ ] **Step 1: Update tests and the executable harness first.** Assert four create parameters, v3-only symbol and method resolution, host-context decode before context construction, and mirror offsets for the unchanged directory prefix: `0, 4, 8, 8 + pointerSize, 24/16, 32/20`. Assert the complete prefix sizes `40/24`, `56/32`, and `72/40`. Run the harness through a four-parameter unmanaged function pointer. Test null context; directory-only, one-version, full, and future-extended sizes; each field alone; non-ASCII UTF-8; undersized, partial-tail, and wrong-version structs; negative length; null/nonzero and non-null/zero pairs; invalid UTF-8; NUL; and whitespace.
 
 ```csharp
 var create =
-    (delegate* unmanaged[Cdecl]<nint, nint, nint, nint, RuntimeContextResult*, void>)
+    (delegate* unmanaged[Cdecl]<nint, nint, nint, RuntimeContextResult*, void>)
         &CreateRuntimeContextResultV3;
 RuntimeContextResult result = default;
-create(0, 0, 0, metadataPointer, &result);
-// DecodeAppMetadata runs before JavaScriptRuntime.FromNative, so malformed
-// input reports the metadata failure. Release result.Error exactly once.
+create(0, 0, hostContextPointer, &result);
+// DecodeHostContext runs before JavaScriptRuntime.FromNative, so malformed
+// input reports the host-context failure. Release result.Error exactly once.
 ```
 
 - [ ] **Step 2: Run the autolinking tests red.**
@@ -140,21 +141,20 @@ create(0, 0, 0, metadataPointer, &result);
 pnpm --filter expo-modules-dotnet-autolinking test
 ```
 
-- [ ] **Step 3: Add the shared native struct and generated decoder.** Preserve `expo_dotnet_app_directories` without changes. Give metadata its own size/version pair, strict UTF-8 decoder, and null-pointer meaning `HostAppMetadata.Unconfigured`. Validate size before version and both before pointer dereference. Use the existing `RuntimeContextResult` error/release path. Keep all mirrors private and C# generated code NativeAOT-safe.
+- [ ] **Step 3: Add the shared native struct and generated decoder.** Replace the old directories struct with `expo_dotnet_host_context`, preserving the original fields and offsets, then append the two version pairs. Give the one struct a size and version header, strict UTF-8 decoding, and null-pointer meaning both directories and metadata are unconfigured. Validate the 40/24-byte directory prefix before version and payload fields; read each appended pair only when its full 56/32- or 72/40-byte prefix is present. Reject partial known pairs; accept and ignore bytes past the full known prefix. Use the existing `RuntimeContextResult` error/release path. Keep all mirrors private and C# generated code NativeAOT-safe.
 
 ```csharp
-var directories = DecodeAppDirectories(appDirectories);
-var metadata = DecodeAppMetadata(appMetadata);
+var (directories, metadata) = DecodeHostContext(hostContext);
 var runtime = JavaScriptRuntime.FromNative(api, runtimeHandle);
 var context = new DotnetRuntimeContext(runtime, directories, metadata);
 ```
 
-- [ ] **Step 4: Switch all four adapters to v3 in the same task.** Update the desktop HostFXR method strings and NativeAOT symbol strings, then pass a null metadata pointer until Task 3 fills the desktop values. Update iOS and Android to pass both null input pointers. Remove the v2 create typedef, generated export, and loader lookups from the final source state of this task.
+- [ ] **Step 4: Switch all four adapters to v3 in the same task.** Update the desktop HostFXR method strings and NativeAOT symbol strings. The desktop adapters fill the existing directory prefix and leave both version pointers null until Task 3 fills them. Update iOS and Android to pass one null host-context pointer. Remove the v2 create typedef, generated export, and loader lookups from the final source state of this task.
 
 ```cpp
 entryPoints.createRuntimeContextV3(
-  expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, directoriesPointer,
-  nullptr, &result);
+  expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, hostContextPointer,
+  &result);
 ```
 
 - [ ] **Step 5: Run autolinking tests and scans green, then commit.** Generate the host for both desktop and mobile app roots so stale HostFXR method names or NativeAOT exports are visible. Compile the shared header directly on the current C++ toolchain.
@@ -180,15 +180,15 @@ The old-name scan expects no source matches. Stage only Task 2 paths, run the st
 - Test: `packages/expo-modules-dotnet-autolinking/src/__tests__/generateAggregator.test.ts` and its ABI harness for field independence and malformed metadata.
 
 **Interfaces:**
-- Consumes: `expo_dotnet_app_metadata` and `createRuntimeContextV3` from Task 2.
+- Consumes: `expo_dotnet_host_context` and `createRuntimeContextV3` from Task 2.
 - Produces: borrowed native app/build version strings scoped to the create call; no new public API.
 
-- [ ] **Step 1: Add a host-boundary test for both versions and one missing version.** The generated-host harness passes `("1.0", "1")`, `(null, "1.0.0.0")`, and `(null, null)` into `DecodeAppMetadata` and checks exact results. Assert the metadata is already copied before the borrowed buffers leave scope.
+- [ ] **Step 1: Add a host-boundary test for both versions and one missing version.** The generated-host harness passes `("1.0", "1")`, `(null, "1.0.0.0")`, and `(null, null)` into `DecodeHostContext` and checks exact results. Assert the metadata is already copied before the borrowed buffers leave scope.
 
 ```csharp
-WithMetadata("1.0", "1", pointer =>
+WithHostContext("1.0", "1", pointer =>
 {
-  var decoded = DecodeAppMetadata(pointer);
+  var (_, decoded) = DecodeHostContext(pointer);
   CheckEqual("1.0", decoded.NativeAppVersion, "app version");
   CheckEqual("1", decoded.NativeBuildVersion, "build version");
 });
@@ -212,9 +212,9 @@ const std::string buildVersion = std::to_string(version.Major) + "." +
   std::to_string(version.Build) + "." + std::to_string(version.Revision);
 ```
 
-- [ ] **Step 4: Verify adapter builds.** Run `pnpm --filter expo-modules-dotnet-autolinking test` for the ABI fixture and build the desktop app on macOS and Windows with `pnpm --dir apps/desktop-app run:macos` and `pnpm --dir apps/desktop-app run:windows`, respectively. The end-to-end version proof follows after Task 5 adds the consumer. Do not commit raw local bundle paths or package IDs.
+- [ ] **Step 4: Verify locally available adapter work.** Run `pnpm --filter expo-modules-dotnet-autolinking test` for the ABI fixture and build the desktop app on macOS with `pnpm --dir apps/desktop-app run:macos`. Keep borrowed buffers alive through the create call and check that the Windows code uses the same shared struct, but leave Windows build and runtime proof for Task 6. Do not commit raw local bundle paths or package IDs.
 
-- [ ] **Step 5: Stage only the desktop adapter and ABI-test changes, scan, and commit** `feat(runtime): supply desktop native app versions` once both adapters compile.
+- [ ] **Step 5: Stage only the desktop adapter and ABI-test changes, scan, and commit** `feat(runtime): supply desktop native app versions` after the local tests and macOS build pass. Record Windows verification as pending, not passing.
 
 ### Task 4: Implement the authored C# constants module
 
@@ -359,11 +359,11 @@ git diff --check
 
 If formatting changes are needed, run `scripts/format.sh` and repeat the check. No skipped suite counts as a pass.
 
-- [ ] **Step 2: Prove the generated host and desktop adapters in both loader modes.** On macOS run `EXPO_DOTNET_LOADER=hostfxr pnpm --dir apps/desktop-app run:macos` and `EXPO_DOTNET_LOADER=nativeaot pnpm --dir apps/desktop-app run:macos`; the example row must show `macos`, `1.0`, and `1`. On Windows run `scripts/test-managed.ps1`, then run the desktop app once with `$env:EXPO_DOTNET_LOADER = 'hostfxr'` and once with `'nativeaot'`; the row must show `windows`, `null`, and `1.0.0.0`. Confirm both mobile adapters compile and still load the v3 host with null metadata.
+- [ ] **Step 2: Prove the generated host and desktop adapters in both loader modes.** On macOS run `EXPO_DOTNET_LOADER=hostfxr pnpm --dir apps/desktop-app run:macos` and `EXPO_DOTNET_LOADER=nativeaot pnpm --dir apps/desktop-app run:macos`; the example row must show `macos`, `1.0`, and `1`. On Windows run `scripts/test-managed.ps1`, then run the desktop app once with `$env:EXPO_DOTNET_LOADER = 'hostfxr'` and once with `'nativeaot'`; the row must show `windows`, `null`, and `1.0.0.0`. Confirm both mobile adapters compile and still load the v3 host with a null host-context pointer. If the Windows machine is not available when local verification reaches this step, stop and ask the user for access. Do not claim Windows passes or close plan 023.
 
 - [ ] **Step 3: Review actual tests and source against every spec scenario.** Check unsupported-platform handling, field independence, strict-mode read-only behavior, per-context IDs, structured malformed-input errors, and v3-only symbol resolution. If a platform cannot be run, report it as an open verification gate and do not mark plan 023 done.
 
-- [ ] **Step 4: Merge the accepted requirements into the three relevant living specs and indexes.** Update `modules-core-boundary.md` for the context model and authored package, `runtime-and-abi.md` for the v3 metadata ABI and adapter policy, and `dotnet-autolinking.md` for generated decoding. Record the verified status in `docs/plans/README.md`, `docs/plans/023-expo-constants-dotnet.md`, and `docs/roadmap.md`, update `docs/README.md` and `docs/specs/README.md`, then archive this change directory.
+- [ ] **Step 4: Merge the accepted requirements into the three relevant living specs and indexes.** Update `modules-core-boundary.md` for the context model and authored package, `runtime-and-abi.md` for the size-extensible v3 host-context ABI and adapter policy, and `dotnet-autolinking.md` for generated decoding. Record the verified status in `docs/plans/README.md`, `docs/plans/023-expo-constants-dotnet.md`, and `docs/roadmap.md`, update `docs/README.md` and `docs/specs/README.md`, then archive this change directory.
 
 - [ ] **Step 5: Run docs/privacy checks, commit closure, and prepare local-main integration.**
 
