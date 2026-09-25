@@ -1,6 +1,6 @@
 # Portable C# / JSI Bridge Docs
 
-Last refreshed: 2026-07-04.
+Last refreshed: 2026-09-25.
 
 This directory contains the current documentation for the portable C# / JSI
 bridge. The authoritative current-state specs live in `docs/specs/`. Historical
@@ -52,6 +52,8 @@ exception rules.
   builds it, and stages loader-expected artifacts for app builds.
 - `packages/expo-asset-dotnet/` is the standalone Windows/macOS authored module
   package for validated asset download and app-scoped caching.
+- `packages/expo-constants-dotnet/` is the standalone Windows/macOS authored
+  module package for typed host constants and runtime-scoped session identity.
 - `packages/example-module/` is an authored .NET Expo module package used by
   example apps. It owns the example C# module source, JavaScript facade,
   dotnet autolinking metadata, and its `ExampleModule.Tests` behavior tests.

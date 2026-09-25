@@ -43,7 +43,7 @@ package-root-relative csproj paths with optional `assemblyName`.
 The tool SHALL generate a single app-level project with the stable assembly
 name `ExpoDotnetHost` that references every resolved module project, calls
 each library-local `ExpoModulesProvider_{assemblyName}.Register`, and owns the
-`expo_dotnet_create_runtime_context_result_v2` and
+`expo_dotnet_create_runtime_context_result_v3` and
 `expo_dotnet_teardown_runtime_context` entry points. Generated registration
 order SHALL be deterministic. Generated files SHALL only be rewritten when
 content changes. Runtime-context creation SHALL write a structured result
@@ -74,17 +74,20 @@ UTF-8 error message with a release callback when managed startup fails.
 - **GIVEN** two resolved projects with the same effective `assemblyName`
 - **THEN** the tool SHALL fail naming both packages
 
-### Requirement: The Generated Aggregator Owns App-Directory Marshalling
+### Requirement: The Generated Aggregator Owns Host-Context Marshalling
 
 The generated aggregator SHALL own the private managed mirror of
-`expo_dotnet_app_directories`, the pointer decoding, and the strict UTF-8
+`expo_dotnet_host_context`, its size-aware pointer decoding, and strict UTF-8
 conversion, because its project compiles only the generated files. Its public
 unmanaged create entry point SHALL declare the struct parameter as a native
 integer, so no private mirror type reaches the generated host's public surface.
 
-`Expo.ModulesCore` SHALL own the immutable public `AppDirectories` model and its
-platform-neutral validation. The aggregator SHALL construct that model and pass it
-to the runtime context constructor before module registration runs.
+`Expo.ModulesCore` SHALL own the immutable public `AppDirectories` and
+`HostAppMetadata` models and their platform-neutral validation. The aggregator
+SHALL construct both models and pass them to the runtime context constructor
+before module registration runs. The directory prefix SHALL retain its v2
+layout; complete native app and build version fields MAY follow. A null pointer
+means both models are unconfigured.
 
 The aggregator SHALL emit its own private UTF-8 decoder. It SHALL NOT reach the
 `Expo.JSI` decoder through a new `InternalsVisibleTo` edge. All decoding SHALL be
@@ -95,7 +98,7 @@ harness compiled into the same assembly can reach the private decoder without
 widening production visibility.
 
 Verification SHALL compile and run the generated entry points, not only assert on
-emitted source text. The harness SHALL call the v2 create entry point through its
+emitted source text. The harness SHALL call the v3 create entry point through its
 unmanaged function pointer for every invalid input, check the structured error
 result and release its buffer, call the private decoder for valid inputs, and
 assert the managed struct size and every field offset for the running pointer
@@ -105,8 +108,8 @@ they SHALL NOT be the only check.
 #### Scenario: Decoding happens before context construction
 - **GIVEN** a native adapter supplies a valid struct
 - **WHEN** the generated create entry point runs
-- **THEN** it SHALL decode both directories, construct the public model, and pass
-  it to the runtime context constructor
+- **THEN** it SHALL decode available directories and native versions, construct
+  the public models, and pass them to the runtime context constructor
 - **AND** module registration SHALL run after that
 
 #### Scenario: Decoding failure returns a structured error
@@ -127,9 +130,9 @@ they SHALL NOT be the only check.
 - **GIVEN** the generated host is compiled with the checked-in harness
 - **WHEN** the harness runs
 - **THEN** it SHALL invoke the create entry point through its unmanaged function
-  pointer for a null struct pointer, an undersized size, a wrong version, a
-  negative length, a null pointer with a nonzero length, a non-null pointer with a
-  zero length, invalid UTF-8, and valid UTF-8
+  pointer for a null struct pointer, directory-only and full prefixes, unknown
+  trailing fields, a partial known field, an undersized size, a wrong version, a
+  negative length, invalid pointer/length pairs, invalid UTF-8, and valid UTF-8
 - **AND** a managed layout divergence SHALL fail verification rather than surface
   at runtime
 
@@ -315,7 +318,7 @@ entry point symbols, and MAY fall back to `dlsym(RTLD_DEFAULT, ...)` for
 compatibility. iOS loader errors SHALL reference the autolinking CLI. The
 Android loader SHALL load `ExpoDotnetHost` through SoLoader, and its C++
 fallback SHALL `dlopen` `libExpoDotnetHost.so`. Mobile loaders SHALL resolve
-the generated `expo_dotnet_create_runtime_context_result_v2` and
+the generated `expo_dotnet_create_runtime_context_result_v3` and
 `expo_dotnet_teardown_runtime_context` symbols from the generated aggregator.
 If the structured create-runtime-context symbol or HostFXR method cannot be
 resolved, loaders SHALL fail with a diagnostic that tells the developer to
