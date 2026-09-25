@@ -28,6 +28,6 @@ declare class ExpoConstantsNativeModule extends DotnetModule implements ExpoCons
   readonly expoVersion: null;
 }
 
-const constants = requireDotnetModule<ExpoConstantsNativeModule>('ExponentConstants');
+const constants: ExpoConstants = requireDotnetModule<ExpoConstantsNativeModule>('ExponentConstants');
 
 export default constants;
