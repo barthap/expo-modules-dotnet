@@ -1,3 +1,4 @@
+import Constants from 'expo-constants-dotnet';
 import {
   add,
   addStatusListener,
@@ -180,6 +181,14 @@ export default function App() {
         <Text style={styles.title}>Expo.ModulesCore {Platform.OS}</Text>
         <Text style={styles.subtitle}>ExampleModule interactive showcase</Text>
         <View style={styles.rows}>
+          <View style={styles.row}>
+            <Text style={styles.label}>Constants</Text>
+            <Text style={styles.value}>
+              {Constants.platform} · app {Constants.nativeAppVersion ?? 'null'} · build{' '}
+              {Constants.nativeBuildVersion ?? 'null'}
+            </Text>
+            <Text style={styles.value}>session {Constants.sessionId}</Text>
+          </View>
           {capabilities.map(capability => (
             <View key={capability.key} style={styles.row}>
               <View style={styles.rowHeader}>
