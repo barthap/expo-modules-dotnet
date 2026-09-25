@@ -33,6 +33,11 @@
 - **Reconciled at**: `07311a59`, 2026-07-25 — the test core landed; every
   "intended" shape below was replaced with verbatim reality. Two of this plan's
   own commands were wrong and are corrected; see "Reconciliation".
+- **Contract corrected at**: `5d1656d1`, 2026-08-27 — plan 027 supplied
+  `DotnetRuntimeContext.CacheDirectory`; the approved delta now removes all
+  user-wide and Linux/XDG cache resolution, pins `expo-asset@57.0.2`, documents
+  strict filename validation as a security divergence, and removes the
+  impossible upstream `Asset` reuse claim.
 
 ## Dependency
 
@@ -78,10 +83,9 @@ a synthetic example. It also becomes the second consumer of the authored-module
 test core, which is what validates that design for packages other than
 `example-module`.
 
-The JavaScript side deliberately reuses Expo's existing asset source resolution
-and `Asset` class. This package owns only the download-and-cache operation, and
-makes no claim that `expo-asset` itself resolves through Expo's global module
-registry.
+The JavaScript side is a standalone facade for the download-and-cache operation.
+It does not import, re-export, subclass, or alias Expo's existing `Asset` class,
+and makes no claim that `expo-asset` resolves through the dotnet registry.
 
 ## Current state
 
@@ -170,10 +174,10 @@ export interface RawDotnetConfig {
 ```
 
 **There is no per-platform selector.** A package cannot declare Windows-only or
-macOS-only projects. `docs/specs/dotnet-autolinking.md:79-81` also requires one
-single aggregated native library. So this package ships **one portable
-assembly**. See "Maintenance notes" for why the Windows/macOS restriction is
-documentation-only today.
+macOS-only projects. `docs/specs/dotnet-autolinking.md` also requires one single
+aggregated native library. So this package ships **one portable assembly**, and
+consuming apps include it only for supported Windows and macOS hosts. The module
+does not enforce host selection with a runtime OS check.
 
 ### Module class shape — `ExampleMathModule.cs` (excerpt, verbatim)
 
@@ -212,16 +216,16 @@ public sealed partial class ExampleMathModule : Module
 "Module '{0}' must have a public or internal parameterless constructor or a constructor accepting DotnetRuntimeContext"
 ```
 
-`DotnetRuntimeContext` exposes only `Runtime`, `Objects`, `ModuleRegistry`,
-`Events`, `Dispose` — no service container. **You therefore cannot inject a
-fake `HttpMessageHandler` or a temp cache root through the module
-constructor.** The module must construct its own services from a default
-factory. Consequences, which the test plan already accounts for:
+`DotnetRuntimeContext` now exposes the host-supplied `CacheDirectory`, but it is
+not a service container. **You therefore cannot inject a fake
+`HttpMessageHandler` through the module constructor.** The module constructs its
+own HTTP service and supplies `() => context.CacheDirectory` as its lazy cache
+provider. Consequences, which the test plan already accounts for:
 
 - Pure service tests inject freely and cover the full behavior matrix.
 - Hermes-backed tests exercise the real module and can only cover paths that
-  need neither the network nor a writable cache root: argument-validation
-  rejections and `file:` pass-through.
+  return before network or cache access: argument-validation rejections and
+  `file:` pass-through.
 
 ### Async and rejection semantics — `docs/module-authoring-guide.md:186-204`
 
@@ -275,7 +279,8 @@ export function requireDotnetModule<T>(name: string): T {
 ### The behavior being ported
 
 Upstream `expo-asset@57.0.2` `src/ExpoAsset.ts` defines the contract this
-package must match argument-for-argument:
+package must match argument-for-argument. This workspace now consumes that
+exact version through the Expo 57 lane:
 
 ```ts
 export async function downloadAsync(
@@ -500,10 +505,10 @@ find "$repo_root/packages" -mindepth 4 -maxdepth 4 -type f \
 rules. The `mindepth 4 -maxdepth 4` bound is why the directory must sit directly
 under `dotnet/` — a nested test project would not be found.
 
-## What changed in this revision
+## What changed in the current revision
 
-Six requirements from the `9247d75d` draft were wrong or unbuildable. An
-executor following the old text would have produced the wrong module.
+The first revision fixed six requirements from the `9247d75d` draft. The
+2026-08-27 revision fixes five later contract defects before implementation.
 
 | Old requirement | Now |
 |---|---|
@@ -513,6 +518,10 @@ executor following the old text would have produced the wrong module.
 | "canonical `file:` URLs" | Return the input string **unchanged**, matching the reference. Do not canonicalize. |
 | `type` "sanitization" | **Reject** invalid `type` with a catchable error. No silent rewriting. |
 | Merge into "authored-module/lifecycle living spec sections" (no such files) | Named targets: `docs/specs/modules-core-boundary.md` and `docs/specs/dotnet-autolinking.md`. |
+| Resolve a user-wide cache root, including Linux/XDG | **Removed.** Read only the host-supplied `context.CacheDirectory`; Linux is out of scope. |
+| Treat strict `type` and `md5Hash` validation as upstream behavior | **Corrected.** Keep it as an intentional security divergence from `expo-asset@57.0.2`. |
+| Reuse upstream's `Asset` class | **Removed.** The standalone facade exports only `downloadAsync`. |
+| Cite an unconsumed upstream version | **Corrected.** The Expo 57 workspace lane consumes and pins `expo-asset@57.0.2`. |
 
 ## Commands you will need
 
@@ -600,7 +609,7 @@ this repo, and inventing one here would diverge from `ExampleModule.Tests`.
 
 ## Git workflow
 
-- Branch: `advisor/022-expo-asset-dotnet` (already exists off `development`).
+- Branch: `codex/expo-asset-dotnet` from synchronized `main`.
 - Conventional commits, matching `git log` style, one per step:
   `feat(expo-asset-dotnet): add package skeleton and autolinking metadata`.
 - Commit the approved `spec.md` on its own, then `plan.md` on its own, before
@@ -623,7 +632,8 @@ and do not reopen these decisions.
 assembly and root namespace `ExpoAssetDotnet`. Registration is
 `requireDotnetModule<T>('ExpoAsset')` against `_expoDotnet.modules` only.
 
-**Surface.** Exactly one member:
+**Surface.** Exactly one member, pinned to the workspace's
+`expo-asset@57.0.2` reference:
 `downloadAsync(url: string, md5Hash: string | null, type: string): Promise<string>`.
 Argument order matches upstream `expo-asset` exactly.
 
@@ -635,6 +645,9 @@ Argument order matches upstream `expo-asset` exactly.
 - `md5Hash`: `null` is accepted. Otherwise must match `^[0-9a-fA-F]{32}$`,
   compared case-insensitively and normalized to lowercase. Malformed rejects.
 
+The strict `type` and `md5Hash` rules deliberately diverge from upstream to
+avoid interpolating arbitrary caller input into a cache filename.
+
 **URL classes.**
 
 - Scheme `file` (case-insensitive): resolve with the **input string unchanged**.
@@ -643,18 +656,13 @@ Argument order matches upstream `expo-asset` exactly.
 - Schemes `http` / `https`: the download path.
 - Any other scheme: reject with a message naming the offending scheme.
 
-**Cache root.** Resolved per OS, with no runtime platform gate:
-
-- Windows: `Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)`.
-- macOS: `<UserProfile>/Library/Caches`.
-- Anything else: `$XDG_CACHE_HOME` when set and absolute, else
-  `<UserProfile>/.cache`.
-
-Then append the `ExponentAsset` subdirectory and create it with
-`Directory.CreateDirectory`. Never derive the root from
-`Environment.CurrentDirectory`. If the resolved root is empty or whitespace, or
-creation fails, reject with the underlying cause. The resolved root is a
-**constructor dependency of the service**, so tests supply a temp directory.
+**Cache root.** Read only `context.CacheDirectory`, then append the
+`ExponentAsset` subdirectory and create it with `Directory.CreateDirectory`.
+The module does not inspect the OS, user profile, XDG variables, or current
+directory. A missing host value rejects through
+`AppDirectoryNotConfiguredException`; there is no fallback. Supply the context
+accessor lazily as a constructor dependency of the service so `file:` requests
+return before cache access and tests can supply a temporary directory.
 
 **Cache identity.** `cacheId` is the normalized lowercase `md5Hash` when
 supplied, otherwise the lowercase hex MD5 of the URL's UTF-8 bytes (matching
@@ -760,11 +768,6 @@ using Xunit;
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
 ```
 
-Write a stub `ExpoAssetModule.cs` with the `[ExpoModule("ExpoAsset")]`
-attribute, a `DotnetRuntimeContext` constructor, and a `downloadAsync` that
-throws `NotImplementedException`, so the generator runs and the projects
-compile.
-
 Write the JS facade `src/index.ts` following the example-module pattern: a
 `declare class` extending `DotnetModule`, a
 `requireDotnetModule<ExpoAssetNativeModule>('ExpoAsset')` call, and one narrowly
@@ -782,15 +785,16 @@ gate:
 
 - `AssetRequestValidation` — pure static validation of `url`, `md5Hash`, `type`
   per Step 1. Returns a normalized request or throws.
-- `AssetCachePaths` — resolves the per-OS cache root, appends `ExponentAsset`,
-  builds the filename, and asserts containment. The root is injectable.
-- `AssetDownloadService` — takes the cache directory and an
-  `HttpMessageHandler` (or `HttpClient`) as constructor dependencies. Owns the
-  cache-hit check, hashing, temp-file write, atomic move, and cleanup.
+- `AssetCachePaths` — appends `ExponentAsset` to the supplied host root, builds
+  the filename, and asserts containment. It never resolves a platform path.
+- `AssetDownloadService` — takes a lazy host-cache provider and an injected
+  `HttpMessageHandler` as constructor dependencies. It owns `file:` passthrough,
+  cache-hit checks, hashing, temp-file writes, atomic moves, and cleanup.
 
-Keep `ExpoAssetModule` thin: own a `CancellationTokenSource`, cancel it in
-`[OnDestroy]`, construct the default services, validate, delegate, and return
-the resolved URI. Because the generator forbids a DI constructor, the default
+Keep `ExpoAssetModule` thin: retain `DotnetRuntimeContext`, own a
+`CancellationTokenSource`, cancel it in `[OnDestroy]`, construct the default
+service with `() => context.CacheDirectory`, validate, delegate, and return the
+resolved URI. Because the generator forbids a DI constructor, the default
 service construction lives in the module itself.
 
 Requirements, restated as the checks a reviewer will make:
@@ -882,9 +886,8 @@ Cache identity and paths:
 10. With `md5Hash` supplied, the filename uses that hash.
 11. The `ExponentAsset` subdirectory is created when absent.
 12. The resolved path is inside the cache directory.
-13. Cache-root resolution returns `%LOCALAPPDATA%` shape on Windows,
-    `Library/Caches` on macOS, and an XDG path otherwise — assert per the
-    current OS only, so the suite passes on all three.
+13. The service uses the injected host cache root, appends `ExponentAsset`, and
+    never reads it for `file:` passthrough.
 
 Cache hits and misses:
 14. File exists, `md5Hash` null → hit, zero HTTP requests.
@@ -1014,7 +1017,8 @@ Stop and report — do not improvise — if:
 - The generator rejects the module because it needs a constructor shape other
   than parameterless or `DotnetRuntimeContext`, or because it needs runtime
   reflection.
-- A cache root cannot be resolved or created on the host you are running on.
+- `context.CacheDirectory` is unavailable on a supported packaged Windows or
+  macOS host, or its `ExponentAsset` subdirectory cannot be created.
 - The package needs `globalThis.expo.modules`, Metro aliasing, or any change
   inside `packages/expo-modules-dotnet` to work. That is deferred
   compatibility work.
@@ -1023,17 +1027,14 @@ Stop and report — do not improvise — if:
 
 ## Maintenance notes
 
-- **The Windows/macOS restriction is documentation-only.** The dotnet
-  autolinking schema has no platform selector, so nothing prevents this package
-  from linking on an Android or iOS NativeAOT target, where the cache root falls
-  back to the XDG branch. Making platform support declarable needs a schema
-  affordance in `expo-modules-dotnet-autolinking` — worth its own plan, and a
-  prerequisite before anyone claims this package is Windows/macOS-only in
-  user-facing docs.
-- **Windows behavior is verified by CI, not locally.** `native-tests.yml` runs
-  `scripts/test-managed.ps1` on `windows-latest`, so once discovery lands the
-  Windows lane covers this project automatically. A macOS-only local run does
-  not prove the `%LOCALAPPDATA%` branch.
+- **Host selection remains an app responsibility.** The dotnet autolinking
+  schema has no platform selector, so consuming apps include this package only
+  for supported Windows and macOS hosts. The module has no Linux fallback and
+  no runtime OS gate.
+- **Windows behavior uses the same managed service.** The only host-specific
+  input is the already verified `context.CacheDirectory`. The Windows managed
+  runner remains useful as a portability regression after local behavior is
+  complete, but there is no Windows-only cache-resolution branch in this plan.
 - **Two properties are not proven by these tests, by construction.** Real
   sandboxed-container cache resolution is only exercised by running the desktop
   app (`apps/desktop-app/macos/desktopapp-macOS/desktopapp.entitlements`

@@ -40,7 +40,7 @@ STOP condition.
 | 019 | Typed `[Event]` members on shared objects | P2 | M | 017, 021 | DONE |
 | 020 | hermes-console-app Linux port + end-to-end loader lane in CI (hostfxr + nativeaot) | P1 | M | 016 | DONE — Linux HostFXR and NativeAOT Docker proofs, macOS regressions, managed tests, formatting, and workflow lint passed; implemented at `be4ac86f`, `dc526e83`, `819d8622`, and `b21f3d9b`. |
 | 021 | Exactly-once owned callback-state disposal for host functions (`Expo.JSI`) | P2 | S–M | — | DONE — preserved the four-parameter API, added the owned-state overload, and verified GC, teardown, failure, and concurrent release. |
-| 022 | `expo-asset-dotnet` for Windows and macOS | P1 | M | 027 | BLOCKED on its own contract, no longer on core. 026 made `md5Hash: string \| null` expressible and 027 shipped `context.CacheDirectory`, so both core blockers are gone. Amend the contract before executing: delete the user-wide cache-root resolution at `022-expo-asset-dotnet.md:646-651` (including the Linux/XDG branch, defect D2) and read `context.CacheDirectory` instead, then clear the other 4 defects. See Dependency notes. |
+| 022 | `expo-asset-dotnet` for Windows and macOS | P1 | M | 027 | IN PROGRESS — core dependencies are complete. The corrected delta at `5d1656d1` reads only `context.CacheDirectory`, removes Linux/XDG behavior and upstream `Asset` reuse, pins the consumed `expo-asset@57.0.2` contract, and records strict filename validation as an intentional security divergence. |
 | 026 | Nullable reference-type codecs in `Expo.ModulesCore` | P1 | M | — | DONE — `dac63381` (delta spec), `db6a14c3` (change plan), `1573ac97` (codecs), `e57cdf03` (generator), `00cb296b` (tests). 698 managed tests pass (+48 new), format check clean. Two accepted deviations recorded in `docs/specs/modules-core-boundary.md`; follow-up 028 filed. |
 | 027 | Host-supplied app-scoped directories on `DotnetRuntimeContext` | P1 | L | — | DONE — implemented at `e3acf1cd`, `45b6f075`, `9cea84c3`, `9e8e6057`, `6968a645`, `cac93fee`, `7a6da3da`; Windows verification completed 2026-08-26. HostFXR and NativeAOT solution builds pass, and both packaged launches report `42` plus the path-free app-scoped marker. `scripts/test-managed.ps1` passes all 717 tests, including discovered `ExampleModule.Tests`. Compiling the Windows installer proves the explicit `winrt::to_string` / `winrt::hresult_error` availability and its `hstring` conversion. The archived delta records only the approved sanitized directory shape. |
 | 023 | `expo-constants-dotnet` for Windows and macOS | P1 | M | — (022 recommended first) | TODO — typed metadata only; no generic JSON shortcut. |
@@ -172,32 +172,30 @@ counter stay armed. Detail in `009-windows-testhost-teardown-crash.md`.
   workflow file — doing so is a scope violation. The same constraint applies to
   023–025 once they are refined.
 - 022 was moved to BLOCKED on 2026-07-25 after a context handoff from the agent
-  that planned the authored-module sequence. Its milestone boundary is correct
-  and deliberate — real modules come before upstream-compatibility work, because
-  there is nothing to test compatibility against until a real module exists — so
-  registering only into `_expoDotnet.modules` stays right. But five defects in
-  its contract must be amended before implementation:
-  1. The cache root it specifies is user-wide. The Windows reference uses the
+  that planned the authored-module sequence. Its milestone boundary remains
+  correct: real modules come before upstream-compatibility work, so registering
+  only into `_expoDotnet.modules` stays right. The five contract defects were
+  corrected on 2026-08-27 at `5d1656d1`:
+  1. The user-wide cache root was replaced with `context.CacheDirectory`. The
+     Windows reference uses the
      app-scoped `ApplicationData::Current().LocalCacheFolder()`, and upstream
      takes this from the app context (`appContext.cacheDirectory` on Android,
      `appContext.fileSystem.cachesDirectory` on iOS). A module SHALL NOT resolve
      OS paths itself; the host supplies them. Hence plan 027.
-  2. It defines Linux/XDG cache behavior while describing itself as a
-     Windows/macOS package.
+  2. Linux/XDG behavior was removed from this Windows/macOS package.
   3. Its strict `type` and `md5Hash` validation is an intentional, documented
      divergence from upstream, which accepts arbitrary strings. It is kept
      because both values are interpolated into a cache file name, so accepting
      arbitrary input reproduces a path-traversal bug rather than a behavior.
-  4. Its claim to "reuse Expo's existing `Asset` class" is not achievable from a
-     standalone facade: importing upstream `expo-asset` resolves upstream's own
-     `ExpoAsset` during module evaluation. The claim must be removed.
-  5. It cites `expo-asset@57.0.2`, a version this repo does not consume. The
-     implementation target needs an explicit pin.
-- 026 completed 2026-07-25. 022 now depends only on 027 and on amending the five
-  contract defects above, and it SHALL declare `string? md5Hash` rather than a
-  `JavaScriptValue` parameter, a sentinel string, or hand-rolled argument
-  decoding. The merged requirements are in `docs/specs/modules-core-boundary.md`
-  under the five `Nullable ...` headings.
+  4. The claim to "reuse Expo's existing `Asset` class" was removed because a
+     standalone facade cannot do that without resolving upstream's own native
+     module during evaluation.
+  5. The implementation contract is now pinned to `expo-asset@57.0.2`, which the
+     Expo 57 workspace lane consumes.
+- 026 and 027 are complete. 022 declares `string? md5Hash` instead of a
+  `JavaScriptValue` parameter, sentinel string, or hand-rolled argument
+  decoding, and receives the app cache only through
+  `DotnetRuntimeContext.CacheDirectory`.
 - Accepted 026 deviation: the change plan listed typed event analysis out of
   scope, but nullable typed event payloads needed
   `ExpoModulesGenerator.EventAnalysis.cs` after all. Codec expressions are used

@@ -1,62 +1,495 @@
 # Expo Asset Dotnet Implementation Plan
 
-This is the transient, change-local plan the living-spec workflow requires
-alongside `spec.md`. The full task-by-task implementation detail already
-exists at `docs/plans/022-expo-asset-dotnet.md`; this file only orders the
-work into verifiable slices and will be archived once the accepted delta in
-`spec.md` merges into `docs/specs/`.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> `superpowers:subagent-driven-development` (recommended) or
+> `superpowers:executing-plans` to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-## Slice 1: Package skeleton
+**Goal:** Add a production `expo-asset-dotnet` package whose single
+`downloadAsync` API downloads and caches assets on Windows and macOS through
+the existing dotnet module runtime.
 
-Add `package.json`, `expo-module.config.json`, `vitest.config.ts`,
-`tsconfig.json`, and `src/index.ts` for `expo-asset-dotnet`; the module csproj
-with its `AssemblyInfo.cs` and a stub module class; and the test csproj with
-its own `AssemblyInfo.cs`. No behavior yet — this slice only wires the
-package into the workspace and the autolinking metadata.
+**Architecture:** A typed TypeScript facade resolves `ExpoAsset` from
+`_expoDotnet.modules`. The generated C# module validates requests and delegates
+to internal managed services. Those services use only .NET HTTP, hashing, and
+filesystem APIs, and obtain the app-scoped cache root lazily from
+`DotnetRuntimeContext.CacheDirectory`; no ABI or platform adapter changes are
+needed.
 
-Verify with:
+**Tech Stack:** TypeScript 6, Vitest 3, .NET 10, xUnit 3,
+`Expo.ModulesCore` generated bindings, `Expo.ModulesCore.Testing`, `HttpClient`,
+and `System.Security.Cryptography.MD5`.
 
-```sh
-pnpm install
-dotnet build packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet.Tests/ExpoAssetDotnet.Tests.csproj
-pnpm --filter expo-asset-dotnet typecheck
-```
+**Spec:** `docs/changes/2026-07-25-expo-asset-dotnet/spec.md`
 
-## Slice 2: Services
+## Global Constraints
 
-Implement the internal validation, cache-path, and download services
-described in `spec.md`'s Accepted design: argument validation, URL scheme
-classification, cache root resolution and identity, cache-hit detection, and
-the download-and-move flow with module-owned cancellation.
+- Reference the `downloadAsync` contract from `expo-asset@57.0.2` exactly:
+  `(url: string, md5Hash: string | null, type: string) => Promise<string>`.
+- Register only as `_expoDotnet.modules.ExpoAsset`; do not add Expo global
+  registration, Metro aliases, or upstream `Asset` class reuse.
+- Support Windows and macOS only. Do not add a runtime OS check or Linux/XDG
+  behavior.
+- Read the cache root only from `DotnetRuntimeContext.CacheDirectory`, and only
+  after a request has been classified as `http` or `https`.
+- Keep strict `type` and `md5Hash` validation as the approved security
+  divergence from upstream.
+- Keep filesystem I/O, HTTP, and hashing in managed code. Add no ABI surface.
+- Keep all tests offline. Do not edit the managed runner scripts, workflows,
+  apps, `expo-modules-dotnet`, or `example-module`.
+- Before each commit, scan staged content for local paths, usernames, machine
+  names, and private hostnames.
 
-Verify with a `dotnet build` of the module project and confirm no generator
-diagnostics are reported.
+## File Map
 
-## Slice 3: Tests
+- `packages/expo-asset-dotnet/package.json`: private workspace package scripts
+  and dependencies.
+- `packages/expo-asset-dotnet/expo-module.config.json`: dotnet autolinking
+  project declaration.
+- `packages/expo-asset-dotnet/tsconfig.json`: facade typecheck configuration.
+- `packages/expo-asset-dotnet/vitest.config.ts`: package test discovery.
+- `packages/expo-asset-dotnet/src/index.ts`: documented public TypeScript
+  facade.
+- `packages/expo-asset-dotnet/src/__tests__/index.test.ts`: facade lookup and
+  forwarding tests.
+- `packages/expo-asset-dotnet/src/__tests__/autolinking.test.ts`: real metadata
+  shape and project-path test.
+- `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet/ExpoAssetDotnet.csproj`:
+  generated-binding module assembly.
+- `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet/AssemblyInfo.cs`: grants
+  internals only to the package test assembly.
+- `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet/AssetRequestValidation.cs`:
+  request model, URI classification, and strict filename-input validation.
+- `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet/AssetCachePaths.cs`: cache
+  identity, `ExponentAsset` directory, filename, and containment checks.
+- `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet/AssetDownloadService.cs`:
+  cache hits, HTTP, temp files, atomic replacement, cleanup, and disposal.
+- `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet/ExpoAssetModule.cs`:
+  generated module binding, context cache provider, and teardown cancellation.
+- `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet.Tests/`: pure service and
+  Hermes binding tests in one discoverable project.
+- `pnpm-lock.yaml`: workspace lockfile generated by pnpm.
 
-Add the pure behavior matrix first (validation, cache identity, cache-hit,
-download, cancellation, error messages) against an injected cache root and an
-injected fake `HttpMessageHandler`. Add the small Hermes-backed set second
-(module visibility, `file:` passthrough, validation rejections only, no
-duplication of the pure matrix). Add the two Vitest files for the TypeScript
-facade last.
+---
 
-Verify with:
+### Task 1: Package Metadata and TypeScript Facade
 
-```sh
-scripts/test-managed.sh --project packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet.Tests/ExpoAssetDotnet.Tests.csproj
-pnpm --filter expo-asset-dotnet test
-```
+**Files:**
+- Create: `packages/expo-asset-dotnet/package.json`
+- Create: `packages/expo-asset-dotnet/expo-module.config.json`
+- Create: `packages/expo-asset-dotnet/tsconfig.json`
+- Create: `packages/expo-asset-dotnet/vitest.config.ts`
+- Create: `packages/expo-asset-dotnet/src/index.ts`
+- Create: `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet/ExpoAssetDotnet.csproj`
+- Test: `packages/expo-asset-dotnet/src/__tests__/index.test.ts`
+- Test: `packages/expo-asset-dotnet/src/__tests__/autolinking.test.ts`
+- Modify: `pnpm-lock.yaml` through `pnpm install`
 
-## Slice 4: Living-spec merge and archival
+**Interfaces:**
+- Consumes: `DotnetModule` and `requireDotnetModule` from
+  `expo-modules-dotnet`.
+- Produces: `downloadAsync(url: string, md5Hash: string | null, type: string):
+  Promise<string>` and autolinking metadata for assembly `ExpoAssetDotnet`.
 
-Merge the accepted delta from `spec.md` into `docs/specs/modules-core-boundary.md`
-and `docs/specs/dotnet-autolinking.md`, then archive this change folder.
+- [ ] **Step 1: Write the facade and metadata tests first**
 
-Verify with:
+  In `index.test.ts`, mock `expo-modules-dotnet`, import `../index` after
+  `vi.resetModules()`, and assert both the exact lookup name and forwarding
+  order:
 
-```sh
-scripts/test-managed.sh
-scripts/format.sh --check --all
-git diff --check
-```
+  ```ts
+  expect(requireDotnetModule).toHaveBeenCalledWith('ExpoAsset');
+  await expect(downloadAsync(url, null, 'png')).resolves.toBe(fileUri);
+  expect(nativeDownloadAsync).toHaveBeenCalledWith(url, null, 'png');
+  ```
+
+  In `autolinking.test.ts`, read the package's real
+  `expo-module.config.json`, resolve its declared project path, and assert:
+
+  ```ts
+  expect(config.platforms).toContain('dotnet');
+  expect(config.dotnet.projects).toEqual([
+    {
+      path: 'dotnet/ExpoAssetDotnet/ExpoAssetDotnet.csproj',
+      assemblyName: 'ExpoAssetDotnet',
+    },
+  ]);
+  expect(existsSync(projectPath)).toBe(true);
+  ```
+
+- [ ] **Step 2: Run Vitest and confirm the package is incomplete**
+
+  Run: `pnpm --filter expo-asset-dotnet test`
+
+  Expected: FAIL because the package/facade or declared csproj does not exist.
+
+- [ ] **Step 3: Add the package and documented facade**
+
+  Use `typescript: "catalog:react-native-86"`, `vitest: "^3.0.0"`, and an
+  `expo-modules-dotnet: "workspace:*"` development dependency. The facade owns
+  this public API and TSDoc:
+
+  ```ts
+  declare class ExpoAssetNativeModule extends DotnetModule {
+    downloadAsync(url: string, md5Hash: string | null, type: string): Promise<string>;
+  }
+
+  const nativeModule = requireDotnetModule<ExpoAssetNativeModule>('ExpoAsset');
+
+  /**
+   * Downloads an asset to the app cache and returns its local file URL.
+   *
+   * @param url - An absolute `file`, `http`, or `https` URL.
+   * @param md5Hash - An optional 32-character hexadecimal cache identity.
+   * @param type - A 1-16 character alphanumeric file extension without a dot.
+   * @returns The input `file` URL or the downloaded cache file URL.
+   */
+  export function downloadAsync(
+    url: string,
+    md5Hash: string | null,
+    type: string
+  ): Promise<string> {
+    return nativeModule.downloadAsync(url, md5Hash, type);
+  }
+  ```
+
+  Add the declared module csproj in this task as autolinking scaffolding. Copy
+  the generator reference split from `ExampleModule.csproj`, use `AssemblyName`
+  and `RootNamespace` `ExpoAssetDotnet`, and add no module source yet.
+
+- [ ] **Step 4: Generate the lockfile and verify the TypeScript package**
+
+  Run: `pnpm install`
+
+  Expected: exit 0 and `pnpm-lock.yaml` contains the new workspace importer.
+
+  Run: `pnpm --filter expo-asset-dotnet typecheck`
+
+  Expected: exit 0.
+
+  Run: `pnpm --filter expo-asset-dotnet test`
+
+  Expected: both facade test files pass.
+
+- [ ] **Step 5: Commit the package facade**
+
+  ```sh
+  git add packages/expo-asset-dotnet/package.json \
+    packages/expo-asset-dotnet/expo-module.config.json \
+    packages/expo-asset-dotnet/tsconfig.json \
+    packages/expo-asset-dotnet/vitest.config.ts \
+    packages/expo-asset-dotnet/src \
+    packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet/ExpoAssetDotnet.csproj \
+    pnpm-lock.yaml
+  git commit -m "feat(asset): add dotnet asset package facade"
+  ```
+
+### Task 2: Managed Request Validation and Cache Paths
+
+**Files:**
+- Modify: `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet/ExpoAssetDotnet.csproj`
+- Create: `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet/AssemblyInfo.cs`
+- Create: `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet/AssetRequestValidation.cs`
+- Create: `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet/AssetCachePaths.cs`
+- Create: `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet.Tests/ExpoAssetDotnet.Tests.csproj`
+- Create: `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet.Tests/AssemblyInfo.cs`
+- Test: `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet.Tests/AssetRequestValidationTests.cs`
+- Test: `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet.Tests/AssetCachePathsTests.cs`
+
+**Interfaces:**
+- Produces: `AssetRequestValidation.Validate(string, string?, string)` returning
+  `AssetRequest`, and `AssetCachePaths.Create(string, AssetRequest)` returning
+  the cache directory, filename, and final path.
+- `AssetRequest` retains the original URL, parsed absolute `Uri`, normalized
+  lowercase hash, and validated type.
+
+- [ ] **Step 1: Add buildable project files and failing pure tests**
+
+  Use the csproj added as autolinking scaffolding in Task 1, and grant only:
+
+  ```csharp
+  [assembly: InternalsVisibleTo("ExpoAssetDotnet.Tests")]
+  ```
+
+  Add xUnit cases for empty/relative URLs, unsupported schemes, invalid types,
+  invalid hashes, uppercase hash normalization, URL-derived cache IDs, supplied
+  cache IDs, rejection of empty or relative injected cache roots, subdirectory
+  creation, and final-path containment. Use these exact accepted validation
+  messages:
+
+  ```text
+  Asset URL must be a non-empty absolute URI.
+  Asset type must match ^[A-Za-z0-9]{1,16}$.
+  Asset md5Hash must be null or 32 hexadecimal characters.
+  Unsupported asset URL scheme: 'ftp'.
+  ```
+
+- [ ] **Step 2: Run the pure tests and verify failure**
+
+  Run:
+  `dotnet test packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet.Tests/ExpoAssetDotnet.Tests.csproj`
+
+  Expected: FAIL because `AssetRequestValidation` and `AssetCachePaths` do not
+  exist.
+
+- [ ] **Step 3: Implement the minimum validation and path types**
+
+  `Validate` must use `Uri.TryCreate(..., UriKind.Absolute, ...)`, compare
+  schemes case-insensitively, preserve the original URL for `file` passthrough,
+  lowercase a valid hash, and never rewrite `type`.
+
+  `AssetCachePaths.Create` must:
+
+  ```csharp
+  var cacheDirectory = Path.Combine(hostCacheRoot, "ExponentAsset");
+  Directory.CreateDirectory(cacheDirectory);
+  var cacheId = request.Md5Hash ?? Md5Hex(request.OriginalUrl);
+  var fileName = $"ExponentAsset-{cacheId}.{request.Type}";
+  var finalPath = Path.GetFullPath(Path.Combine(cacheDirectory, fileName));
+  var relativePath = Path.GetRelativePath(cacheDirectory, finalPath);
+  ```
+
+  Reject an empty, whitespace, or non-fully-qualified host root before touching
+  the filesystem. Reject a rooted relative path or one equal to `..` or beginning
+  with a `..` directory segment. Do not branch on the operating system. MD5 is a
+  cache key, not an integrity or security claim.
+
+- [ ] **Step 4: Run pure tests and formatting**
+
+  Run the package `dotnet test` command from Step 2.
+
+  Expected: all validation and path tests pass without a Hermes environment.
+
+  Stage the new C# files, then run:
+  `scripts/format.sh --check --all`
+
+  Expected: exit 0. If it reports formatting changes, run
+  `scripts/format.sh`, stage the result, and repeat the check.
+
+- [ ] **Step 5: Commit request and path behavior**
+
+  ```sh
+  git add packages/expo-asset-dotnet/dotnet
+  git commit -m "feat(asset): validate asset cache requests"
+  ```
+
+### Task 3: Download, Cache-Hit, and Cleanup Service
+
+**Files:**
+- Create: `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet/AssetDownloadService.cs`
+- Test: `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet.Tests/AssetDownloadServiceTests.cs`
+- Test: `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet.Tests/TestHttpMessageHandler.cs`
+- Test: `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet.Tests/TemporaryDirectory.cs`
+
+**Interfaces:**
+- Consumes: validated `AssetRequest` and `AssetCachePaths` from Task 2.
+- Produces: `AssetDownloadService(Func<string> cacheRootProvider,
+  HttpMessageHandler handler)`, `Task<string> DownloadAsync(AssetRequest,
+  CancellationToken)`, and `IDisposable` cleanup.
+
+- [ ] **Step 1: Write the offline service matrix before implementation**
+
+  Use a fake handler that records requests and returns controlled responses.
+  Cover:
+
+  - `file:` returns the byte-identical input and never calls the cache provider
+    or handler;
+  - no-hash and matching-hash cache hits send zero requests;
+  - mismatched or unreadable cached files re-download without rejecting;
+  - 2xx writes the final file and returns its absolute file URI;
+  - fresh bytes are accepted even when they do not match the supplied hash;
+  - 404/500 responses include the numeric status and leave no final/temp file;
+  - handler, stream, move, and cancellation failures leave no `*.download`;
+  - different assets and the same asset can download concurrently;
+  - an injected cache-provider exception propagates without any environment
+    fallback. Existing `DotnetRuntimeContext` tests already pin the concrete
+    `AppDirectoryNotConfiguredException` behavior.
+
+- [ ] **Step 2: Run the service tests and verify failure**
+
+  Run the package `dotnet test` command from Task 2.
+
+  Expected: FAIL because `AssetDownloadService` does not exist.
+
+- [ ] **Step 3: Implement cache hits and HTTP download**
+
+  The service must read `cacheRootProvider()` only after `file:` has returned.
+  Use `HttpClient.SendAsync(..., HttpCompletionOption.ResponseHeadersRead,
+  cancellationToken)`. Write the response body to a same-directory name with
+  an 8-hex random suffix:
+
+  ```csharp
+  var suffix = Convert.ToHexString(RandomNumberGenerator.GetBytes(4))
+      .ToLowerInvariant();
+  var tempPath = $"{paths.FinalPath}.{suffix}.download";
+  ```
+
+  Move with `File.Move(tempPath, paths.FinalPath, overwrite: true)`. Delete the
+  temp file in `catch`/`finally` without allowing cleanup failure to mask the
+  original exception. Dispose the client, handler, responses, streams, and MD5
+  objects according to ownership.
+
+  Use only controlled outer messages:
+
+  ```text
+  Unable to download asset from url: '<url>'
+  Unable to save asset to directory: 'ExponentAsset'
+  ```
+
+  A non-2xx detail may add the numeric status. Preserve system exceptions as
+  inner exceptions instead of copying path-bearing system messages into the
+  outer message.
+
+- [ ] **Step 4: Run the service matrix**
+
+  Run the package `dotnet test` command from Task 2.
+
+  Expected: all pure tests pass, no public network access occurs, and each test
+  removes its temporary directory.
+
+- [ ] **Step 5: Commit the download service**
+
+  ```sh
+  git add packages/expo-asset-dotnet/dotnet
+  git commit -m "feat(asset): download and cache remote assets"
+  ```
+
+### Task 4: Generated Module Binding, Cancellation, and Hermes Proof
+
+**Files:**
+- Create: `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet/ExpoAssetModule.cs`
+- Test: `packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet.Tests/ExpoAssetModuleTests.cs`
+
+**Interfaces:**
+- Consumes: `AssetRequestValidation` and `AssetDownloadService`.
+- Produces: `[ExpoModule("ExpoAsset")]` with
+  `[JS] Task<string> DownloadAsync(string url, string? md5Hash, string type)`
+  and `[OnDestroy] void OnDestroy()`.
+
+- [ ] **Step 1: Write binding-level tests first**
+
+  Through `ExpoModulesProvider_ExpoAssetDotnet.Register`, assert that:
+
+  - `_expoDotnet.modules.ExpoAsset.downloadAsync` exists;
+  - a valid `file:` URL resolves unchanged with an unconfigured test context;
+  - invalid `type`, invalid `md5Hash`, and `ftp:` reject with
+    `JavaScriptPromiseRejectedException` and the controlled messages.
+
+  Add one lifecycle test that creates a runtime context, constructs the module,
+  calls `OnDestroy`, and observes an internal cancellation-token property. Do
+  not expose that property to JavaScript.
+
+- [ ] **Step 2: Run the canonical package runner and verify failure**
+
+  Run:
+  `scripts/test-managed.sh --project packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet.Tests/ExpoAssetDotnet.Tests.csproj`
+
+  Expected: FAIL because the generated provider/module does not exist.
+
+- [ ] **Step 3: Implement the thin module**
+
+  The context constructor must create one service with a lazy cache provider:
+
+  ```csharp
+  downloadService = new AssetDownloadService(
+      () => context.CacheDirectory,
+      new HttpClientHandler()
+  );
+  ```
+
+  `DownloadAsync` validates, then delegates with the module token. `OnDestroy`
+  cancels first and disposes the service and token source. The service's `file:`
+  branch must run before the lazy cache provider, which lets the real binding
+  test pass with `AppDirectories.Unconfigured`.
+
+- [ ] **Step 4: Run package and JavaScript verification**
+
+  Run the canonical package runner from Step 2.
+
+  Expected: all pure and Hermes-backed tests pass.
+
+  Run: `pnpm --filter expo-asset-dotnet typecheck`
+
+  Run: `pnpm --filter expo-asset-dotnet test`
+
+  Expected: both commands exit 0.
+
+- [ ] **Step 5: Commit module binding and tests**
+
+  ```sh
+  git add packages/expo-asset-dotnet/dotnet
+  git commit -m "feat(asset): expose generated asset module"
+  ```
+
+### Task 5: Living Specs, Full Verification, and Archive
+
+**Files:**
+- Modify: `docs/specs/modules-core-boundary.md`
+- Modify: `docs/specs/dotnet-autolinking.md` only if the implemented package
+  establishes a new durable autolinking rule not already stated there.
+- Modify: `docs/plans/README.md`
+- Archive: `docs/changes/2026-07-25-expo-asset-dotnet/spec.md`
+- Archive: `docs/changes/2026-07-25-expo-asset-dotnet/plan.md`
+
+**Interfaces:**
+- Consumes: verified behavior from Tasks 1-4.
+- Produces: authoritative living-spec requirements and no active transient
+  change artifacts.
+
+- [ ] **Step 1: Merge only implemented requirements into living specs**
+
+  Add the authored-package behavior to `modules-core-boundary.md`: standalone
+  dotnet registration, the pinned `downloadAsync` surface, strict security
+  validation, host-supplied cache use, module-owned cancellation, package-owned
+  pure/Hermes tests, and no new ABI. Do not duplicate existing general runner
+  discovery or app-directory requirements.
+
+  Keep `dotnet-autolinking.md` unchanged unless implementation proves a new
+  general rule. The existing metadata and single-aggregator requirements may be
+  cited without restating them.
+
+- [ ] **Step 2: Run the complete local verification matrix**
+
+  Run in order:
+
+  ```sh
+  pnpm --filter expo-asset-dotnet typecheck
+  pnpm --filter expo-asset-dotnet test
+  pnpm --filter expo-modules-dotnet-autolinking test
+  scripts/test-managed.sh --project packages/expo-asset-dotnet/dotnet/ExpoAssetDotnet.Tests/ExpoAssetDotnet.Tests.csproj
+  scripts/test-managed.sh
+  scripts/format.sh --check --all
+  git diff --check
+  ```
+
+  Expected: every command exits 0, the full managed output names
+  `ExpoAssetDotnet.Tests`, and no test is skipped.
+
+- [ ] **Step 3: Run scope and policy scans**
+
+  Confirm no matches in the new package for runtime OS gates, Expo global
+  aliases, trait conventions, or direct cache-root reconstruction:
+
+  ```sh
+  rg "PlatformNotSupportedException|IsOSPlatform|RuntimeInformation|GetFolderPath|XDG_CACHE_HOME|UserProfile" packages/expo-asset-dotnet
+  rg "globalThis\.expo" packages/expo-asset-dotnet/src
+  rg "\[Trait\(" packages/expo-asset-dotnet
+  ```
+
+  Confirm the implementation changed no app, workflow, managed runner, ABI, or
+  platform adapter file.
+
+- [ ] **Step 4: Archive the accepted change and mark plan 022 done**
+
+  Move the change folder under `docs/archive/changes/`, update
+  `docs/plans/README.md` with actual verification evidence, and scan staged docs
+  for local machine details.
+
+- [ ] **Step 5: Commit the final documentation checkpoint**
+
+  ```sh
+  git add docs/specs docs/plans/README.md docs/changes docs/archive
+  git commit -m "docs(asset): merge expo asset contract"
+  ```
+
+  Do not push or publish without explicit operator approval.

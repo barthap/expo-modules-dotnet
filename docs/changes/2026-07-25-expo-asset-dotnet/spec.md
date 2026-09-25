@@ -4,8 +4,8 @@
 
 Add the repo's first authored .NET Expo module package,
 `expo-asset-dotnet`, exposing one native `downloadAsync` method backed by an
-HTTP download and a per-OS file cache. This is a full production-shaped slice
-built on the existing generated-binding and autolinking contracts, not a
+HTTP download and the host-supplied app cache. This is a full production-shaped
+slice built on the existing generated-binding and autolinking contracts, not a
 prototype: it fixes the exact JavaScript surface, validation rules, cache
 layout, and error messages so the package can ship and be tested end to end.
 
@@ -18,8 +18,8 @@ layout, and error messages so the package can ship and be tested end to end.
 - The single `downloadAsync(url, md5Hash, type)` JavaScript surface and its
   argument validation.
 - `file`/`http`/`https` URL handling, including passthrough for `file` URLs.
-- Cache root resolution per OS, cache identity, cache-hit detection, and
-  atomic download-and-move semantics.
+- Consumption of `DotnetRuntimeContext.CacheDirectory`, cache identity,
+  cache-hit detection, and atomic download-and-move semantics.
 - Module-owned cancellation driven from the module's `[OnDestroy]` hook.
 - The two reused Windows C++ reference error-message families.
 - The constructor constraint imposed by the Roslyn generator and its
@@ -31,7 +31,7 @@ layout, and error messages so the package can ship and be tested end to end.
 
 - Registering into `globalThis.expo.modules`, package-specifier aliasing,
   Metro configuration, or any `expo-asset` compatibility claim.
-- Android and iOS.
+- Android, iOS, and Linux support.
 - Asset metadata resolution and reimplementing Expo's `Asset` class.
 - Image decoding, cache-management APIs, and URI schemes beyond
   `file`/`http`/`https`.
@@ -55,6 +55,16 @@ Modules Declare Autolinking Metadata" requirement in
 `docs/specs/dotnet-autolinking.md`; this delta does not change that
 contract, it only exercises it with a real package.
 
+The supported hosts for this package are Windows and macOS. The autolinking
+schema has no per-host project selector, so consuming apps are responsible for
+including this package only on those hosts. The module does not add a runtime
+OS check or compute a platform cache path. Android, iOS, and Linux behavior is
+not defined by this package.
+
+This is a standalone dotnet module facade. It does not import, subclass,
+re-export, or otherwise reuse upstream `expo-asset`'s `Asset` class, and it does
+not alias the `expo-asset` package specifier.
+
 ### JavaScript surface
 
 The module exposes exactly one `[JS]` member:
@@ -63,8 +73,9 @@ The module exposes exactly one `[JS]` member:
 downloadAsync(url: string, md5Hash: string | null, type: string): Promise<string>
 ```
 
-The argument order matches upstream `expo-asset` exactly. There are no other
-`[JS]` members, no `[Events]`, and no shared objects.
+The reference contract is the `downloadAsync` export in `expo-asset@57.0.2`,
+which this workspace consumes. The argument order matches that version exactly.
+There are no other `[JS]` members, no `[Events]`, and no shared objects.
 
 ### Argument validation
 
@@ -79,6 +90,11 @@ Every validation failure rejects the returned `Promise` with a catchable
   `^[0-9a-fA-F]{32}$`, is compared case-insensitively, and is normalized to
   lowercase before use as a cache identity. A malformed value rejects.
 
+The strict `type` and `md5Hash` checks are an intentional security divergence
+from `expo-asset@57.0.2`. Upstream native implementations interpolate those
+values into a cache filename without equivalent validation. This package does
+not preserve that path-traversal risk for source compatibility.
+
 ### URL classes
 
 - `file` (matched case-insensitively): resolves with the input string
@@ -88,26 +104,21 @@ Every validation failure rejects the returned `Promise` with a catchable
 - `http` and `https`: the download path described below.
 - Any other scheme rejects with a message naming the offending scheme.
 
-### Cache root resolution
+### Host-supplied cache root
 
-Platform support for this module is a link-time concern, resolved by which
-platform adapters reference the package, not a runtime concern. The module
-therefore never inspects `Environment.OSVersion`, `RuntimeInformation`, or any
-other OS check, and never throws `PlatformNotSupportedException`. The cache
-root resolves per OS:
+The module receives `DotnetRuntimeContext` through its supported generated
+constructor and reads `context.CacheDirectory` for `http` and `https` requests.
+That accessor is the final app-scoped cache policy supplied by the Windows or
+macOS host. The module never calls `Environment.GetFolderPath`, reads
+`UserProfile` or `XDG_CACHE_HOME`, derives a path from the process working
+directory, or performs a runtime OS check.
 
-- Windows: `Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)`.
-- macOS: `<UserProfile>/Library/Caches`.
-- Any other OS: `$XDG_CACHE_HOME` when set and absolute, otherwise
-  `<UserProfile>/.cache`.
-
-An `ExponentAsset` subdirectory is appended and created with
-`Directory.CreateDirectory`. The root is never derived from
-`Environment.CurrentDirectory`. An empty or whitespace root, or a directory
-creation failure, rejects with the underlying cause. The resolved cache
-directory is a constructor dependency of the download service specifically so
-tests can supply a temporary directory instead of a real per-OS cache
-location.
+An `ExponentAsset` subdirectory is appended to the host-supplied root and
+created with `Directory.CreateDirectory`. An unconfigured context fails through
+`AppDirectoryNotConfiguredException`. A directory creation failure rejects with
+the underlying cause. Internal services receive the root as a constructor
+dependency so pure tests can supply a temporary directory. A `file:` request
+returns before reading `context.CacheDirectory` or touching the filesystem.
 
 ### Cache identity and file naming
 
@@ -181,15 +192,16 @@ parameterless constructor or one accepting `DotnetRuntimeContext`
 (`packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/ExpoModulesDiagnostics.cs:28`),
 per the existing "Simple module is constructed" and "Context-backed module is
 constructed" behavior in `docs/specs/modules-core-boundary.md`.
-`DotnetRuntimeContext` is not a service container, so this module cannot
-receive its validation, cache-path, or download services through constructor
-injection. The module therefore constructs its own default services
-directly. Those services are `internal`, exposed to the package's own test
-assembly only through `[assembly: InternalsVisibleTo("ExpoAssetDotnet.Tests")]`
-in `dotnet/ExpoAssetDotnet/AssemblyInfo.cs`. Because of this, Hermes-backed
-tests that exercise the real module (rather than its internal services
-directly) are limited to code paths that need neither live network access nor
-a writable cache root.
+`DotnetRuntimeContext` supplies the host cache root but is not a service
+container, so this module cannot receive its validation or HTTP services
+through constructor injection. The module therefore constructs its own default
+services directly and passes `context.CacheDirectory` into the cache service
+only when an `http` or `https` request needs it. Those services are `internal`,
+exposed to the package's own test assembly only through
+`[assembly: InternalsVisibleTo("ExpoAssetDotnet.Tests")]` in
+`dotnet/ExpoAssetDotnet/AssemblyInfo.cs`. Because of this, Hermes-backed tests
+that exercise the real module are limited to paths that return before cache
+access or network I/O: module visibility, validation, and `file:` passthrough.
 
 ### Testing shape
 
@@ -212,7 +224,9 @@ The `expo-asset-dotnet` package SHALL be a private npm package under
 `packages/` with native module name `ExpoAsset` and managed assembly name and
 root namespace `ExpoAssetDotnet`. Its JavaScript facade SHALL register
 through `requireDotnetModule<T>('ExpoAsset')` against
-`globalThis._expoDotnet.modules` only.
+`globalThis._expoDotnet.modules` only. The package SHALL support Windows and
+macOS hosts. Android, iOS, and Linux behavior SHALL remain out of scope, and
+the module SHALL NOT add a runtime OS gate.
 
 #### Scenario: Module registers only under the dotnet modules object
 - **GIVEN** the package's JS facade calls `requireDotnetModule<ExpoAssetModule>('ExpoAsset')`
@@ -222,11 +236,18 @@ through `requireDotnetModule<T>('ExpoAsset')` against
 - **AND** it SHALL NOT alias the `expo-asset` package specifier
 - **AND** it SHALL NOT claim `expo-asset` drop-in compatibility
 
+#### Scenario: Supported host selection stays outside module logic
+- **GIVEN** the dotnet autolinking schema has no per-host project selector
+- **WHEN** an app includes `expo-asset-dotnet`
+- **THEN** the app SHALL include it only for a supported Windows or macOS host
+- **AND** the module SHALL NOT inspect the running OS to enforce that selection
+
 ### ADDED: Single downloadAsync surface
 
 The module SHALL expose exactly one JavaScript-visible member,
 `downloadAsync(url: string, md5Hash: string | null, type: string): Promise<string>`,
-with argument order matching upstream `expo-asset`.
+with argument order matching the workspace's `expo-asset@57.0.2` reference
+contract. It SHALL NOT expose or reuse upstream's `Asset` class.
 
 #### Scenario: Only downloadAsync is visible
 - **GIVEN** generated registration installs the `ExpoAsset` module
@@ -238,7 +259,9 @@ with argument order matching upstream `expo-asset`.
 
 `downloadAsync` SHALL validate `url`, `type`, and `md5Hash` and SHALL reject
 the returned promise with a catchable `Error` for any failure instead of
-throwing synchronously.
+throwing synchronously. The strict `type` and `md5Hash` rules SHALL be treated
+as an intentional security divergence from `expo-asset@57.0.2`, not accidental
+source incompatibility to remove later.
 
 #### Scenario: Empty or non-absolute url rejects
 - **GIVEN** a `url` that is empty after trimming, or does not parse as an
@@ -292,23 +315,36 @@ the three URL classes below.
 - **WHEN** `downloadAsync` handles it
 - **THEN** it SHALL reject with a message naming the offending scheme
 
-### ADDED: Cache root resolution has no runtime OS check
+### ADDED: Cache root comes only from the runtime context
 
-The cache root SHALL resolve per OS as specified without any runtime
-operating-system check, and SHALL be a constructor dependency of the download
-service.
+The module SHALL use `DotnetRuntimeContext.CacheDirectory` as the host-supplied
+cache root for `http` and `https` requests. It SHALL NOT compute a user-wide or
+per-OS cache root. The internal download service SHALL receive the supplied root
+as a constructor dependency.
 
-#### Scenario: Cache root resolution never inspects the running OS
-- **GIVEN** the download service resolves its cache root
-- **WHEN** resolution runs
-- **THEN** it SHALL NOT branch on a runtime operating-system check
-- **AND** it SHALL NOT throw `PlatformNotSupportedException`
+#### Scenario: Module consumes host cache policy
+- **GIVEN** the Windows or macOS host configured `context.CacheDirectory`
+- **WHEN** an `http` or `https` request needs the cache
+- **THEN** the module SHALL append `ExponentAsset` to that supplied directory
+- **AND** it SHALL NOT inspect the running OS or environment to replace it
+
+#### Scenario: Unconfigured cache directory rejects
+- **GIVEN** the host supplied no cache directory
+- **WHEN** an `http` or `https` request needs the cache
+- **THEN** it SHALL reject through `AppDirectoryNotConfiguredException`
+- **AND** it SHALL NOT fall back to a user-wide or process-wide path
+
+#### Scenario: file request does not require host cache policy
+- **GIVEN** the host supplied no cache directory
+- **WHEN** a valid `file:` URL is handled
+- **THEN** it SHALL resolve with the input string unchanged
+- **AND** it SHALL NOT read `context.CacheDirectory`
 
 #### Scenario: Cache root is an injectable constructor dependency
 - **GIVEN** a test constructs the download service
 - **WHEN** it supplies a temporary directory as the cache root
-- **THEN** the service SHALL use that directory instead of computing a
-  per-OS default
+- **THEN** the service SHALL use that directory unchanged as the host cache
+  root
 
 #### Scenario: Cache directory creation failure rejects with cause
 - **GIVEN** the resolved cache root is empty or whitespace, or
@@ -450,19 +486,20 @@ absolute path.
 - **AND** it SHALL name the `ExponentAsset` cache subdirectory or the file
   name instead
 
-### ADDED: Constructor constraint forces internal default services
+### ADDED: Context constructor supplies cache policy, not services
 
 Because the Roslyn generator only supports a parameterless constructor or one
 accepting `DotnetRuntimeContext`, the module SHALL construct its own default
-services rather than receiving them through constructor injection. Those
-services SHALL be `internal` and exposed to the package's own test assembly
-through `InternalsVisibleTo`.
+services rather than receiving them through constructor injection. It SHALL
+receive the host cache root from that context. The services SHALL be `internal`
+and exposed to the package's own test assembly through `InternalsVisibleTo`.
 
 #### Scenario: Module constructs its own default services
 - **GIVEN** the generator instantiates the `ExpoAsset` module class
 - **WHEN** construction runs
-- **THEN** the module SHALL construct its own validation, cache-path, and
-  download services directly
+- **THEN** the module SHALL construct its own validation and download services
+  directly
+- **AND** it SHALL retain the supplied context for later cache access
 - **AND** it SHALL NOT require an unsupported constructor shape to receive
   them
 
