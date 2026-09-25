@@ -1,5 +1,12 @@
 # Plan 023: `expo-constants-dotnet` for Windows and macOS
 
+> **Completed 2026-09-25.** The steps below record the original proposal.
+> The approved change package under `docs/archive/changes/2026-09-25-expo-constants-dotnet/`
+> and the current living specs record the shipped contract. In particular,
+> `expoConfig` was omitted, both native version fields are nullable, and one
+> size-extensible host-context struct carries the version inputs on the v3
+> create ABI. No package-private metadata provider was added.
+
 > **Executor instructions**: Run the drift check, then use the living-spec
 > workflow before editing code. This plan deliberately does not add Expo global
 > registration or upstream package aliasing.
@@ -14,6 +21,16 @@
 - **Depends on**: none; execute after plan 022 for package-pattern validation
 - **Category**: authored module
 - **Planned at**: `9247d75d`, 2026-07-24
+- **Completed**: 2026-09-25 — six getter-only constants, native host versions,
+  an extensible v3 create ABI, and a standalone facade. The full managed suite
+  passed 770 tests on macOS and Windows with no skips. Package JS tests,
+  autolinking tests, typechecks, formatting, macOS HostFXR/NativeAOT runs,
+  mobile adapter builds, and packaged Windows HostFXR/NativeAOT runs passed.
+  The Windows Constants values were captured through a temporary Metro
+  diagnostic that was removed. A direct unpackaged example launch failed
+  before adapter evidence, so unpackaged example startup remains unverified;
+  the no-package branch was reviewed in native source and null metadata is
+  covered by generated-host and Hermes tests.
 
 ## Why this matters
 

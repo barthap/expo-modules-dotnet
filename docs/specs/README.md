@@ -28,8 +28,8 @@ below:
 
 ## Capabilities
 
-- `runtime-and-abi.md`: C ABI contract, opaque handles, function table, and native
-  ownership boundary.
+- `runtime-and-abi.md`: C ABI contract, opaque handles, function table, native
+  ownership boundary, and host-supplied app metadata.
 - `managed-jsi-wrappers.md`: Low-level `Expo.JSI` managed wrapper surface.
 - `ownership-and-scoped-refs.md`: Owned wrapper and scoped ref lifetime model.
 - `host-functions-and-errors.md`: Managed host functions and structured error
@@ -39,7 +39,8 @@ below:
 - `promises.md`: Promise capability and promise-value wrappers.
 - `hermes-testhost.md`: Hermes-backed native testhost and managed test suite.
 - `modules-core-boundary.md`: `Expo.ModulesCore` package boundary,
-  generated-binding helpers, and module test ownership.
+  generated-binding helpers, module test ownership, and standalone authored
+  packages including `expo-constants-dotnet`.
 - `dotnet-autolinking.md`: .NET Expo module discovery, app-level aggregator
   generation, build, and artifact staging contract.
 

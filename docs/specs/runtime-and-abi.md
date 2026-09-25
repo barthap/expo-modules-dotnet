@@ -286,13 +286,10 @@ values.
 ### Requirement: ABI Version And Size Validation
 
 The managed interop layer SHALL validate the native API table before using it.
-
-Host-supplied structs on the runtime-context create ABI SHALL follow the same
-rule. Managed code SHALL check `size` first, then require exact version
-equality, and SHALL name both the native and the managed value in the rejection
-message. Strict equality is safe only because the loader and the generated host
-are built together for one app. If loaders ever ship independently of generated
-hosts, `size`-based tolerant parsing would be needed instead.
+The host-context struct on the runtime-context create ABI SHALL check `size`
+before `version` or payload fields and require exact version equality. It SHALL
+accept compatible appended fields by using `size` to read only complete known
+fields. The native API table retains its own validation policy.
 
 #### Scenario: Runtime is created from native handles
 - **GIVEN** an API table pointer is passed into managed code
@@ -443,14 +440,15 @@ adapters can call for one JavaScript runtime. HostFXR loaders SHALL resolve the
 stable managed type name
 `Expo.ModulesCore.Generated.EntryPoints, ExpoDotnetHost`.
 
-The create entry point SHALL take a host-supplied app-directories pointer
-between the opaque runtime handle and the structured result out parameter. It
-SHALL be exported as the NativeAOT symbol
-`expo_dotnet_create_runtime_context_result_v2` and resolved through HostFXR as
-the managed method `CreateRuntimeContextResultV2`. The native function-pointer
-typedef and the loader entry-point field SHALL carry matching v2 names.
+The create entry point SHALL take one host-context pointer between the opaque
+runtime handle and the structured result out parameter. It SHALL have four
+arguments, be exported as the NativeAOT symbol
+`expo_dotnet_create_runtime_context_result_v3`, and be resolved through HostFXR
+as `CreateRuntimeContextResultV3`. The native function-pointer typedef and the
+loader entry-point field SHALL carry matching v3 names. Compatible new host
+inputs SHALL be appended to the struct, not added as create arguments.
 
-No alias SHALL remain under the old create name, and no loader SHALL probe it. A
+No v2 alias SHALL remain, and no loader SHALL probe it. A
 rename is the only thing that makes a stale adapter and host pairing fail before
 invocation. The version field inside the struct guards the contents of a call
 whose signature already matches, so it cannot guard a call made through the wrong
@@ -465,23 +463,23 @@ matching managed teardown entry point.
 - **GIVEN** a host adapter has an `expo_jsi_api` table and opaque runtime handle
 - **WHEN** it calls the managed create-runtime-context entry point
 - **THEN** managed code SHALL register modules through a runtime-scoped context
-- **AND** the adapter SHALL pass an app-directories pointer, using null when it
-  has no directories to supply
+- **AND** the adapter SHALL pass one host-context pointer, using null when it
+  has no host inputs to supply
 - **AND** native SHALL retain only the opaque managed runtime context handle and teardown
   function pointer
 
 #### Scenario: Mismatched adapter and generated host fail to resolve
 - **GIVEN** a native adapter and a generated host built on opposite sides of the
-  v2 rename
+  v3 rename
 - **WHEN** the loader resolves the create symbol or the HostFXR method
 - **THEN** resolution SHALL fail
 - **AND** the adapter SHALL NOT call any create function pointer
 
-#### Scenario: Built artifacts carry only the v2 create symbol
+#### Scenario: Built artifacts carry only the v3 create symbol
 - **GIVEN** a generated host is published for NativeAOT
 - **WHEN** its exported symbols are inspected with the platform symbol tool
-- **THEN** the v2 create symbol SHALL be present
-- **AND** the old create symbol SHALL be absent
+- **THEN** the v3 create symbol SHALL be present
+- **AND** the v2 create symbol SHALL be absent
 
 #### Scenario: Native adapter tears down a managed runtime context
 - **GIVEN** the host reports runtime or module invalidation
@@ -499,9 +497,9 @@ matching managed teardown entry point.
 - **AND** still release managed pins and non-JSI module state
 - **AND** stale scheduled work SHALL not touch the runtime
 
-### Requirement: Host-Supplied App Directories Cross The Create ABI
+### Requirement: Host-Supplied Context Crosses The Create ABI
 
-The app-directories struct, both runtime-context result types, and both
+The host-context struct, both runtime-context result types, and both
 runtime-context function-pointer typedefs SHALL be declared exactly once, in the
 shared native header
 `packages/expo-modules-dotnet/native/include/expo_dotnet_host.h`. No platform
@@ -509,31 +507,35 @@ adapter SHALL redeclare them locally. Everything here crosses through a function
 pointer, so drift between duplicated declarations is invisible at compile time
 and corrupts memory at runtime.
 
-`expo_dotnet_app_directories` SHALL begin with a `uint32_t size` field and then a
-`uint32_t version` field, matching the `expo_jsi_api` shape required by
-`### Requirement: ABI Version And Size Validation`. Its payload SHALL be a cache
-directory and a persistent-files directory, each a UTF-8 byte pointer plus an
-`int32_t` byte length.
+`expo_dotnet_host_context` SHALL begin with `uint32_t size` and
+`uint32_t version`. The next fields SHALL keep the existing directory pointer/length
+layout: cache directory, then persistent-files directory. Two optional UTF-8
+pointer/`int32_t` byte-length pairs SHALL follow: native app version, then
+native build version. The complete directory prefix is 40 bytes on 64-bit
+hosts and 24 bytes on 32-bit hosts. Each appended pair adds 16 or 8 bytes,
+respectively.
 
 Each string SHALL follow `### Requirement: UTF-8 String Contract` and SHALL NOT
-be NUL-terminated. The host SHALL keep both buffers valid for the duration of the
+be NUL-terminated. The host SHALL keep supplied buffers valid for the duration of the
 create call only. Managed code SHALL copy each value into a `string` before the
 call returns, so no release callback is needed. Managed decoding SHALL use strict
 UTF-8 that throws on invalid bytes and SHALL NOT repair invalid input.
 
-Unconfigured has one exact encoding. A null struct pointer SHALL mean both
-directories are unconfigured. At field level, `(null pointer, zero length)` SHALL
-mean that directory is unconfigured, `(null pointer, nonzero length)` SHALL be
-rejected as an invalid pair, and `(non-null pointer, zero length)` SHALL decode as
-a supplied empty string, which then fails managed path validation. A negative byte
-length SHALL be rejected. The two fields SHALL be independent, so a host MAY
-supply one directory and leave the other unconfigured.
+Unconfigured has one exact encoding. A null struct pointer SHALL mean all fields
+are unconfigured. At field level, `(null pointer, zero length)` SHALL mean that
+field is unconfigured, `(null pointer, nonzero length)` SHALL be rejected as an
+invalid pair, and `(non-null pointer, zero length)` SHALL decode as a supplied
+empty string, which managed validation then rejects. A negative byte length
+SHALL be rejected. All four fields SHALL be independent.
 
 Managed decoding SHALL validate `size` before it reads `version`, and both before
-it reads either pointer field. It SHALL reject a struct smaller than the managed
-expected size and SHALL require exact version equality. Every rejection SHALL
-report through the existing structured `RuntimeContextResult` error channel, and
-no partially configured runtime context SHALL be created.
+it reads payload fields. It SHALL reject a struct smaller than the complete
+directory prefix or whose size ends inside a known optional pointer/length pair.
+It SHALL read each optional pair only when `size` covers that whole pair and
+ignore unknown trailing fields. Version 1 SHALL remain valid for compatible
+append-only fields; incompatible layout or meaning changes require a new struct
+version. Every rejection SHALL report through the existing structured
+`RuntimeContextResult` error channel before module registration.
 
 The shared header SHALL pin standard layout, every field offset, and the total
 size with `static_assert` for both 4-byte and 8-byte pointer targets. The Android
@@ -550,12 +552,19 @@ assumed.
 - **AND** module registration SHALL observe both configured directories
 
 #### Scenario: Undersized or wrong-versioned struct is rejected
-- **GIVEN** a struct whose `size` is below the managed expected size, or whose
+- **GIVEN** a struct whose `size` is below the directory prefix, or whose
   `version` differs from the managed expected version
 - **WHEN** managed decoding runs
 - **THEN** it SHALL fail with a structured error naming the native and the
   managed value
 - **AND** it SHALL NOT read either directory pointer
+
+#### Scenario: Compatible optional fields are decoded by size
+- **GIVEN** a version-1 struct containing only the directory prefix, one complete
+  version pair, both pairs, or both pairs plus future trailing fields
+- **WHEN** managed decoding runs
+- **THEN** it SHALL decode only the complete known fields and ignore the tail
+- **AND** it SHALL reject a size ending inside either known optional pair
 
 #### Scenario: Invalid UTF-8 fails loudly
 - **GIVEN** a directory field holds bytes that are not valid UTF-8
@@ -575,6 +584,13 @@ assumed.
 - **WHEN** managed decoding runs
 - **THEN** it SHALL decode an empty string rather than an unconfigured value
 - **AND** managed path validation SHALL reject that empty string
+
+#### Scenario: Malformed native version fails startup
+- **GIVEN** a supplied version is empty, whitespace-only, contains NUL, or has
+  invalid UTF-8
+- **WHEN** managed decoding runs
+- **THEN** it SHALL fail through the structured result before module registration
+- **AND** it SHALL NOT substitute another version source
 
 #### Scenario: Native layout is locked at compile time
 - **GIVEN** the shared header is compiled for a 32-bit or a 64-bit pointer target
@@ -663,10 +679,43 @@ shapes, never a real user profile, machine path, or package identity.
 - **THEN** it SHALL pass the defined unconfigured value
 - **AND** module registration SHALL still succeed
 
-Note on verification status: the macOS adapter was built and run against these
-rules. The Windows adapter is written and reviewed against them but has not been
-built or launched, because no Windows host was available. Treat the Windows path
-as unproven until a packaged Windows run confirms the marker.
+The macOS adapter and the packaged Windows adapter have been built and run in
+both HostFXR and NativeAOT modes against these directory rules.
+
+### Requirement: Desktop Hosts Supply Native App Versions
+
+Native app versions are host identity under `ABI Carries Only Host Knowledge`.
+Portable .NET SHALL NOT derive them from the generated host assembly, process
+working directory, or environment variables. The desktop adapters SHALL
+borrow UTF-8 buffers for the create call, and the generated host SHALL copy
+them before returning. Neither adapter SHALL log version values.
+
+The macOS adapter SHALL read string values from the main bundle's
+`CFBundleShortVersionString` and `CFBundleVersion`; absent keys SHALL be null,
+and present non-string values SHALL fail startup. The Windows adapter SHALL
+format `Package::Current().Id().Version()` as four decimal parts for the native
+build version. Windows native app version SHALL be null. If the Windows process
+is unpackaged, both versions SHALL be null. Other host API failures SHALL
+surface as startup errors, not trigger fallback values. iOS, Android, and
+headless hosts SHALL pass no native version metadata.
+
+#### Scenario: macOS bundle values are supplied
+- **GIVEN** the main bundle contains string app and build versions
+- **WHEN** the adapter creates the managed runtime context
+- **THEN** `HostAppMetadata` SHALL contain those exact strings
+
+#### Scenario: Packaged Windows build version is supplied
+- **GIVEN** a Windows app has package identity
+- **WHEN** the adapter creates the managed runtime context
+- **THEN** `HostAppMetadata.NativeBuildVersion` SHALL contain its four-part
+  package version
+- **AND** `NativeAppVersion` SHALL be null
+
+#### Scenario: Unpackaged Windows has no native versions
+- **GIVEN** `Package::Current()` reports no package identity
+- **WHEN** the adapter creates the managed runtime context
+- **THEN** both native versions SHALL be null
+- **AND** no process or assembly version SHALL be substituted
 
 ### Requirement: Object NativeState ABI
 

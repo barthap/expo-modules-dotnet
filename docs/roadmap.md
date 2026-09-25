@@ -249,8 +249,8 @@ package compatibility or install aliases into `globalThis.expo.modules`.
 
 1. [`expo-asset-dotnet`](plans/022-expo-asset-dotnet.md) (complete): standalone
    validated download and app-scoped cache package.
-2. [`expo-constants-dotnet`](plans/023-expo-constants-dotnet.md): typed host
-   metadata with explicit provenance.
+2. [`expo-constants-dotnet`](plans/023-expo-constants-dotnet.md) (complete):
+   typed host metadata with explicit provenance.
 3. [`expo-file-system-dotnet`](plans/024-expo-file-system-dotnet.md): local
    `Paths`, `File`, and `Directory` operations for Windows/macOS.
 4. [`expo-crypto-dotnet`](plans/025-expo-crypto-dotnet.md): random and digest
