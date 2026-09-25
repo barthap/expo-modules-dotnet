@@ -23,7 +23,7 @@
 - **Planned at**: `9247d75d`, 2026-07-24
 - **Completed**: 2026-09-25 — six getter-only constants, native host versions,
   an extensible v3 create ABI, and a standalone facade. The full managed suite
-  passed 770 tests on macOS and Windows with no skips. Package JS tests,
+  passed 770 tests on Linux, macOS, and Windows with no skips. Package JS tests,
   autolinking tests, typechecks, formatting, macOS HostFXR/NativeAOT runs,
   mobile adapter builds, and packaged Windows HostFXR/NativeAOT runs passed.
   The Windows Constants values were captured through a temporary Metro

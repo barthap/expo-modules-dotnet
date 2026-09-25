@@ -26,6 +26,19 @@ public sealed class ExpoConstantsModuleTests
         ExpoModulesProvider_ExpoConstantsDotnet.Register
     );
 
+    if (!IsSupportedDesktop())
+    {
+      foreach (var property in new[]
+               {
+                 "platform", "executionEnvironment", "sessionId", "nativeAppVersion",
+                 "nativeBuildVersion", "expoVersion",
+               })
+      {
+        AssertUnsupportedPlatform(host, property);
+      }
+      return;
+    }
+
     var values = host.Runtime.Execute(_ =>
     {
       using var result = host.Evaluate(
@@ -38,7 +51,7 @@ public sealed class ExpoConstantsModuleTests
       return result.AsString();
     });
 
-    var expectedPlatform = OperatingSystem.IsMacOS() ? "macos" : "windows";
+    var expectedPlatform = OperatingSystem.IsWindows() ? "windows" : "macos";
     Assert.Equal(
         "executionEnvironment,expoVersion,nativeAppVersion,nativeBuildVersion,platform,sessionId" +
         $"|{expectedPlatform}|bare|1.0|21|null",
@@ -54,6 +67,12 @@ public sealed class ExpoConstantsModuleTests
         HostAppMetadata.Unconfigured,
         ExpoModulesProvider_ExpoConstantsDotnet.Register
     );
+
+    if (!IsSupportedDesktop())
+    {
+      AssertUnsupportedPlatform(host, "nativeBuildVersion");
+      return;
+    }
 
     var result = host.Runtime.Execute(_ =>
     {
@@ -80,6 +99,11 @@ public sealed class ExpoConstantsModuleTests
         ExpoModulesProvider_ExpoConstantsDotnet.Register
     ))
     {
+      if (!IsSupportedDesktop())
+      {
+        AssertUnsupportedPlatform(first, "sessionId");
+        return;
+      }
       firstSession = ReadSession(first);
       Assert.Equal(firstSession, ReadSession(first));
     }
@@ -101,4 +125,22 @@ public sealed class ExpoConstantsModuleTests
     );
     return value.AsString();
   });
+
+  private static bool IsSupportedDesktop() => OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
+
+  private static void AssertUnsupportedPlatform(ExpoModuleTestHost host, string property)
+  {
+    var result = host.Runtime.Execute(_ =>
+    {
+      using var value = host.Evaluate(
+          $"(() => {{ try {{ void globalThis._expoDotnet.modules.ExponentConstants.{property}; " +
+          "return false; } catch (error) { return error instanceof Error && " +
+          "error.message.includes('supports only Windows and macOS'); } })()",
+          "expo-constants-unsupported.js"
+      );
+      return value.AsBool();
+    });
+
+    Assert.True(result, $"Expected {property} to fail with a catchable unsupported-platform error.");
+  }
 }
