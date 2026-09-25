@@ -331,6 +331,21 @@ public sealed partial class ExpoModuleTestHostTests
   }
 
   [Fact]
+  public void CreateWithHostMetadataExposesVersionsDuringRegistration()
+  {
+    var metadata = new HostAppMetadata("2.4", null);
+    HostAppMetadata? observed = null;
+
+    using var host = ExpoModuleTestHost.Create(
+        AppDirectories.Unconfigured,
+        metadata,
+        (context, _) => observed = context.AppMetadata
+    );
+
+    Assert.Same(metadata, observed);
+  }
+
+  [Fact]
   public void CreateWithAppDirectoriesExposesHostSuppliedPathsDuringRegistration()
   {
     var cache = TestDirectory("cache");
