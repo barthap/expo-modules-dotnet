@@ -14,8 +14,9 @@ dotnet module registry. It does not claim to implement the full upstream
 - A private workspace package, managed module, TypeScript facade, and
   package-owned tests.
 - A host-supplied, typed native version model on `DotnetRuntimeContext`.
-- A versioned runtime-context creation ABI that carries the host's native
-  version values to managed code before module registration.
+- A size-extensible, versioned host-context struct that carries native version
+  values to managed code before module registration without growing the create
+  function's argument list.
 - Windows/macOS host adapters and the generated app-level host. Mobile
   adapters continue to create contexts with no native version metadata.
 - Deterministic tests of metadata decoding, provenance, generated properties,
@@ -73,30 +74,51 @@ identify either reliably from the generated `ExpoDotnetHost` assembly, process
 working directory, or environment variables. By contrast, the current OS,
 session GUID, and fixed execution-environment policy need no new ABI fields.
 
-The shared `expo_dotnet_host.h` declares an `expo_dotnet_app_metadata` struct
-with `size`, `version`, and two independent UTF-8 pointer/length pairs for
-native app version and native build version. A null pointer with zero length
-means unavailable. A non-null pointer with zero length means a malformed empty
-value and fails validation. Negative lengths, null pointers with nonzero
-lengths, invalid UTF-8, embedded NUL, and whitespace-only supplied values fail
-the structured startup result. Native adapters borrow the buffers only for the
-create call; generated managed code copies them before returning. The shared
-header pins the struct layout for 32-bit and 64-bit pointer widths, and the
-managed test harness executes and checks the mirror layout and decoder.
+The shared `expo_dotnet_host.h` declares one `expo_dotnet_host_context` struct.
+Its `size` and `version` header and the two existing directory pointer/length
+pairs keep the same field order and offsets as `expo_dotnet_app_directories`.
+The prefix is 40 bytes on 64-bit hosts and 24 bytes on 32-bit hosts. Two
+optional UTF-8 pointer/length pairs follow: native app version, then native
+build version. Each complete appended pair extends the struct by 16 bytes on
+64-bit hosts or 8 bytes on 32-bit hosts. A host MAY provide the directory-only
+prefix, one version pair, or both. A null struct pointer means all fields are
+unconfigured.
 
-A new `expo_dotnet_create_runtime_context_result_v3` entry point accepts the
-existing app-directories pointer and the new metadata pointer. Both desktop
-loaders and both mobile loaders resolve that exact v3 symbol, so stale loader
-and generated-host pairs fail symbol resolution rather than calling through an
-incompatible function pointer. The app-directories struct and its version stay
-unchanged. Mobile adapters pass a null metadata pointer. The old v2 create
-entry point is removed from the generated host and loaders because an app-level
-host and adapter are built together; teardown keeps its existing symbol.
+The decoder checks `size` before `version` or payload fields. It requires the
+complete directory prefix and version 1. It reads each appended field only
+when `size` covers the entire pointer/length pair; sizes that end inside a
+known pair fail. It accepts larger sizes and ignores unknown trailing fields,
+so compatible append-only additions keep the v3 symbol and struct version 1.
+An incompatible change to field layout or meaning requires a new struct
+version. A change to the function's calling shape requires a new create symbol.
+This changes the current strict-size rule for this host-supplied struct only;
+the `expo_jsi_api` function table keeps its own validation policy.
 
-The generated host strictly decodes both structs before constructing
-`DotnetRuntimeContext`. It creates a public immutable `HostAppMetadata` model
-and passes it through a new three-argument context constructor. Existing one-
-and two-argument constructors remain and use `HostAppMetadata.Unconfigured`.
+For each version field, a null pointer with zero length means unavailable. A
+non-null pointer with zero length means a malformed empty value and fails
+validation. Negative lengths, null pointers with nonzero lengths, invalid
+UTF-8, embedded NUL, and whitespace-only supplied values fail the structured
+startup result. Directory validation retains its current behavior. Native
+adapters borrow the buffers only for the create call; generated managed code
+copies them before returning. The shared header pins the known field offsets
+and complete-prefix sizes for 32-bit and 64-bit hosts, and the managed test
+harness executes and checks the mirror layout and decoder.
+
+The new `expo_dotnet_create_runtime_context_result_v3` entry point keeps four
+arguments: the API table, opaque runtime handle, one host-context pointer,
+and structured result pointer. It replaces the v2 app-directories pointer
+with the broader host-context pointer instead of adding another argument.
+Both desktop loaders and both mobile loaders resolve that exact v3 symbol,
+so stale loader and generated-host pairs fail symbol resolution. Mobile
+adapters pass a null host-context pointer. The old v2 create entry point is
+removed from the generated host and loaders because an app-level host and
+adapter are built together; teardown keeps its existing symbol.
+
+The generated host decodes the available host-context fields before
+constructing `DotnetRuntimeContext`. It creates a public immutable
+`HostAppMetadata` model and passes it, with the existing `AppDirectories`,
+through a new three-argument context constructor. Existing one- and
+two-argument constructors remain and use `HostAppMetadata.Unconfigured`.
 `DotnetRuntimeContext.AppMetadata` exposes that model after its usual active
 state check. The model validates supplied strings without reading the
 filesystem. This is a context input, not a mutable global or a test-only
@@ -128,8 +150,9 @@ package tests exercise native registration, lower-camel property names,
 strict-mode read-only behavior, and two runtime contexts. The existing
 `ExpoModuleTestHost` gains a metadata constructor input for tests; no test
 provider is compiled into the production package. Autolinking tests execute
-the v3 entry point through its unmanaged function pointer, including malformed
-metadata and both valid and null metadata. TypeScript tests assert that the
+the four-argument v3 entry point through its unmanaged function pointer,
+including prefix-only, one-version, full, future-extended, partial-tail, and
+malformed host contexts. TypeScript tests assert that the
 facade asks for `ExponentConstants` through `requireDotnetModule` and never
 touches the Expo global registry. The managed suite, package JS tests,
 autolinking tests, typecheck, and repository formatter are required gates.
@@ -187,13 +210,29 @@ change for a newly created context.
 
 ### ADDED: Host-supplied native app metadata
 
-The native host SHALL supply only the version strings it owns through the v3
-create entry point. The generated host SHALL validate and copy them before
-module registration. `DotnetRuntimeContext` SHALL expose immutable
+The native host SHALL supply only the version strings it owns through the
+size-extensible host-context struct passed to the four-argument v3 create
+entry point. The generated host SHALL validate and copy them before module
+registration. `DotnetRuntimeContext` SHALL expose immutable
 `HostAppMetadata` without platform-specific API calls in the managed core.
 
-#### Scenario: Metadata is malformed
-- **GIVEN** a supplied metadata struct has an invalid size, version,
+#### Scenario: A caller supplies only the directory prefix
+- **GIVEN** a v3 caller passes a version-1 host-context struct sized through
+  the existing directory fields
+- **WHEN** the generated host decodes it
+- **THEN** it SHALL retain the supplied directories
+- **AND** it SHALL leave both native version values unavailable
+
+#### Scenario: A future caller appends fields
+- **GIVEN** a version-1 host-context struct contains the complete known prefix
+  and additional trailing bytes
+- **WHEN** the generated host decodes it
+- **THEN** it SHALL read only the known fields and ignore the tail
+- **AND** no new create symbol or struct version SHALL be required
+
+#### Scenario: Host context is malformed
+- **GIVEN** a supplied host-context struct has a truncated directory prefix,
+  size ending inside a known appended field, wrong version, invalid version
   pointer/length pair, UTF-8 sequence, empty or whitespace-only value, or NUL
 - **WHEN** the generated host decodes it
 - **THEN** runtime-context creation SHALL fail through the structured error
