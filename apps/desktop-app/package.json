@@ -18,6 +18,7 @@
   "dependencies": {
     "@babel/runtime": "7.29.7",
     "example-module": "workspace:*",
+    "expo-constants-dotnet": "workspace:*",
     "expo": "catalog:react-native-81",
     "expo-desktop": "^0.1.37",
     "expo-desktop-config-plugins": "^1.1.34",

@@ -70,6 +70,9 @@ importers:
       expo:
         specifier: catalog:react-native-81
         version: 54.0.35(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)(typescript@5.9.3)
+      expo-constants-dotnet:
+        specifier: workspace:*
+        version: link:../../packages/expo-constants-dotnet
       expo-desktop:
         specifier: ^0.1.37
         version: 0.1.37(typescript@5.9.3)
@@ -158,6 +161,18 @@ importers:
         version: link:../expo-modules-dotnet
 
   packages/expo-asset-dotnet:
+    devDependencies:
+      expo-modules-dotnet:
+        specifier: workspace:*
+        version: link:../expo-modules-dotnet
+      typescript:
+        specifier: catalog:react-native-86
+        version: 6.0.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.20.0)(lightningcss@1.32.0)(terser@5.48.0)(yaml@2.9.0)
+
+  packages/expo-constants-dotnet:
     devDependencies:
       expo-modules-dotnet:
         specifier: workspace:*

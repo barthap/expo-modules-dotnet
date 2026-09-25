@@ -1,0 +1,11 @@
+{
+  "platforms": ["dotnet"],
+  "dotnet": {
+    "projects": [
+      {
+        "path": "dotnet/ExpoConstantsDotnet/ExpoConstantsDotnet.csproj",
+        "assemblyName": "ExpoConstantsDotnet"
+      }
+    ]
+  }
+}
