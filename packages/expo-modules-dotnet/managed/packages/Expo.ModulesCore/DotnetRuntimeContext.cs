@@ -44,6 +44,7 @@ public sealed class DotnetRuntimeContext : IDisposable
   private readonly ModuleEventEmitter events;
   private readonly SharedObjectRegistry sharedObjects;
   private readonly AppDirectories appDirectories;
+  private readonly HostAppMetadata appMetadata;
   private LifecycleState state = LifecycleState.Active;
   private int disposingThreadId;
 
@@ -70,9 +71,23 @@ public sealed class DotnetRuntimeContext : IDisposable
   /// <see cref="AppDirectories.Unconfigured" /> when the host has none.
   /// </param>
   public DotnetRuntimeContext(JavaScriptRuntime runtimeArgument, AppDirectories directories)
+      : this(runtimeArgument, directories, HostAppMetadata.Unconfigured)
+  {
+  }
+
+  /// <summary>
+  /// Creates a context with host-supplied directories and native app versions.
+  /// Both are available before module registration runs.
+  /// </summary>
+  public DotnetRuntimeContext(
+      JavaScriptRuntime runtimeArgument,
+      AppDirectories directories,
+      HostAppMetadata metadata
+  )
   {
     runtime = runtimeArgument ?? throw new ArgumentNullException(nameof(runtimeArgument));
     appDirectories = directories ?? throw new ArgumentNullException(nameof(directories));
+    appMetadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
     objects = new JavaScriptObjectFactory(runtime);
     events = new ModuleEventEmitter(this);
     moduleRegistry = new ModuleRegistry(this, objects);
@@ -169,6 +184,20 @@ public sealed class DotnetRuntimeContext : IDisposable
         ThrowIfNotActiveLocked();
         return appDirectories.PersistentFilesDirectory
             ?? throw new AppDirectoryNotConfiguredException(nameof(PersistentFilesDirectory));
+      }
+    }
+  }
+
+  /// <summary>Gets the host-supplied native app versions for this context.</summary>
+  /// <exception cref="ObjectDisposedException">This context is disposed.</exception>
+  public HostAppMetadata AppMetadata
+  {
+    get
+    {
+      lock (gate)
+      {
+        ThrowIfNotActiveLocked();
+        return appMetadata;
       }
     }
   }

@@ -119,8 +119,8 @@ describe('generateAggregator', () => {
     generateAggregator(manifest, { outputDir, adapterPackageRoot });
 
     const entryPoints = readGenerated(outputDir, 'EntryPoints.g.cs');
-    expect(entryPoints).toContain('EntryPoint = "expo_dotnet_create_runtime_context_result_v2"');
-    expect(entryPoints).toContain('public static unsafe void CreateRuntimeContextResultV2');
+    expect(entryPoints).toContain('EntryPoint = "expo_dotnet_create_runtime_context_result_v3"');
+    expect(entryPoints).toContain('public static unsafe void CreateRuntimeContextResultV3');
     expect(entryPoints).toContain('result->Ok = 1;');
     expect(entryPoints).toContain('result->Error.Release = &ReleaseRuntimeContextError;');
     expect(entryPoints).toContain(`    public static void TeardownRuntimeContext(nint runtimeContext)
@@ -181,18 +181,18 @@ describe('generateAggregator', () => {
     const entryPoints = readGenerated(outputDir, 'EntryPoints.g.cs');
     // The version field inside the struct only protects the contents of an
     // already signature-safe call. Nothing but a different symbol and method name
-    // stops an old adapter from calling the new host through the old
-    // three-argument signature.
+    // stops an old adapter from calling the new host through the v2 contract.
     expect(entryPoints).not.toContain('EntryPoint = "expo_dotnet_create_runtime_context_result"');
+    expect(entryPoints).not.toContain('EntryPoint = "expo_dotnet_create_runtime_context_result_v2"');
     expect(entryPoints).not.toContain('void CreateRuntimeContextResult(');
-    expect(entryPoints).toContain(`    public static unsafe void CreateRuntimeContextResultV2(
+    expect(entryPoints).toContain(`    public static unsafe void CreateRuntimeContextResultV3(
         nint api,
         nint runtimeHandle,
-        nint appDirectories,
+        nint hostContext,
         RuntimeContextResult* result)`);
   });
 
-  it('emits a versioned app-directories mirror and decoder', () => {
+  it('emits a size-aware host-context mirror and decoder', () => {
     const { adapterPackageRoot, manifest, outputDir } = makeFixture();
 
     generateAggregator(manifest, { outputDir, adapterPackageRoot });
@@ -203,9 +203,9 @@ describe('generateAggregator', () => {
     expect(entryPoints).toContain('public static partial class EntryPoints');
     expect(entryPoints).toContain('private const uint ExpectedHostAbiVersion = 1;');
     expect(entryPoints).toContain('private static readonly UTF8Encoding StrictUtf8 = new(false, true);');
-    // Field order must match expo_dotnet_app_directories in the shared header.
+    // The directory prefix must match the v2 field order in the shared header.
     expect(entryPoints).toContain(`    [StructLayout(LayoutKind.Sequential)]
-    private unsafe struct NativeAppDirectories
+    private unsafe struct NativeHostContext
     {
         public uint Size;
         public uint Version;
@@ -213,10 +213,14 @@ describe('generateAggregator', () => {
         public int CacheDirectoryLength;
         public byte* PersistentFilesDirectory;
         public int PersistentFilesDirectoryLength;
+        public byte* NativeAppVersion;
+        public int NativeAppVersionLength;
+        public byte* NativeBuildVersion;
+        public int NativeBuildVersionLength;
     }`);
 
     // Size is checked before Version, and both before any pointer is read.
-    const sizeCheck = entryPoints.indexOf('if (native->Size < expectedSize)');
+    const sizeCheck = entryPoints.indexOf('if (native->Size < directoryPrefixSize)');
     const versionCheck = entryPoints.indexOf('if (native->Version != ExpectedHostAbiVersion)');
     const firstPointerRead = entryPoints.indexOf('native->CacheDirectory,');
     expect(sizeCheck).toBeGreaterThan(-1);
@@ -226,14 +230,13 @@ describe('generateAggregator', () => {
       'Expo .NET host ABI version mismatch: native={native->Version} managed={ExpectedHostAbiVersion}.'
     );
     expect(entryPoints).toContain(
-      'Expo .NET host app-directories struct is too small. Expected at least {expectedSize}, got {native->Size}.'
+      'Expo .NET host context struct is too small. Expected at least {directoryPrefixSize}, got {native->Size}.'
     );
 
-    // A null struct pointer means both directories are unconfigured; at field
-    // level only (null, 0) does.
+    // A null struct pointer means both directories and metadata are unconfigured.
     expect(entryPoints).toContain(`        if (pointer == 0)
         {
-            return AppDirectories.Unconfigured;
+            return (AppDirectories.Unconfigured, HostAppMetadata.Unconfigured);
         }`);
     expect(entryPoints).toContain(`        if (length < 0)
         {
@@ -250,16 +253,16 @@ describe('generateAggregator', () => {
         return StrictUtf8.GetString(new ReadOnlySpan<byte>(data, length));`);
 
     // The directories must exist before module registration observes the context.
-    const decodeCall = entryPoints.indexOf('var directories = DecodeAppDirectories(appDirectories);');
+    const decodeCall = entryPoints.indexOf('var (directories, metadata) = DecodeHostContext(hostContext);');
     const contextConstruction = entryPoints.indexOf(
-      'var context = new DotnetRuntimeContext(runtime, directories);'
+      'var context = new DotnetRuntimeContext(runtime, directories, metadata);'
     );
     expect(decodeCall).toBeGreaterThan(-1);
     expect(contextConstruction).toBeGreaterThan(decodeCall);
     expect(entryPoints).not.toContain('new DotnetRuntimeContext(runtime);');
   });
 
-  it('compiles and runs the generated host against the app-directories ABI', () => {
+  it('compiles and runs the generated host against the extensible host-context ABI', () => {
     // Resolve symlinks: MSBuild resolves ProjectReference paths against the real
     // csproj directory, and on macOS the temp root reaches it through /var.
     const root = fs.realpathSync(makeTempRoot());

@@ -305,6 +305,52 @@ public sealed class DotnetRuntimeContextTests
   }
 
   [Fact]
+  public void HostAppMetadataKeepsIndependentNativeVersionsWithoutInventingDefaults()
+  {
+    var appVersion = new string("1.2.3".ToCharArray());
+    var metadata = new HostAppMetadata(appVersion, null);
+
+    Assert.Same(appVersion, metadata.NativeAppVersion);
+    Assert.Null(metadata.NativeBuildVersion);
+    Assert.Null(new HostAppMetadata(null, "7").NativeAppVersion);
+    Assert.Equal("7", new HostAppMetadata(null, "7").NativeBuildVersion);
+    Assert.Null(HostAppMetadata.Unconfigured.NativeAppVersion);
+    Assert.Null(HostAppMetadata.Unconfigured.NativeBuildVersion);
+  }
+
+  [Theory]
+  [InlineData("")]
+  [InlineData(" \t ")]
+  [InlineData("1\0bad")]
+  public void HostAppMetadataRejectsMalformedSuppliedVersions(string invalid)
+  {
+    Assert.Throws<ArgumentException>(() => new HostAppMetadata(invalid, null));
+    Assert.Throws<ArgumentException>(() => new HostAppMetadata(null, invalid));
+  }
+
+  [Fact]
+  public void ContextExposesHostMetadataDuringLifetimeAndRejectsNullInput()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var metadata = new HostAppMetadata("1.0", "9");
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime, AppDirectories.Unconfigured, metadata);
+      using var defaultContext = new DotnetRuntimeContext(runtime);
+      Assert.Same(metadata, context.AppMetadata);
+      Assert.Null(defaultContext.AppMetadata.NativeAppVersion);
+      Assert.Throws<ArgumentNullException>(
+          () => new DotnetRuntimeContext(runtime, AppDirectories.Unconfigured, null!)
+      );
+
+      context.Dispose();
+      Assert.Throws<ObjectDisposedException>(() => _ = context.AppMetadata);
+      return true;
+    });
+  }
+
+  [Fact]
   public void DefaultAppDirectoriesLeaveBothValuesUnconfigured()
   {
     var directories = new AppDirectories();

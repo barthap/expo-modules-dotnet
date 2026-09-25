@@ -3,8 +3,11 @@
 #include "ExpoModulesDotnetInstaller.h"
 
 #include <ReactNotificationService.h>
+#include <appmodel.h>
+#include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.Storage.h>
 
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -132,6 +135,25 @@ ResolvedAppDirectories resolveAppDirectories()
   return directories;
 }
 
+std::optional<std::string> resolveNativeBuildVersion()
+{
+  // Package.Current is only valid in a packaged process. Check identity first
+  // so only the known no-package case maps to an unavailable version.
+  UINT32 packageIdLength = 0;
+  const LONG packageStatus = GetCurrentPackageId(&packageIdLength, nullptr);
+  if (packageStatus == APPMODEL_ERROR_NO_PACKAGE) {
+    return std::nullopt;
+  }
+  if (packageStatus != ERROR_INSUFFICIENT_BUFFER) {
+    throw std::runtime_error("GetCurrentPackageId failed with Windows error " +
+                             std::to_string(packageStatus) + ".");
+  }
+
+  const auto version = winrt::Windows::ApplicationModel::Package::Current().Id().Version();
+  return std::to_string(version.Major) + "." + std::to_string(version.Minor) + "." +
+         std::to_string(version.Build) + "." + std::to_string(version.Revision);
+}
+
 } // namespace
 
 struct ExpoModulesDotnetInstaller::InstalledRuntime final
@@ -154,7 +176,7 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
   {
     auto entryPoints = expo::modules::dotnet::resolveRuntimeContextEntryPoints(moduleConfig);
 
-    if (entryPoints.createRuntimeContextV2 == nullptr ||
+    if (entryPoints.createRuntimeContextV3 == nullptr ||
         entryPoints.teardownRuntimeContext == nullptr) {
       error = expo::modules::dotnet::managedLoaderLastError();
       if (error.empty()) {
@@ -166,30 +188,32 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
     }
 
     // The struct borrows these strings for the duration of the create call, so
-    // both must live in this frame until the call returns. A null pointer means
-    // both directories are unconfigured.
+    // they must live in this frame until the call returns.
     const auto appDirectories = resolveAppDirectories();
-    expo::modules::dotnet::expo_dotnet_app_directories directories{};
-    const expo::modules::dotnet::expo_dotnet_app_directories *directoriesPointer = nullptr;
+    const auto buildVersion = resolveNativeBuildVersion();
+    expo::modules::dotnet::expo_dotnet_host_context hostContext{};
+    hostContext.size = sizeof(hostContext);
+    hostContext.version = EXPO_DOTNET_HOST_ABI_VERSION;
     if (appDirectories.isConfigured()) {
-      directories.size = sizeof(directories);
-      directories.version = EXPO_DOTNET_HOST_ABI_VERSION;
-      directories.cache_directory =
+      hostContext.cache_directory =
         reinterpret_cast<const uint8_t *>(appDirectories.cacheDirectory.data());
-      directories.cache_directory_length =
+      hostContext.cache_directory_length =
         static_cast<int32_t>(appDirectories.cacheDirectory.size());
-      directories.persistent_files_directory =
+      hostContext.persistent_files_directory =
         reinterpret_cast<const uint8_t *>(appDirectories.persistentFilesDirectory.data());
-      directories.persistent_files_directory_length =
+      hostContext.persistent_files_directory_length =
         static_cast<int32_t>(appDirectories.persistentFilesDirectory.size());
-      directoriesPointer = &directories;
       logMessage(L"[ExpoModulesDotnet] App directories configured: cache=app-scoped, "
                  L"persistent=app-scoped.");
     }
+    if (buildVersion.has_value()) {
+      hostContext.native_build_version = reinterpret_cast<const uint8_t *>(buildVersion->data());
+      hostContext.native_build_version_length = static_cast<int32_t>(buildVersion->size());
+    }
 
     expo::modules::dotnet::RuntimeContextResult result;
-    entryPoints.createRuntimeContextV2(
-      expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, directoriesPointer, &result);
+    entryPoints.createRuntimeContextV3(
+      expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, &hostContext, &result);
     if (result.ok == 0 || result.runtimeContext == nullptr) {
       error = takeRuntimeContextError(result.error);
       if (error.empty()) {

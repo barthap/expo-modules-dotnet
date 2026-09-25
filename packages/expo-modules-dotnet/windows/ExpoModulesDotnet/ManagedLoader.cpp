@@ -16,12 +16,12 @@ namespace {
 
 constexpr const wchar_t *kManagedSubdirectory = L"Managed";
 constexpr const wchar_t *kLoaderMarkerFile = L"ExpoDotnetHost.loader";
-constexpr const char *kCreateRuntimeContextV2Symbol =
-  "expo_dotnet_create_runtime_context_result_v2";
+constexpr const char *kCreateRuntimeContextV3Symbol =
+  "expo_dotnet_create_runtime_context_result_v3";
 constexpr const char *kTeardownRuntimeContextSymbol = "expo_dotnet_teardown_runtime_context";
 constexpr const wchar_t *kEntryPointType =
   L"Expo.ModulesCore.Generated.EntryPoints, ExpoDotnetHost";
-constexpr const wchar_t *kCreateRuntimeContextV2Method = L"CreateRuntimeContextResultV2";
+constexpr const wchar_t *kCreateRuntimeContextV3Method = L"CreateRuntimeContextResultV3";
 constexpr const wchar_t *kTeardownRuntimeContextMethod = L"TeardownRuntimeContext";
 
 std::mutex g_errorMutex;
@@ -323,14 +323,14 @@ ManagedRuntimeContextEntryPoints resolveRuntimeContextEntryPoints(const ManagedM
   ManagedRuntimeContextEntryPoints entryPoints;
   switch (config.loaderKind) {
   case ManagedLoaderKind::NativeAot:
-    entryPoints.createRuntimeContextV2 = reinterpret_cast<CreateRuntimeContextV2Fn>(
-      resolveNativeAotSymbol(config, kCreateRuntimeContextV2Symbol));
+    entryPoints.createRuntimeContextV3 = reinterpret_cast<CreateRuntimeContextV3Fn>(
+      resolveNativeAotSymbol(config, kCreateRuntimeContextV3Symbol));
     entryPoints.teardownRuntimeContext = reinterpret_cast<TeardownRuntimeContextFn>(
       resolveNativeAotSymbol(config, kTeardownRuntimeContextSymbol));
     break;
   case ManagedLoaderKind::HostFxr:
-    entryPoints.createRuntimeContextV2 = reinterpret_cast<CreateRuntimeContextV2Fn>(
-      resolveHostFxrMethod(config, kCreateRuntimeContextV2Method));
+    entryPoints.createRuntimeContextV3 = reinterpret_cast<CreateRuntimeContextV3Fn>(
+      resolveHostFxrMethod(config, kCreateRuntimeContextV3Method));
     entryPoints.teardownRuntimeContext = reinterpret_cast<TeardownRuntimeContextFn>(
       resolveHostFxrMethod(config, kTeardownRuntimeContextMethod));
     break;

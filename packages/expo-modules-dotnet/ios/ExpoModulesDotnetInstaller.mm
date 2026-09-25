@@ -56,10 +56,10 @@ void *resolveAggregatorSymbol(const char *symbolName)
   return symbol;
 }
 
-expo::modules::dotnet::CreateRuntimeContextV2Fn resolveCreateRuntimeContextV2()
+expo::modules::dotnet::CreateRuntimeContextV3Fn resolveCreateRuntimeContextV3()
 {
-  auto *symbol = resolveAggregatorSymbol("expo_dotnet_create_runtime_context_result_v2");
-  return reinterpret_cast<expo::modules::dotnet::CreateRuntimeContextV2Fn>(symbol);
+  auto *symbol = resolveAggregatorSymbol("expo_dotnet_create_runtime_context_result_v3");
+  return reinterpret_cast<expo::modules::dotnet::CreateRuntimeContextV3Fn>(symbol);
 }
 
 expo::modules::dotnet::TeardownRuntimeContextFn resolveTeardownRuntimeContext()
@@ -129,9 +129,9 @@ public:
     }
 
     try {
-      auto createRuntimeContextV2 = resolveCreateRuntimeContextV2();
+      auto createRuntimeContextV3 = resolveCreateRuntimeContextV3();
       auto teardownRuntimeContext = resolveTeardownRuntimeContext();
-      if (createRuntimeContextV2 == nullptr || teardownRuntimeContext == nullptr) {
+      if (createRuntimeContextV3 == nullptr || teardownRuntimeContext == nullptr) {
         const std::string lastError =
           "Failed to resolve structured create/teardown runtime context entry points. "
           "Run the expo-modules-dotnet-autolinking link command (or a full app build, "
@@ -146,8 +146,8 @@ public:
       }
 
       expo::modules::dotnet::RuntimeContextResult result;
-      // A null app-directories pointer means both directories are unconfigured.
-      createRuntimeContextV2(
+      // A null host-context pointer means all host inputs are unconfigured.
+      createRuntimeContextV3(
         expo::dotnet::reactNativeExpoJsiApi(), runtimeHandle, nullptr, &result);
       if (result.ok == 0 || result.runtimeContext == nullptr) {
         auto lastError = takeRuntimeContextError(result.error);

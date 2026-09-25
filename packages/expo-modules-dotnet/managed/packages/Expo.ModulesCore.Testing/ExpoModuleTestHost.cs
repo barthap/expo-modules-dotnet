@@ -57,8 +57,20 @@ public sealed class ExpoModuleTestHost : IDisposable
       AppDirectories directories,
       Action<DotnetRuntimeContext, JavaScriptObject> register
   )
+      => Create(directories, HostAppMetadata.Unconfigured, register);
+
+  /// <summary>
+  /// Creates a host with explicit app-scoped directories and native app versions.
+  /// Both inputs are available during module registration.
+  /// </summary>
+  public static ExpoModuleTestHost Create(
+      AppDirectories directories,
+      HostAppMetadata metadata,
+      Action<DotnetRuntimeContext, JavaScriptObject> register
+  )
   {
     ArgumentNullException.ThrowIfNull(directories);
+    ArgumentNullException.ThrowIfNull(metadata);
     ArgumentNullException.ThrowIfNull(register);
     HermesTestRuntime? testRuntime = null;
     try
@@ -66,7 +78,7 @@ public sealed class ExpoModuleTestHost : IDisposable
       testRuntime = HermesTestRuntime.Create();
       var context = testRuntime.Runtime.Execute(runtime =>
       {
-        var created = new DotnetRuntimeContext(runtime, directories);
+        var created = new DotnetRuntimeContext(runtime, directories, metadata);
         try
         {
           using var modules = created.ModuleRegistry.GetOrCreateDotnetModulesObject();

@@ -129,24 +129,24 @@ using Expo.ModulesCore;
 namespace Expo.ModulesCore.Generated;
 
 // Partial so the autolinking ABI harness fixture, compiled into the same
-// assembly, can exercise the private app-directories decoder without widening
+// assembly, can exercise the private host-context decoder without widening
 // its visibility in a shipped app.
 public static partial class EntryPoints
 {
     private const uint ExpectedHostAbiVersion = 1;
 
-    // Strict decoding, matching Expo.JSI: an invalid UTF-8 host path is a bug to
+    // Strict decoding, matching Expo.JSI: invalid UTF-8 host input is a bug to
     // report, never something to silently repair with replacement characters.
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     [UnmanagedCallersOnly(
-        EntryPoint = "expo_dotnet_create_runtime_context_result_v2",
+        EntryPoint = "expo_dotnet_create_runtime_context_result_v3",
         CallConvs = new[] { typeof(CallConvCdecl) }
     )]
-    public static unsafe void CreateRuntimeContextResultV2(
+    public static unsafe void CreateRuntimeContextResultV3(
         nint api,
         nint runtimeHandle,
-        nint appDirectories,
+        nint hostContext,
         RuntimeContextResult* result)
     {
         if (result is null)
@@ -156,7 +156,7 @@ public static partial class EntryPoints
 
         try
         {
-            var context = CreateRuntimeContextCore(api, runtimeHandle, appDirectories);
+            var context = CreateRuntimeContextCore(api, runtimeHandle, hostContext);
             result->Ok = 1;
             result->RuntimeContext = context;
             result->Error = default;
@@ -187,14 +187,14 @@ public static partial class EntryPoints
     private static unsafe nint CreateRuntimeContextCore(
         nint api,
         nint runtimeHandle,
-        nint appDirectories)
+        nint hostContext)
     {
-        // Decode first: the directories must be present before
+        // Decode first: host-owned inputs must be present before
         // LinkedExpoModulesProvider.Register runs, because a module constructor
         // can already observe the context there.
-        var directories = DecodeAppDirectories(appDirectories);
+        var (directories, metadata) = DecodeHostContext(hostContext);
         var runtime = JavaScriptRuntime.FromNative(api, runtimeHandle);
-        var context = new DotnetRuntimeContext(runtime, directories);
+        var context = new DotnetRuntimeContext(runtime, directories, metadata);
         try
         {
             LinkedExpoModulesProvider.Register(context);
@@ -280,13 +280,13 @@ public static partial class EntryPoints
         }
     }
 
-    // Mirrors expo_dotnet_app_directories in
+    // Mirrors expo_dotnet_host_context in
     // expo-modules-dotnet/native/include/expo_dotnet_host.h. The field order and
     // types must match that header exactly; the header carries static_assert
     // checks for its own layout, and the autolinking ABI harness asserts this
     // one.
     [StructLayout(LayoutKind.Sequential)]
-    private unsafe struct NativeAppDirectories
+    private unsafe struct NativeHostContext
     {
         public uint Size;
         public uint Version;
@@ -294,23 +294,29 @@ public static partial class EntryPoints
         public int CacheDirectoryLength;
         public byte* PersistentFilesDirectory;
         public int PersistentFilesDirectoryLength;
+        public byte* NativeAppVersion;
+        public int NativeAppVersionLength;
+        public byte* NativeBuildVersion;
+        public int NativeBuildVersionLength;
     }
 
-    // A null struct pointer means the host configured neither directory. Size is
-    // checked before Version, and both before any pointer field is read.
-    private static unsafe AppDirectories DecodeAppDirectories(nint pointer)
+    // A null pointer configures nothing. Size is checked before Version and
+    // payload fields; appended pairs are read only when their whole prefix fits.
+    private static unsafe (AppDirectories, HostAppMetadata) DecodeHostContext(nint pointer)
     {
         if (pointer == 0)
         {
-            return AppDirectories.Unconfigured;
+            return (AppDirectories.Unconfigured, HostAppMetadata.Unconfigured);
         }
 
-        var native = (NativeAppDirectories*)pointer;
-        var expectedSize = (uint)sizeof(NativeAppDirectories);
-        if (native->Size < expectedSize)
+        var native = (NativeHostContext*)pointer;
+        var directoryPrefixSize = (uint)(sizeof(void*) == 8 ? 40 : 24);
+        var appVersionPrefixSize = (uint)(sizeof(void*) == 8 ? 56 : 32);
+        var buildVersionPrefixSize = (uint)sizeof(NativeHostContext);
+        if (native->Size < directoryPrefixSize)
         {
             throw new InvalidOperationException(
-                $"Expo .NET host app-directories struct is too small. Expected at least {expectedSize}, got {native->Size}."
+                $"Expo .NET host context struct is too small. Expected at least {directoryPrefixSize}, got {native->Size}."
             );
         }
         if (native->Version != ExpectedHostAbiVersion)
@@ -319,8 +325,15 @@ public static partial class EntryPoints
                 $"Expo .NET host ABI version mismatch: native={native->Version} managed={ExpectedHostAbiVersion}."
             );
         }
+        if ((native->Size > directoryPrefixSize && native->Size < appVersionPrefixSize)
+            || (native->Size > appVersionPrefixSize && native->Size < buildVersionPrefixSize))
+        {
+            throw new InvalidOperationException(
+                $"Expo .NET host context size {native->Size} ends inside a known optional field (partial pair)."
+            );
+        }
 
-        return new AppDirectories(
+        var directories = new AppDirectories(
             DecodeDirectory(native->CacheDirectory, native->CacheDirectoryLength, "cache_directory"),
             DecodeDirectory(
                 native->PersistentFilesDirectory,
@@ -328,6 +341,15 @@ public static partial class EntryPoints
                 "persistent_files_directory"
             )
         );
+        var metadata = new HostAppMetadata(
+            native->Size >= appVersionPrefixSize
+                ? DecodeDirectory(native->NativeAppVersion, native->NativeAppVersionLength, "native_app_version")
+                : null,
+            native->Size >= buildVersionPrefixSize
+                ? DecodeDirectory(native->NativeBuildVersion, native->NativeBuildVersionLength, "native_build_version")
+                : null
+        );
+        return (directories, metadata);
     }
 
     // The strings are borrowed for the duration of the create call, so copy them
