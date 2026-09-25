@@ -6,32 +6,38 @@ namespace ExpoConstantsDotnet;
 public sealed partial class ExpoConstantsModule : Module
 {
   private readonly HostAppMetadata metadata;
+  private readonly string sessionId;
 
   public ExpoConstantsModule(DotnetRuntimeContext context)
       : base(context)
   {
     metadata = context.AppMetadata;
-    Platform = RequireSupportedPlatform(OperatingSystem.IsWindows(), OperatingSystem.IsMacOS());
-    SessionId = Guid.NewGuid().ToString("D");
+    sessionId = Guid.NewGuid().ToString("D");
   }
 
   [JS]
-  public string Platform { get; }
+  public string Platform => RequireSupportedPlatform(OperatingSystem.IsWindows(), OperatingSystem.IsMacOS());
 
   [JS]
-  public string ExecutionEnvironment => "bare";
+  public string ExecutionEnvironment => RequireSupportedHostValue("bare");
 
   [JS]
-  public string SessionId { get; }
+  public string SessionId => RequireSupportedHostValue(sessionId);
 
   [JS]
-  public string? NativeAppVersion => metadata.NativeAppVersion;
+  public string? NativeAppVersion => RequireSupportedHostValue(metadata.NativeAppVersion);
 
   [JS]
-  public string? NativeBuildVersion => metadata.NativeBuildVersion;
+  public string? NativeBuildVersion => RequireSupportedHostValue(metadata.NativeBuildVersion);
 
   [JS]
-  public string? ExpoVersion => null;
+  public string? ExpoVersion => RequireSupportedHostValue<string?>(null);
+
+  private static T RequireSupportedHostValue<T>(T value)
+  {
+    _ = RequireSupportedPlatform(OperatingSystem.IsWindows(), OperatingSystem.IsMacOS());
+    return value;
+  }
 
   internal static string RequireSupportedPlatform(bool isWindows, bool isMacOS)
   {
