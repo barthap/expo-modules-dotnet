@@ -4,7 +4,7 @@
 > verification command and confirm the expected result before moving to the
 > next step. If anything in the "STOP conditions" section occurs, stop and
 > report — do not improvise. When done, update the status row for this plan
-> in `docs/plans/README.md` — unless a reviewer dispatched you and told you
+> in `docs/roadmap.md` — unless a reviewer dispatched you and told you
 > they maintain the index.
 >
 > **Prerequisite**: This plan requires a Windows machine with VS 2026 and the
@@ -118,7 +118,7 @@ deliverable is precisely to record what is actually broken.)
   notes, resolver design doc, and the spec delta
 - `docs/specs/runtime-and-abi.md` — Windows resolution contract (step 4)
 - `docs/roadmap.md` — Windows bullets (step 5)
-- `docs/plans/README.md` (status row only)
+- `docs/roadmap.md` (status row only)
 
 **Out of scope** (do NOT touch, even though they look related):
 
@@ -253,7 +253,7 @@ Machine-checkable / evidence-backed. ALL must hold:
 - [x] No committed file contains local absolute paths, usernames, or machine
       names (verified by the closeout staged-content scan).
 - [x] No files outside the in-scope list are modified.
-- [x] `docs/plans/README.md` status row is updated.
+- [x] `docs/roadmap.md` status row is updated.
 
 ## STOP conditions
 

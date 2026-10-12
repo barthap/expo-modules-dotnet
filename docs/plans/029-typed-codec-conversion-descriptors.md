@@ -6,14 +6,14 @@
 > report, do not improvise. This plan is behavior-preserving, so do not create a
 > delta spec or a second implementation plan. If implementation requires any
 > behavior change, stop; that change must use the living-spec workflow
-> separately. Update the status row in `docs/plans/README.md` when done unless a
+> separately. Update the status row in `docs/roadmap.md` when done unless a
 > reviewer says they maintain it.
 >
 > **Drift check (run first)**:
 > ```sh
-> git diff --stat 512ab46e..HEAD -- docs/plans/README.md packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests
+> git diff --stat 512ab46e..HEAD -- packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests
 > ```
-> Plan 028 in `docs/plans/README.md` must be DONE before this plan starts. If it
+> Plan 028 in `docs/roadmap.md` must be DONE before this plan starts. If it
 > is not DONE, or if codec resolution, shared-object boundary classification,
 > generator model types, or generated output-contract helpers changed, compare
 > the live code with "Current state." A semantic mismatch is a STOP condition.
@@ -25,7 +25,7 @@
 - **Risk**: HIGH (behavior-preserving refactor of the generated-binding hot
   path; a wrong descriptor silently changes ownership or context handling)
 - **Depends on**: plan 028, annotation-insensitive shared-object boundary
-  detection, currently indexed in `docs/plans/README.md`
+  detection, currently indexed in `docs/roadmap.md`
 - **Blocks**: plans 030–033
 - **Category**: tech-debt
 - **Planned at**: commit `512ab46e`, 2026-07-25
@@ -147,7 +147,7 @@ have one source of truth.
 | Managed regression | `scripts/test-managed.sh` | all discovered managed tests pass |
 | Format | `scripts/format.sh --check --all` | exit 0, no files need formatting |
 | String-policy scan | `rg -n 'CodecExpression.*(StartsWith|==| is )|StartsWith\\(\"(JavaScriptArrayCodec|JavaScriptDictionaryCodec|SharedObjectCodec)|is \"(JavaScriptValueCodec|ArrayBufferCodec)\"' packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator` | no production-code matches |
-| Changed paths | `git status --short` | only generator, generator-test, and `docs/plans/README.md` paths |
+| Changed paths | `git status --short` | only generator, generator-test, and `docs/roadmap.md` paths |
 
 ## Suggested executor toolkit
 
@@ -161,7 +161,7 @@ have one source of truth.
 
 **In scope**:
 
-- `docs/plans/README.md`
+- `docs/roadmap.md`
 - `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/ExpoModuleModel.cs`
 - `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/ExpoSharedObjectModel.cs`
 - A new descriptor-model file in that same generator project, if useful
@@ -286,7 +286,7 @@ plan.
 
 ### Step 6: Close the plan
 
-Mark plan 029 DONE in `docs/plans/README.md`. Record the test count and
+Mark plan 029 DONE in `docs/roadmap.md`. Record the test count and
 implementation commits in the status row. Do not edit the living spec for a
 behavior-preserving representation change.
 

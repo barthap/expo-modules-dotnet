@@ -93,7 +93,8 @@ For current implementation work:
    generator wiring and authoring background
 6. `docs/module-authoring-guide.md` for a practical, tutorial-style guide to
    writing a .NET-backed Expo module using `packages/example-module`
-7. `docs/roadmap.md` for forward direction
+7. `docs/roadmap.md` for direction, open work, and status; open briefs live
+   in `docs/plans/`
 8. `docs/archive/` only when historical rationale or proof evidence is needed
 
 `docs/archive/learning-guide/` holds educational walkthroughs written before
@@ -102,7 +103,9 @@ implementation, tests, and `docs/specs/` always win where they conflict.
 
 ## Spec Workflow
 
-This repo uses a living-spec workflow:
+This repo uses a living-spec workflow. `docs/roadmap.md` is the only
+backlog and status tracker: discover mode adds briefs under `docs/plans/` and
+roadmap rows, and each slice below starts from one roadmap item.
 
 1. Brainstorm the feature through Superpowers or the equivalent manual flow.
 2. Write the approved design as `docs/changes/<yyyy-mm-dd-slug>/spec.md`.
@@ -112,6 +115,7 @@ This repo uses a living-spec workflow:
 6. Implement and verify behavior with focused commits for plan/task slices.
 7. Merge accepted deltas into `docs/specs/`.
 8. Archive or remove transient planning artifacts.
+9. Mark the roadmap row DONE and move its brief to `docs/archive/plans/`.
 
 A change spec is for a milestone that is ready to continue into planning and
 implementation. For pure exploration, keep decisions in the conversation or

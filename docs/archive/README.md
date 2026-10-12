@@ -11,6 +11,9 @@ tests, or `docs/specs/`.
 - `spike-results/`: completed proof notes and command evidence.
 - `superpowers/specs/`: one-slice Superpowers design specs.
 - `superpowers/plans/`: detailed execution plans produced for past work.
+- `plans/`: briefs for DONE roadmap items, plus the old
+  `docs/plans/README.md` index with its execution and reconcile notes.
+- `changes/`: delta specs and implementation plans for closed slices.
 - `learning-guide/`: educational walkthroughs written before this repo's code
   existed; superseded by `docs/specs/` and current code.
 

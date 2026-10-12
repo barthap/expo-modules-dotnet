@@ -5,12 +5,12 @@
 > only the files in the In-scope list. If a STOP condition occurs, stop and
 > report, do not improvise. Follow the repo's living-spec workflow: approved
 > delta spec first, then an approved change-local plan, then implementation.
-> Update the status row in `docs/plans/README.md` when done unless a reviewer
+> Update the status row in `docs/roadmap.md` when done unless a reviewer
 > says they maintain it.
 >
 > **Drift check (run first)**:
 > ```sh
-> git diff --stat 512ab46e..HEAD -- packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/Codecs packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests docs/specs/ownership-and-scoped-refs.md docs/specs/modules-core-boundary.md docs/module-authoring-guide.md docs/plans/README.md
+> git diff --stat 512ab46e..HEAD -- packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/Codecs packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests docs/specs/ownership-and-scoped-refs.md docs/specs/modules-core-boundary.md docs/module-authoring-guide.md docs/roadmap.md
 > ```
 > Plans 028 and 029 must be DONE. Re-run this drift check from plan 029's final
 > commit before implementation. If `ExpoCodecDescriptor`, generated invocation
@@ -294,7 +294,7 @@ diagnostic for a typed event payload record/list/dictionary containing a nested
 - `docs/specs/ownership-and-scoped-refs.md`
 - `docs/specs/modules-core-boundary.md`
 - `docs/module-authoring-guide.md`
-- `docs/plans/README.md`
+- `docs/roadmap.md`
 - New scope, scoped protocol, and adapter files under
   `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/Codecs/`
 - Existing codec files in that directory only where delegation or visibility

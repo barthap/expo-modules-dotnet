@@ -1,341 +1,193 @@
-# High-Level Roadmap
+# Roadmap
 
-This roadmap is derived from the archived planning docs, spike results, and the
-current living specs. The living specs in `docs/specs/` are authoritative for
-current behavior; archived docs provide provenance.
+This file is the only backlog and status tracker for the repo. The
+`living-spec-workflow` skill
+(`.agents/skills/living-spec-workflow/SKILL.md`) owns it: discover mode adds
+briefs and rows, and deliver mode moves a row to DONE when its slice closes.
 
-## Current Baseline
+Current behavior lives in `docs/specs/`. This file records direction, open
+work, and what was decided not to do. It does not describe shipped behavior.
 
-- The low-level C ABI is
-  `packages/expo-modules-dotnet/native/include/expo_jsi.h`.
-- The low-level managed package is
-  `packages/expo-modules-dotnet/managed/packages/Expo.JSI`.
-- The Hermes-backed managed verification path is `scripts/test-managed.sh`.
-- The generated-binding helper package is
-  `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore`.
-- Module dispatch and conversion coverage lives under
-  `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests`.
-- `apps/mobile-app` is the accepted NativeAOT React Native integration example
-  app. It validates the adapter seam and now participates in the shared
-  `DotnetRuntimeContext` lifecycle model; production mobile-adapter hardening
-  (trimming/export audits, platform-specific constraints) continues in P3.
-- `apps/desktop-app` is the accepted Expo Desktop / React Native macOS
-  integration example app. It validates HostFXR-managed module registration
-  and the generated synchronous module path on the React Native 0.81 macOS
-  lane, with runtime teardown owned by the package adapter.
-- `apps/desktop-app` also contains a React Native Windows example app. Direct
-  MSBuild validates the Windows adapter, HostFXR artifact staging, and app
-  output layout on the React Native Windows 0.81 lane. Windows now follows the
-  shared `DotnetRuntimeContext` lifecycle shape. Windows verification on
-  2026-07-23 passed direct MSBuild, RNW CLI build/deploy and launch, and a
-  live-app rebuild attempt without reproducing a PDB lock.
+## Direction
 
-## Priority Roadmap
+The repo is the portable C# / JSI bridge successor to `expo-modules-windows`.
+C++ owns JSI mechanics, C# owns module logic, and a C ABI with opaque handles
+connects them.
 
-### P0: Cross-Host Lifecycle And Scheduler Evidence
+Milestone order:
 
-Status: complete. The portable lifecycle/scheduler contract is now derived from
-mobile, macOS, and Windows host evidence and implemented across the shared
-managed core, headless testhost, and platform adapters. There are no active P0
-roadmap items after this milestone; remaining work is P1+ production hardening,
-autolinking, prebuild/config-plugin integration, and broader module APIs.
+1. **Bridge and authoring core** (shipped): ABI, managed JSI wrappers,
+   lifecycle, scheduling, generated bindings, codecs, events, ArrayBuffer,
+   SharedObject, and autolinking across Android, iOS, macOS, and Windows.
+2. **Authored modules** (in progress): real `expo-*-dotnet` packages for
+   Windows and macOS, in this order: asset, constants, local file system,
+   crypto. They exist so expo-desktop can later drop its JS polyfill. They
+   register only into `_expoDotnet.modules` for now.
+3. **Upstream compatibility** (later): opt-in per-module registration into
+   `globalThis.expo.modules`, owned by autolinking policy. Startup ordering
+   against expo-desktop is undecided, so this is not a defined milestone yet.
+4. **Production hardening**: mobile NativeAOT trimming and export audits,
+   desktop packaging, and Expo Desktop prebuild integration.
 
-Completed scope:
+Standing quality rule: authored modules use no workarounds for missing core
+features. Fix the core first, as plans 026 and 027 did.
 
-1. **React Native macOS lifecycle/scheduler validation**
-   - `apps/desktop-app` mounts the bridge into a real React Native macOS host.
-   - Generated synchronous C# module functions run as direct JSI host functions.
-   - HostFXR and NativeAOT loader paths resolve app-composed `expo_dotnet_*`
-     entry points.
-   - The macOS adapter owns one active runtime record and tears down the managed
-     `DotnetRuntimeContext` from module invalidation.
+## Status
 
-2. **React Native Windows lifecycle/scheduler validation**
-   - `apps/desktop-app/windows` and `packages/expo-modules-dotnet/windows`
-     validate the RNW adapter, HostFXR artifact staging, and direct MSBuild app
-     output.
-   - The Windows adapter uses the same app-composed `expo_dotnet_*` lifecycle
-     entry points and owns one managed `DotnetRuntimeContext` per RNW runtime.
-   - RNW `InstanceDestroyed` is accepted as a late no-JSI teardown signal for
-     the current context teardown semantics.
+Status values: `TODO`, `IN PROGRESS`, `DONE`, `OPEN` (follow-up remains),
+`BACKLOG` (nice-to-have), `BLOCKED`, `REJECTED`. Keep cells short; put detail
+in the notes below the table.
 
-3. **Cross-host runtime lifecycle contract**
-   - `DotnetRuntimeContext` owns runtime-scoped module instances,
-     host-function registration state, and managed teardown for one JavaScript
-     runtime.
-   - Host adapters invalidate borrowed runtime holders before managed teardown
-     and release opaque runtime handles after teardown.
-   - Generated synchronous module functions remain direct JSI host functions;
-     host schedulers are used for async runtime work only.
+Open briefs live in `docs/plans/`. Briefs for DONE items move to
+`docs/archive/plans/`.
 
-4. **Teardown contract implementation**
-   - Managed tests cover runtime-context teardown and stale scheduled work.
-   - The headless Hermes testhost models runtime invalidation.
-   - Android, iOS, macOS, and Windows adapters use the shared runtime-context
-     lifecycle model.
+| ID  | Title                                              | Pri   | Effort | Depends on | Status  | Brief                                                                    |
+| --- | -------------------------------------------------- | ----- | ------ | ---------- | ------- | ------------------------------------------------------------------------ |
+| 024 | `expo-file-system-dotnet` local files core         | P1    | L      | —          | TODO    | [024](plans/024-expo-file-system-dotnet.md)                              |
+| 025 | `expo-crypto-dotnet`                               | P1    | M      | 024        | TODO    | [025](plans/025-expo-crypto-dotnet.md)                                   |
+| 028 | Annotation-insensitive shared-object boundaries    | P2    | S      | —          | TODO    | [028](plans/028-annotation-insensitive-shared-object-boundaries.md)      |
+| 029 | Typed codec conversion descriptors                 | P1    | M      | 028        | TODO    | [029](plans/029-typed-codec-conversion-descriptors.md)                   |
+| 030 | Compositional codec resource scope                 | P1    | L      | 029        | TODO    | [030](plans/030-compositional-codec-resource-scope.md)                   |
+| 031 | Nullable ArrayBuffer codecs                        | P1    | M      | 030        | TODO    | [031](plans/031-nullable-arraybuffer-codecs.md)                          |
+| 032 | Nullable JavaScript callback parameters            | P2    | M      | 031        | TODO    | [032](plans/032-nullable-javascript-callback-parameters.md)              |
+| 033 | Nullable concrete SharedObject classes             | P2    | M      | 032        | TODO    | [033](plans/033-nullable-concrete-shared-object-codecs.md)               |
+| 018 | Windows build/deploy reliability + `ReactNativeDir` | P1/P2 | L      | —          | OPEN    | [018](plans/018-windows-build-deploy-reliability.md)                     |
+| 011 | Hermes prebuilts as downloadable artifacts         | P3    | M      | 008        | BACKLOG | —                                                                        |
+| 001 | Fast CI checks workflow                            | P1    | S      | —          | DONE    | [001](archive/plans/001-ci-checks-workflow.md)                           |
+| 002 | Autolinking CLI command tests                      | P1    | M      | —          | DONE    | [002](archive/plans/002-autolinking-cli-command-tests.md)                |
+| 003 | Bridge edge-case tests                             | P2    | M      | —          | DONE    | [003](archive/plans/003-bridge-edge-case-tests.md)                       |
+| 004 | Bridge string hygiene                              | P2    | S      | 003        | DONE    | [004](archive/plans/004-bridge-string-hygiene.md)                        |
+| 005 | Docs refresh and module authoring guide            | P3    | M      | —          | DONE    | [005](archive/plans/005-docs-refresh.md)                                 |
+| 006 | ArrayBuffer and binary codecs                      | P2    | L      | 003        | DONE    | [archived change](archive/changes/2026-07-10-arraybuffer-codecs/)        |
+| 007 | SharedObject design spike                          | P3    | M      | —          | DONE    | [007](archive/plans/007-sharedobject-design-spike.md)                    |
+| 008 | Linux testhost + native tests workflow             | P1    | M–L    | 001        | DONE    | [008](archive/plans/008-linux-testhost-native-ci.md)                     |
+| 009 | Windows testhost teardown crash                    | P1    | M      | 008        | DONE    | [009](archive/plans/009-windows-testhost-teardown-crash.md)              |
+| 010 | Darwin installer lifecycle locking                 | P1    | M      | —          | DONE    | [010](archive/plans/010-darwin-installer-lifecycle-locking.md)           |
+| 012 | Typed JS facade base classes                       | P2    | M      | 005        | DONE    | [012](archive/plans/012-typed-js-facade.md)                              |
+| 013 | camelCase JS naming + `[JS]` properties            | P2    | M      | —          | DONE    | [013](archive/plans/013-camelcase-js-naming-and-properties.md)           |
+| 014 | Typed `[Event]` members                            | P2    | M      | 013        | DONE    | [014](archive/plans/014-typed-event-members.md)                          |
+| 015 | Promise state on runtime-owned collection          | P2    | M      | —          | DONE    | [015](archive/plans/015-promise-long-lived-state.md)                     |
+| 016 | NativeAOT publish check in CI                      | P1    | S      | —          | DONE    | [016](archive/plans/016-nativeaot-ci-lane.md)                            |
+| 017 | SharedObject authoring surface                     | P2    | L      | 015        | DONE    | [017](archive/plans/017-sharedobject-authoring.md)                       |
+| 019 | Typed events on shared objects                     | P2    | M      | 017, 021   | DONE    | [019](archive/plans/019-sharedobject-events.md)                          |
+| 020 | Console app Linux port + loader CI lane            | P1    | M      | 016        | DONE    | [020](archive/plans/020-console-app-linux-port.md)                       |
+| 021 | Owned host-function callback-state disposal        | P2    | S–M    | —          | DONE    | [021](archive/plans/021-hostfunction-owned-state-disposal.md)            |
+| 022 | `expo-asset-dotnet`                                | P1    | M      | 027        | DONE    | [022](archive/plans/022-expo-asset-dotnet.md)                            |
+| 023 | `expo-constants-dotnet`                            | P1    | M      | —          | DONE    | [023](archive/plans/023-expo-constants-dotnet.md)                        |
+| 026 | Nullable reference-type codecs                     | P1    | M      | —          | DONE    | [026](archive/plans/026-nullable-reference-codecs.md)                    |
+| 027 | Host-supplied app directories                      | P1    | L      | —          | DONE    | [027](archive/plans/027-host-supplied-app-directories.md)                |
 
-### P1: Authoring Path And Error Quality
+The next free ID is 034.
 
-1. **Source generator hardening** (complete)
-   - Keep generated bindings direct-call and reflection-free.
-   - Strengthen diagnostics, generated source inspection, and provider shape
-     stability for synchronous `[JS]` functions.
+### Notes on open items
 
-2. **Minimal codec expansion** (complete)
-   - Complete: null / undefined / void return semantics, nullable value types,
-     generic numeric primitive codecs, enums, simple records, and
-     `Dictionary<string, T>` / `IReadOnlyDictionary<string, T>`.
-   - Keep ArrayBuffer, SharedObject, and NativeState out of this slice.
+- **024 → 025**: authored-module order is file system, then crypto. Plan 027
+  already shipped `context.PersistentFilesDirectory`, so 024 needs no ABI work.
+  Plans 028–033 are not prerequisites for either package.
+- **028–033**: one serial chain. 028 fixes the diagnostic baseline for
+  annotated shared-object symbols. 029 replaces codec-name parsing with typed
+  descriptors; no later plan may add another codec-string or `StartsWith`
+  policy check. 030 adds one explicit conversion scope with
+  identity-deduplicated reverse cleanup. 031–033 then apply their own null
+  policies. `JavaScriptValue?` and direct `SharedObject?` / `SharedRef<T>?`
+  bases stay unsupported by design.
+- **018**: direct MSBuild, RNW CLI build/deploy/launch, and live-app rebuild
+  did not reproduce a PDB lock on the RNW 0.81 / VS 2026 lane (2026-07-23).
+  The `ReactNativeDir` resolver helpers stay, but activation waits until
+  expo-desktop supports Windows prebuild and mod execution.
+- **023 known gap**: direct unpackaged Windows startup of the example app was
+  not verified. Tests cover null metadata downstream.
 
-3. **Module package metadata** (complete)
-   - Dotnet Expo module packages declare `platforms: ["dotnet"]` and
-     `dotnet.projects` metadata consumed by the autolinking CLI.
+Older execution, reconcile, and verification notes are archived in
+`docs/archive/plans/README.md`.
 
-4. **Self-contained ABI errors** (complete)
-   - Complete: `expo_jsi_error` messages are self-contained and released through
-     explicit callbacks instead of pointing into `thread_local` storage.
+## Unplanned backlog
 
-5. **camelCase JS naming defaults and `[JS]` properties** (complete)
-   - `[JS]` members and record fields default to lower-camel JavaScript names
-     (explicit `[JS("name")]` overrides); `[JS]` on an instance property
-     exposes a JavaScript accessor property, writable when the C# property has
-     a setter.
+Ideas without a brief. Discover mode or a user request turns one into a brief
+and a status row.
 
-6. **External authored-module testing**
-   - Package `Expo.ModulesCore.Testing` for separate repositories.
-   - Deliver RID-specific Hermes/testhost native assets.
-   - Provide a standalone test command that provisions the native runtime.
+### Modules and compatibility
 
-### P2: Interactive Module Capabilities
+- **P1 — External authored-module testing**: publish
+  `Expo.ModulesCore.Testing` for separate repositories, ship RID-specific
+  Hermes/testhost native assets, and add a standalone test command.
+  Repo-local package tests already exist.
+- **P2 — Upstream compatibility**: opt-in `globalThis.expo.modules`
+  registration (probably an `expo-module.config.json` field), Metro and
+  package-specifier aliasing. Settled: never automatic, autolinking owns the
+  policy, `Expo.ModulesCore` keeps the primitive generic. Undecided: startup
+  ordering against expo-desktop.
+- **P3 — Separate-repo and app-local modules**: planned future authoring
+  workflow; the authoring guide §1 carries the note.
+- **P3 — Generated TypeScript and view modules**: left out of the Expo Modules
+  2.0 alignment; upstream ships them later too.
 
-1. **Function calling from C#** (complete)
-    - `JavaScriptFunction` exposes `Call`, `CallWithThis`, and
-      `CallAsConstructor` over native function-call ABI entries.
-    - `Expo.ModulesCore` supports retained `JavaScriptCallback<TResult>` and
-      `JavaScriptCallback<TArgs, TResult>` parameters for generated modules,
-      with value-tuple argument codecs and callback-specific generator
-      diagnostics.
+### Platform adapters
 
-2. **Async module methods / promises** (complete)
-    - Generate promise-returning bindings for `Task` / `Task<T>` methods after
-      cross-host scheduler semantics are known.
+- **P1 — Desktop packaging cleanup**: macOS HostFXR and NativeAOT example app
+  packaging.
+- **P1 — Expo Desktop prebuild integration**: if `apps/desktop-app` moves to
+  an `expo-desktop` prebuild flow, an Expo config plugin must own the managed
+  artifact build phase, `EXPO_DOTNET_LOADER`, the `ExpoModulesDotnetLoader`
+  `Info.plist` entry, the `Managed` resource folder, and any Podfile shim.
+- **P3 — Mobile NativeAOT hardening**: trimming and export audits plus
+  platform constraints for `apps/mobile-app`.
+- **P3 — View adapters**: platform-specific native views, props, and events.
+  No view concepts in the portable core.
 
-3. **Events / EventEmitter** (complete)
-    - Module-to-JS event emission ships via typed `[Event]` partial properties
-      (`Func<Task>` / `Func<T, Task>`, awaitable dispatch that surfaces codec,
-      scheduling, and teardown failures), built on function calling, async
-      scheduling, and lifecycle-safe teardown. The string-based `[Events]`
-      attribute and `Module.SendEventAsync` remain as the migration/interop
-      path.
+### ABI and codecs
 
-4. **Typed JS facade base classes** (complete)
-    - `DotnetModule` / `DotnetEventEmitter` typed base classes (plus
-      `EventsMap` / `EventSubscription` types) are exported from
-      `expo-modules-dotnet` for module facades to extend.
+- **P2/P3 — Generalized `instanceof`**: beyond Promise and Error, for typed
+  record deserialization and custom class detection.
+- **P2/P3 — Record shape extensions**: explicit per-field naming,
+  non-positional constructors, unknown-field validation, cyclic graphs.
+- **P3 — Script evaluation**: `evaluate_javascript` for dev tooling.
 
-### P2/P3: Richer Runtime Surface
+### Runtime, performance, and tooling
 
-1. **ArrayBuffer / binary data** (complete)
-    - Opaque ABI storage, runtime-owned lifetime, low-level wrappers,
-      module-facing ArrayBuffer ownership, and generated `byte[]` / span
-      codecs are implemented. The approved delta is archived as provenance;
-      current behavior is defined by the living specs.
+- **P2 — Shared-object zero-listener test**: the spec says dispatch with zero
+  listeners succeeds, but no test emits with zero listeners.
+- **P2 — `HostObjectContext` owned-state disposal**: same exactly-once gap
+  that plan 021 fixed for host functions.
+- **P3 — Handle allocation cost**: arena or pool allocation for `ValueHandle`
+  when profiling shows pressure.
+- **P3 — Scheduler priority**: priority stays advisory where the host cannot
+  honor it (React Native `CallInvoker` has no lanes).
+- **P3 — Structured DevTools errors**: separate message and stack fields, and
+  a development-only verbose mode across the ABI.
+- **P3 — Shared native bridge build composition**: one source-set mechanism
+  for Android CMake, Apple sources, testhost, console app, and Windows
+  MSBuild. Build cleanup only; no ABI or lifetime change.
+- **P3 — Two-stage lazy module shells**: only if profiling shows root module
+  property reads are too expensive.
+- **P3 — Installer TurboModule codegen**: native installer glue stays
+  hand-written; revisit only for a concrete codegen need.
 
-2. **Promise long-lived-state migration** (P2 follow-up)
-    - Unify retained Promise capability state with the runtime-owned
-      long-lived-state collection introduced by ArrayBuffer without changing
-      settlement scheduling. Cover unresolved-promise teardown,
-      settlement/teardown races, and idempotent late disposal.
+### CI
 
-3. **HostObject / NativeState / SharedObject**
-    - NativeState is complete as a generic, type-indexed object state primitive
-      and backs ModulesCore EventEmitter identity.
-    - HostObject is complete as a generic low-level property interceptor
-      primitive in `Expo.JSI`.
-    - The SharedObject design spike is complete (GO): opaque weak-object ABI
-      handles, deterministic Hermes GC evidence, and an internal per-context
-      `SharedObjectRegistry` with reference-identity round trips and
-      exactly-once terminal release are implemented and specced. The public
-      authoring surface (`SharedObject`, `[ExpoSharedObject]`, generator
-      bindings, `SharedRef`, TypeScript facade) is the remaining follow-up
-      slice, following upstream class/prototype instances with hidden
-      registry-backed native identity.
+- **P2 — Windows heartbeat**: a periodic Windows end-to-end check, so the
+  flagship platform does not rot while macOS-hosted Hermes tests stay green.
+- **P3 — More CI lanes**: grow `native-tests.yml` as matrix rows: RNW as its
+  own workflow, then Android (with Maestro e2e), then iOS/macOS. No macOS
+  runners for now.
 
-4. **Lazy module initialization**
-    - Complete: `_expoDotnet.modules` is a one-stage HostObject registry.
-      Generated default registration records lazy module definitions, and a
-      module object plus authored module instance are created on first read of
-      the registered root module property.
-    - Future optimization: if profiling shows root module property reads are
-      too expensive, move to a two-stage lazy shell model where root access
-      returns a cached shell and the real module object materializes on first
-      shell access.
+## Considered and rejected
 
-### P3: Optimization And Tooling Polish
+So nobody audits these again:
 
-1. **Handle allocation optimization**
-    - Revisit arena/pool allocation or primitive inline representations when
-      profiling shows handle allocation pressure on hot paths.
-
-2. **Structured DevTools error fields**
-    - Split message and stack fields after simple C# stack trace propagation is
-      working.
-
-3. **Scheduler priority semantics**
-    - Keep priority advisory for hosts that cannot honor it; implement real
-      priority only when a host scheduler exposes that capability.
-
-4. **Shared native bridge build composition**
-   - Define a reusable source-set mechanism for the portable JSI bridge across
-     Android CMake, Apple forward sources, testhost CMake, Hermes console CMake,
-     and Windows MSBuild. This is build-system cleanup only; it must not change
-     the ABI or runtime lifetime contract.
-
-## Backlog: ABI Extensions
-
-These are planned ABI additions required for real module support. Each requires
-coordinated native C++ implementation, C ABI function-pointer additions, and
-managed wrapper surface.
-
-- **P2 — Function calling from C#**: complete. `call_function`,
-  `call_with_this`, and `call_as_constructor` now back managed
-  `JavaScriptFunction` calls and retained generated-module callbacks.
-- **P3 — Script evaluation**: `evaluate_javascript` — needed for dev tooling and
-  dynamic code paths.
-- **P2/P3 — ArrayBuffer**: complete. Opaque ABI handles, runtime-owned
-  lifetime, low-level wrappers, ModulesCore storage, and generated binary
-  codecs now cover the initial production slice.
-- **P2/P3 — HostObject**: complete. Property interceptor pattern backs lazy
-  `_expoDotnet.modules` and future dynamic property access.
-- **P2/P3 — NativeState**: complete. Generic type-indexed object state supports
-  hidden managed state identity without exposing raw JSI layouts or managed
-  object pointers.
-- **P2 — Events / EventEmitter**: complete. Typed `[Event]` members and the
-  legacy `[Events]` / `SendEventAsync` path cover module-to-JS event emission.
-- **P2/P3 — `instanceof` checks**: Generalized beyond current Promise/Error —
-  needed for type-safe record deserialization and custom class detection.
-
-## Backlog: Type Codec Extensions
-
-These are planned type conversions for the source generator and codec layer.
-Each requires a codec implementation, a generator case, and possibly underlying
-ABI support.
-
-- **P1 — `int` / integer types** (complete): Signed and unsigned integer
-  primitives are supported through the generic number codec.
-- **P1 — Nullable types** (complete): `T?` support exists for optional
-  parameters and return values over supported value codecs, and for annotated
-  reference types such as `string?`, `Uri?`, records, and collections.
-  Ownership-bearing types are excluded by design and report a build diagnostic.
-- **P2/P3 — binary codecs** (complete): `ArrayBuffer`, `byte[]`,
-  `Span<byte>`, `ReadOnlySpan<byte>`, `Memory<byte>`, and
-  `ReadOnlyMemory<byte>` are supported. Memory codecs use independent
-  two-way copies and encode only the current logical slice.
-- **P2/P3 — SharedObject references**: Typed handles to shared native state.
-  The internal identity registry spike is GO; the codec/generator surface is
-  the follow-up slice.
-- **P2/P3 — Record shape extensions**: Record fields now default to
-  lower-camel JavaScript names. Remaining: explicit per-field naming,
-  non-positional constructors, unknown-field validation, and cyclic record
-  graphs.
-
-## Backlog: Module System
-
-### Future authored module packages
-
-The first authored C# packages are separate Windows/macOS work items. They use
-the normal `_expoDotnet.modules` registry and do not yet claim upstream Expo
-package compatibility or install aliases into `globalThis.expo.modules`.
-
-1. [`expo-asset-dotnet`](plans/022-expo-asset-dotnet.md) (complete): standalone
-   validated download and app-scoped cache package.
-2. [`expo-constants-dotnet`](plans/023-expo-constants-dotnet.md) (complete):
-   typed host metadata with explicit provenance.
-3. [`expo-file-system-dotnet`](plans/024-expo-file-system-dotnet.md): local
-   `Paths`, `File`, and `Directory` operations for Windows/macOS.
-4. [`expo-crypto-dotnet`](plans/025-expo-crypto-dotnet.md): random and digest
-   operations with ArrayBuffer range-aware native bindings.
-
-- **P1 — Module-authored lifecycle hooks** (complete): `[OnCreate]` and
-  `[OnDestroy]` are generator-backed managed callbacks on top of the
-  runtime-scoped `DotnetRuntimeContext` / `ModuleRegistry` owner.
-- **P2/P3 — Lazy module initialization**: complete. Modules instantiate on
-  first `_expoDotnet.modules.<name>` access instead of eagerly at default
-  provider registration.
-- **P1 — `expo-module.config.json`** (complete): Package metadata for dotnet
-  Expo module libraries is parsed by `expo-modules-dotnet-autolinking`.
-- **P3 — Autolinking** (implemented for macOS/Windows/iOS/Android):
-  Build-time discovery and aggregation of dotnet Expo module packages into the
-  generated `ExpoDotnetHost` provider is implemented. Mobile app builds stage
-  the NativeAOT aggregator through the iOS config plugin/Podfile helper and
-  Android Gradle hook.
-- **P1/P3 — Installer TurboModule shape**: The JavaScript-facing installer has a
-  typed `TurboModule` spec today, but the native Android/iOS/macOS/Windows
-  installer glue is intentionally hand-written. Revisit only if a concrete
-  React Native codegen need appears for the installer surface.
-
-## Backlog: Architecture Improvements
-
-Items identified during architecture review. See
-`docs/assorted/architecture-review.md` for detailed analysis and solution
-options.
-
-- **P3 — Handle allocation cost**: Arena or pool allocator for `ValueHandle` to
-  reduce per-call heap allocation pressure on hot paths (Finding 1).
-- **P3 — Mobile scheduler priority no-op**: `apps/mobile-app` routes
-  through React Native `CallInvoker`, which has no priority lane, so
-  `JsiRuntimeTaskPriority` is advisory/no-op for that example app.
-- **P2 — Promise long-lived JSI state**: ArrayBuffer plan 006 introduces a
-  runtime-owned long-lived-state collection. After it lands, migrate retained
-  Promise capability state onto that collection without changing settlement
-  scheduling. Cover unresolved-promise teardown, settlement/teardown races,
-  and idempotent late disposal.
-
-## Backlog: Dev Tooling
-
-- **P3 — Structured error display**: Separate message and stack fields in error
-  propagation for cleaner DevTools integration.
-- **P3 — Development-only verbose errors**: Compile-time or runtime flag to
-  control error verbosity across the ABI boundary.
-
-## Backlog: Platform Adapters
-
-- **P1 — Desktop packaging cleanup**: The macOS HostFXR and NativeAOT-capable
-  example app lives in `apps/desktop-app`. Lifecycle teardown now follows
-  `DotnetRuntimeContext`; managed module autolinking now owns desktop artifact
-  staging. Remaining production work is packaging cleanup.
-- **P1 — Expo Desktop prebuild integration**: If `apps/desktop-app` moves from
-  a checked-in macOS project to an `expo-desktop` prebuild flow, preserve the
-  current native wiring through an Expo config plugin. The plugin should own the
-  managed artifact build phase, `EXPO_DOTNET_LOADER` build setting,
-  `ExpoModulesDotnetLoader` `Info.plist` entry, `Managed` folder resource, and
-  any macOS Podfile/autolinking shim still required by the supported
-  `expo-desktop` / React Native macOS lane.
-- **P1 — Windows build/deploy reliability** (complete for the current RNW
-  0.81 / VS 2026 lane): Direct MSBuild, RNW CLI build/deploy and launch, and a
-  live-app rebuild attempt were exercised on 2026-07-23 without reproducing a
-  PDB lock or launch failure. No in-repo reliability workaround was warranted.
-- **P2 — Windows `ReactNativeDir` resolution** (deferred until expo-desktop
-  supports Windows prebuild): The package contains an app-root Node resolver
-  and generated-props helper, but standard Expo prebuild does not execute
-  Windows mods and the RNW CLI does not consume Expo config-plugin mods. It is
-  therefore not a supported current build path. Require expo-desktop to provide
-  Windows prebuild/mod execution before making that resolver active. The
-  adapter's isolated `ReactNativeVersion.h` proof remains, with RNW owning JSI
-  and CallInvoker include paths and ArrayBuffer selection remaining
-  declaration-based rather than version-macro based.
-- **P3 — View adapters**: Platform-specific native view creation, prop mapping,
-  event routing. Platform-gated — no view concepts in the portable core.
-- **P3 — NativeAOT for iOS and Android**: The current example app lives under
-  `apps/mobile-app` and now uses shared runtime-context teardown plus mobile
-  autolinking. Production mobile work still needs trimming/export audits and
-  platform-specific constraints.
-
-## Archive Map
-
-- Initial planning docs: `docs/archive/agent-plan/`
-- Completed proof notes: `docs/archive/spike-results/`
-- Historical Superpowers specs and plans: `docs/archive/superpowers/`
-
-Archived documents are useful for rationale and implementation history, but
-they are not authoritative over current code, tests, or `docs/specs/`.
+- GCHandle leak in `CreateHostFunction`: false. The error path releases the
+  handle.
+- Exception messages propagated to JS: by design, per
+  `docs/specs/host-functions-and-errors.md`.
+- Validate raw callback function pointers at the C ABI: not possible.
+- `Substring(1)` bounds in generator `LowerCamel`: safe in .NET.
+- `int32` overflow in the `isValidUtf8` loop: theoretical; lengths come from
+  managed arrays far below `INT32_MAX`.
+- Autolinking tsconfig missing strict mode: false; `strict: true` is set.
+- `CLAUDE.md` "effectively empty": false; it includes `AGENTS.md` by design.
+- Roslyn generator property-name double loop: no measured cost.
+- RN 0.81 vs 0.86 workspace catalogs: deliberate, because RNW requires 0.81.
+- Stripping the `On` prefix from JS event names: keeps the `onStatus`
+  listener convention.
+- TypeScript version drift in autolinking and transitive advisories in
+  desktop-app build tooling: small; revisit if desktop tooling changes.

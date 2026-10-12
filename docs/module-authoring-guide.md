@@ -743,4 +743,4 @@ provide the native testhost.
   and 9–11 above.
 - `docs/specs/promises.md`, `docs/specs/runtime-scheduling.md` — the async/
   threading model behind section 4.
-- `docs/roadmap.md` — what's shipped and what's still planned.
+- `docs/roadmap.md` — direction and what's still planned.

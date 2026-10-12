@@ -5,12 +5,12 @@
 > only the files in the In-scope list. If a STOP condition occurs, stop and
 > report, do not improvise. Follow the repo's living-spec workflow: approved
 > delta spec first, then an approved change-local plan, then implementation.
-> Update the status row in `docs/plans/README.md` when done unless a reviewer
+> Update the status row in `docs/roadmap.md` when done unless a reviewer
 > says they maintain it.
 >
 > **Drift check (run first)**:
 > ```sh
-> git diff --stat 512ab46e..HEAD -- packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/Codecs packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/JavaScriptCallback.cs packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/DotnetRuntimeContext.cs packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests docs/specs/ownership-and-scoped-refs.md docs/specs/modules-core-boundary.md docs/module-authoring-guide.md docs/plans/README.md
+> git diff --stat 512ab46e..HEAD -- packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/Codecs packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/JavaScriptCallback.cs packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/DotnetRuntimeContext.cs packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests docs/specs/ownership-and-scoped-refs.md docs/specs/modules-core-boundary.md docs/module-authoring-guide.md docs/roadmap.md
 > ```
 > Plans 028–031 must be DONE. Rebase the drift check to plan 031's final commit.
 > If callback registration, callback codec arity, descriptor capabilities, or
@@ -143,7 +143,7 @@ Semantics:
 - `docs/specs/ownership-and-scoped-refs.md`
 - `docs/specs/modules-core-boundary.md`
 - `docs/module-authoring-guide.md`
-- `docs/plans/README.md`
+- `docs/roadmap.md`
 - `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/Codecs/JavaScriptCallbackCodec.cs`
 - A dedicated nullable callback codec file in the same directory, if that keeps
   the two arities clear

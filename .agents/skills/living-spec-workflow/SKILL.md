@@ -1,17 +1,19 @@
 ---
 name: living-spec-workflow
-description: "Use for repo-local spec-driven work in expo-modules-csharp: creating or updating living specs, writing delta specs, planning implementation, validating code against specs, archiving old docs, or maintaining the Superpowers/OpenSpec-style workflow for the portable C# / JSI bridge. Applies to ABI changes, Expo.JSI wrapper semantics, ownership/scoped refs, host functions, promises, scheduler/runtime behavior, Hermes testhost work, Expo.ModulesCore planning, NativeAOT/HostFXR proofs, and docs/spec archival."
+description: "Use for repo-local planning and spec-driven work in expo-modules-csharp: auditing the codebase, finding improvements, deciding what to build next, writing roadmap briefs, reconciling docs/roadmap.md, implementing a roadmap item, creating or updating living specs, writing delta specs, planning implementation, validating code against specs, archiving old docs, or maintaining the Superpowers/OpenSpec-style workflow for the portable C# / JSI bridge. Applies to ABI changes, Expo.JSI wrapper semantics, ownership/scoped refs, host functions, promises, scheduler/runtime behavior, Hermes testhost work, Expo.ModulesCore planning, NativeAOT/HostFXR proofs, and docs/spec archival."
 ---
 
 # Living Spec Workflow
 
-Use this skill to keep code, tests, and docs/specs aligned. It is the repo-local
-wrapper around the normal Superpowers flow:
+Use this skill to plan work and keep code, tests, and docs/specs aligned. It
+owns the whole chain, from finding work to closing it:
 
 ```text
-brainstorm feature -> write delta spec -> write plan -> implement -> verify ->
-merge accepted delta into docs/specs -> archive/remove transient artifacts
+discover/brief -> roadmap row + brief -> brainstorm -> delta spec -> plan ->
+implement -> verify -> merge into docs/specs -> archive -> roadmap row DONE
 ```
+
+The delivery half is the repo-local wrapper around the normal Superpowers flow.
 
 It adapts OpenSpec/Superspec ideas to this repo without requiring upstream
 OpenSpec or Superspec commands.
@@ -29,6 +31,39 @@ OpenSpec or Superspec commands.
 Do not vendor the one-off OpenSpec generate-specs skill into this repo. It was
 used only to shape the initial living-spec migration.
 
+## Roadmap And Briefs
+
+`docs/roadmap.md` is the only backlog and status tracker. Do not create another
+index, such as `plans/README.md` or `docs/plans/README.md`.
+
+- Every planned item has one roadmap row and one brief at
+  `docs/plans/NNN-<slug>.md`, where `NNN` is the roadmap ID.
+- Ideas without a brief go in the roadmap's "Unplanned backlog".
+- A brief says what and why. The step-by-step plan is
+  `docs/changes/<yyyy-mm-dd-slug>/plan.md`, written in deliver mode.
+- Table cells stay short (status is one word). Detail goes in the notes under
+  the table.
+
+## Modes
+
+Pick the mode from the request:
+
+- **Discover**: "audit", "what next", "find improvements", optionally with a
+  focus or `quick`/`deep`. Read-only on source; writes briefs and roadmap rows.
+- **Brief**: "brief <description>", or "plan X" when X has no roadmap row.
+  Writes one brief and one row.
+- **Reconcile**: refresh the roadmap against code, specs, and git history.
+- **Deliver**: "implement X", "start <ID>", "work on X from the roadmap", or
+  any behavior change. Runs the delta spec workflow below.
+
+For discover, brief, and reconcile, read
+[references/discover.md](references/discover.md) first. It links the audit
+playbook and the brief template.
+
+If the request is to implement something with no roadmap row, ask whether to
+write a brief first. A small, well-scoped change can go straight to deliver
+mode; add its row in the same branch.
+
 ## Source Priority
 
 When sources conflict, prefer:
@@ -43,6 +78,7 @@ When sources conflict, prefer:
 
 Classify the task before writing:
 
+- Improvement audit or direction: discover mode.
 - Current-state audit: update living specs from code/tests/docs.
 - Proposed behavior change: create a delta spec before code.
 - Spike/proof: record hypothesis, commands, expected/actual results,
@@ -57,8 +93,10 @@ boundaries exist.
 
 For non-trivial behavior changes, run this sequence:
 
-1. Read `AGENTS.md`, `AGENTS.local.md` if present, `docs/specs/README.md`, and
-   the relevant `docs/specs/<capability>.md`.
+1. Read `AGENTS.md`, `AGENTS.local.md` if present, `docs/specs/README.md`, the
+   relevant `docs/specs/<capability>.md`, and the item's roadmap row and brief.
+   Run the brief's drift check. Treat the brief's open design questions as
+   brainstorming input, not as approved decisions.
 2. Use Superpowers brainstorming to refine the feature unless the user
    explicitly says the design is already approved.
 3. Before writing repo artifacts, ensure work is on a normal feature branch. If
@@ -81,6 +119,11 @@ For non-trivial behavior changes, run this sequence:
 8. Merge accepted deltas into `docs/specs/`.
 9. Archive or remove transient planning artifacts. Plans are not durable
    current-state docs after implementation.
+10. Close the roadmap item: set its row to `DONE` (or `OPEN` with a note when a
+    follow-up remains), move its brief to `docs/archive/plans/`, update the
+    row link, and add deferred follow-ups to "Unplanned backlog".
+
+Set the row to `IN PROGRESS` in the commit that adds `spec.md`.
 
 Commit cadence is part of the Superpowers workflow in this repo: approved
 `spec.md` gets its own commit, approved `plan.md` gets its own commit, and

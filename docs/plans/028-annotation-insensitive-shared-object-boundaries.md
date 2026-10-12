@@ -5,12 +5,12 @@
 > only the files in the In-scope list. If a STOP condition occurs, stop and
 > report, do not improvise. Follow the repo's living-spec workflow: approved
 > delta spec first, then an approved change-local plan, then implementation.
-> Update the status row in `docs/plans/README.md` when done unless a reviewer
+> Update the status row in `docs/roadmap.md` when done unless a reviewer
 > says they maintain it.
 >
 > **Drift check (run first)**:
 > ```sh
-> git diff --stat 512ab46e..HEAD -- packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/ExpoModulesGenerator.SharedObjectValidation.cs packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests/ExpoModulesGeneratorTests.cs docs/specs/modules-core-boundary.md docs/plans/README.md
+> git diff --stat 512ab46e..HEAD -- packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/ExpoModulesGenerator.SharedObjectValidation.cs packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests/ExpoModulesGeneratorTests.cs docs/specs/modules-core-boundary.md docs/roadmap.md
 > ```
 > If shared-object boundary classification or the plan-026 nullable diagnostic
 > tests changed, compare the live code with "Current state." A semantic mismatch
@@ -93,7 +93,7 @@ change that requirement to `EXPOJSI023` after implementation.
 - `docs/changes/<yyyy-mm-dd>-annotation-insensitive-shared-object-boundaries/`
 - `docs/archive/changes/<yyyy-mm-dd>-annotation-insensitive-shared-object-boundaries/`
 - `docs/specs/modules-core-boundary.md`
-- `docs/plans/README.md`
+- `docs/roadmap.md`
 - `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/ExpoModulesGenerator.SharedObjectValidation.cs`
 - `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests/ExpoModulesGeneratorTests.cs`
 
