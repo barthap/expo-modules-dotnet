@@ -45,6 +45,11 @@ a plain SDK-style csproj that references `Expo.ModulesCore` (which pulls in
 </Project>
 ```
 
+The snippet shows the references and core properties. The real
+`ExampleModule.csproj` also sets `AssemblyName`, `RootNamespace` and
+`GenerateRuntimeConfigurationFiles`, and sets `NativeLib` to `Shared` when
+`PublishAot` is true. Copy the whole file when you start a new module.
+
 The generator reference is conditioned on `PublishAot`: normal builds pull in
 the generator as a live analyzer project, while NativeAOT publishes use the
 generator's prebuilt DLL so the analyzer itself does not need to be
@@ -129,6 +134,14 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
   field follows its existing codec's `undefined` behavior.
 - `Dictionary<string, T>` / `IReadOnlyDictionary<string, T>` where `T` has a
   generated codec, mapped to/from a plain JavaScript object.
+- `IReadOnlyList<T>` where `T` has a generated codec, mapped to/from a
+  JavaScript array. `List<T>` is not supported.
+- Binary data: `ArrayBuffer`, plus `byte[]`, `Memory<byte>` and
+  `ReadOnlyMemory<byte>` as convenience types. These copy in both directions.
+  `Span<byte>` and `ReadOnlySpan<byte>` borrow one synchronous input parameter,
+  and a returned span is copied. See the "Module-facing ArrayBuffer And Binary
+  Codecs" requirement in `docs/specs/modules-core-boundary.md`.
+- Shared objects, declared as described in section 8.
 - C# `enum` values — encoded as JavaScript strings by default; annotate with
   `[JSEnum(EnumRepresentation.Number)]` for integer-backed representation.
 - `JavaScriptValue` directly, for cases the typed codecs don't cover (see
@@ -728,7 +741,13 @@ provide the native testhost.
   `<appRoot>/ios/Managed/libExpoDotnetHost.dylib`. **Android staging**:
   `stage --platform android` copies to
   `<appRoot>/android/app/src/main/jniLibs/arm64-v8a/libExpoDotnetHost.so`.
-  NativeAOT staging does not stage `nethost` or managed `.dll` files.
+  Mobile NativeAOT staging does not stage `nethost` or managed `.dll` files.
+- **Desktop staging**: `stage --platform macos` and `stage --platform windows`
+  copy into `<appRoot>/macos/Managed` and `<appRoot>/windows/Managed`. A HostFXR
+  build stages the managed assemblies, the runtime config, the deps file and
+  the platform `nethost` library. A NativeAOT build stages the single native
+  library. Both also write an `ExpoDotnetHost.loader` file that records which
+  loader the packaged app uses.
 - **Android NativeAOT publish fails looking for the NDK**: set
   `ANDROID_NDK_HOME` (or ensure an NDK is discoverable under `ANDROID_HOME`/
   `ANDROID_SDK_ROOT`).
@@ -739,8 +758,8 @@ provide the native testhost.
 
 - `docs/specs/modules-core-boundary.md` — the normative spec behind sections
   3–7 above (attributes, codecs, lifecycle, events, callbacks).
-- `docs/specs/dotnet-autolinking.md` — the normative spec behind sections 2
-  and 9–11 above.
+- `docs/specs/dotnet-autolinking.md` — the normative spec behind sections 1,
+  2, 10 and 12 above.
 - `docs/specs/promises.md`, `docs/specs/runtime-scheduling.md` — the async/
   threading model behind section 4.
 - `docs/roadmap.md` — direction and what's still planned.
