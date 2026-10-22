@@ -15,6 +15,7 @@
     "react-native": "*"
   },
   "devDependencies": {
+    "expo-desktop-template-bare-minimum": "54.81.5",
     "typescript": "catalog:react-native-86",
     "vitest": "^3.0.0"
   },
