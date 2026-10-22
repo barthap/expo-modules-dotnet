@@ -109,6 +109,11 @@ describe('expo-desktop prebuild with expo-modules-dotnet', () => {
     expect(pbxproj.match(/EXPO_DOTNET_LOADER = hostfxr;/g)).toHaveLength(2);
     const infoPlist = fs.readFileSync(path.join(appRoot, 'macos', 'DesktopApp-macOS', 'Info.plist'), 'utf8');
     expect(infoPlist).toMatch(/<key>ExpoModulesDotnetLoader<\/key>\s*<string>\$\(EXPO_DOTNET_LOADER\)<\/string>/);
+    const entitlements = fs.readFileSync(
+      path.join(appRoot, 'macos', 'DesktopApp-macOS', 'DesktopApp.entitlements'),
+      'utf8'
+    );
+    expect(entitlements).toMatch(/<key>com\.apple\.security\.app-sandbox<\/key>\s*<false\/>/);
   });
 
   it('keeps our Directory.Build.props import after expo-desktop Windows mods run', async () => {

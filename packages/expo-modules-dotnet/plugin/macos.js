@@ -43,6 +43,17 @@ function setLoaderInfoPlist(plist) {
   return { ...plist, ExpoModulesDotnetLoader: '$(EXPO_DOTNET_LOADER)' };
 }
 
+// HostFXR loads the machine-wide .NET install (/etc/dotnet,
+// /usr/local/share/dotnet), which the App Sandbox denies. HostFXR is the
+// development loader; NativeAOT needs no machine-wide runtime and keeps the
+// sandbox that the template turns on.
+function setSandboxForLoader(entitlements, loader) {
+  if (loader !== 'hostfxr') {
+    return entitlements;
+  }
+  return { ...entitlements, 'com.apple.security.app-sandbox': false };
+}
+
 function ensureManagedDirectory(platformProjectRoot) {
   const managedDirectory = path.join(platformProjectRoot, 'Managed');
   const gitignorePath = path.join(managedDirectory, '.gitignore');
@@ -83,6 +94,14 @@ function withExpoModulesDotnetMacos(config, { loader }) {
       return modConfig;
     },
   });
+  config = withMod(config, {
+    platform: 'macos',
+    mod: 'entitlements',
+    action: async (modConfig) => {
+      modConfig.modResults = setSandboxForLoader(modConfig.modResults, loader);
+      return modConfig;
+    },
+  });
   return withDangerousMod(config, [
     'macos',
     async (modConfig) => {
@@ -92,4 +111,9 @@ function withExpoModulesDotnetMacos(config, { loader }) {
   ]);
 }
 
-module.exports = { setLoaderBuildSetting, setLoaderInfoPlist, withExpoModulesDotnetMacos };
+module.exports = {
+  setLoaderBuildSetting,
+  setLoaderInfoPlist,
+  setSandboxForLoader,
+  withExpoModulesDotnetMacos,
+};

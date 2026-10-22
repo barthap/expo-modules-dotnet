@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 const xcode = require('xcode');
 
-const { setLoaderBuildSetting, setLoaderInfoPlist } = require('../../plugin/macos.js');
+const { setLoaderBuildSetting, setLoaderInfoPlist, setSandboxForLoader } = require('../../plugin/macos.js');
 
 const templatePbxprojPath = require.resolve(
   'expo-desktop-template-bare-minimum/macos/HelloWorld.xcodeproj/project.pbxproj'
@@ -75,5 +75,20 @@ describe('setLoaderInfoPlist', () => {
     const plist = setLoaderInfoPlist({});
 
     expect(setLoaderInfoPlist({ ...plist })).toEqual(plist);
+  });
+});
+
+describe('setSandboxForLoader', () => {
+  const sandboxed = { 'com.apple.security.app-sandbox': true, 'com.apple.security.network.client': true };
+
+  it('turns the App Sandbox off for hostfxr, which reads the machine-wide .NET install', () => {
+    expect(setSandboxForLoader(sandboxed, 'hostfxr')).toEqual({
+      'com.apple.security.app-sandbox': false,
+      'com.apple.security.network.client': true,
+    });
+  });
+
+  it('keeps the App Sandbox for nativeaot, which needs no machine-wide runtime', () => {
+    expect(setSandboxForLoader(sandboxed, 'nativeaot')).toEqual(sandboxed);
   });
 });
