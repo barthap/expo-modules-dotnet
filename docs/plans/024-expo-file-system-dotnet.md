@@ -1,11 +1,19 @@
 # Plan 024: `expo-file-system-dotnet` local files core for Windows and macOS
 
-> **Executor instructions**: This is an authored third-party package, not an
-> upstream compatibility claim. Run the drift check and complete the
-> living-spec workflow before implementation. Do not add unimplemented public
-> stubs.
+> **Refreshed 2026-10-12 at `4c932963`.** The approved design is
+> `docs/changes/2026-10-12-expo-file-system-dotnet/spec.md`, and it overrides
+> this brief where they differ:
 >
-> **Drift check**: `git diff --stat 9247d75d..HEAD -- packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore packages/expo-modules-dotnet docs/specs/`
+> - The package matches the upstream native shape: module `FileSystem`,
+>   classes `FileSystemFile` and `FileSystemDirectory`, upstream member names
+>   and types. It is not an `ExpoFileSystemDotnet` module with its own API.
+> - 024 ships only the members the current core can carry. `write`, `bytes`,
+>   `copy`, and `move` move to roadmap 038, after core items 034–036.
+> - Plan 027 shipped `DotnetRuntimeContext.PersistentFilesDirectory` and
+>   `CacheDirectory`, so the roots come from the runtime context and no host
+>   path service is missing.
+>
+> **Drift check**: `git diff --stat 4c932963..HEAD -- packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore docs/specs/`
 
 ## Status
 
@@ -14,7 +22,7 @@
 - **Risk**: HIGH (path security, URI canonicalization, destructive operations)
 - **Depends on**: none; execute after plans 022 and 023 to reuse established package testing conventions
 - **Category**: authored module
-- **Planned at**: `9247d75d`, 2026-07-24
+- **Planned at**: `9247d75d`, 2026-07-24; refreshed at `4c932963`, 2026-10-12
 
 ## Why this matters
 
