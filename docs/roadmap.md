@@ -61,7 +61,7 @@ Open briefs live in `docs/plans/`. Briefs for DONE items move to
 | 036 | Typed-array codecs (`Uint8Array`)                   | P1    | M      | 030          | TODO        | —                                                                   |
 | 037 | Coded JavaScript errors                             | P2    | M      | —            | TODO        | —                                                                   |
 | 038 | `expo-file-system-dotnet` write, bytes, copy, move  | P1    | M      | 024, 034–036 | TODO        | —                                                                   |
-| 039 | expo-desktop 1.0 prebuild for `desktop-app`         | P1    | L      | —            | TODO        | [039](plans/039-expo-desktop-prebuild.md)                           |
+| 039 | expo-desktop 1.0 prebuild for `desktop-app`         | P1    | L      | —            | IN PROGRESS | [039](plans/039-expo-desktop-prebuild.md)                           |
 | 040 | Windows opt-in `*-dotnet` substitution              | P1    | L      | 039          | TODO        | [040](plans/040-windows-dotnet-module-substitution.md)              |
 | 018 | Windows build/deploy reliability + `ReactNativeDir` | P1/P2 | L      | 039          | OPEN        | [018](plans/018-windows-build-deploy-reliability.md)                |
 | 011 | Hermes prebuilts as downloadable artifacts          | P3    | M      | 008          | BACKLOG     | —                                                                   |
