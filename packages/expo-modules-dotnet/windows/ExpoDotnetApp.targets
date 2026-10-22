@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Imported by the app .vcxproj that expo-modules-dotnet's config plugin wires during expo-desktop prebuild. -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildThisFileDirectory)ExpoDotnetAutolink.targets" />
+  <Target Name="CopyExpoDotnetManagedArtifacts" AfterTargets="Build">
+    <ItemGroup>
+      <ExpoDotnetManagedArtifacts Include="$(ExpoDotnetManagedDir)**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ExpoDotnetManagedArtifacts)" DestinationFiles="@(ExpoDotnetManagedArtifacts->'$(OutDir)Managed\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

@@ -61,12 +61,12 @@ describe('Windows React Native directory config plugin helpers', () => {
     const appRoot = createTemporaryDirectory();
 
     expect(() =>
-      plugin.writeExpoDotnetReactNativeProps(
-        appRoot,
-        plugin.resolveReactNativeDir(appRoot, () => {
+      plugin.writeExpoDotnetWindowsProps(appRoot, {
+        reactNativeDir: plugin.resolveReactNativeDir(appRoot, () => {
           throw new Error('Cannot find module');
-        })
-      )
+        }),
+        loader: 'hostfxr',
+      })
     ).toThrow(/react-native.*app root/i);
 
     expect(fs.existsSync(path.join(appRoot, '.expo'))).toBe(false);
@@ -86,7 +86,7 @@ describe('Windows React Native directory config plugin helpers', () => {
     const appRoot = createTemporaryDirectory();
     const reactNativeDir = path.join(appRoot, 'node_modules', 'react-native');
 
-    const propsPath = plugin.writeExpoDotnetReactNativeProps(appRoot, reactNativeDir);
+    const propsPath = plugin.writeExpoDotnetWindowsProps(appRoot, { reactNativeDir, loader: 'hostfxr' });
     const props = fs.readFileSync(propsPath, 'utf8');
 
     expect(propsPath).toBe(
@@ -105,8 +105,8 @@ describe('Windows React Native directory config plugin helpers', () => {
       '<Project>\n  <PropertyGroup><Custom>true</Custom></PropertyGroup>\n</Project>\n'
     );
 
-    plugin.configureWindowsReactNativeDir(appRoot, () => packageJsonPath);
-    plugin.configureWindowsReactNativeDir(appRoot, () => packageJsonPath);
+    plugin.configureWindowsDirectoryProps(appRoot, { loader: 'hostfxr' }, () => packageJsonPath);
+    plugin.configureWindowsDirectoryProps(appRoot, { loader: 'hostfxr' }, () => packageJsonPath);
 
     const directoryBuildProps = fs.readFileSync(directoryBuildPropsPath, 'utf8');
     expect(directoryBuildProps).toContain('<Custom>true</Custom>');
@@ -122,7 +122,7 @@ describe('Windows React Native directory config plugin helpers', () => {
     const appRoot = createTemporaryDirectory();
 
     expect(() =>
-      plugin.configureWindowsReactNativeDir(appRoot, () => {
+      plugin.configureWindowsDirectoryProps(appRoot, { loader: 'hostfxr' }, () => {
         throw new Error('Cannot find module');
       })
     ).toThrow(/react-native.*app root/i);
@@ -136,7 +136,7 @@ describe('Windows React Native directory config plugin helpers', () => {
     const packageJsonPath = path.join(appRoot, 'node_modules', 'react-native', 'package.json');
     fs.writeFileSync(path.join(appRoot, 'Directory.Build.props'), '<Project>');
 
-    expect(() => plugin.configureWindowsReactNativeDir(appRoot, () => packageJsonPath)).toThrow(
+    expect(() => plugin.configureWindowsDirectoryProps(appRoot, { loader: 'hostfxr' }, () => packageJsonPath)).toThrow(
       /closing <\/Project>/i
     );
 
