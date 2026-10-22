@@ -2682,3 +2682,156 @@ real metadata tests SHALL run through the package's Vitest suite.
 - **THEN** the module SHALL reject with the matching controlled outer error
 - **AND** it SHALL retain the cancellation as the inner exception
 - **AND** no temporary file SHALL remain
+
+### Requirement: Expo File System Dotnet Exposes The Upstream Local-File Shape
+
+`packages/expo-file-system-dotnet` SHALL register a native module named
+`FileSystem` only under `_expoDotnet.modules`, with shared-object classes
+`FileSystemFile` and `FileSystemDirectory`. Every exported native member SHALL
+have the upstream `expo-file-system` name, sync or async form, and value
+types. Option records (`CreateOptions`, `InfoOptions`) SHALL use `bool?`
+fields, where `null` means the upstream default `false`. The package SHALL NOT
+export a stub, a throwing placeholder, or a differently shaped substitute for
+an upstream member it does not implement. It SHALL add no C ABI surface.
+
+Operation failures SHALL surface as `FileSystemException`, which reaches
+JavaScript as an `Error` that carries only a message.
+
+#### Scenario: Facade subclasses the native classes
+
+- **GIVEN** the facade defines `class File extends FileSystemFile`
+- **WHEN** JavaScript evaluates `new File(Paths.document, 'a.txt')`
+- **THEN** the object SHALL inherit from `File.prototype`
+- **AND** `instanceof File` and `instanceof FileSystemFile` SHALL be `true`
+- **AND** native members SHALL operate on the canonical location
+- **AND** the scenario SHALL be proven in the ES5 form a derived class
+  compiles to (`Reflect.construct` with `newTarget`), because the testhost
+  Hermes does not compile ES6 `class`
+
+#### Scenario: Unimplemented members are absent
+
+- **GIVEN** a member needs a core feature that is not available yet
+- **WHEN** the package's types and native module are inspected
+- **THEN** the member SHALL NOT exist on either
+
+#### Scenario: Unsupported operating system
+
+- **GIVEN** the module runs on an OS other than Windows or macOS
+- **WHEN** JavaScript reads a member
+- **THEN** it SHALL throw a catchable error from
+  `PlatformNotSupportedException`
+
+### Requirement: Expo File System Dotnet Canonicalizes Locations
+
+Every location SHALL be parsed by one tested value object before any
+`System.IO` call. Inputs SHALL be a `file:` URI or an absolute native path.
+Relative paths, other schemes, malformed percent escapes, Windows device
+namespace paths, and a `file:` authority on macOS SHALL be rejected with
+`Invalid file system location: '<input>'`. An invalid entry name SHALL be
+rejected with `Invalid file name: '<name>'`. The canonical `uri` SHALL resolve
+`.` and `..`, SHALL end with `/` exactly for directories, and SHALL round-trip
+Windows drive letters, UNC authorities, and percent encoding. The drive letter
+SHALL be canonicalized to uppercase.
+
+Location parsing SHALL also reject, before any I/O:
+
+- On the Windows flavor only, any device prefix with a separator (`\` or `/`)
+  at positions 0, 1, and 3 and `.` or `?` at position 2.
+- A UNC host, in native form or as a percent-decoded URI authority, that does
+  not match `[A-Za-z0-9._-]+` or that consists only of dots.
+- On the Windows flavor, a segment that ends with `.` or a space. Win32 strips
+  them, which would alias another name past the bundle-tree check. `.` and `..`
+  are exempt because they are normalized first.
+- On the Windows flavor, a segment that contains `<`, `>`, `:`, `"`, `|`, `?`,
+  `*`, or a character from U+0001 to U+001F. NTFS stream syntax such as
+  `X::$INDEX_ALLOCATION` names directory `X` and would alias it past the
+  bundle-tree check. The drive designator (`C:`) is not a segment and SHALL
+  still parse.
+- On the Windows flavor, an entry name passed to name validation that ends with
+  `.` or a space, or that contains any character from the previous rule. A name
+  with `:` SHALL remain valid on the Posix flavor.
+- Input that is not valid UTF-16, such as a lone surrogate.
+
+#### Scenario: Windows path becomes a file URI
+
+- **GIVEN** the Windows path `C:\a b\x.txt`
+- **WHEN** a `FileSystemFile` is created from it
+- **THEN** `uri` SHALL be `file:///C:/a%20b/x.txt`
+
+#### Scenario: UNC authority is preserved
+
+- **GIVEN** the Windows path `\\server\share\x.txt`
+- **WHEN** it is canonicalized
+- **THEN** `uri` SHALL be `file://server/share/x.txt`
+
+#### Scenario: Invalid input is rejected before I/O
+
+- **GIVEN** a relative path, an `http:` URI, a malformed escape, or a
+  `\\?\` path
+- **WHEN** a shared object is created from it
+- **THEN** creation SHALL fail with `Invalid file system location: '<input>'`
+- **AND** no filesystem call SHALL have run
+
+### Requirement: Expo File System Dotnet Roots Come From The Runtime Context
+
+`documentDirectory` and `cacheDirectory` SHALL be the `file:` URIs of
+`DotnetRuntimeContext.PersistentFilesDirectory` and `CacheDirectory`, read
+when accessed. An unconfigured directory SHALL surface as a JavaScript error
+and SHALL NOT fall back to another path. `bundleDirectory` SHALL be a plain
+path derived from `Environment.ProcessPath`: the enclosing `.app` directory
+on macOS when the executable is in `Contents/MacOS/`, otherwise the
+executable's directory.
+
+#### Scenario: Unconfigured cache directory
+
+- **GIVEN** the host supplied no cache directory
+- **WHEN** JavaScript reads `cacheDirectory`
+- **THEN** it SHALL throw a catchable error naming the unconfigured accessor
+
+#### Scenario: Bundle tree is read-only
+
+- **GIVEN** a location inside `bundleDirectory`
+- **WHEN** `create`, `delete`, or `rename` runs on it
+- **THEN** it SHALL fail with `Missing permission for uri: <uri>`
+- **AND** the filesystem SHALL be unchanged
+
+### Requirement: Expo File System Dotnet Local Operations Match Upstream Semantics
+
+`create`, `delete`, `rename`, `info`, `text`, `base64`, `digest`,
+`listAsRecords`, `createFile`, `createDirectory`, and the metadata properties
+SHALL follow upstream iOS semantics. Validation SHALL run before side
+effects. Async members SHALL NOT block the JavaScript thread and SHALL use the
+location captured when they start.
+
+#### Scenario: Create without overwrite on an existing file
+
+- **GIVEN** a file exists at the location
+- **WHEN** `create()` runs with default options
+- **THEN** it SHALL fail with `File '<uri>' already exists`
+- **AND** the file contents SHALL be unchanged
+
+#### Scenario: Idempotent directory create
+
+- **GIVEN** a directory exists at the location
+- **WHEN** `create({idempotent: true})` runs
+- **THEN** it SHALL succeed without changing the directory
+
+#### Scenario: Type mismatch
+
+- **GIVEN** a directory exists at a `FileSystemFile` location
+- **WHEN** any file operation runs
+- **THEN** it SHALL fail with `A folder with the same name already exists in
+  the file location`
+
+#### Scenario: Rename updates the object
+
+- **GIVEN** an existing file
+- **WHEN** `rename('b.txt')` runs
+- **THEN** the file SHALL be renamed in its parent directory
+- **AND** `uri` SHALL end with `/b.txt`
+
+#### Scenario: Unsupported digest algorithm
+
+- **GIVEN** an existing file
+- **WHEN** `digest('SHA-3')` runs
+- **THEN** the promise SHALL reject with `Unsupported digest algorithm: SHA-3`

@@ -54,6 +54,9 @@ exception rules.
   package for validated asset download and app-scoped caching.
 - `packages/expo-constants-dotnet/` is the standalone Windows/macOS authored
   module package for typed host constants and runtime-scoped session identity.
+- `packages/expo-file-system-dotnet/` is the standalone Windows/macOS authored
+  module package for the upstream local-file subset of `expo-file-system`
+  (`File`, `Directory`, `Paths`).
 - `packages/example-module/` is an authored .NET Expo module package used by
   example apps. It owns the example C# module source, JavaScript facade,
   dotnet autolinking metadata, and its `ExampleModule.Tests` behavior tests.

@@ -43,7 +43,6 @@ Open briefs live in `docs/plans/`. Briefs for DONE items move to
 
 | ID  | Title                                               | Pri   | Effort | Depends on   | Status      | Brief                                                               |
 | --- | --------------------------------------------------- | ----- | ------ | ------------ | ----------- | ------------------------------------------------------------------- |
-| 024 | `expo-file-system-dotnet` local files core          | P1    | L      | —            | IN PROGRESS | [024](plans/024-expo-file-system-dotnet.md)                         |
 | 025 | `expo-crypto-dotnet`                                | P1    | M      | 024, 036     | TODO        | [025](plans/025-expo-crypto-dotnet.md)                              |
 | 028 | Annotation-insensitive shared-object boundaries     | P2    | S      | —            | TODO        | [028](plans/028-annotation-insensitive-shared-object-boundaries.md) |
 | 029 | Typed codec conversion descriptors                  | P1    | M      | 028          | TODO        | [029](plans/029-typed-codec-conversion-descriptors.md)              |
@@ -79,6 +78,7 @@ Open briefs live in `docs/plans/`. Briefs for DONE items move to
 | 021 | Owned host-function callback-state disposal         | P2    | S–M    | —            | DONE        | [021](archive/plans/021-hostfunction-owned-state-disposal.md)       |
 | 022 | `expo-asset-dotnet`                                 | P1    | M      | 027          | DONE        | [022](archive/plans/022-expo-asset-dotnet.md)                       |
 | 023 | `expo-constants-dotnet`                             | P1    | M      | —            | DONE        | [023](archive/plans/023-expo-constants-dotnet.md)                   |
+| 024 | `expo-file-system-dotnet` local files core          | P1    | L      | —            | DONE        | [024](archive/plans/024-expo-file-system-dotnet.md)                 |
 | 026 | Nullable reference-type codecs                      | P1    | M      | —            | DONE        | [026](archive/plans/026-nullable-reference-codecs.md)               |
 | 027 | Host-supplied app directories                       | P1    | L      | —            | DONE        | [027](archive/plans/027-host-supplied-app-directories.md)           |
 
@@ -89,9 +89,11 @@ The next free ID is 039.
 - **024 → 034–036 → 038**: file system ships in three steps. 024 ships the
   local-file subset that the current core carries with the exact upstream
   native shape
-  ([change](changes/2026-10-12-expo-file-system-dotnet/spec.md)). 034–036
+  ([change](archive/changes/2026-10-12-expo-file-system-dotnet/spec.md)). 034–036
   add the missing core features, and 038 uses them for `write`, `bytes`,
   `copy`, and `move`. Each new core feature gets a real use case at once.
+  024 passed on Windows x64 at `13cf0a7` on 2026-10-22 with a local
+  `scripts/test-managed.ps1` run (904 passed, 0 failed, 0 skipped).
 - **028–030 before 034–036**: new codecs build on typed conversion
   descriptors (029) and the conversion scope (030), so they add no
   codec-string policy checks.

@@ -40,7 +40,7 @@ below:
 - `hermes-testhost.md`: Hermes-backed native testhost and managed test suite.
 - `modules-core-boundary.md`: `Expo.ModulesCore` package boundary,
   generated-binding helpers, module test ownership, and standalone authored
-  packages including `expo-constants-dotnet`.
+  packages including `expo-constants-dotnet` and `expo-file-system-dotnet`.
 - `dotnet-autolinking.md`: .NET Expo module discovery, app-level aggregator
   generation, build, and artifact staging contract.
 

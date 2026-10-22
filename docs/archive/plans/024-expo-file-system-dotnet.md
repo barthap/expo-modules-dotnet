@@ -1,7 +1,7 @@
 # Plan 024: `expo-file-system-dotnet` local files core for Windows and macOS
 
 > **Refreshed 2026-10-12 at `4c932963`.** The approved design is
-> `docs/changes/2026-10-12-expo-file-system-dotnet/spec.md`, and it overrides
+> `docs/archive/changes/2026-10-12-expo-file-system-dotnet/spec.md`, and it overrides
 > this brief where they differ:
 >
 > - The package matches the upstream native shape: module `FileSystem`,
