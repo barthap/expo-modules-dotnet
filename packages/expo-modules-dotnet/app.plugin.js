@@ -3,6 +3,7 @@ const path = require('path');
 const { withDangerousMod } = require('expo/config-plugins');
 
 const { addExpoModulesDotnetPodfileHook } = require('./plugin/ios');
+const { withExpoModulesDotnetMacos } = require('./plugin/macos');
 const { resolvePluginOptions } = require('./plugin/options');
 
 const WINDOWS_PROPS_RELATIVE_PATH = path.join(
@@ -99,7 +100,7 @@ function configureWindowsReactNativeDir(appRoot, resolvePackage = require.resolv
 }
 
 function withExpoModulesDotnet(config, props) {
-  resolvePluginOptions(props);
+  const options = resolvePluginOptions(props);
   const iosConfigured = withDangerousMod(config, [
     'ios',
     async (modConfig) => {
@@ -115,7 +116,9 @@ function withExpoModulesDotnet(config, props) {
     },
   ]);
 
-  return withDangerousMod(iosConfigured, [
+  const macosConfigured = withExpoModulesDotnetMacos(iosConfigured, options.macos);
+
+  return withDangerousMod(macosConfigured, [
     'windows',
     async (modConfig) => {
       configureWindowsReactNativeDir(modConfig.modRequest.projectRoot);

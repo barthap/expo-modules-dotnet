@@ -17,7 +17,8 @@
   "devDependencies": {
     "expo-desktop-template-bare-minimum": "54.81.5",
     "typescript": "catalog:react-native-86",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "xcode": "^3.0.1"
   },
   "codegenConfig": {
     "name": "ExpoModulesDotnetSpec",
