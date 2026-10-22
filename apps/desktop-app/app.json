@@ -3,8 +3,17 @@
     "name": "Desktop App",
     "slug": "desktop-app",
     "scheme": "desktopapp",
+    "macos": {
+      "bundleIdentifier": "dev.expo.modules.dotnet.desktopapp"
+    },
+    "windows": {
+      "namespace": "DesktopApp",
+      "projectGuid": "395ef03b-9868-419b-9bf5-dffd3be5f6a2",
+      "packageGuid": "20c83435-96d5-4660-b0f0-2f7f0843f33f"
+    },
     "plugins": [
-      "expo-modules-dotnet"
+      "expo-modules-dotnet",
+      "./plugins/withDesktopAppFixes"
     ]
   }
 }
