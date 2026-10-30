@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Imported by the app .wapproj that expo-modules-dotnet's config plugin wires during expo-desktop prebuild. -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Target Name="AddExpoDotnetManagedPackagePayload" BeforeTargets="_WritePayloadFiles">
+    <!-- The package lays the app out in a folder named after the referenced app project. -->
+    <ItemGroup>
+      <_ExpoDotnetAppProject Include="@(ProjectReference)" Condition="'%(Extension)' == '.vcxproj'" />
+    </ItemGroup>
+    <Error Condition="'@(_ExpoDotnetAppProject->Count())' != '1'" Text="expo-modules-dotnet expected exactly one .vcxproj ProjectReference in $(MSBuildProjectFile)." />
+    <PropertyGroup>
+      <_ExpoDotnetAppPackageFolder>@(_ExpoDotnetAppProject->'%(Filename)')</_ExpoDotnetAppPackageFolder>
+    </PropertyGroup>
+    <ItemGroup>
+      <ExpoDotnetManagedArtifacts Include="$(ExpoDotnetManagedDir)**\*.*" Exclude="$(ExpoDotnetManagedDir).gitignore;$(ExpoDotnetManagedDir).gitkeep" />
+      <AppxPackagePayload Include="@(ExpoDotnetManagedArtifacts)">
+        <TargetPath>$(_ExpoDotnetAppPackageFolder)\Managed\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+        <PackagePath>$(_ExpoDotnetAppPackageFolder)\Managed\%(RecursiveDir)%(Filename)%(Extension)</PackagePath>
+      </AppxPackagePayload>
+    </ItemGroup>
+  </Target>
+</Project>

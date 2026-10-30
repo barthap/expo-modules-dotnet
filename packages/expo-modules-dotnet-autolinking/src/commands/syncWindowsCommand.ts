@@ -3,13 +3,9 @@ import * as path from 'path';
 
 import type { Command } from 'commander';
 
-import { generateAggregator } from '../codegen/generateAggregator';
-import { writeIfChangedSync } from '../codegen/writeIfChanged';
-import { discoverDotnetManifestAsync, resolveAppRoot } from '../discovery';
-import { defaultGenerateOutputDir, findAdapterPackageRoot } from '../paths';
-import { configureMixedModeDebugger, findPackageProjectPath } from '../windows/packageDebugger';
+import { resolveAppRoot } from '../discovery';
+import { prepareWindowsSolutionAsync } from '../windows/prepareWindowsSolution';
 import { runReactNativeWindowsAutolink } from '../windows/reactNativeCli';
-import { synchronizeManagedSolution } from '../windows/solution';
 
 interface SyncWindowsCommandOptions {
   projectRoot?: string;
@@ -40,34 +36,9 @@ export function registerSyncWindowsCommand(program: Command): void {
       if (!check) {
         await runReactNativeWindowsAutolink({ appRoot, solutionPath, projectPath, check: false });
       }
-      const manifest = await discoverDotnetManifestAsync(appRoot);
-      const outputDir = defaultGenerateOutputDir(appRoot);
-      const adapterPackageRoot = findAdapterPackageRoot(appRoot);
-      if (!check) {
-        generateAggregator(manifest, { outputDir, adapterPackageRoot });
+      const { changed } = await prepareWindowsSolutionAsync({ appRoot, solutionPath, check });
+      if (check && changed) {
+        throw new Error('[expo-modules-dotnet-autolinking] Windows managed solution projection is stale. Run sync-windows without --check.');
       }
-
-      const solution = fs.readFileSync(solutionPath, 'utf8');
-      const graph = {
-        hostProjectPath: path.join(outputDir, 'ExpoDotnetHost.csproj'),
-        coreProjectPaths: [
-          path.join(adapterPackageRoot, 'managed', 'packages', 'Expo.JSI', 'Expo.JSI.csproj'),
-          path.join(adapterPackageRoot, 'managed', 'packages', 'Expo.ModulesCore', 'Expo.ModulesCore.csproj'),
-        ],
-        moduleProjectPaths: manifest.modules.flatMap((module) => module.projects.map((project) => project.csprojPath)),
-      };
-      const synchronized = synchronizeManagedSolution(solution, solutionPath, graph, { check });
-      if (check) {
-        if (synchronized.changed) {
-          throw new Error('[expo-modules-dotnet-autolinking] Windows managed solution projection is stale. Run sync-windows without --check.');
-        }
-        return;
-      }
-
-      const packagePath = findPackageProjectPath(solution, solutionPath);
-      const packageProject = fs.readFileSync(packagePath, 'utf8');
-      const debuggerConfiguration = configureMixedModeDebugger(packageProject);
-      writeIfChangedSync(packagePath, debuggerConfiguration.content);
-      writeIfChangedSync(solutionPath, synchronized.content);
     });
 }

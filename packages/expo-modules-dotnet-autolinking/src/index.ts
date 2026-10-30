@@ -7,6 +7,9 @@ import { registerResolveCommand } from './commands/resolveCommand';
 import { registerStageCommand } from './commands/stageCommand';
 import { registerSyncWindowsCommand } from './commands/syncWindowsCommand';
 
+export { prepareWindowsSolutionAsync } from './windows/prepareWindowsSolution';
+export type { PrepareWindowsSolutionOptions } from './windows/prepareWindowsSolution';
+
 export function createProgram(): Command {
   const program = new Command('expo-modules-dotnet-autolinking');
   program.description('Autolinking tool for .NET-backed Expo modules');
