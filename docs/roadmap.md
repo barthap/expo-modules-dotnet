@@ -50,7 +50,7 @@ Open briefs live in `docs/plans/`. Briefs for DONE items move to
 | ID  | Title                                               | Pri   | Effort | Depends on   | Status      | Brief                                                               |
 | --- | --------------------------------------------------- | ----- | ------ | ------------ | ----------- | ------------------------------------------------------------------- |
 | 025 | `expo-crypto-dotnet`                                | P1    | M      | 024, 036     | TODO        | [025](plans/025-expo-crypto-dotnet.md)                              |
-| 028 | Annotation-insensitive shared-object boundaries     | P2    | S      | —            | TODO        | [028](plans/028-annotation-insensitive-shared-object-boundaries.md) |
+| 028 | Annotation-insensitive shared-object boundaries     | P2    | S      | —            | IN PROGRESS | [028](plans/028-annotation-insensitive-shared-object-boundaries.md) |
 | 029 | Typed codec conversion descriptors                  | P1    | M      | 028          | TODO        | [029](plans/029-typed-codec-conversion-descriptors.md)              |
 | 030 | Compositional codec resource scope                  | P1    | L      | 029          | TODO        | [030](plans/030-compositional-codec-resource-scope.md)              |
 | 031 | Nullable ArrayBuffer codecs                         | P1    | M      | 030          | TODO        | [031](plans/031-nullable-arraybuffer-codecs.md)                     |
