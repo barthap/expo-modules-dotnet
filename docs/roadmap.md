@@ -21,13 +21,19 @@ Milestone order:
    SharedObject, and autolinking across Android, iOS, macOS, and Windows.
 2. **Authored modules** (in progress): real `expo-*-dotnet` packages for
    Windows and macOS, in this order: asset, constants, local file system,
-   crypto. They exist so expo-desktop can later drop its JS polyfill. They
-   register only into `_expoDotnet.modules` for now.
-3. **Upstream compatibility** (later): opt-in per-module registration into
-   `globalThis.expo.modules`, owned by autolinking policy. Startup ordering
-   against expo-desktop is undecided, so this is not a defined milestone yet.
+   crypto. They exist to replace the expo-desktop native stubs on Windows.
+   They register only into `_expoDotnet.modules`.
+3. **expo-desktop integration** (next): generate the desktop app with
+   expo-desktop 1.0 prebuild (039), then let a Windows app opt in to
+   `*-dotnet` modules in place of the expo-desktop stubs (040). Windows only:
+   on macOS, upstream `expo-modules-core` and the upstream Expo packages
+   already work, which is why our packages are named `expo-*-dotnet`.
 4. **Production hardening**: mobile NativeAOT trimming and export audits,
-   desktop packaging, and Expo Desktop prebuild integration.
+   and desktop packaging.
+
+Milestones 2 and 3 must show real value: four authored modules and one demo
+app that uses upstream Expo, expo-desktop, and .NET modules on all four
+platforms.
 
 Standing quality rule: authored modules use no workarounds for missing core
 features. Fix the core first, as plans 026 and 027 did.
@@ -55,7 +61,9 @@ Open briefs live in `docs/plans/`. Briefs for DONE items move to
 | 036 | Typed-array codecs (`Uint8Array`)                   | P1    | M      | 030          | TODO        | —                                                                   |
 | 037 | Coded JavaScript errors                             | P2    | M      | —            | TODO        | —                                                                   |
 | 038 | `expo-file-system-dotnet` write, bytes, copy, move  | P1    | M      | 024, 034–036 | TODO        | —                                                                   |
-| 018 | Windows build/deploy reliability + `ReactNativeDir` | P1/P2 | L      | —            | OPEN        | [018](plans/018-windows-build-deploy-reliability.md)                |
+| 039 | expo-desktop 1.0 prebuild for `desktop-app`         | P1    | L      | —            | TODO        | [039](plans/039-expo-desktop-prebuild.md)                           |
+| 040 | Windows opt-in `*-dotnet` substitution              | P1    | L      | 039          | TODO        | [040](plans/040-windows-dotnet-module-substitution.md)              |
+| 018 | Windows build/deploy reliability + `ReactNativeDir` | P1/P2 | L      | 039          | OPEN        | [018](plans/018-windows-build-deploy-reliability.md)                |
 | 011 | Hermes prebuilts as downloadable artifacts          | P3    | M      | 008          | BACKLOG     | —                                                                   |
 | 001 | Fast CI checks workflow                             | P1    | S      | —            | DONE        | [001](archive/plans/001-ci-checks-workflow.md)                      |
 | 002 | Autolinking CLI command tests                       | P1    | M      | —            | DONE        | [002](archive/plans/002-autolinking-cli-command-tests.md)           |
@@ -82,7 +90,7 @@ Open briefs live in `docs/plans/`. Briefs for DONE items move to
 | 026 | Nullable reference-type codecs                      | P1    | M      | —            | DONE        | [026](archive/plans/026-nullable-reference-codecs.md)               |
 | 027 | Host-supplied app directories                       | P1    | L      | —            | DONE        | [027](archive/plans/027-host-supplied-app-directories.md)           |
 
-The next free ID is 039.
+The next free ID is 041.
 
 ### Notes on open items
 
@@ -113,8 +121,18 @@ The next free ID is 039.
   bases stay unsupported by design.
 - **018**: direct MSBuild, RNW CLI build/deploy/launch, and live-app rebuild
   did not reproduce a PDB lock on the RNW 0.81 / VS 2026 lane (2026-07-23).
-  The `ReactNativeDir` resolver helpers stay, but activation waits until
-  expo-desktop supports Windows prebuild and mod execution.
+  expo-desktop 1.0 runs `windows` mods, so 039 activates the
+  `ReactNativeDir` resolver. Close 018 together with 039. Keep our resolver:
+  expo-desktop sets `ReactNativeDir` only in the app `.vcxproj`, with a
+  directory walk, and a plain `ProjectReference` does not pass it to
+  `ExpoModulesDotnet.vcxproj`.
+- **039 → 040**: 040 needs the generated expo-desktop Windows app. Its
+  recommended mechanism is a Windows-only Metro alias of the upstream
+  native-accessor files (`expo-asset/build/ExpoAsset.js`,
+  `expo-constants/build/ExponentConstants.js`). The fallback is an eager
+  entry in `global.expo.modules`: expo-desktop makes `global.expo` not
+  writable and not configurable, but `expo.modules` is a plain object.
+  File-system substitution waits for 038.
 - **023 known gap**: direct unpackaged Windows startup of the example app was
   not verified. Tests cover null metadata downstream.
 
@@ -132,11 +150,13 @@ and a status row.
   `Expo.ModulesCore.Testing` for separate repositories, ship RID-specific
   Hermes/testhost native assets, and add a standalone test command.
   Repo-local package tests already exist.
-- **P2 — Upstream compatibility**: opt-in `globalThis.expo.modules`
-  registration (probably an `expo-module.config.json` field), Metro and
-  package-specifier aliasing. Settled: never automatic, autolinking owns the
-  policy, `Expo.ModulesCore` keeps the primitive generic. Undecided: startup
-  ordering against expo-desktop.
+- **P1 — Four-platform demo app**: one app that uses upstream Expo,
+  expo-desktop, and the `*-dotnet` modules on Android, iOS, macOS, and
+  Windows. Depends on 025, 038, 039, and 040. Write the brief when 040
+  closes.
+- **P3 — expo-desktop SDK 55 / RN 0.83**: the current default expo-desktop
+  template. It changes the RN 0.81 catalog decision, because it needs
+  RNW 0.83.
 - **P3 — `File.type` in `expo-file-system-dotnet`**: upstream returns a MIME
   type from the extension. .NET has no portable MIME table, so it needs an
   owned table or a host source.
@@ -149,10 +169,6 @@ and a status row.
 
 - **P1 — Desktop packaging cleanup**: macOS HostFXR and NativeAOT example app
   packaging.
-- **P1 — Expo Desktop prebuild integration**: if `apps/desktop-app` moves to
-  an `expo-desktop` prebuild flow, an Expo config plugin must own the managed
-  artifact build phase, `EXPO_DOTNET_LOADER`, the `ExpoModulesDotnetLoader`
-  `Info.plist` entry, the `Managed` resource folder, and any Podfile shim.
 - **P3 — Mobile NativeAOT hardening**: trimming and export audits plus
   platform constraints for `apps/mobile-app`.
 - **P3 — View adapters**: platform-specific native views, props, and events.
