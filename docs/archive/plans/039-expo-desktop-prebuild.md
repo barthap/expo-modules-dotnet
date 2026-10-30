@@ -18,6 +18,9 @@
 - **Depends on**: none
 - **Category**: migration
 - **Planned at**: `c7dccbe`, 2026-10-22
+- **Closed**: DONE on 2026-10-22. Design and requirements are in
+  `docs/archive/changes/2026-10-22-expo-desktop-prebuild/`, results in the
+  roadmap 039 note.
 
 ## Why this matters
 

@@ -33,6 +33,8 @@
   core-header proof exist, but standard Expo prebuild does not execute Windows
   mods and the RNW CLI does not consume Expo config-plugin mods. Activate this
   resolver only after expo-desktop provides a supported Windows prebuild path.
+- **Closed**: DONE on 2026-10-22 with roadmap item 039. expo-desktop 1.0
+  prebuild runs the plugin's `windows` mod, which writes the resolver props.
 
 ## Why this matters
 

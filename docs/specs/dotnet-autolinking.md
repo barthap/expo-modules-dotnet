@@ -21,6 +21,14 @@ hooks that build and stage managed artifacts. Its `--check` mode SHALL verify
 only the deterministic managed projection because RNW `autolink-windows --check`
 may report `NeedAutolinking` after a no-op normal invocation.
 
+The same projection SHALL also run from the `expo-modules-dotnet` config
+plugin's `windows` mod during expo-desktop prebuild, through the exported
+`prepareWindowsSolutionAsync`. Both paths SHALL use that one function: it
+generates `ExpoDotnetHost.csproj`, updates the `.sln`, and enables mixed-mode
+debugging on the package project. It does not run `autolink-windows`.
+`expo-desktop run windows` runs `autolink-windows` before it builds; that step
+adds the native module projects and keeps the `Expo .NET Managed` folder.
+
 ### Requirement: Dotnet Modules Declare Autolinking Metadata
 
 A dotnet Expo module package SHALL declare `"dotnet"` in
@@ -291,6 +299,86 @@ idempotently add the helper `require` and
 - **THEN** the Podfile SHALL call `use_expo_modules_dotnet!`
 - **AND** the pbxproj SHALL contain a `[CP-User] Link Expo .NET Modules`
   phase with no machine-local absolute paths
+
+### Requirement: Desktop App Wiring Uses The Config Plugin
+`packages/expo-modules-dotnet/app.plugin.js` SHALL own every .NET edit to the
+`macos` and `windows` native projects that `expo-desktop prebuild` generates.
+A CNG desktop app SHALL build and run after prebuild with no hand edit. The
+plugin SHALL register its `macos` mods through `withMod` and its `windows` mod
+through `withDangerousMod` from `expo/config-plugins`, so it has no runtime
+dependency on expo-desktop. Expo CLI filters mods by the requested
+`platforms`, so `expo prebuild -p ios` does not run the `macos` or `windows`
+mods.
+
+On macOS the plugin SHALL:
+- add `use_expo_modules_dotnet!(platform: :macos, ...)` to the Podfile after
+  `use_expo_modules!`;
+- set `EXPO_DOTNET_LOADER` to the configured loader on every build
+  configuration of the one `-macOS` application target, and never on the
+  `-iOS` target;
+- set the `ExpoModulesDotnetLoader` Info.plist key to `$(EXPO_DOTNET_LOADER)`;
+- create `macos/Managed/.gitignore`;
+- set `com.apple.security.app-sandbox` to `false` when the loader is
+  `hostfxr`, because the App Sandbox denies reads of the machine-wide .NET
+  install, and to `true` when the loader is `nativeaot`. It writes both
+  values, so a loader change takes effect on a prebuild without `--clean`.
+
+On Windows the plugin SHALL:
+- write `.expo/dotnet/windows/ExpoDotnetReactNativeDir.props` with
+  `ReactNativeDir`, `ExpoDotnetLoader`, and `ExpoDotnetManagedDir`, each set
+  only when the property is empty, and import it from the app-root
+  `Directory.Build.props`;
+- add one `<Import>` of `windows/ExpoDotnetApp.targets` to the app `.vcxproj`
+  and one of `windows/ExpoDotnetPackage.targets` to the app `.wapproj`. It
+  finds both projects through the one `.sln` under `windows/`, not by name.
+  When the import already exists, it rewrites the import path, so a moved
+  package location (such as a new pnpm store folder) takes effect on a
+  prebuild without `--clean`;
+- create `windows/Managed/.gitignore`;
+- call `prepareWindowsSolutionAsync` from `expo-modules-dotnet-autolinking`,
+  resolved from the app root.
+
+#### Scenario: macOS prebuild
+- **GIVEN** a CNG app that lists `expo-modules-dotnet` in `expo.plugins`
+- **WHEN** `expo-desktop prebuild --platform macos` runs and CocoaPods
+  installs
+- **THEN** the Podfile SHALL call
+  `use_expo_modules_dotnet!(platform: :macos, ...)`
+- **AND** the `-macOS` target SHALL have `EXPO_DOTNET_LOADER`, the
+  `ExpoModulesDotnetLoader` Info.plist key, and the CocoaPods
+  `[CP-User] Link Expo .NET Modules` phase that copies `macos/Managed` into the
+  bundle resources
+
+#### Scenario: Windows prebuild
+- **GIVEN** the same app
+- **WHEN** `expo-desktop prebuild --platform windows` runs
+- **THEN** the app `.vcxproj` and `.wapproj` SHALL each import one
+  package-owned targets file
+- **AND** the `.sln` SHALL contain the generated host, the managed core
+  packages, and the resolved module projects under `Expo .NET Managed`
+
+#### Scenario: Prebuild runs twice
+- **GIVEN** a prebuild already ran
+- **WHEN** prebuild runs again without `--clean`
+- **THEN** no generated file SHALL change
+
+### Requirement: Config Plugin Options Are Validated
+The plugin SHALL accept `macos.loader` and `windows.loader`, each `"hostfxr"`
+or `"nativeaot"`, each defaulting to `"hostfxr"`. It SHALL throw at prebuild
+time for an unknown key or value, and the error SHALL name the key and the
+allowed values. There is no shared `loader` key, because iOS and Android
+always load the NativeAOT library.
+
+#### Scenario: No options
+- **GIVEN** `"plugins": ["expo-modules-dotnet"]`
+- **WHEN** prebuild runs for `macos` or `windows`
+- **THEN** the loader SHALL be `hostfxr`
+
+#### Scenario: Shared loader key
+- **GIVEN** `["expo-modules-dotnet", { "loader": "nativeaot" }]`
+- **WHEN** the plugin runs
+- **THEN** it SHALL throw, and the error SHALL name `loader` as an unknown
+  option
 
 ### Requirement: Android Gradle Hook Runs Before Native Library Merges
 `packages/expo-modules-dotnet/android/build.gradle` SHALL expose an

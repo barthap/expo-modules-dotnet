@@ -23,8 +23,8 @@ Milestone order:
    Windows and macOS, in this order: asset, constants, local file system,
    crypto. They exist to replace the expo-desktop native stubs on Windows.
    They register only into `_expoDotnet.modules`.
-3. **expo-desktop integration** (next): generate the desktop app with
-   expo-desktop 1.0 prebuild (039), then let a Windows app opt in to
+3. **expo-desktop integration** (in progress): expo-desktop 1.0 prebuild
+   now generates the desktop app (039). Next, let a Windows app opt in to
    `*-dotnet` modules in place of the expo-desktop stubs (040). Windows only:
    on macOS, upstream `expo-modules-core` and the upstream Expo packages
    already work, which is why our packages are named `expo-*-dotnet`.
@@ -61,9 +61,7 @@ Open briefs live in `docs/plans/`. Briefs for DONE items move to
 | 036 | Typed-array codecs (`Uint8Array`)                   | P1    | M      | 030          | TODO        | —                                                                   |
 | 037 | Coded JavaScript errors                             | P2    | M      | —            | TODO        | —                                                                   |
 | 038 | `expo-file-system-dotnet` write, bytes, copy, move  | P1    | M      | 024, 034–036 | TODO        | —                                                                   |
-| 039 | expo-desktop 1.0 prebuild for `desktop-app`         | P1    | L      | —            | IN PROGRESS | [039](plans/039-expo-desktop-prebuild.md)                           |
 | 040 | Windows opt-in `*-dotnet` substitution              | P1    | L      | 039          | TODO        | [040](plans/040-windows-dotnet-module-substitution.md)              |
-| 018 | Windows build/deploy reliability + `ReactNativeDir` | P1/P2 | L      | 039          | OPEN        | [018](plans/018-windows-build-deploy-reliability.md)                |
 | 011 | Hermes prebuilts as downloadable artifacts          | P3    | M      | 008          | BACKLOG     | —                                                                   |
 | 001 | Fast CI checks workflow                             | P1    | S      | —            | DONE        | [001](archive/plans/001-ci-checks-workflow.md)                      |
 | 002 | Autolinking CLI command tests                       | P1    | M      | —            | DONE        | [002](archive/plans/002-autolinking-cli-command-tests.md)           |
@@ -81,6 +79,7 @@ Open briefs live in `docs/plans/`. Briefs for DONE items move to
 | 015 | Promise state on runtime-owned collection           | P2    | M      | —            | DONE        | [015](archive/plans/015-promise-long-lived-state.md)                |
 | 016 | NativeAOT publish check in CI                       | P1    | S      | —            | DONE        | [016](archive/plans/016-nativeaot-ci-lane.md)                       |
 | 017 | SharedObject authoring surface                      | P2    | L      | 015          | DONE        | [017](archive/plans/017-sharedobject-authoring.md)                  |
+| 018 | Windows build/deploy reliability + `ReactNativeDir` | P1/P2 | L      | 039          | DONE        | [018](archive/plans/018-windows-build-deploy-reliability.md)        |
 | 019 | Typed events on shared objects                      | P2    | M      | 017, 021     | DONE        | [019](archive/plans/019-sharedobject-events.md)                     |
 | 020 | Console app Linux port + loader CI lane             | P1    | M      | 016          | DONE        | [020](archive/plans/020-console-app-linux-port.md)                  |
 | 021 | Owned host-function callback-state disposal         | P2    | S–M    | —            | DONE        | [021](archive/plans/021-hostfunction-owned-state-disposal.md)       |
@@ -89,6 +88,7 @@ Open briefs live in `docs/plans/`. Briefs for DONE items move to
 | 024 | `expo-file-system-dotnet` local files core          | P1    | L      | —            | DONE        | [024](archive/plans/024-expo-file-system-dotnet.md)                 |
 | 026 | Nullable reference-type codecs                      | P1    | M      | —            | DONE        | [026](archive/plans/026-nullable-reference-codecs.md)               |
 | 027 | Host-supplied app directories                       | P1    | L      | —            | DONE        | [027](archive/plans/027-host-supplied-app-directories.md)           |
+| 039 | expo-desktop 1.0 prebuild for `desktop-app`         | P1    | L      | —            | DONE        | [039](archive/plans/039-expo-desktop-prebuild.md)                   |
 
 The next free ID is 041.
 
@@ -121,11 +121,20 @@ The next free ID is 041.
   bases stay unsupported by design.
 - **018**: direct MSBuild, RNW CLI build/deploy/launch, and live-app rebuild
   did not reproduce a PDB lock on the RNW 0.81 / VS 2026 lane (2026-07-23).
-  expo-desktop 1.0 runs `windows` mods, so 039 activates the
-  `ReactNativeDir` resolver. Close 018 together with 039. Keep our resolver:
-  expo-desktop sets `ReactNativeDir` only in the app `.vcxproj`, with a
-  directory walk, and a plain `ProjectReference` does not pass it to
-  `ExpoModulesDotnet.vcxproj`.
+  Closed with 039, which runs the `ReactNativeDir` resolver from the
+  `windows` mod under expo-desktop prebuild.
+- **039**: `apps/desktop-app` has no committed `macos/` or `windows/`;
+  expo-desktop prebuild (SDK 54 template 54.81.5, RNW 0.81.37) and the
+  `expo-modules-dotnet` plugin create them. Verified 2026-10-22:
+  macOS and Windows `prebuild --clean` plus `expo-desktop run` log
+  `[ExampleModule] C# add(22, 20) returned 42`, with no hand edit. On Windows,
+  `autolink-windows` keeps the `Expo .NET Managed` solution folder. The macOS
+  template enables the App Sandbox, so the plugin turns it off for `hostfxr`.
+  macOS with `macos.loader: "nativeaot"` and the sandbox on logs the same
+  line (2026-10-22).
+  Upstream gap to report: the template Podfile builds the
+  `react-native-macos` path from the `react-native` path, which fails under
+  pnpm; `apps/desktop-app/plugins/withDesktopAppFixes.js` works around it.
 - **039 → 040**: 040 needs the generated expo-desktop Windows app. Its
   recommended mechanism is a Windows-only Metro alias of the upstream
   native-accessor files (`expo-asset/build/ExpoAsset.js`,
