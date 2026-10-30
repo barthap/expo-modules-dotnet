@@ -1581,14 +1581,13 @@ Typed event payload analysis SHALL check the exclusion itself. A
 codec resolution, so only the event payload check can report `EXPOJSI019` or
 `EXPOJSI027` for it.
 
-`SharedObject?`, the polymorphic base, SHALL report the diagnostic for the
-position where it appears, `EXPOJSI001` for a parameter, instead of
-`EXPOJSI023`. `SharedRef<T>?` and a nullable concrete `[ExpoSharedObject]` class
-SHALL report `EXPOJSI023`. Shared-object boundary analysis identifies the
-polymorphic base by a display string that carries the nullable annotation, so an
-annotated `SharedObject` never enters that analysis. The member is still
-rejected at error severity, no binding is emitted, and no shared-object codec is
-selected; only the code number differs from its siblings.
+A nullable annotation SHALL NOT change shared-object type identity.
+`SharedObject?`, `SharedRef<T>?`, and a nullable concrete `[ExpoSharedObject]`
+class SHALL report `EXPOJSI023` on every generated boundary that runs
+shared-object boundary analysis, with the same reason as the non-null form,
+except that a valid concrete class annotated as nullable reports that it must be
+used without a nullable annotation. The member is rejected at error severity, no
+binding is emitted, and no shared-object codec is selected.
 
 #### Scenario: Excluded nullable parameter or return reports the method codes
 - **GIVEN** a generated method declares `JavaScriptValue?` or `ArrayBuffer?` as
@@ -1635,11 +1634,32 @@ selected; only the code number differs from its siblings.
 - **THEN** it SHALL report `EXPOJSI023`
 - **AND** it SHALL NOT select a shared-object codec or emit the member
 
-#### Scenario: Nullable polymorphic SharedObject reports the position code
-- **GIVEN** a generated method declares a `SharedObject?` parameter
-- **WHEN** the generator analyzes the method
-- **THEN** it SHALL report `EXPOJSI001` naming `SharedObject`, not `EXPOJSI023`
+#### Scenario: Nullable polymorphic SharedObject reports the shared-object code
+- **GIVEN** a generated boundary declares `SharedObject?` as a method
+  parameter, a return type, an async result type, a property type, or a
+  shared-object `[JS]` constructor parameter, on a module or on a
+  shared-object class
+- **WHEN** the generator analyzes the boundary
+- **THEN** it SHALL report `EXPOJSI023` naming the member and the reason
+  "which is the polymorphic SharedObject base"
+- **AND** it SHALL NOT report `EXPOJSI001`, `EXPOJSI002`, or `EXPOJSI015` for
+  that member
 - **AND** it SHALL NOT select a shared-object codec or emit the member
+
+#### Scenario: Nullable shared object inside a composed codec
+- **GIVEN** a generated method parameter declares a composed type whose
+  element is `SharedObject?`, such as `IReadOnlyList<SharedObject?>`
+- **WHEN** the generator analyzes the parameter
+- **THEN** it SHALL report `EXPOJSI023` with the composed-codec reason, as it
+  does for `IReadOnlyList<SharedObject>`
+- **AND** it SHALL NOT emit the member
+
+#### Scenario: Valid concrete shared object stays accepted
+- **GIVEN** a generated method parameter declares a non-null top-level, sealed,
+  non-generic `[ExpoSharedObject]` class
+- **WHEN** the generator analyzes the parameter
+- **THEN** it SHALL select `SharedObjectCodec<T>` and emit the binding with no
+  diagnostic
 
 #### Scenario: Rejected nullable type does not fall back
 - **GIVEN** codec resolution has handled an annotated excluded reference
