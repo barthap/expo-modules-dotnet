@@ -4397,34 +4397,210 @@ public sealed class ExpoModulesGeneratorTests
     AssertNoCompilerErrors(result);
   }
 
-  // `SharedObject?` never reaches shared-object boundary analysis, because the identity check
-  // compares a display string that carries the nullable annotation. It reports the parameter code
-  // instead of EXPOJSI023. That predates nullable reference codecs and is left as it is here: the
-  // member is still rejected as an error, no binding is emitted, and no shared-object codec is
-  // selected.
-  [Fact]
-  public void GeneratorRejectsANullablePolymorphicSharedObjectParameter()
+  [Theory]
+  [InlineData("[JS] public string TakeIt(SharedObject? value) => \"x\";", "TakeIt", "takeIt")]
+  [InlineData("[JS] public SharedObject? GiveIt() => null;", "GiveIt", "giveIt")]
+  [InlineData("[JS] public System.Threading.Tasks.Task<SharedObject?> GiveItAsync() => System.Threading.Tasks.Task.FromResult<SharedObject?>(null);", "GiveItAsync", "giveItAsync")]
+  [InlineData("[JS] public SharedObject? Current => null;", "Current", "current")]
+  public void GeneratorReportsSharedObjectDiagnosticForNullablePolymorphicBase(
+      string declaration,
+      string memberName,
+      string jsName)
+  {
+    var result = GeneratorTestHost.Run(NullableSharedObjectModuleSource(declaration));
+
+    AssertSingleSharedObjectDiagnostic(result, memberName, jsName, "which is the polymorphic SharedObject base");
+  }
+
+  [Theory]
+  [InlineData("[JS] public string TakeIt(SharedObject? value) => \"x\";", "TakeIt", "takeIt")]
+  [InlineData("[JS] public SharedObject? GiveIt() => null;", "GiveIt", "giveIt")]
+  [InlineData("[JS] public SharedObject? Current => null;", "Current", "current")]
+  [InlineData("[JS] public System.Threading.Tasks.Task<SharedObject?> GiveItAsync() => System.Threading.Tasks.Task.FromResult<SharedObject?>(null);", "GiveItAsync", "giveItAsync")]
+  public void GeneratorReportsSharedObjectDiagnosticForNullablePolymorphicBaseOnSharedObjectClass(
+      string declaration,
+      string memberName,
+      string jsName)
   {
     var result = GeneratorTestHost.Run(
-        """
+        $$"""
         #nullable enable
         using Expo.ModulesCore;
 
         namespace Expo.TestModules;
 
-        [ExpoModule("Shared")]
+        [ExpoSharedObject("Holder")]
+        public sealed partial class Holder : SharedObject
+        {
+          {{declaration}}
+        }
+
+        [ExpoModule("Shared", Classes = new[] { typeof(Holder) })]
         public sealed partial class SharedModule
         {
-          [JS] public string TakeIt(SharedObject? value) => "x";
         }
         """
     );
 
-    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI001");
-    Assert.Contains("global::Expo.ModulesCore.SharedObject", diagnostic.GetMessage());
+    AssertSingleSharedObjectDiagnostic(result, memberName, jsName, "which is the polymorphic SharedObject base");
+    Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI023");
+  }
+
+  [Fact]
+  public void GeneratorReportsSharedObjectDiagnosticForNullablePolymorphicBaseConstructorParameter()
+  {
+    // The control proves the constructor factory text appears when the constructor is emitted.
+    var control = GeneratorTestHost.Run(HolderConstructorSource("string value"));
+    Assert.Contains("ConstructSharedObject_", GeneratedText(control));
+
+    var result = GeneratorTestHost.Run(HolderConstructorSource("SharedObject? value"));
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI023");
+    Assert.Contains("its [JS] constructor parameter 'value'", diagnostic.GetMessage());
+    Assert.Contains("which is the polymorphic SharedObject base", diagnostic.GetMessage());
+    Assert.DoesNotContain(result.Diagnostics, item => item.Id is "EXPOJSI001" or "EXPOJSI002" or "EXPOJSI008" or "EXPOJSI015");
     var source = GeneratedText(result);
-    Assert.DoesNotContain("SharedObjectCodec<", source);
-    Assert.DoesNotContain("\"takeIt\"", source);
+    Assert.DoesNotContain("ConstructSharedObject_", source);
+    Assert.DoesNotContain("SharedObjectCodec<global::Expo.ModulesCore.SharedObject", source);
+    AssertNoCompilerErrors(result);
+  }
+
+  private static string HolderConstructorSource(string parameter) =>
+      $$"""
+      #nullable enable
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject("Holder")]
+      public sealed partial class Holder : SharedObject
+      {
+        [JS] public Holder({{parameter}}) { }
+      }
+
+      [ExpoModule("Shared", Classes = new[] { typeof(Holder) })]
+      public sealed partial class SharedModule
+      {
+      }
+      """;
+
+  [Theory]
+  [InlineData("UnattributedEntry", "which is not marked [ExpoSharedObject]")]
+  [InlineData("OpenEntry", "which must be a top-level, non-generic, sealed [ExpoSharedObject] class")]
+  public void GeneratorKeepsTheInvalidConcreteClassReasonForNullableParameters(string typeName, string expectedReason)
+  {
+    foreach (var annotation in new[] { "", "?" })
+    {
+      var result = GeneratorTestHost.Run(
+          $$"""
+          #nullable enable
+          using Expo.ModulesCore;
+
+          namespace Expo.TestModules;
+
+          public sealed class UnattributedEntry : SharedObject
+          {
+          }
+
+          [ExpoSharedObject("OpenEntry")]
+          public partial class OpenEntry : SharedObject
+          {
+          }
+
+          [ExpoModule("Shared")]
+          public sealed partial class SharedModule
+          {
+            [JS] public string TakeIt({{typeName}}{{annotation}} value) => "x";
+          }
+          """
+      );
+
+      var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI023");
+      Assert.Contains("TakeIt", diagnostic.GetMessage());
+      Assert.Contains(expectedReason, diagnostic.GetMessage());
+      Assert.DoesNotContain(result.Diagnostics, item => item.Id is "EXPOJSI001" or "EXPOJSI015");
+      var source = GeneratedText(result);
+      Assert.DoesNotContain("\"takeIt\"", source);
+      Assert.DoesNotContain("SharedObjectCodec<", source);
+      AssertNoCompilerErrors(result);
+    }
+  }
+
+  [Theory]
+  [InlineData("[JS] public string TakeIt(SharedRef<string>? value) => \"x\";", "TakeIt", "takeIt")]
+  [InlineData("[JS] public SharedRef<string>? GiveIt() => null;", "GiveIt", "giveIt")]
+  [InlineData("[JS] public System.Threading.Tasks.Task<SharedRef<string>?> GiveItAsync() => System.Threading.Tasks.Task.FromResult<SharedRef<string>?>(null);", "GiveItAsync", "giveItAsync")]
+  [InlineData("[JS] public SharedRef<string>? Current => null;", "Current", "current")]
+  public void GeneratorReportsSharedObjectDiagnosticForNullableSharedRefOnEveryBoundary(
+      string declaration,
+      string memberName,
+      string jsName)
+  {
+    var result = GeneratorTestHost.Run(NullableSharedObjectModuleSource(declaration));
+
+    AssertSingleSharedObjectDiagnostic(result, memberName, jsName, "which is the SharedRef<T> managed carrier base");
+  }
+
+  [Fact]
+  public void GeneratorReportsComposedSharedObjectDiagnosticForNullableElement()
+  {
+    var result = GeneratorTestHost.Run(
+        NullableSharedObjectModuleSource(
+            "[JS] public string TakeAll(System.Collections.Generic.IReadOnlyList<SharedObject?> values) => \"x\";"
+        )
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI023");
+    Assert.Contains("TakeAll", diagnostic.GetMessage());
+    Assert.Contains("inside a composed codec", diagnostic.GetMessage());
+    Assert.DoesNotContain(result.Diagnostics, item => item.Id == "EXPOJSI001");
+    Assert.DoesNotContain("\"takeAll\"", GeneratedText(result));
+    AssertNoCompilerErrors(result);
+  }
+
+  [Fact]
+  public void GeneratorAcceptsNonNullConcreteSharedObjectParameter()
+  {
+    var result = GeneratorTestHost.Run(NullableSharedObjectModuleSource("[JS] public string TakeIt(Entry value) => \"x\";"));
+
+    Assert.DoesNotContain(result.Diagnostics, item => item.Id.StartsWith("EXPOJSI", StringComparison.Ordinal));
+    var source = GeneratedText(result);
+    Assert.Contains("SharedObjectCodec<global::Expo.TestModules.Entry>", source);
+    Assert.Contains("\"takeIt\"", source);
+    AssertNoCompilerErrors(result);
+  }
+
+  private static string NullableSharedObjectModuleSource(string declaration) =>
+      $$"""
+      #nullable enable
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      [ExpoSharedObject("Entry")]
+      public sealed partial class Entry : SharedObject
+      {
+        [JS] public Entry() { }
+      }
+
+      [ExpoModule("Shared", Classes = new[] { typeof(Entry) })]
+      public sealed partial class SharedModule
+      {
+        {{declaration}}
+      }
+      """;
+
+  private static void AssertSingleSharedObjectDiagnostic(GeneratorRunResult result, string memberName, string jsName, string expectedReason)
+  {
+    var diagnostic = Assert.Single(
+        result.Diagnostics,
+        item => item.Id == "EXPOJSI023" && item.GetMessage().Contains(memberName, StringComparison.Ordinal)
+    );
+    Assert.Contains(expectedReason, diagnostic.GetMessage());
+    Assert.DoesNotContain(result.Diagnostics, item => item.Id is "EXPOJSI001" or "EXPOJSI002" or "EXPOJSI008" or "EXPOJSI015");
+    var source = GeneratedText(result);
+    Assert.DoesNotContain($"\"{jsName}\"", source);
+    Assert.DoesNotContain("SharedObjectCodec<global::Expo.ModulesCore.SharedObject", source);
     AssertNoCompilerErrors(result);
   }
 

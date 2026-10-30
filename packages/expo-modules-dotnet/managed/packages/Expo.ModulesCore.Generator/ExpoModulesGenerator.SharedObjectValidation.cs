@@ -95,11 +95,13 @@ public sealed partial class ExpoModulesGenerator
     };
   }
 
+  private static bool IsPolymorphicSharedObjectBase(ITypeSymbol typeSymbol) => typeSymbol.WithNullableAnnotation(NullableAnnotation.NotAnnotated).ToDisplayString() is SharedObjectMetadataName;
+
   private static bool DerivesFromSharedObject(INamedTypeSymbol typeSymbol)
   {
     for (var baseType = typeSymbol.BaseType; baseType is not null; baseType = baseType.BaseType)
     {
-      if (baseType.ToDisplayString() == SharedObjectMetadataName) return true;
+      if (IsPolymorphicSharedObjectBase(baseType)) return true;
     }
     return false;
   }
@@ -108,12 +110,12 @@ public sealed partial class ExpoModulesGenerator
 
   private static bool IsSharedObjectCodecExpression(string codecExpression) => codecExpression.StartsWith("SharedObjectCodec<", StringComparison.Ordinal);
 
-  private static bool IsSharedObjectRelatedType(ITypeSymbol typeSymbol) => typeSymbol.ToDisplayString() == SharedObjectMetadataName || (typeSymbol is INamedTypeSymbol namedType && DerivesFromSharedObject(namedType));
+  private static bool IsSharedObjectRelatedType(ITypeSymbol typeSymbol) => IsPolymorphicSharedObjectBase(typeSymbol) || (typeSymbol is INamedTypeSymbol namedType && DerivesFromSharedObject(namedType));
 
   private static string? GetDirectSharedObjectBoundaryIssue(ITypeSymbol typeSymbol)
   {
-    if (typeSymbol.ToDisplayString() == SharedObjectMetadataName) return "which is the polymorphic SharedObject base";
-    if (typeSymbol is INamedTypeSymbol namedType && namedType.OriginalDefinition.ToDisplayString() == SharedRefMetadataName) return "which is the SharedRef<T> managed carrier base";
+    if (IsPolymorphicSharedObjectBase(typeSymbol)) return "which is the polymorphic SharedObject base";
+    if (typeSymbol is INamedTypeSymbol namedType && namedType.OriginalDefinition.ToDisplayString() is SharedRefMetadataName) return "which is the SharedRef<T> managed carrier base";
     if (!HasExpoSharedObjectAttribute(typeSymbol)) return "which is not marked [ExpoSharedObject]";
     if (typeSymbol.ContainingType is not null || typeSymbol is INamedTypeSymbol { IsGenericType: true } || !typeSymbol.IsSealed) return "which must be a top-level, non-generic, sealed [ExpoSharedObject] class";
     return typeSymbol.NullableAnnotation == NullableAnnotation.Annotated ? "which must be used without a nullable annotation" : null;
