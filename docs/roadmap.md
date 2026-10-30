@@ -135,6 +135,7 @@ The next free ID is 041.
   Upstream gap to report: the template Podfile builds the
   `react-native-macos` path from the `react-native` path, which fails under
   pnpm; `apps/desktop-app/plugins/withDesktopAppFixes.js` works around it.
+  The draft report is in `docs/references/expo-desktop.md`.
 - **039 → 040**: 040 needs the generated expo-desktop Windows app. Its
   recommended mechanism is a Windows-only Metro alias of the upstream
   native-accessor files (`expo-asset/build/ExpoAsset.js`,
