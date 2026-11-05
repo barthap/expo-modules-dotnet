@@ -12,7 +12,8 @@
 > ```sh
 > git diff --stat 512ab46e..HEAD -- packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/Codecs packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/ModuleEventEmitter.cs packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/SharedObjectEventEmitter.cs packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests docs/specs/ownership-and-scoped-refs.md docs/specs/modules-core-boundary.md docs/module-authoring-guide.md docs/roadmap.md
 > ```
-> Plans 028–030 must be DONE. Rebase the drift check to plan 030's final commit.
+> Plans 028–030 must be DONE. Rebase the drift check to the merged 030 change
+> (`docs/archive/changes/2026-11-05-compositional-codec-resource-scope/`).
 > If the scoped ArrayBuffer adapter, nullability dispatch, event payload
 > classification, or plan-026 exclusion diagnostics differ from "Current
 > state," stop and reconcile before coding.
@@ -96,7 +97,7 @@ do not add a second overload with the same signature.
 
 The implementation must use plan 030's:
 
-- `JavaScriptConversionScope`;
+- `GeneratedConversionScope`;
 - scope-aware ArrayBuffer codec;
 - recursive scope-aware record/list/dictionary codecs;
 - the existing direct event scheduling lease, and return/property-get
@@ -122,7 +123,7 @@ Semantics:
 
 - JS `null` or `undefined` decodes to C# `null`.
 - C# `null` encodes as JS `null`.
-- Null registers nothing in `JavaScriptConversionScope`.
+- Null registers nothing in `GeneratedConversionScope`.
 - Non-null decode is invocation-owned and follows the same scope as
   `ArrayBuffer`.
 - Non-null return/property-get encode transfers the source wrapper.

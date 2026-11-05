@@ -136,26 +136,35 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
   generated codec, mapped to/from a plain JavaScript object.
 - `IReadOnlyList<T>` where `T` has a generated codec, mapped to/from a
   JavaScript array. `List<T>` is not supported. Lists and dictionaries nest in
-  each other, in records, in callback types, and in typed event payloads.
+  each other, in records, in callback types, and in typed event payloads, as
+  long as they hold no `JavaScriptValue` or `ArrayBuffer`. One that does works
+  as a parameter, return, property, or record field, on module and
+  shared-object members, and inside another list or dictionary.
 - Binary data: `ArrayBuffer`, plus `byte[]`, `Memory<byte>` and
   `ReadOnlyMemory<byte>` as convenience types. These copy in both directions.
   `Span<byte>` and `ReadOnlySpan<byte>` borrow one synchronous input parameter,
-  and a returned span is copied. `ArrayBuffer` works directly and as a record
-  field, but not as a list element, dictionary value, or callback type
-  argument. See the "Module-facing ArrayBuffer And Binary Codecs" requirement
-  in `docs/specs/modules-core-boundary.md`.
+  and a returned span is copied. `ArrayBuffer` works directly, as a record
+  field, a list element, and a dictionary value, but not as a nullable inner
+  type, a callback type argument, or a nested typed-event payload. See the
+  "Module-facing ArrayBuffer And Binary Codecs" requirement in
+  `docs/specs/modules-core-boundary.md`.
 - Shared objects, declared as described in section 8.
 - C# `enum` values — encoded as JavaScript strings by default; annotate with
   `[JSEnum(EnumRepresentation.Number)]` for integer-backed representation.
 - `JavaScriptValue` directly, for cases the typed codecs don't cover (see
   `docs/specs/managed-jsi-wrappers.md` and
   `docs/specs/ownership-and-scoped-refs.md` for the ownership rules — argument
-  wrappers are owned by generated glue for the call's duration; returned
-  wrappers transfer ownership to generated glue, so keep a retained copy if you
-  need to hold onto or dispose your own reference afterward).
+  wrappers are owned by generated glue for the call's duration, so store and
+  expose only `Retain()` copies; a returned value transfers all its
+  `JavaScriptValue` and `ArrayBuffer` leaves to generated glue, including
+  leaves inside records, lists, and dictionaries, so keep a retained copy if
+  you need to hold onto or dispose your own reference afterward).
 - `JavaScriptCallback<TResult>` / `JavaScriptCallback<TArgs, TResult>` for
   JS function arguments (see Callbacks below). A callback is a parameter type
   only: it cannot be a return value, a collection element, or a record field.
+  A callback result or argument type can be a direct `JavaScriptValue`, but a
+  type that holds a `JavaScriptValue` or `ArrayBuffer` inside a record, list,
+  or dictionary is a build diagnostic there.
 
 Nullable reference types work for the codecs that carry no JSI ownership:
 `string?`, `Uri?`, `byte[]?`, positional reference records, and the
@@ -217,9 +226,11 @@ The setter receives an invocation-owned wrapper: do not dispose or store that
 wrapper. Call `Retain()` if the module needs a copy after the setter returns,
 then dispose the retained copy when the module no longer needs it. A getter
 transfers its returned wrapper to generated glue, so return `stored.Retain()`
-when the module keeps ownership of `stored`. `JavaScriptObject` may become an
-optional advanced module convertible in a separate future change, but it does
-not have a generated module codec today.
+when the module keeps ownership of `stored`. A getter that returns a record,
+list, or dictionary holding a stored wrapper returns a new value built from
+`Retain()` copies. `JavaScriptObject` may become an optional advanced module
+convertible in a separate future change, but it does not have a generated
+module codec today.
 
 ## 4. Async methods
 

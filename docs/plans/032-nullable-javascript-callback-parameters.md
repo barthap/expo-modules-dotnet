@@ -73,7 +73,7 @@ descriptor with:
 - no encode capability;
 - callback/context retention distinct from invocation-owned wrapper cleanup.
 
-Plan 030 must not register callbacks in `JavaScriptConversionScope`. Keep that
+Plan 030 must not register callbacks in `GeneratedConversionScope`. Keep that
 separation here.
 
 ### Plan 026 rejects nullable callbacks on every shape
@@ -125,7 +125,7 @@ Semantics:
 | Runtime tests | `scripts/test-managed.sh --project packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests/Expo.ModulesCore.Tests.csproj` | all ModulesCore tests pass |
 | Full regression | `scripts/test-managed.sh` | all managed tests pass, none skipped |
 | Format | `scripts/format.sh --check --all` | exit 0 |
-| Callback scope scan | `rg -n 'JavaScriptConversionScope.*Callback|\\.Register\\([^\\n]*JavaScriptCallback|Own[^\\n]*JavaScriptCallback' packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator` | no callback registered with the invocation conversion scope |
+| Callback scope scan | `rg -n 'GeneratedConversionScope.*Callback|\\.Register\\([^\\n]*JavaScriptCallback|Own[^\\n]*JavaScriptCallback' packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator` | no callback registered with the invocation conversion scope |
 
 ## Suggested executor toolkit
 
@@ -162,7 +162,7 @@ Semantics:
   condition for this plan
 - Callback encoding or any callback return/property/event support
 - Nested callback records or collections
-- Registering callbacks in `JavaScriptConversionScope`
+- Registering callbacks in `GeneratedConversionScope`
 - ArrayBuffer, JavaScriptValue, or shared-object nullable behavior
 - Native code, ABI, scheduler, or platform adapters
 
@@ -182,7 +182,7 @@ Semantics:
 Create the delta spec with the exact supported and unsupported positions above.
 Replace the callback part of plan 026's blanket exclusion with a parameter-only
 requirement. State that callback ownership is `DotnetRuntimeContext`, not
-`JavaScriptConversionScope`.
+`GeneratedConversionScope`.
 
 Get approval and commit the delta, then approve and commit the change-local
 plan.
