@@ -657,6 +657,266 @@ public sealed class ResourceScopeModuleTests
     Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
+  [Fact]
+  public void NullishBufferParameterRegistersNothing()
+  {
+    using var scope = ResourceScopeFixture.Create();
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString("[m.measureOptional(null), m.measureOptional(undefined)].join(':')");
+    scope.Fixture.WaitUntilIdle();
+
+    Assert.Equal("-1:-1", result);
+    Assert.Equal(0u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public async Task NonNullNullableBufferParameterReleasesOnceSyncAndAsync()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("4", scope.ReadString("String(m.measureOptional(b))"));
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    scope.Fixture.ResetCounters();
+    scope.StartOutcome("m.measureOptionalAfterAwaitAsync(b)");
+    await scope.WaitForOutcomeAsync();
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("fulfilled:4", scope.ReadString("`${__outcome.status}:${__outcome.value}`"));
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    scope.Fixture.ResetCounters();
+    scope.StartOutcome("m.measureOptionalAfterAwaitAsync(null)");
+    await scope.WaitForOutcomeAsync();
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("fulfilled:-1", scope.ReadString("`${__outcome.status}:${__outcome.value}`"));
+    Assert.Equal(0u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void OptionalNullableBufferUsesAuthoredDefault()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    scope.Fixture.ResetCounters();
+    var defaults = scope.ReadString("[m.measureDefaulted(), m.measureDefaulted(undefined), m.measureDefaulted(null)].join(':')");
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("-1:-1:-1", defaults);
+    Assert.Equal(0u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("4", scope.ReadString("String(m.measureDefaulted(b))"));
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public async Task NullableBufferReturnEncodesNullOrTransfersSyncAndAsync()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b = new ArrayBuffer(4); new Uint8Array(b)[0] = 7; true");
+
+    scope.Fixture.ResetCounters();
+    var nulls = scope.ReadString("[m.echoOptional(null) === null, m.echoOptional(undefined) === null].join(':')");
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("true:true", nulls);
+    Assert.Equal(0u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    scope.Fixture.ResetCounters();
+    var echoed = scope.ReadString("globalThis.r = m.echoOptional(b); [r === b, new Uint8Array(r)[0]].join(':')");
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("true:7", echoed);
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    scope.Fixture.ResetCounters();
+    scope.StartOutcome("m.echoOptionalAsync(null)");
+    await scope.WaitForOutcomeAsync();
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("fulfilled:true", scope.ReadString("`${__outcome.status}:${__outcome.value === null}`"));
+    Assert.Equal(0u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    scope.Fixture.ResetCounters();
+    scope.StartOutcome("m.echoOptionalAsync(b)");
+    await scope.WaitForOutcomeAsync();
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("fulfilled:true", scope.ReadString("`${__outcome.status}:${__outcome.value === b}`"));
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void NullableBufferPropertyStoresNullOrRetainedCopy()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("null", scope.ReadString("String(m.optionalBuffer)"));
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal(0u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    scope.Fixture.ResetCounters();
+    var stored = scope.ReadString("m.optionalBuffer = b; [m.optionalBuffer === b, m.optionalBuffer === b].join(':')");
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("true:true", stored);
+    // The stored copy pins the entry, as in PropertyBufferLeasesReleaseWhenStoredCopyDrops.
+    Assert.Equal(0u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    var cleared = scope.ReadString("m.optionalBuffer = null; String(m.optionalBuffer)");
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("null", cleared);
+    // The setter disposed the stored copy.
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void NullableBufferRecordFieldsRegisterOnlyPresentLeaves()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true");
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("4", scope.ReadString("String(m.measureOptionalPair({ first: b1, second: null }))"));
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    // JavaScript omits the field: it decodes to null and registers nothing.
+    scope.Fixture.ResetCounters();
+    Assert.Equal("2", scope.ReadString("String(m.measureOptionalPair({ second: b2 }))"));
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    scope.Fixture.ResetCounters();
+    var echoed = scope.ReadString(
+        "globalThis.r = m.echoOptionalPair({ first: null, second: b2 }); [r.first === null, r.second === b2].join(':')"
+    );
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("true:true", echoed);
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void LaterFieldDecodeFailureReleasesEarlierNullableLease()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    scope.Fixture.ResetCounters();
+    var present = scope.ReadString(
+        "let failed; try { m.measureOptionalCounted({ buffer: b, count: 'x' }); failed = 'no error'; } " +
+        "catch (error) { failed = error instanceof Error; } String(failed)"
+    );
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("true", present);
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    scope.Fixture.ResetCounters();
+    var absent = scope.ReadString(
+        "let failed; try { m.measureOptionalCounted({ buffer: null, count: 'x' }); failed = 'no error'; } " +
+        "catch (error) { failed = error instanceof Error; } String(failed)"
+    );
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("true", absent);
+    Assert.Equal(0u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void NullableBufferCollectionsRegisterOnlyPresentLeaves()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true");
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("2", scope.ReadString("String(m.countPresent([b1, null, undefined, b2]))"));
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    scope.Fixture.ResetCounters();
+    var list = scope.ReadString("globalThis.r = m.echoOptionalList([null, b1]); [r[0] === null, r[1] === b1].join(':')");
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("true:true", list);
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    scope.Fixture.ResetCounters();
+    var map = scope.ReadString("globalThis.r = m.echoOptionalMap({ a: null, b: b2 }); [r.a === null, r.b === b2].join(':')");
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("true:true", map);
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    // The same buffer in two slots decodes to two entries; each releases once.
+    scope.Fixture.ResetCounters();
+    Assert.Equal("2", scope.ReadString("String(m.countPresent([b1, b1]))"));
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void NullableBufferParameterRejectsNonBufferValues()
+  {
+    using var scope = ResourceScopeFixture.Create();
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString(
+        "const outcomes = []; " +
+        "for (const bad of ['x', {}]) { " +
+        "try { m.measureOptional(bad); outcomes.push('no error'); } " +
+        "catch (error) { outcomes.push(error instanceof Error); } } " +
+        "outcomes.join(':')"
+    );
+    scope.Fixture.WaitUntilIdle();
+
+    Assert.Equal("true:true", result);
+    Assert.Equal(0u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void NonNullBufferParameterStaysStrict()
+  {
+    using var scope = ResourceScopeFixture.Create();
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString(
+        "const outcomes = []; " +
+        "for (const bad of [null, undefined]) { " +
+        "try { m.measure(bad); outcomes.push('no error'); } " +
+        "catch (error) { outcomes.push(error instanceof Error); } } " +
+        "outcomes.join(':')"
+    );
+    scope.Fixture.WaitUntilIdle();
+
+    Assert.Equal("true:true", result);
+    Assert.Equal(0u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void SharedObjectNullableBufferMembersRegisterOnlyPresentLeaves()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString(
+        "globalThis.e0 = new m.ResourceScopeOptionalEntry(null); " +
+        "globalThis.e1 = new m.ResourceScopeOptionalEntry(b); " +
+        "[e0.readSeed(), e1.readSeed(), e1.measure(null), e1.measure(b)].join(':')"
+    );
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("-1:4:-1:4", result);
+    // The constructor decode and the method decode are two entries.
+    Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    scope.Fixture.ResetCounters();
+    var property = scope.ReadString(
+        "e1.buffer = b; const same = e1.buffer === b; e1.buffer = null; [same, e1.buffer === null].join(':')"
+    );
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("true:true", property);
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
   private sealed class ResourceScopeFixture : IDisposable
   {
     private ResourceScopeFixture(

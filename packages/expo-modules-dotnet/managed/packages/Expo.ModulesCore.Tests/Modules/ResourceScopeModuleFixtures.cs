@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Expo.JSI;
 
@@ -8,6 +9,10 @@ namespace Expo.ModulesCore.Tests.Modules;
 public sealed record BufferPair(ArrayBuffer First, ArrayBuffer Second);
 
 public sealed record CountedBuffer(ArrayBuffer Buffer, int Count);
+
+public sealed record OptionalBufferPair(ArrayBuffer? First, ArrayBuffer? Second);
+
+public sealed record OptionalCountedBuffer(ArrayBuffer? Buffer, int Count);
 
 public sealed record ValuePair(JavaScriptValue First, JavaScriptValue Second);
 
@@ -24,10 +29,11 @@ public readonly record struct TextSlot(string Value);
 
 public sealed record TextMixed(string Buffer, string Value);
 
-[ExpoModule("ResourceScope", Classes = new[] { typeof(ResourceScopeEntry) })]
+[ExpoModule("ResourceScope", Classes = new[] { typeof(ResourceScopeEntry), typeof(ResourceScopeOptionalEntry) })]
 public sealed partial class ResourceScopeModule : Module, IDisposable
 {
   private BufferPair? stored;
+  private ArrayBuffer? storedOptional;
 
   public ResourceScopeModule(DotnetRuntimeContext context)
       : base(context)
@@ -223,10 +229,66 @@ public sealed partial class ResourceScopeModule : Module, IDisposable
     }
   }
 
+  [JS]
+  public int MeasureOptional(ArrayBuffer? value) => value?.ByteLength ?? -1;
+
+  [JS]
+  public async Task<int> MeasureOptionalAfterAwaitAsync(ArrayBuffer? value)
+  {
+    await Task.Yield();
+    return value?.ByteLength ?? -1;
+  }
+
+  [JS]
+  public int MeasureDefaulted(ArrayBuffer? value = null) => value?.ByteLength ?? -1;
+
+  [JS]
+  public ArrayBuffer? EchoOptional(ArrayBuffer? value) => value;
+
+  [JS]
+  public async Task<ArrayBuffer?> EchoOptionalAsync(ArrayBuffer? value)
+  {
+    await Task.Yield();
+    return value;
+  }
+
+  // Stores and returns only Retain() copies; the module owns the stored copy until Dispose.
+  [JS]
+  public ArrayBuffer? OptionalBuffer
+  {
+    get => storedOptional?.Retain();
+    set
+    {
+      var copy = value?.Retain();
+      storedOptional?.Dispose();
+      storedOptional = copy;
+    }
+  }
+
+  [JS]
+  public int MeasureOptionalPair(OptionalBufferPair pair) => (pair.First?.ByteLength ?? 0) + (pair.Second?.ByteLength ?? 0);
+
+  [JS]
+  public OptionalBufferPair EchoOptionalPair(OptionalBufferPair pair) => pair;
+
+  [JS]
+  public int MeasureOptionalCounted(OptionalCountedBuffer value) => value.Count;
+
+  [JS]
+  public int CountPresent(IReadOnlyList<ArrayBuffer?> values) => values.Count(value => value is not null);
+
+  [JS]
+  public IReadOnlyList<ArrayBuffer?> EchoOptionalList(IReadOnlyList<ArrayBuffer?> values) => values;
+
+  [JS]
+  public Dictionary<string, ArrayBuffer?> EchoOptionalMap(Dictionary<string, ArrayBuffer?> values) => values;
+
   public void Dispose()
   {
     Release(stored);
     stored = null;
+    storedOptional?.Dispose();
+    storedOptional = null;
   }
 
   private static void Release(BufferPair? pair)
@@ -253,4 +315,42 @@ public sealed partial class ResourceScopeEntry : SharedObject
 
   [JS]
   public int Measure(ArrayBuffer value) => value.ByteLength;
+}
+
+[ExpoSharedObject("ResourceScopeOptionalEntry")]
+public sealed partial class ResourceScopeOptionalEntry : SharedObject
+{
+  private readonly int seedLength;
+  private ArrayBuffer? stored;
+
+  [JS]
+  public ResourceScopeOptionalEntry(ArrayBuffer? seed)
+  {
+    seedLength = seed?.ByteLength ?? -1;
+  }
+
+  [JS]
+  public int ReadSeed() => seedLength;
+
+  [JS]
+  public int Measure(ArrayBuffer? value) => value?.ByteLength ?? -1;
+
+  // Stores and returns only Retain() copies; the entry owns the stored copy until OnRelease.
+  [JS]
+  public ArrayBuffer? Buffer
+  {
+    get => stored?.Retain();
+    set
+    {
+      var copy = value?.Retain();
+      stored?.Dispose();
+      stored = copy;
+    }
+  }
+
+  protected override void OnRelease()
+  {
+    stored?.Dispose();
+    stored = null;
+  }
 }
