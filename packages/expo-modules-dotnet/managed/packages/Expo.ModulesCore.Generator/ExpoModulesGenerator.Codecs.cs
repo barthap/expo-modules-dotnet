@@ -174,9 +174,9 @@ public sealed partial class ExpoModulesGenerator
         : OrdinaryCodec($"NullableCodec<{valueTypeName}, {valueCodec.Expression}>");
   }
 
-  // Ownership-bearing and runtime-context-bearing wrappers keep their non-nullable conversion
-  // rules. Their retain, transfer, and release-exactly-once states are not widened with a null
-  // axis in this slice, so an annotated use is rejected instead of silently converted.
+  // JavaScriptValue and the callback types keep their non-nullable conversion rules. Their
+  // retain, transfer, and release-exactly-once states are not widened with a null axis, so an
+  // annotated use is rejected instead of silently converted.
   private static bool IsExcludedFromNullableReference(ITypeSymbol typeSymbol)
   {
     if (IsJavaScriptCallbackType(typeSymbol))
@@ -184,8 +184,7 @@ public sealed partial class ExpoModulesGenerator
       return true;
     }
 
-    return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
-        is JavaScriptValueMetadataName or ArrayBufferMetadataName;
+    return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == JavaScriptValueMetadataName;
   }
 
   /// <summary>
