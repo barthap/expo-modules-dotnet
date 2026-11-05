@@ -163,6 +163,10 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
 - `JavaScriptCallback<TResult>` / `JavaScriptCallback<TArgs, TResult>` for
   JS function arguments (see Callbacks below). A callback is a parameter type
   only: it cannot be a return value, a collection element, or a record field.
+  `JavaScriptCallback<...>?` is accepted as a method or shared-object
+  constructor parameter, including with `= null`. JavaScript `null` and
+  `undefined` arrive as C# `null`, and a function is retained like a non-null
+  callback.
   A callback result or argument type can be a direct `JavaScriptValue`, but a
   type that holds a `JavaScriptValue` or `ArrayBuffer` inside a record, list,
   or dictionary is a build diagnostic there.
@@ -175,10 +179,9 @@ values work wherever the nested type is supported, so `IReadOnlyList<string?>?`
 composes. `List<T>` stays unsupported in both forms, because its non-nullable
 form has no codec either.
 
-`JavaScriptValue?`, `JavaScriptCallback<...>?`, `SharedObject?`,
-`SharedRef<T>?`, and a nullable concrete `[ExpoSharedObject]` class are build
-diagnostics. Their conversion carries JSI ownership, retained callback state, or
-shared-object identity, and a null axis multiplies those states.
+`JavaScriptValue?`, `SharedObject?`, `SharedRef<T>?`, and a nullable concrete
+`[ExpoSharedObject]` class are build diagnostics. Their conversion carries JSI
+ownership or shared-object identity, and a null axis multiplies those states.
 
 Decoding treats JavaScript `null` and `undefined` alike as C# `null`, and C#
 `null` encodes as JavaScript `null`, never `undefined`. A non-nullable reference
