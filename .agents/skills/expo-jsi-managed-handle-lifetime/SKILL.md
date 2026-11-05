@@ -153,15 +153,21 @@ For `JavaScriptValueCodec` and generated `[JS]` functions:
 - `Decode(JavaScriptValueRef, runtime)` retains the scoped ref into an owned
   wrapper.
 - `Decode(JavaScriptValue, runtime)` retains the input into a new owned wrapper.
-- `Encode(JavaScriptValue, runtime)` returns the same wrapper; ownership
-  transfers to generated glue.
-- `JavaScriptValue` parameters are owned by generated glue for the invocation
-  lifetime. Authored code must not dispose or store them.
-- A returned `JavaScriptValue` transfers ownership to generated glue. Authored
-  code must not dispose it after returning it.
-- `Task<JavaScriptValue>` results transfer ownership when the task completes;
-  generated glue must keep the wrapper alive until Promise settlement value is
-  created.
+- `Encode(JavaScriptValue, runtime)` returns the same wrapper. Generated glue
+  no longer uses it for boundary returns: it transfers the wrapper into the
+  invocation's `GeneratedConversionScope` and returns an independent retained
+  wrapper from `EncodeBorrowed`.
+- `JavaScriptValue` and `ArrayBuffer` parameters, at any depth inside records,
+  lists, and dictionaries, are registered in the invocation's
+  `GeneratedConversionScope`, which releases them. Authored code must not
+  dispose or store them.
+- A returned `JavaScriptValue`, `ArrayBuffer`, or value that holds either
+  transfers every leaf into the scope. Authored code must not dispose a
+  returned leaf. It stores and exposes only `Retain()` copies.
+- `Task<JavaScriptValue>` results transfer into the same scope through
+  `GeneratedTransferredResult<T, TCodec>`; the scope releases input and result
+  leaves after the Promise factory encodes the value, or when the result is
+  abandoned.
 
 Only mention `_expoDotnet`, `EventEmitter`, `NativeModule`, or class/prototype
 ABI when they affect ownership of retained handles or callback/listener state.
