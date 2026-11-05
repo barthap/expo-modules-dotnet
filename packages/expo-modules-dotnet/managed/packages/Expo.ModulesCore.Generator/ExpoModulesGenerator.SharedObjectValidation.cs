@@ -136,7 +136,7 @@ public sealed partial class ExpoModulesGenerator
     return true;
   }
 
-  private static ExpoCodecDescriptor SharedObjectCodec(string expression) => new(expression, ExpoCodecShape.StaticHelper, ExpoCodecCapabilities.DecodeAndEncode, ExpoDecodeOperation.Decode, ExpoContextRequirement.DotnetRuntimeContext, ExpoDecodedOwnership.Borrowed, ExpoEncodeOperation.Standard);
+  private static ExpoCodecDescriptor SharedObjectCodec(string expression) => new(expression, ExpoCodecShape.StaticHelper, ExpoCodecCapabilities.DecodeAndEncode, ExpoDecodeOperation.Decode, ExpoContextRequirement.DotnetRuntimeContext, ExpoResourceOwnership.Borrowed);
 
   private static bool TryFindNestedSharedObjectType(ITypeSymbol typeSymbol, out ITypeSymbol sharedObjectType) => TryFindNestedSharedObjectType(typeSymbol, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default), out sharedObjectType);
 

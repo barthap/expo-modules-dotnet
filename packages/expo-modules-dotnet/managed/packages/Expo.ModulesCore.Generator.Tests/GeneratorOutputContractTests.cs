@@ -257,7 +257,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:3552A505885F6E43E14DD4BD434D470335B17A7ABD9C5FCB77AFB77950AB905D",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:68F6621E3BB532EBD069881D11A2E4EBBCF113144FEE7F4B8495EC6929F93827",
         },
         result.GetOutputContract()
     );
@@ -354,7 +354,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:4E4C200F9222FD770184B8C51781E887A653BFF7CB58A06D8A8047F82E2EC823",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:8786261F891265626F6D716983EC59C6168B37D7278612977843A361E51C61A8",
         },
         result.GetOutputContract()
     );
