@@ -327,6 +327,336 @@ public sealed class ResourceScopeModuleTests
     Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
+  [Fact]
+  public void RecordWithBufferFieldsReleasesEachLeaseOnce()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true");
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString("String(m.measurePair({ first: b1, second: b2 }))");
+    scope.Fixture.WaitUntilIdle();
+
+    Assert.Equal("6", result);
+    Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void RecordReturnTransfersEveryLeaf()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(
+        "globalThis.b1 = new ArrayBuffer(4); new Uint8Array(b1)[0] = 7; " +
+        "globalThis.b2 = new ArrayBuffer(2); true"
+    );
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString(
+        "globalThis.r = m.echoPair({ first: b1, second: b2 }); `${r.first === b1}:${r.second === b2}`"
+    );
+    scope.Fixture.WaitUntilIdle();
+
+    Assert.Equal("true:true", result);
+    // The returned leaves are the decoded ones: each is registered once and released once.
+    Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+    Assert.Equal("7", scope.ReadString("String(new Uint8Array(r.first)[0])"));
+  }
+
+  [Fact]
+  public void LaterFieldDecodeFailureReleasesEarlierLease()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString(
+        "let failed; try { m.measureCounted({ buffer: b, count: 'x' }); failed = 'no error'; } " +
+        "catch (error) { failed = error instanceof Error; } String(failed)"
+    );
+    scope.Fixture.WaitUntilIdle();
+
+    Assert.Equal("true", result);
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void AliasInTwoReturnedLeavesReleasesSourceOnce()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.o = {}; true");
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("true", scope.ReadString("const t = m.textTwin('x'); String(t.first === 'x' && t.second === 'x')"));
+    scope.Fixture.WaitUntilIdle();
+    var twinReleases = scope.Fixture.Counters.ReleasedValues;
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("true", scope.ReadString("const r = m.twin(o); String(r.first === o && r.second === o)"));
+    scope.Fixture.WaitUntilIdle();
+    var leafReleases = scope.Fixture.Counters.ReleasedValues;
+
+    // The decoded input and the one retained copy, which both fields alias and the scope registers once.
+    Assert.Equal(twinReleases + 2, leafReleases);
+  }
+
+  [Fact]
+  public async Task SyncAndAsyncRecordReturningInputLeavesReleaseOnce()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(
+        "globalThis.o1 = {}; globalThis.o2 = {}; " +
+        "globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true"
+    );
+
+    Assert.Equal(
+        "true:true",
+        scope.ReadString("const v = m.echoValues({ first: o1, second: o2 }); `${v.first === o1}:${v.second === o2}`")
+    );
+
+    scope.Fixture.ResetCounters();
+    scope.StartOutcome("m.echoPairAsync({ first: b1, second: b2 })");
+    await scope.WaitForOutcomeAsync();
+    scope.Fixture.WaitUntilIdle();
+
+    Assert.Equal(
+        "fulfilled:true:true",
+        scope.ReadString("`${__outcome.status}:${__outcome.value.first === b1}:${__outcome.value.second === b2}`")
+    );
+    Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void EncodeFailureReleasesTransferredLeaves()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString(
+        "let failed; try { m.brokenPair(b); failed = 'no error'; } " +
+        "catch (error) { failed = error instanceof Error; } String(failed)"
+    );
+    scope.Fixture.WaitUntilIdle();
+
+    Assert.Equal("true", result);
+    // The decoded lease and the transferred Retain() copy share one entry, which releases only when
+    // both leases drop.
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void ListAndDictionaryOfBuffersRoundTrip()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(
+        "globalThis.b1 = new ArrayBuffer(4); new Uint8Array(b1)[0] = 1; " +
+        "globalThis.b2 = new ArrayBuffer(2); true"
+    );
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString(
+        "globalThis.l = m.echoList([b1, b2]); globalThis.d = m.echoMap({ a: b1 }); " +
+        "[l.length === 2, l[0] === b1, l[1] === b2, Object.keys(d).join(',') === 'a', d.a === b1].join(':')"
+    );
+    scope.Fixture.WaitUntilIdle();
+
+    Assert.Equal("true:true:true:true:true", result);
+    Assert.Equal(3u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+    // The JavaScript results stay usable after the scope released the leases.
+    Assert.Equal("1:2:1", scope.ReadString("`${new Uint8Array(l[0])[0]}:${l[1].byteLength}:${new Uint8Array(d.a)[0]}`"));
+  }
+
+  [Fact]
+  public void NestedRecordListDictionaryBufferRoundTrips()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString("const s = m.echoShelf({ rows: [{ a: b }] }); String(s.rows[0].a === b)");
+    scope.Fixture.WaitUntilIdle();
+
+    Assert.Equal("true", result);
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void AbandonedAsyncRecordResultReleasesLeavesOnce()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true");
+
+    scope.StartOutcome("m.holdPairAsync({ first: b1, second: b2 })");
+    scope.Fixture.DisableSyncExecutionForTesting();
+    scope.Fixture.PauseRuntimeExecutor();
+    scope.Fixture.ResetCounters();
+    scope.Fixture.DropNextRuntimeTask(JavaScriptTaskPriority.Immediate);
+    scope.Module.Gate.SetResult();
+    scope.Fixture.WaitUntilRuntimeTaskQueued(JavaScriptTaskPriority.Immediate);
+    scope.Fixture.ResumeRuntimeExecutor();
+    scope.Fixture.WaitUntilIdle();
+    scope.Fixture.SetSyncExecutionSupportedForTesting(true);
+    // The scheduler abandons the result on a thread-pool continuation after the dropped task
+    // faults, and the entry releases then need another runtime turn.
+    scope.WaitForArrayBufferReleases(2u);
+
+    // The returned record holds the decoded leaves, so abandon releases each once.
+    Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+    Assert.Equal("pending", scope.ReadString("__outcome.status"));
+  }
+
+  [Fact]
+  public void NullableRecordStructWithLeafRoundTrips()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.o = {}; true");
+
+    Assert.Equal("null:String", scope.ReadString("`${m.slotKind(null)}:${m.slotKind({ value: 'a' })}`"));
+    Assert.Equal("true", scope.ReadString("String(m.echoSlot(null) === null)"));
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("true", scope.ReadString("String(m.echoTextSlot({ value: 'x' }).value === 'x')"));
+    scope.Fixture.WaitUntilIdle();
+    var twinReleases = scope.Fixture.Counters.ReleasedValues;
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("true", scope.ReadString("String(m.echoSlot({ value: o }).value === o)"));
+    scope.Fixture.WaitUntilIdle();
+    var leafReleases = scope.Fixture.Counters.ReleasedValues;
+
+    // The decoded value, which the returned slot holds again and the scope registers once.
+    Assert.Equal(twinReleases + 1, leafReleases);
+  }
+
+  [Fact]
+  public void MixedRecordRoundTripsBothLeafKinds()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b = new ArrayBuffer(4); globalThis.o = {}; true");
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal(
+        "true",
+        scope.ReadString("const tm = m.echoTextMixed({ buffer: 'x', value: 'y' }); String(tm.buffer === 'x' && tm.value === 'y')")
+    );
+    scope.Fixture.WaitUntilIdle();
+    var twinReleases = scope.Fixture.Counters.ReleasedValues;
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString("const mx = m.echoMixed({ buffer: b, value: o }); `${mx.buffer === b}:${mx.value === o}`");
+    scope.Fixture.WaitUntilIdle();
+    var leafReleases = scope.Fixture.Counters.ReleasedValues;
+
+    Assert.Equal("true:true", result);
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+    // The decoded value field; encode borrows it instead of disposing it.
+    Assert.Equal(twinReleases + 1, leafReleases);
+  }
+
+  [Fact]
+  public void ValueListRoundTripsWithoutLeakOrConsumption()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.o1 = {}; globalThis.o2 = {}; true");
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("true", scope.ReadString("const tl = m.echoTextList(['x', 'y']); String(tl[0] === 'x' && tl[1] === 'y')"));
+    scope.Fixture.WaitUntilIdle();
+    var twinReleases = scope.Fixture.Counters.ReleasedValues;
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("true", scope.ReadString("const vl = m.echoValueList([o1, o2]); String(vl[0] === o1 && vl[1] === o2)"));
+    scope.Fixture.WaitUntilIdle();
+    var leafReleases = scope.Fixture.Counters.ReleasedValues;
+
+    // Each decoded element releases once.
+    Assert.Equal(twinReleases + 2, leafReleases);
+  }
+
+  [Fact]
+  public void NullRecordInListDecodeFailureReleasesEarlierLeases()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true");
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString(
+        "let failed; try { m.measurePairs([{ first: b1, second: b2 }, null]); failed = 'no error'; } " +
+        "catch (error) { failed = error instanceof Error; } String(failed)"
+    );
+    scope.Fixture.WaitUntilIdle();
+
+    Assert.Equal("true", result);
+    Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void NullRecordInReturnedListKeepsTransferTotal()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true");
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString(
+        "let failed; try { m.pairsWithNull({ first: b1, second: b2 }); failed = 'no error'; } " +
+        "catch (error) { failed = error instanceof Error; } String(failed)"
+    );
+    scope.Fixture.WaitUntilIdle();
+
+    // The null element registers nothing, the later pair of retained copies still registers, and
+    // the record EncodeBorrowed throws ArgumentNullException for the null element. Each entry
+    // releases once its decoded lease and its retained copy drop.
+    Assert.Equal("true", result);
+    Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void StoredRecordPropertyReturnsRetainedCopies()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true");
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString(
+        "m.storedPair = { first: b1, second: b2 }; const p1 = m.storedPair; const p2 = m.storedPair; " +
+        "[p1.first === b1, p1.second === b2, p2.first === b1, p2.second === b2].join(':')"
+    );
+    scope.Fixture.WaitUntilIdle();
+
+    Assert.Equal("true:true:true:true", result);
+    // The stored copies pin both entries; a leaked setter or getter lease would keep them at 0
+    // after the module drops those copies.
+    Assert.Equal(0u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+    Assert.Equal("true", scope.ReadString("String(m.storedPair.first === b1)"));
+
+    scope.Fixture.Runtime.Execute(_ =>
+    {
+      scope.Module.Dispose();
+      return true;
+    });
+    scope.Fixture.WaitUntilIdle();
+
+    // Each entry releases once, after every setter, getter, and stored lease on it dropped.
+    Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void OmittedOptionalBufferListRegistersNothing()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("-1", scope.ReadString("String(m.countOptional())"));
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal(0u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("1", scope.ReadString("String(m.countOptional([b]))"));
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
   private sealed class ResourceScopeFixture : IDisposable
   {
     private ResourceScopeFixture(

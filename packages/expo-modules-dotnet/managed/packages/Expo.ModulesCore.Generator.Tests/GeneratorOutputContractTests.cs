@@ -257,7 +257,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:68F6621E3BB532EBD069881D11A2E4EBBCF113144FEE7F4B8495EC6929F93827",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:8F543F25AFD0A45E5F6DFEA95F906FFC237FBA447E393AF7889C1C58E1C20591",
         },
         result.GetOutputContract()
     );

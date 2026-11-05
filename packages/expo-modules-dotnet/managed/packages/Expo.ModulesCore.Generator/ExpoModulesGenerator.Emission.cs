@@ -1161,6 +1161,12 @@ public sealed partial class ExpoModulesGenerator
 
   private static void EmitRecordCodec(StringBuilder builder, ExpoGeneratedRecordCodecModel codec)
   {
+    if (codec.ResourceOwnership == ExpoResourceOwnership.ScopedResource)
+    {
+      EmitScopedRecordCodec(builder, codec);
+      return;
+    }
+
     builder.AppendLine($"  private readonly struct {codec.CodecTypeName} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<{codec.RecordTypeName}>");
     builder.AppendLine("  {");
     builder.AppendLine($"    public static {codec.RecordTypeName} Decode(global::Expo.JSI.JavaScriptValueRef value, global::Expo.JSI.JavaScriptRuntime runtime)");
@@ -1190,6 +1196,55 @@ public sealed partial class ExpoModulesGenerator
     foreach (var field in codec.Fields.Values)
     {
       builder.AppendLine($"      using var {GetRecordFieldLocalName(field)} = {field.Codec.Expression}.Encode(value.{field.CSharpPropertyName}, runtime);");
+      builder.AppendLine($"      obj.SetProperty(\"{EscapeString(field.JavaScriptName)}\", {GetRecordFieldLocalName(field)});");
+    }
+    builder.AppendLine("      return obj.AsValue();");
+    builder.AppendLine("    }");
+    builder.AppendLine("  }");
+    builder.AppendLine();
+  }
+
+  // A record that holds a leaf implements only the scoped codec protocol. Leaf-bearing fields pass
+  // the scope; other fields call their ordinary codecs. A class record can be null inside a
+  // collection, so Transfer returns on null and EncodeBorrowed throws like the ordinary codecs.
+  private static void EmitScopedRecordCodec(StringBuilder builder, ExpoGeneratedRecordCodecModel codec)
+  {
+    builder.AppendLine($"  private readonly struct {codec.CodecTypeName} : global::Expo.ModulesCore.Codecs.IGeneratedScopedCodec<{codec.RecordTypeName}>");
+    builder.AppendLine("  {");
+    builder.AppendLine($"    public static {codec.RecordTypeName} Decode(global::Expo.JSI.JavaScriptValueRef value, global::Expo.JSI.JavaScriptRuntime runtime, global::Expo.ModulesCore.Codecs.GeneratedConversionScope __expoScope)");
+    builder.AppendLine("    {");
+    builder.AppendLine("      var obj = value.AsObject();");
+    foreach (var field in codec.Fields.Values)
+    {
+      var scopeArgument = IsScopedResource(field.Codec) ? ", __expoScope" : string.Empty;
+      builder.AppendLine($"      var {GetRecordFieldLocalName(field)} = {field.Codec.Expression}.Decode(obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\"), runtime{scopeArgument});");
+    }
+    builder.AppendLine($"      return new {codec.RecordTypeName}({string.Join(", ", codec.Fields.Values.Select(GetRecordFieldLocalName))});");
+    builder.AppendLine("    }");
+    builder.AppendLine();
+    builder.AppendLine($"    public static void Transfer({codec.RecordTypeName} value, global::Expo.ModulesCore.Codecs.GeneratedConversionScope __expoScope)");
+    builder.AppendLine("    {");
+    if (!codec.IsValueType)
+    {
+      builder.AppendLine("      if (value is null) return;");
+    }
+    foreach (var field in codec.Fields.Values.Where(field => IsScopedResource(field.Codec)))
+    {
+      builder.AppendLine($"      {field.Codec.Expression}.Transfer(value.{field.CSharpPropertyName}, __expoScope);");
+    }
+    builder.AppendLine("    }");
+    builder.AppendLine();
+    builder.AppendLine($"    public static global::Expo.JSI.JavaScriptValue EncodeBorrowed({codec.RecordTypeName} value, global::Expo.JSI.JavaScriptRuntime runtime)");
+    builder.AppendLine("    {");
+    if (!codec.IsValueType)
+    {
+      builder.AppendLine("      global::System.ArgumentNullException.ThrowIfNull(value);");
+    }
+    builder.AppendLine("      using var obj = runtime.CreateObject();");
+    foreach (var field in codec.Fields.Values)
+    {
+      var encodeMethod = IsScopedResource(field.Codec) ? "EncodeBorrowed" : "Encode";
+      builder.AppendLine($"      using var {GetRecordFieldLocalName(field)} = {field.Codec.Expression}.{encodeMethod}(value.{field.CSharpPropertyName}, runtime);");
       builder.AppendLine($"      obj.SetProperty(\"{EscapeString(field.JavaScriptName)}\", {GetRecordFieldLocalName(field)});");
     }
     builder.AppendLine("      return obj.AsValue();");

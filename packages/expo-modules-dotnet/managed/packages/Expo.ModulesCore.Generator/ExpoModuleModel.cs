@@ -144,6 +144,8 @@ internal sealed record ExpoGeneratedRecordCodecModel(
     string CodecTypeName,
     string RecordTypeName,
     EquatableArray<ExpoGeneratedRecordFieldModel> Fields,
+    ExpoResourceOwnership ResourceOwnership,
+    bool IsValueType,
     Location? Location);
 
 internal sealed record ExpoGeneratedRecordFieldModel(
