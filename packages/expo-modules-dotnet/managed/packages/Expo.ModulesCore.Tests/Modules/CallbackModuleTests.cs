@@ -303,6 +303,301 @@ public sealed class GeneratedCallbackModuleTests
     Assert.Throws<InvalidOperationException>(() => callback.Invoke(ValueTuple.Create("JS")));
   }
 
+  private const string NullableModulePrelude =
+      "globalThis.m = globalThis._expoDotnet.modules.GeneratedNullableCallbacks;";
+
+  [Fact]
+  public void NullishCallbackReachesAuthoredCodeAsNull()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var context = CreateRegisteredContext(fixture);
+    var baseline = context.RetainedCallbackCount;
+
+    try
+    {
+      var result = EvaluateString(
+          fixture,
+          NullableModulePrelude +
+          "[m.callOptional(null), m.callOptional(undefined), m.callDefaulted(), " +
+          "m.callDefaulted(undefined), m.callDefaulted(null)].join(':')"
+      );
+
+      Assert.Equal("-1:-1:null:null:null", result);
+      Assert.Equal(baseline, context.RetainedCallbackCount);
+      Assert.Null(GeneratedNullableCallbacksModule.LastOptional);
+    }
+    finally
+    {
+      DisposeContext(fixture, context);
+    }
+  }
+
+  [Theory]
+  [InlineData("5")]
+  [InlineData("'x'")]
+  [InlineData("({})")]
+  public void NullableCallbackParameterRejectsNonFunctionValues(string value)
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var context = CreateRegisteredContext(fixture);
+    var baseline = context.RetainedCallbackCount;
+
+    try
+    {
+      var result = EvaluateString(
+          fixture,
+          NullableModulePrelude + CatchExpression($"m.callOptional({value})", withMessage: true)
+      );
+
+      Assert.StartsWith("Error:", result);
+      Assert.Contains("not a function", result);
+      Assert.Equal(baseline, context.RetainedCallbackCount);
+    }
+    finally
+    {
+      DisposeContext(fixture, context);
+    }
+  }
+
+  [Fact]
+  public void NonNullNullableCallbackStaysRetainedAfterTheMethodReturns()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var context = CreateRegisteredContext(fixture);
+    var baseline = context.RetainedCallbackCount;
+
+    try
+    {
+      Assert.Equal("5", EvaluateString(fixture, NullableModulePrelude + "String(m.callOptional(() => 5))"));
+      Assert.Equal(baseline + 1, context.RetainedCallbackCount);
+
+      Assert.Equal("5", EvaluateString(fixture, "String(m.callStoredOptional())"));
+      Assert.Equal(baseline + 1, context.RetainedCallbackCount);
+
+      Assert.Equal("Hi JS", EvaluateString(fixture, "m.callDefaulted(name => 'Hi ' + name)"));
+      Assert.Equal(baseline + 2, context.RetainedCallbackCount);
+
+      Assert.Equal(
+          "9:9",
+          EvaluateString(fixture, "globalThis.f = () => 9; [m.callOptional(f), m.callOptional(f)].join(':')")
+      );
+      Assert.Equal(baseline + 4, context.RetainedCallbackCount);
+    }
+    finally
+    {
+      DisposeContext(fixture, context);
+    }
+  }
+
+  [Fact]
+  public async Task NonNullNullableCallbackInvokesAfterAwait()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var context = CreateRegisteredContext(fixture);
+    var baseline = context.RetainedCallbackCount;
+
+    try
+    {
+      EvaluateString(
+          fixture,
+          NullableModulePrelude +
+          """
+          m.callOptionalAfterAwait(() => 7).then(
+            v => { globalThis.__optionalAfterAwait = String(v); },
+            e => { globalThis.__optionalAfterAwait = 'error:' + e.message; }
+          );
+          'started'
+          """
+      );
+
+      Assert.Equal("7", await WaitForGlobalStringAsync(fixture, "__optionalAfterAwait"));
+      Assert.Equal(baseline + 1, context.RetainedCallbackCount);
+
+      EvaluateString(
+          fixture,
+          """
+          m.callOptionalAfterAwait(null).then(
+            v => { globalThis.__optionalAfterAwaitNull = String(v); },
+            e => { globalThis.__optionalAfterAwaitNull = 'error:' + e.message; }
+          );
+          'started'
+          """
+      );
+
+      Assert.Equal("-1", await WaitForGlobalStringAsync(fixture, "__optionalAfterAwaitNull"));
+      Assert.Equal(baseline + 1, context.RetainedCallbackCount);
+    }
+    finally
+    {
+      DisposeContext(fixture, context);
+    }
+  }
+
+  [Fact]
+  public void ExplicitDisposeReleasesNullableCallbackOnce()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var context = CreateRegisteredContext(fixture);
+    var baseline = context.RetainedCallbackCount;
+
+    try
+    {
+      EvaluateString(
+          fixture,
+          NullableModulePrelude +
+          "m.callOptional(() => 5); m.disposeStoredOptional(); m.disposeStoredOptional(); 'done'"
+      );
+
+      var result = EvaluateString(fixture, CatchExpression("m.callStoredOptional()", withMessage: true));
+      Assert.StartsWith("Error:", result);
+      Assert.Contains("disposed", result);
+      Assert.Equal(baseline + 1, context.RetainedCallbackCount);
+    }
+    finally
+    {
+      DisposeContext(fixture, context);
+    }
+
+    Assert.Equal(0, context.RetainedCallbackCount);
+    Assert.Throws<ObjectDisposedException>(() => GeneratedNullableCallbacksModule.LastOptional!.Invoke());
+  }
+
+  [Fact]
+  public void ContextTeardownReleasesUndisposedNullableCallbackOnce()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var context = CreateRegisteredContext(fixture);
+    var baseline = context.RetainedCallbackCount;
+
+    try
+    {
+      Assert.Equal("5", EvaluateString(fixture, NullableModulePrelude + "String(m.callOptional(() => 5))"));
+      Assert.Equal(baseline + 1, context.RetainedCallbackCount);
+    }
+    finally
+    {
+      DisposeContext(fixture, context);
+    }
+
+    Assert.Equal(0, context.RetainedCallbackCount);
+    Assert.Throws<InvalidOperationException>(() => GeneratedNullableCallbacksModule.LastOptional!.Invoke());
+    Assert.Null(Record.Exception(() => GeneratedNullableCallbacksModule.LastOptional!.Dispose()));
+  }
+
+  [Fact]
+  public void NonNullCallbackParameterStaysStrict()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var context = CreateRegisteredContext(fixture);
+    var baseline = context.RetainedCallbackCount;
+
+    try
+    {
+      var prelude = "globalThis.s = globalThis._expoDotnet.modules.GeneratedCallbacks;";
+      Assert.Equal("Error", EvaluateString(fixture, prelude + CatchExpression("s.callNoArgs(null)")));
+      Assert.Equal("Error", EvaluateString(fixture, CatchExpression("s.callNoArgs(undefined)")));
+      Assert.Equal(baseline, context.RetainedCallbackCount);
+    }
+    finally
+    {
+      DisposeContext(fixture, context);
+    }
+  }
+
+  [Fact]
+  public void RequiredNullableCallbackStillRequiresItsArgument()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var context = CreateRegisteredContext(fixture);
+    var baseline = context.RetainedCallbackCount;
+
+    try
+    {
+      Assert.Equal(
+          "Error",
+          EvaluateString(fixture, NullableModulePrelude + CatchExpression("m.callOptional()"))
+      );
+      Assert.Equal(baseline, context.RetainedCallbackCount);
+    }
+    finally
+    {
+      DisposeContext(fixture, context);
+    }
+  }
+
+  [Fact]
+  public void SharedObjectNullableCallbackParametersDecodeLikeModuleParameters()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var context = CreateRegisteredContext(fixture);
+    var baseline = context.RetainedCallbackCount;
+
+    try
+    {
+      Assert.Equal(
+          "-1:-1:null:null:null",
+          EvaluateString(
+              fixture,
+              NullableModulePrelude +
+              "globalThis.a = new m.NullableCallbackEntry(null); " +
+              "globalThis.u = new m.NullableCallbackEntry(undefined); " +
+              "[a.seed, u.seed, a.call(null), a.call(undefined), a.call()].join(':')"
+          )
+      );
+      Assert.Equal(baseline, context.RetainedCallbackCount);
+
+      Assert.Equal(
+          "3:Hi entry",
+          EvaluateString(
+              fixture,
+              "globalThis.b = new m.NullableCallbackEntry(() => 3); " +
+              "[b.seed, b.call(name => 'Hi ' + name)].join(':')"
+          )
+      );
+      Assert.Equal(baseline + 2, context.RetainedCallbackCount);
+
+      Assert.Equal("Error", EvaluateString(fixture, CatchExpression("new m.NullableCallbackEntry(5)")));
+      Assert.Equal(baseline + 2, context.RetainedCallbackCount);
+    }
+    finally
+    {
+      DisposeContext(fixture, context);
+    }
+  }
+
+  // Registering the provider already retains one installation per shared-object class, so the
+  // tests count callbacks relative to the count read right after registration.
+  private static DotnetRuntimeContext CreateRegisteredContext(HermesRuntimeFixture fixture) =>
+      fixture.Runtime.Execute(runtime =>
+      {
+        var createdContext = new DotnetRuntimeContext(runtime);
+        using var modules = createdContext.ModuleRegistry.GetOrCreateDotnetModulesObject();
+        ExpoModulesProvider_Expo_ModulesCore_Tests.Register(createdContext, modules);
+        return createdContext;
+      });
+
+  private static void DisposeContext(HermesRuntimeFixture fixture, DotnetRuntimeContext context) =>
+      fixture.Runtime.Execute(_ =>
+      {
+        context.Dispose();
+        return true;
+      });
+
+  private static string EvaluateString(HermesRuntimeFixture fixture, string source) =>
+      fixture.Runtime.Execute(_ =>
+      {
+        using var result = fixture.Evaluate(source, "nullable-callback-test.js");
+        return result.AsString()!;
+      });
+
+  // Evaluates to "Error" when the call throws an Error ("Error:<message>" with withMessage),
+  // "no error" when it does not throw, and the typeof the thrown value otherwise.
+  private static string CatchExpression(string call, bool withMessage = false)
+  {
+    var errorResult = withMessage ? "'Error:' + e.message" : "'Error'";
+    return $"(() => {{ try {{ {call}; return 'no error'; }} catch (e) {{ return e instanceof Error ? {errorResult} : typeof e; }} }})()";
+  }
+
   private static async Task WaitForTaskAsync<TResult>(
       HermesRuntimeFixture fixture,
       Task<TResult> task)
