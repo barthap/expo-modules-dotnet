@@ -4732,6 +4732,173 @@ public sealed class ExpoModulesGeneratorTests
     AssertNoCompilerErrors(result);
   }
 
+  [Theory]
+  [InlineData("[JS] public JavaScriptCallback<int> M() => throw new NotImplementedException();", "EXPOJSI002")]
+  [InlineData("[JS] public Task<JavaScriptCallback<int>> M() => throw new NotImplementedException();", "EXPOJSI002")]
+  [InlineData("[JS] public JavaScriptCallback<int> M(ReadOnlySpan<byte> data) => throw new NotImplementedException();", "EXPOJSI002")]
+  public void GeneratorRejectsCallbackAtEncodePositions(string member, string expectedId)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(string.Empty, member));
+
+    AssertNoCompilerErrors(result);
+    Assert.Equal(new[] { expectedId }, GeneratorDiagnosticIds(result));
+  }
+
+  [Theory]
+  [InlineData("[JS] public int M(IReadOnlyList<JavaScriptCallback<int>> value) => 0;", "EXPOJSI001")]
+  [InlineData("[JS] public int M(Dictionary<string, JavaScriptCallback<int>> value) => 0;", "EXPOJSI001")]
+  [InlineData("[JS] public int M(JavaScriptCallback<ValueTuple<JavaScriptCallback<int>>, int> value) => 0;", "EXPOJSI008")]
+  [InlineData("[JS] public int M(JavaScriptCallback<JavaScriptCallback<int>> value) => 0;", "EXPOJSI008")]
+  [InlineData("[JS] public int M(IReadOnlyList<ArrayBuffer> value) => 0;", "EXPOJSI001")]
+  [InlineData("[JS] public int M(IReadOnlyList<ArrayBuffer>? value) => 0;", "EXPOJSI001")]
+  [InlineData("[JS] public int M(Dictionary<string, ArrayBuffer> value) => 0;", "EXPOJSI001")]
+  [InlineData("[JS] public IReadOnlyDictionary<string, ArrayBuffer> M() => throw new NotImplementedException();", "EXPOJSI002")]
+  [InlineData("[JS] public IReadOnlyList<ArrayBuffer> Buffers { get; } = null!;", "EXPOJSI015")]
+  [InlineData("[JS] public int M(JavaScriptCallback<ValueTuple<ArrayBuffer>, int> value) => 0;", "EXPOJSI008")]
+  [InlineData("[JS] public int M(JavaScriptCallback<ArrayBuffer> value) => 0;", "EXPOJSI008")]
+  public void GeneratorRejectsStaticHelperCodecsInGenericPositions(string member, string expectedId)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(string.Empty, member));
+
+    AssertNoCompilerErrors(result);
+    Assert.Equal(new[] { expectedId }, GeneratorDiagnosticIds(result));
+  }
+
+  [Theory]
+  [InlineData("[JS] public void Store(IReadOnlyList<ArrayBuffer> data) { }")]
+  [InlineData("[JS] public Entry(IReadOnlyList<JavaScriptCallback<int>> callbacks) { }")]
+  public void GeneratorRejectsStaticHelperCodecsOnSharedObjectMembers(string member)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        #nullable enable
+        using System;
+        using System.Collections.Generic;
+        using System.Threading.Tasks;
+        using Expo.JSI;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class Entry : SharedObject
+        {
+          {{member}}
+        }
+
+        [ExpoModule(Classes = new[] { typeof(Entry) })]
+        public sealed partial class EntryModule
+        {
+        }
+        """
+    );
+
+    AssertNoCompilerErrors(result);
+    Assert.Equal(new[] { "EXPOJSI023" }, GeneratorDiagnosticIds(result));
+  }
+
+  [Theory]
+  [InlineData("JavaScriptCallback<int>", "[JS] public int M(Holder holder) => 0;", "EXPOJSI007,EXPOJSI001")]
+  [InlineData("JavaScriptCallback<int>", "[JS] public Holder M() => throw new NotImplementedException();", "EXPOJSI007,EXPOJSI002")]
+  [InlineData("IReadOnlyList<ArrayBuffer>", "[JS] public int M(Holder holder) => 0;", "EXPOJSI007,EXPOJSI001")]
+  [InlineData("JavaScriptCallback<int>", "[JS] public Holder Value { get; } = null!;", "EXPOJSI015")]
+  public void GeneratorRejectsRecordFieldsThatNeedARuntimeContext(
+      string fieldType,
+      string member,
+      string expectedIds)
+  {
+    var result = GeneratorTestHost.Run(
+        ModuleSource($"public sealed record Holder({fieldType} Field);", member)
+    );
+
+    AssertNoCompilerErrors(result);
+    Assert.Equal(expectedIds.Split(','), GeneratorDiagnosticIds(result));
+  }
+
+  [Fact]
+  public void GeneratorPassesRuntimeContextToSpanFunctionSharedObjectReturns()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class Entry : SharedObject
+        {
+        }
+
+        [ExpoModule(Classes = new[] { typeof(Entry) })]
+        public sealed partial class EntryModule
+        {
+          [JS] public Entry Make(ReadOnlySpan<byte> data) => throw new NotImplementedException();
+        }
+        """
+    );
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerErrors(result);
+    var source = GeneratedText(result);
+    var spanCall = source.IndexOf("WithReadOnlyBytes(", StringComparison.Ordinal);
+    Assert.True(spanCall >= 0);
+    Assert.Contains(
+        "SharedObjectCodec<global::Expo.TestModules.Entry>.Encode(module.Make(__expoArg0), runtime, GeneratedFunction.CurrentRuntimeContext)",
+        source[spanCall..],
+        StringComparison.Ordinal
+    );
+  }
+
+  [Theory]
+  [InlineData("Span<byte>")]
+  [InlineData("ReadOnlySpan<byte>")]
+  public void GeneratorRejectsAsyncSpanResults(string resultType)
+  {
+    // Span cannot be a Task type argument, so the user code has CS0306. The generator must still
+    // report EXPOJSI002 and must not fail (CS8785), which would drop all generated output.
+    var result = GeneratorTestHost.Run(
+        ModuleSource(
+            string.Empty,
+            $"[JS] public Task<{resultType}> M() => throw new NotImplementedException();"
+        )
+    );
+
+    Assert.Contains("EXPOJSI002", GeneratorDiagnosticIds(result));
+    Assert.DoesNotContain(
+        result.GeneratorDiagnostics ?? Array.Empty<Diagnostic>(),
+        item => item.Id == "CS8785"
+    );
+  }
+
+  private static string ModuleSource(string declarations, string member) =>
+      $$"""
+      #nullable enable
+      using System;
+      using System.Collections.Generic;
+      using System.Threading.Tasks;
+      using Expo.JSI;
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      {{declarations}}
+
+      [ExpoModule("Rejects")]
+      public sealed partial class RejectsModule : Module
+      {
+        public RejectsModule(DotnetRuntimeContext context) : base(context) {}
+
+        {{member}}
+      }
+      """;
+
+  // Generator diagnostic IDs in report order, so a test pins which rejections fired and in what order.
+  private static string[] GeneratorDiagnosticIds(GeneratorRunResult result) =>
+      (result.GeneratorDiagnostics ?? Array.Empty<Diagnostic>())
+          .Select(item => item.Id)
+          .ToArray();
+
   private static void AssertNoCompilerErrors(GeneratorRunResult result) =>
       Assert.DoesNotContain(result.Diagnostics, item =>
           item.Id.StartsWith("CS", StringComparison.Ordinal) &&

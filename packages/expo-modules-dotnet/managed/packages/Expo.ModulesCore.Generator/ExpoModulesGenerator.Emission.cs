@@ -830,7 +830,7 @@ public sealed partial class ExpoModulesGenerator
       builder.AppendLine("    {");
       builder.AppendLine($"      GeneratedFunction.RequireArgumentCount(\"{EscapeString(label)}.{EscapeString(function.JavaScriptName)}\", arguments, {GetRequiredParameterCount(function)}, {function.Parameters.Values.Count});");
       builder.AppendLine($"      {targetDeclaration}");
-      if (RequiresEncodeRuntimeContext(function.AsyncResultCodec))
+      if (function.AsyncResultCodec?.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext)
       {
         // Capture the exact runtime context while the host-function frame is active; Promise
         // settlement runs after the frame exits and must never read the thread-static accessor.
@@ -911,7 +911,7 @@ public sealed partial class ExpoModulesGenerator
       }
       else
       {
-        var asyncEncodeContextArgument = RequiresEncodeRuntimeContext(function.AsyncResultCodec)
+        var asyncEncodeContextArgument = function.AsyncResultCodec.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext
             ? ", __expoRuntimeContext"
             : string.Empty;
         builder.AppendLine($"{asyncIndent}var __expoResult = await __expoTask.ConfigureAwait(false);");
@@ -955,13 +955,9 @@ public sealed partial class ExpoModulesGenerator
         builder.AppendLine($"    using var __expoResult = module.{function.MethodName}({argumentList});");
         builder.AppendLine($"    return {function.ReturnCodec.Expression}.Encode(__expoResult, runtime);");
       }
-      else if (function.ReturnCodec.EncodeOperation == ExpoEncodeOperation.TransferJavaScriptValue)
-      {
-        builder.AppendLine($"    return {function.ReturnCodec.Expression}.Encode(module.{function.MethodName}({argumentList}), runtime);");
-      }
       else
       {
-        var returnEncodeContextArgument = RequiresEncodeRuntimeContext(function.ReturnCodec)
+        var returnEncodeContextArgument = function.ReturnCodec.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext
             ? ", GeneratedFunction.CurrentRuntimeContext"
             : string.Empty;
         builder.AppendLine($"    return {function.ReturnCodec.Expression}.Encode(module.{function.MethodName}({argumentList}), runtime{returnEncodeContextArgument});");
@@ -998,10 +994,6 @@ public sealed partial class ExpoModulesGenerator
     {
       builder.AppendLine($"    using var __expoResult = module.{property.PropertyName};");
       builder.AppendLine($"    return {property.Codec.Expression}.Encode(__expoResult, runtime);");
-    }
-    else if (property.Codec.EncodeOperation == ExpoEncodeOperation.TransferJavaScriptValue)
-    {
-      builder.AppendLine($"    return {property.Codec.Expression}.Encode(module.{property.PropertyName}, runtime);");
     }
     else
     {
@@ -1098,13 +1090,14 @@ public sealed partial class ExpoModulesGenerator
       builder.AppendLine($"      using var __expoResult = {invocation};");
       builder.AppendLine($"      return {function.ReturnCodec.Expression}.Encode(__expoResult, runtime);");
     }
-    else if (function.ReturnCodec.EncodeOperation == ExpoEncodeOperation.TransferJavaScriptValue)
-    {
-      builder.AppendLine($"      return {function.ReturnCodec.Expression}.Encode({invocation}, runtime);");
-    }
     else
     {
-      builder.AppendLine($"      return {function.ReturnCodec.Expression}.Encode({invocation}, runtime);");
+      // The lambda runs synchronously inside the host-function frame, so the thread-static runtime
+      // context is the current one.
+      var spanEncodeContextArgument = function.ReturnCodec.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext
+          ? ", GeneratedFunction.CurrentRuntimeContext"
+          : string.Empty;
+      builder.AppendLine($"      return {function.ReturnCodec.Expression}.Encode({invocation}, runtime{spanEncodeContextArgument});");
     }
     builder.AppendLine("    });");
     builder.AppendLine("  }");
