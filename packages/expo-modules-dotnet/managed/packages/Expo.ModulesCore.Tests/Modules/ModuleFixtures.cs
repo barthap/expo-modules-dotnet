@@ -833,17 +833,52 @@ public sealed partial class FileEntry : PathBase
 [ExpoSharedObject]
 public sealed partial class DirEntry : PathBase
 {
+  [JS]
   public DirEntry(string name, PathBase parent)
       : base(name)
   {
     Parent = parent;
+    BaseThingsModule.LastPath = parent;
   }
 
   public PathBase Parent { get; }
+
+  [JS]
+  public string Compare(PathBase other)
+  {
+    BaseThingsModule.LastPath = other;
+    return ReferenceEquals(other, Parent) ? "parent" : other.Describe();
+  }
 }
 
 // Owns FileEntry and DirEntry, so neither reports EXPOJSI024. No other module may list them.
 [ExpoModule("BaseThings", Classes = new[] { typeof(FileEntry), typeof(DirEntry) })]
 public sealed partial class BaseThingsModule
 {
+  // The last PathBase that authored code received through any member, so tests can check
+  // identity from C# and prove that a failed call never reached authored code.
+  public static PathBase? LastPath;
+
+  [JS]
+  public string Describe(PathBase path)
+  {
+    LastPath = path;
+    return path.Describe();
+  }
+
+  [JS]
+  public async Task<string> DescribeLater(PathBase path)
+  {
+    await Task.Yield();
+    LastPath = path;
+    return path.Describe();
+  }
+
+  // The exact twin of Describe, the oracle for the failure messages.
+  [JS]
+  public string DescribeFile(FileEntry file)
+  {
+    LastPath = file;
+    return file.Describe();
+  }
 }
