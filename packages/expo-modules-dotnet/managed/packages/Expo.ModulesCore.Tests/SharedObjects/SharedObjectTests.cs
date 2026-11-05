@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using Expo.JSI;
 using Expo.ModulesCore;
+using Expo.ModulesCore.Codecs;
 using Expo.ModulesCore.Generated;
 using Expo.ModulesCore.Tests.Fixtures;
 using Expo.ModulesCore.Tests.Modules;
@@ -789,6 +790,81 @@ public sealed class GeneratedSharedObjectTests
       return true;
     });
   }
+
+  [Fact]
+  public async Task SharedObjectArrayBufferEventRetainsLeaseBeforeScheduling()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var (context, instance, payload) = SetUpBufferEvent(fixture, "generated-shared-object-events-buffer.js");
+
+    fixture.ResetCounters();
+    fixture.DisableSyncExecutionForTesting();
+    fixture.PauseRuntimeExecutor();
+    var emitted = instance.EmitBufferAsync(payload);
+    payload.Dispose();
+    fixture.ResumeRuntimeExecutor();
+    await emitted;
+    fixture.WaitUntilIdle();
+    fixture.SetSyncExecutionSupportedForTesting(true);
+
+    Assert.Equal("1:7,8,9", ReadSharedBuffer(fixture));
+    Assert.Equal(1u, fixture.Counters.LongLivedArrayBuffersReleased);
+    Assert.Equal(0u, fixture.Counters.LongLivedArrayBuffersAbandoned);
+    fixture.Runtime.Execute(_ => { context.Dispose(); return true; });
+  }
+
+  [Fact]
+  public async Task SharedObjectNullArrayBufferEventDispatchesOneNullArgument()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var (context, instance, payload) = SetUpBufferEvent(fixture, "generated-shared-object-events-null-buffer.js");
+    payload.Dispose();
+    fixture.WaitUntilIdle();
+
+    fixture.ResetCounters();
+    await GeneratedSharedObjectEvents.EmitAsync(context, instance, "onBuffer", (ArrayBuffer?)null);
+    fixture.WaitUntilIdle();
+
+    Assert.Equal("1:null", ReadSharedBuffer(fixture));
+    Assert.Equal(0u, fixture.Counters.LongLivedArrayBuffersReleased);
+    fixture.Runtime.Execute(_ => { context.Dispose(); return true; });
+  }
+
+  private static (DotnetRuntimeContext Context, CounterEntry Instance, ArrayBuffer Payload) SetUpBufferEvent(
+      HermesRuntimeFixture fixture,
+      string sourceName)
+  {
+    DotnetRuntimeContext? context = null;
+    CounterEntry? instance = null;
+    ArrayBuffer? payload = null;
+    fixture.Runtime.Execute(runtime =>
+    {
+      context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+      using var setup = fixture.Evaluate(
+          "const m = globalThis._expoDotnet.modules.SharedThings; " +
+          "globalThis.__bufferCounter = new m.CounterEntry(1); " +
+          "__bufferCounter.addListener('onBuffer', (...args) => { " +
+          "globalThis.__sharedBuffer = args.length + ':' + " +
+          "(args[0] === null ? 'null' : Array.from(new Uint8Array(args[0])).join(',')); }); " +
+          "m.echoCounter(__bufferCounter); 'ready'",
+          sourceName
+      );
+      instance = SharedThingsModule.LastSeenCounter;
+      using var value = fixture.Evaluate("Uint8Array.from([7, 8, 9]).buffer", sourceName);
+      payload = ArrayBufferCodec.Decode(value.Ref, runtime);
+      return true;
+    });
+    return (context!, instance!, payload!);
+  }
+
+  private static string ReadSharedBuffer(HermesRuntimeFixture fixture) =>
+      fixture.Runtime.Execute(_ =>
+      {
+        using var value = fixture.Evaluate("globalThis.__sharedBuffer", "generated-shared-object-events-buffer-result.js");
+        return value.AsString();
+      });
 
   [Fact]
   public async Task SharedObjectEventDispatchSurfacesPayloadEncodeFailure()

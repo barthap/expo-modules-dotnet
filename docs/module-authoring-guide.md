@@ -170,9 +170,9 @@ Call `JavaScriptValue.Retain()` on the JavaScript runtime thread. In an async
 method, call it before the first `await`. See
 `docs/specs/ownership-and-scoped-refs.md`.
 
-Nullable reference types work for the codecs that carry no JSI ownership:
-`string?`, `Uri?`, `byte[]?`, positional reference records, and the
-`IReadOnlyList<T>?`, `Dictionary<string, T>?`, and
+Nullable reference types work for `ArrayBuffer?` and for the codecs that carry
+no JSI ownership: `string?`, `Uri?`, `byte[]?`, positional reference records,
+and the `IReadOnlyList<T>?`, `Dictionary<string, T>?`, and
 `IReadOnlyDictionary<string, T>?` containers. Nullable elements and dictionary
 values work wherever the nested type is supported, so `IReadOnlyList<string?>?`
 composes. `List<T>` stays unsupported in both forms, because its non-nullable

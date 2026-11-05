@@ -23,18 +23,25 @@ public static class GeneratedSharedObjectEvents
         SharedObjectEventPrototype.Dispatch(runtime, target, registration, eventName, retained);
       });
 
+  /// <summary>Emits a declared shared-object event with an existing binary buffer.</summary>
+  /// <remarks>
+  /// The emitter retains an invocation lease before scheduling runtime work, so the caller may
+  /// dispose <paramref name="payload" /> after this method returns. A null
+  /// <paramref name="payload" /> dispatches one JavaScript <c>null</c> argument and retains no
+  /// lease.
+  /// </remarks>
   public static async Task EmitAsync(
       DotnetRuntimeContext context,
       SharedObject instance,
       string eventName,
-      ArrayBuffer payload)
+      ArrayBuffer? payload)
   {
     try
     {
-      using var retained = payload.Retain();
+      using var retained = payload?.Retain();
       await ExecuteAsync(context, instance, eventName, (runtime, target, registration) =>
       {
-        using var value = retained.Encode(runtime);
+        using var value = retained is null ? runtime.CreateNull() : retained.Encode(runtime);
         SharedObjectEventPrototype.Dispatch(runtime, target, registration, eventName, value);
       }).ConfigureAwait(false);
     }

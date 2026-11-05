@@ -566,6 +566,9 @@ public sealed partial class CounterEntry : SharedObject
   [Event]
   public partial Func<JavaScriptValue, Task> OnEventValue { get; }
 
+  [Event]
+  public partial Func<ArrayBuffer, Task> OnBuffer { get; }
+
   [JS("increment")]
   public double Increment(double by)
   {
@@ -594,6 +597,8 @@ public sealed partial class CounterEntry : SharedObject
   public Task EmitPayloadAsync(int value) => OnPayload(new SharedEventPayload(value));
 
   public Task EmitValueAsync(JavaScriptValue value) => OnEventValue(value);
+
+  public Task EmitBufferAsync(ArrayBuffer value) => OnBuffer(value);
 
   protected override void OnRelease() => ReleaseCount++;
 }

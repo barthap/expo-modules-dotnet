@@ -107,6 +107,87 @@ public sealed class ModuleEventEmitterTests
     Assert.Equal(0u, fixture.Counters.LongLivedArrayBuffersAbandoned);
   }
 
+  [Fact]
+  public async Task NullArrayBufferPayloadDispatchesOneNullArgumentWithoutLease()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    using var emitter = CreateEmitter(fixture);
+
+    fixture.ResetCounters();
+    fixture.DisableSyncExecutionForTesting();
+    fixture.PauseRuntimeExecutor();
+    var emitted = emitter.Emitter.EmitAsync(
+        emitter.Module,
+        "onBuffer",
+        (ArrayBuffer?)null,
+        TestContext.Current.CancellationToken
+    );
+
+    fixture.ResumeRuntimeExecutor();
+    await emitted;
+    fixture.WaitUntilIdle();
+    fixture.SetSyncExecutionSupportedForTesting(true);
+
+    var observed = fixture.Runtime.Execute(_ =>
+    {
+      using var value = fixture.Evaluate(
+          "`${__moduleEventBufferArgs}:${__moduleEventBuffer}`",
+          "event-null-array-buffer-result.js"
+      );
+      return value.AsString();
+    });
+
+    Assert.Equal("1:null", observed);
+    Assert.Equal(0u, fixture.Counters.LongLivedArrayBuffersReleased);
+    Assert.Equal(0u, fixture.Counters.LongLivedArrayBuffersAbandoned);
+  }
+
+  [Theory]
+  [InlineData("undeclared", typeof(InvalidOperationException))]
+  [InlineData("disposed", typeof(ObjectDisposedException))]
+  [InlineData("cancelled", typeof(OperationCanceledException))]
+  public async Task NullArrayBufferPayloadKeepsEmitterValidation(string kind, Type expected)
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    using var emitter = CreateEmitter(fixture);
+    var capturedEmitter = emitter.Emitter;
+    using var cancelled = new CancellationTokenSource();
+    var eventName = "onBuffer";
+    var token = TestContext.Current.CancellationToken;
+    if (kind == "undeclared")
+    {
+      eventName = "missing";
+    }
+    else if (kind == "disposed")
+    {
+      fixture.Runtime.Execute(_ =>
+      {
+        emitter.Context.Dispose();
+        return true;
+      });
+    }
+    else
+    {
+      cancelled.Cancel();
+      token = cancelled.Token;
+    }
+    fixture.ResetCounters();
+
+    var emitted = capturedEmitter.EmitAsync(emitter.Module, eventName, (ArrayBuffer?)null, token);
+
+    Assert.IsAssignableFrom(expected, await Record.ExceptionAsync(() => emitted));
+    var observed = fixture.Runtime.Execute(_ =>
+    {
+      using var value = fixture.Evaluate(
+          "typeof globalThis.__moduleEventBufferArgs",
+          "event-null-array-buffer-validation-result.js"
+      );
+      return value.AsString();
+    });
+    Assert.Equal("undefined", observed);
+    Assert.Equal(0u, fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
   [Theory]
   [InlineData("value")]
   [InlineData("buffer")]
@@ -199,8 +280,10 @@ public sealed class ModuleEventEmitterTests
       fixture.Evaluate(
           "const events = globalThis._expoDotnet.modules.DirectPayloadEvents;" +
           "events.addListener('onValue', value => { globalThis.__moduleEventValue = String(value); });" +
-          "events.addListener('onBuffer', value => { " +
-          "globalThis.__moduleEventBuffer = Array.from(new Uint8Array(value)).join(','); }); true",
+          "events.addListener('onBuffer', (...args) => { " +
+          "globalThis.__moduleEventBufferArgs = args.length; " +
+          "globalThis.__moduleEventBuffer = args[0] === null ? 'null' : " +
+          "Array.from(new Uint8Array(args[0])).join(','); }); true",
           "module-event-emitter-listeners.js"
       ).Dispose();
       return true;
