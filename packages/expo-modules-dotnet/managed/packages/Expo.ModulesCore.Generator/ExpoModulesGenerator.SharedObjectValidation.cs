@@ -116,7 +116,7 @@ public sealed partial class ExpoModulesGenerator
     if (typeSymbol is INamedTypeSymbol namedType && namedType.OriginalDefinition.ToDisplayString() is SharedRefMetadataName) return "which is the SharedRef<T> managed carrier base";
     if (!HasExpoSharedObjectAttribute(typeSymbol)) return "which is not marked [ExpoSharedObject]";
     if (typeSymbol.ContainingType is not null || typeSymbol is INamedTypeSymbol { IsGenericType: true } || !typeSymbol.IsSealed) return "which must be a top-level, non-generic, sealed [ExpoSharedObject] class";
-    return typeSymbol.NullableAnnotation == NullableAnnotation.Annotated ? "which must be used without a nullable annotation" : null;
+    return null;
   }
 
   private static bool HasExpoSharedObjectAttribute(ITypeSymbol typeSymbol) => typeSymbol.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString() == ExpoSharedObjectAttributeMetadataName);
@@ -127,7 +127,13 @@ public sealed partial class ExpoModulesGenerator
     if (IsSharedObjectRelatedType(typeSymbol))
     {
       var issue = GetDirectSharedObjectBoundaryIssue(typeSymbol);
-      if (issue is null) { codec = SharedObjectCodec($"SharedObjectCodec<{typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>"); return true; }
+      if (issue is null)
+      {
+        // The annotation selects the nullable codec; the type argument is the exact class without `?`.
+        var exact = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        codec = SharedObjectCodec(typeSymbol.NullableAnnotation == NullableAnnotation.Annotated ? $"NullableSharedObjectCodec<{exact}>" : $"SharedObjectCodec<{exact}>");
+        return true;
+      }
       diagnostics.Add(CreateUnsupportedSharedObjectUsage(memberName, $"{positionDescription} uses shared-object type '{GetDiagnosticTypeName(typeSymbol)}', {issue}", location));
       return true;
     }

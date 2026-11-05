@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Xunit;
 
@@ -2881,92 +2882,6 @@ public sealed class ExpoModulesGeneratorTests
         item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
   }
 
-  [Theory]
-  [InlineData(
-      "[JS] public void Store(CacheEntry? entry) { }",
-      "Store",
-      "parameter 'entry'")]
-  [InlineData(
-      "[JS] public CacheEntry? Load() => null;",
-      "Load",
-      "return type")]
-  [InlineData(
-      "[JS] public System.Threading.Tasks.Task<CacheEntry?> LoadAsync() => null!;",
-      "LoadAsync",
-      "async result type")]
-  [InlineData(
-      "[JS] public CacheEntry? Latest => null;",
-      "Latest",
-      "property type")]
-  public void GeneratorReportsNullableAnnotatedSharedObjectBoundaryUse(
-      string member,
-      string memberName,
-      string expectedPosition)
-  {
-    var result = GeneratorTestHost.Run(
-        $$"""
-        #nullable enable
-        using Expo.ModulesCore;
-
-        namespace Expo.TestModules;
-
-        [ExpoSharedObject]
-        public sealed partial class CacheEntry : SharedObject
-        {
-        }
-
-        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
-        public sealed partial class CacheModule
-        {
-          {{member}}
-        }
-        """
-    );
-
-    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI023");
-    Assert.Contains(memberName, diagnostic.GetMessage());
-    Assert.Contains(expectedPosition, diagnostic.GetMessage());
-    Assert.Contains("without a nullable annotation", diagnostic.GetMessage());
-    Assert.NotEqual(Location.None, diagnostic.Location);
-    Assert.DoesNotContain(result.Diagnostics, item =>
-        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
-  }
-
-  [Fact]
-  public void GeneratorReportsNullableAnnotatedSharedObjectConstructorParameter()
-  {
-    var result = GeneratorTestHost.Run(
-        """
-        #nullable enable
-        using Expo.ModulesCore;
-
-        namespace Expo.TestModules;
-
-        [ExpoSharedObject]
-        public sealed partial class CacheEntry : SharedObject
-        {
-          [JS]
-          public CacheEntry(CacheEntry? source)
-          {
-          }
-        }
-
-        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
-        public sealed partial class CacheModule
-        {
-        }
-        """
-    );
-
-    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI023");
-    Assert.Contains("CacheEntry", diagnostic.GetMessage());
-    Assert.Contains("constructor parameter 'source'", diagnostic.GetMessage());
-    Assert.Contains("without a nullable annotation", diagnostic.GetMessage());
-    Assert.NotEqual(Location.None, diagnostic.Location);
-    Assert.DoesNotContain(result.Diagnostics, item =>
-        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
-  }
-
   // Only the inaccessible overload may be removed from the model; the accessible overload
   // keeps its own signature. Shared-object members are validated but not emitted in this
   // slice, so survival is observed through the reserved-name validation that runs after
@@ -4349,7 +4264,6 @@ public sealed class ExpoModulesGeneratorTests
 
   [Theory]
   [InlineData("SharedRef<string>? value", "which is the SharedRef<T> managed carrier base")]
-  [InlineData("Entry? value", "which must be used without a nullable annotation")]
   public void GeneratorKeepsSharedObjectDiagnosticsForNullableSharedObjectBoundaries(
       string parameter,
       string expectedReason)
@@ -4475,6 +4389,8 @@ public sealed class ExpoModulesGeneratorTests
   [Theory]
   [InlineData("UnattributedEntry", "which is not marked [ExpoSharedObject]")]
   [InlineData("OpenEntry", "which must be a top-level, non-generic, sealed [ExpoSharedObject] class")]
+  [InlineData("Outer.Inner", "which must be a top-level, non-generic, sealed [ExpoSharedObject] class")]
+  [InlineData("Box<int>", "which must be a top-level, non-generic, sealed [ExpoSharedObject] class")]
   public void GeneratorKeepsTheInvalidConcreteClassReasonForNullableParameters(string typeName, string expectedReason)
   {
     foreach (var annotation in new[] { "", "?" })
@@ -4492,6 +4408,19 @@ public sealed class ExpoModulesGeneratorTests
 
           [ExpoSharedObject("OpenEntry")]
           public partial class OpenEntry : SharedObject
+          {
+          }
+
+          public static class Outer
+          {
+            [ExpoSharedObject]
+            public sealed partial class Inner : SharedObject
+            {
+            }
+          }
+
+          [ExpoSharedObject]
+          public sealed partial class Box<T> : SharedObject
           {
           }
 
@@ -5390,6 +5319,109 @@ public sealed class ExpoModulesGeneratorTests
     }
   }
 
+  // The nullable shared-object codec text with the class name left as $T. A test replaces $C with
+  // this text first and $T with Entry or Handle second.
+  private const string NullableSharedObjectCodecText = "NullableSharedObjectCodec<global::Expo.TestModules.$T>";
+  private const string NullableSharedObjectArgDecode = "var __expoArg0 = $C.Decode(arguments.GetValue(0), runtime, GeneratedFunction.CurrentRuntimeContext);";
+  private const string NullableSharedObjectArgDecodeAsync = "var __expoArg0 = $C.Decode(arguments.GetValue(0), jsRuntime, GeneratedFunction.CurrentRuntimeContext);";
+  private const string NullableSharedObjectEncodeAsyncContext = "var __expoRuntimeContext = GeneratedFunction.CurrentRuntimeContext;";
+  private const string NullableSharedObjectEncodeAsyncResult = "return global::Expo.JSI.JavaScriptPromiseResult.Resolve(runtime => $C.Encode(__expoResult, runtime, __expoRuntimeContext));";
+  private const string NullableSharedObjectPropertySetter = "var __expoValue = $C.Decode(arguments.GetValue(0), runtime, GeneratedFunction.CurrentRuntimeContext);";
+  private const string NullableSharedObjectOptionalArgDecodeCount = "var __expoArg0 = arguments.Count <= 0 || arguments.GetValue(0).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? null : $C.Decode(arguments.GetValue(0), runtime, GeneratedFunction.CurrentRuntimeContext);";
+  private const string NullableSharedObjectOptionalArgDecodeLength = "var __expoArg0 = arguments.Length <= 0 || arguments.GetValue(0).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? null : $C.Decode(arguments.GetValue(0), runtime, GeneratedFunction.CurrentRuntimeContext);";
+
+  [Theory]
+  [InlineData("[JS] public int M($T? value) => 0;", new[] { NullableSharedObjectArgDecode })]
+  [InlineData("[JS] public int M($T? value = null) => 0;", new[] { NullableSharedObjectOptionalArgDecodeCount })]
+  [InlineData("[JS] public $T? M($T? value) => value;", new[] { NullableSharedObjectArgDecode, "return $C.Encode(module.M(__expoArg0), runtime, GeneratedFunction.CurrentRuntimeContext);" })]
+  [InlineData("[JS] public Task<$T?> M($T? value) => Task.FromResult(value);", new[] { NullableSharedObjectArgDecodeAsync, NullableSharedObjectEncodeAsyncContext, NullableSharedObjectEncodeAsyncResult })]
+  [InlineData("[JS] public $T? Value { get; set; }", new[] { "return $C.Encode(module.Value, runtime, GeneratedFunction.CurrentRuntimeContext);", NullableSharedObjectPropertySetter })]
+  [InlineData("[JS] public $T? Current => null;", new[] { "return $C.Encode(module.Current, runtime, GeneratedFunction.CurrentRuntimeContext);" })]
+  public void GeneratorAcceptsNullableConcreteSharedObjects(string member, string[] fragments)
+  {
+    foreach (var type in new[] { "Entry", "Handle" })
+    {
+      var result = GeneratorTestHost.Run(NullableConcreteSharedObjectSource(ExpandNullableSharedObjectText(member, type)));
+
+      AssertNullableSharedObjectGlue(result, $"global::Expo.TestModules.{type}");
+      var text = GeneratedText(result);
+      foreach (var fragment in fragments)
+      {
+        Assert.Contains(ExpandNullableSharedObjectText(fragment, type), text, StringComparison.Ordinal);
+      }
+    }
+  }
+
+  [Theory]
+  [InlineData("[JS] public Entry($T? source) { }", new[] { NullableSharedObjectArgDecode, "ConstructSharedObject_" })]
+  [InlineData("[JS] public Entry($T? source = null) { }", new[] { NullableSharedObjectOptionalArgDecodeLength })]
+  [InlineData("[JS] public int Take($T? value) => 0;", new[] { NullableSharedObjectArgDecode })]
+  [InlineData("[JS] public $T? Give() => null;", new[] { "return $C.Encode(module.Give(), runtime, GeneratedFunction.CurrentRuntimeContext);" })]
+  [InlineData("[JS] public Task<$T?> GiveAsync() => Task.FromResult<$T?>(null);", new[] { NullableSharedObjectEncodeAsyncContext, NullableSharedObjectEncodeAsyncResult })]
+  [InlineData("[JS] public $T? Related { get; set; }", new[] { "return $C.Encode(module.Related, runtime, GeneratedFunction.CurrentRuntimeContext);", NullableSharedObjectPropertySetter })]
+  public void GeneratorAcceptsNullableConcreteSharedObjectsOnSharedObjects(string member, string[] fragments)
+  {
+    foreach (var type in new[] { "Entry", "Handle" })
+    {
+      var result = GeneratorTestHost.Run(NullableConcreteSharedObjectSource(string.Empty, ExpandNullableSharedObjectText(member, type)));
+
+      AssertNullableSharedObjectGlue(result, $"global::Expo.TestModules.{type}");
+      var text = GeneratedText(result);
+      foreach (var fragment in fragments)
+      {
+        Assert.Contains(ExpandNullableSharedObjectText(fragment, type), text, StringComparison.Ordinal);
+      }
+    }
+  }
+
+  private static string ExpandNullableSharedObjectText(string text, string type) =>
+      text.Replace("$C", NullableSharedObjectCodecText, StringComparison.Ordinal).Replace("$T", type, StringComparison.Ordinal);
+
+  // Characterization: the polymorphic bases and every nested shape keep their diagnostics, with and
+  // without the annotation. The run without the annotation is the oracle for the expected diagnostic.
+  [Theory]
+  [InlineData("", "[JS] public int M(SharedObject$N value) => 0;", "", "EXPOJSI023", "M", "which is the polymorphic SharedObject base", "\"m\"")]
+  [InlineData("", "[JS] public SharedRef<Resource>$N M() => null!;", "", "EXPOJSI023", "M", "which is the SharedRef<T> managed carrier base", "\"m\"")]
+  [InlineData("", "[JS] public int M(IReadOnlyList<Entry$N> values) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "\"m\"")]
+  [InlineData("", "[JS] public IReadOnlyList<Handle$N> M() => null!;", "", "EXPOJSI023", "M", "inside a composed codec", "\"m\"")]
+  [InlineData("", "[JS] public int M(Dictionary<string, Handle$N> values) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "\"m\"")]
+  [InlineData("public sealed record Holder(Entry$N Field);", "[JS] public int M(Holder holder) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "\"m\"")]
+  [InlineData("", "[JS] public int M(JavaScriptCallback<Entry$N> callback) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "\"m\"")]
+  [InlineData("", "[JS] public int M(JavaScriptCallback<ValueTuple<Handle$N>, int> callback) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "\"m\"")]
+  [InlineData("", "[Event] public partial Func<Entry$N, Task> OnEntry { get; }", "", "EXPOJSI019", "OnEntry", "no encode-capable codec is available", "\"onEntry\"")]
+  [InlineData("", "", "[Event] public partial Func<Handle$N, Task> OnHandle { get; }", "EXPOJSI027", "OnHandle", "no encode-capable codec is available", "\"onHandle\"")]
+  [InlineData("", "", "[JS] public int Take(IReadOnlyList<Handle$N> values) => 0;", "EXPOJSI023", "Take", "inside a composed codec", "\"take\"")]
+  [InlineData("", "", "[JS] public Entry(SharedRef<Resource>$N source) { }", "EXPOJSI023", "Entry", "which is the SharedRef<T> managed carrier base", "ConstructSharedObject_")]
+  public void GeneratorKeepsSharedObjectDiagnosticsForNullableBasesAndNestedShapes(
+      string declarations,
+      string moduleMembers,
+      string entryMembers,
+      string expectedId,
+      string memberName,
+      string expectedReason,
+      string absentFragment)
+  {
+    foreach (var annotation in new[] { string.Empty, "?" })
+    {
+      var result = GeneratorTestHost.Run(
+          NullableConcreteSharedObjectSource(
+              moduleMembers.Replace("$N", annotation, StringComparison.Ordinal),
+              entryMembers.Replace("$N", annotation, StringComparison.Ordinal),
+              declarations.Replace("$N", annotation, StringComparison.Ordinal)
+          )
+      );
+
+      AssertNoCompilerErrors(result);
+      Assert.Equal(new[] { expectedId }, GeneratorDiagnosticIds(result));
+      var diagnostic = Assert.Single(result.GeneratorDiagnostics ?? Array.Empty<Diagnostic>());
+      Assert.Contains($"'{memberName}'", diagnostic.GetMessage(), StringComparison.Ordinal);
+      Assert.Contains(expectedReason, diagnostic.GetMessage(), StringComparison.Ordinal);
+      var text = GeneratedText(result);
+      Assert.DoesNotContain(absentFragment, text, StringComparison.Ordinal);
+      Assert.DoesNotContain("NullableSharedObjectCodec", text, StringComparison.Ordinal);
+    }
+  }
+
   [Theory]
   [InlineData(false, "onBufferValue => emitter.EmitAsync(module, \"onBuffer\", onBufferValue)")]
   [InlineData(true, "onBufferValue => global::Expo.ModulesCore.GeneratedSharedObjectEvents.EmitAsync(context, sharedObject, \"onBuffer\", onBufferValue)")]
@@ -5488,6 +5520,62 @@ public sealed class ExpoModulesGeneratorTests
       {
       }
       """;
+
+  // Entry derives from SharedObject and Handle from SharedRef<Resource>; one module owns both, so
+  // neither reports EXPOJSI024. Neither class has a [JS] constructor unless entryMembers adds one.
+  private static string NullableConcreteSharedObjectSource(string moduleMembers, string entryMembers = "", string declarations = "") =>
+      $$"""
+      #nullable enable
+      using System;
+      using System.Collections.Generic;
+      using System.Threading.Tasks;
+      using Expo.JSI;
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      {{declarations}}
+
+      public sealed class Resource
+      {
+      }
+
+      [ExpoSharedObject("Entry")]
+      public sealed partial class Entry : SharedObject
+      {
+        {{entryMembers}}
+      }
+
+      [ExpoSharedObject("Handle")]
+      public sealed partial class Handle : SharedRef<Resource>
+      {
+        public Handle(Resource resource) : base(resource) { }
+      }
+
+      [ExpoModule("Shared", Classes = new[] { typeof(Entry), typeof(Handle) })]
+      public sealed partial class SharedModule : Module
+      {
+        public SharedModule(DotnetRuntimeContext context) : base(context) {}
+
+        {{moduleMembers}}
+      }
+      """;
+
+  // The generated glue of a nullable concrete shared object compiles clean and uses the nullable
+  // codec for every argument decode and encode. The receiver decode reads thisValue, and the negative
+  // lookbehind keeps the exact-codec patterns from matching inside NullableSharedObjectCodec.
+  private static void AssertNullableSharedObjectGlue(GeneratorRunResult result, string typeName)
+  {
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerErrors(result);
+    Assert.DoesNotContain(result.Diagnostics, item => item.Id is "CS8604" or "CS8625" or "CS8634");
+    var text = GeneratedText(result);
+    Assert.DoesNotContain("GeneratedConversionScope", text, StringComparison.Ordinal);
+    Assert.DoesNotContain($"Codec<{typeName}?>", text, StringComparison.Ordinal);
+    var escapedTypeName = Regex.Escape(typeName);
+    Assert.Equal(0, Regex.Matches(text, $@"(?<!Nullable)SharedObjectCodec<{escapedTypeName}>\.Decode\(arguments").Count);
+    Assert.Equal(0, Regex.Matches(text, $@"(?<!Nullable)SharedObjectCodec<{escapedTypeName}>\.Encode\(").Count);
+  }
 
   // The generated text of one host function, from its declaration to the next member, with
   // normalized line endings.
