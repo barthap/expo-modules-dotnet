@@ -47,48 +47,48 @@ in the notes below the table.
 Open briefs live in `docs/plans/`. A DONE item's brief leaves the repo; git
 history keeps it.
 
-| ID  | Title                                               | Pri   | Effort | Depends on   | Status  | Brief                                                                       |
-| --- | --------------------------------------------------- | ----- | ------ | ------------ | ------- | --------------------------------------------------------------------------- |
-| 025 | `expo-crypto-dotnet`                                | P1    | M      | 024, 036     | TODO    | [025](plans/025-expo-crypto-dotnet.md)                                      |
-| 028 | Annotation-insensitive shared-object boundaries     | P2    | S      | —            | DONE    | —                                                                           |
-| 029 | Typed codec conversion descriptors                  | P1    | M      | 028          | DONE    | —                                                                           |
-| 030 | Composable codec leaf release                       | P1    | L      | 029          | DONE    | —                                                                           |
-| 031 | Nullable ArrayBuffer codecs                         | P1    | M      | 030          | DONE    | —                                                                           |
-| 032 | Nullable JavaScript callback parameters             | P2    | M      | 031          | DONE    | —                                                                           |
-| 033 | Nullable concrete SharedObject classes              | P2    | M      | 032          | TODO    | [033](plans/033-nullable-concrete-shared-object-codecs.md)                  |
-| 034 | Base-class shared-object arguments                  | P1    | M      | 030          | TODO    | —                                                                           |
-| 035 | Union arguments (`string \| ArrayBuffer`)           | P1    | M      | 030          | TODO    | —                                                                           |
-| 036 | Typed-array codecs (`Uint8Array`)                   | P1    | M      | 030          | TODO    | —                                                                           |
-| 037 | Coded JavaScript errors                             | P2    | M      | —            | TODO    | —                                                                           |
-| 038 | `expo-file-system-dotnet` write, bytes, copy, move  | P1    | M      | 024, 034–036 | TODO    | —                                                                           |
-| 040 | Windows opt-in `*-dotnet` substitution              | P1    | L      | 039          | TODO    | [040](plans/040-windows-dotnet-module-substitution.md)                      |
-| 011 | Hermes prebuilts as downloadable artifacts          | P3    | M      | 008          | BACKLOG | —                                                                           |
-| 001 | Fast CI checks workflow                             | P1    | S      | —            | DONE    | —                                                                           |
-| 002 | Autolinking CLI command tests                       | P1    | M      | —            | DONE    | —                                                                           |
-| 003 | Bridge edge-case tests                              | P2    | M      | —            | DONE    | —                                                                           |
-| 004 | Bridge string hygiene                               | P2    | S      | 003          | DONE    | —                                                                           |
-| 005 | Docs refresh and module authoring guide             | P3    | M      | —            | DONE    | —                                                                           |
-| 006 | ArrayBuffer and binary codecs                       | P2    | L      | 003          | DONE    | —                                                                           |
-| 007 | SharedObject design spike                           | P3    | M      | —            | DONE    | —                                                                           |
-| 008 | Linux testhost + native tests workflow              | P1    | M–L    | 001          | DONE    | —                                                                           |
-| 009 | Windows testhost teardown crash                     | P1    | M      | 008          | DONE    | —                                                                           |
-| 010 | Darwin installer lifecycle locking                  | P1    | M      | —            | DONE    | —                                                                           |
-| 012 | Typed JS facade base classes                        | P2    | M      | 005          | DONE    | —                                                                           |
-| 013 | camelCase JS naming + `[JS]` properties             | P2    | M      | —            | DONE    | —                                                                           |
-| 014 | Typed `[Event]` members                             | P2    | M      | 013          | DONE    | —                                                                           |
-| 015 | Promise state on runtime-owned collection           | P2    | M      | —            | DONE    | —                                                                           |
-| 016 | NativeAOT publish check in CI                       | P1    | S      | —            | DONE    | —                                                                           |
-| 017 | SharedObject authoring surface                      | P2    | L      | 015          | DONE    | —                                                                           |
-| 018 | Windows build/deploy reliability + `ReactNativeDir` | P1/P2 | L      | 039          | DONE    | —                                                                           |
-| 019 | Typed events on shared objects                      | P2    | M      | 017, 021     | DONE    | —                                                                           |
-| 020 | Console app Linux port + loader CI lane             | P1    | M      | 016          | DONE    | —                                                                           |
-| 021 | Owned host-function callback-state disposal         | P2    | S–M    | —            | DONE    | —                                                                           |
-| 022 | `expo-asset-dotnet`                                 | P1    | M      | 027          | DONE    | —                                                                           |
-| 023 | `expo-constants-dotnet`                             | P1    | M      | —            | DONE    | —                                                                           |
-| 024 | `expo-file-system-dotnet` local files core          | P1    | L      | —            | DONE    | —                                                                           |
-| 026 | Nullable reference-type codecs                      | P1    | M      | —            | DONE    | —                                                                           |
-| 027 | Host-supplied app directories                       | P1    | L      | —            | DONE    | —                                                                           |
-| 039 | expo-desktop 1.0 prebuild for `desktop-app`         | P1    | L      | —            | DONE    | —                                                                           |
+| ID  | Title                                               | Pri   | Effort | Depends on   | Status      | Brief                                                                       |
+| --- | --------------------------------------------------- | ----- | ------ | ------------ | ----------- | --------------------------------------------------------------------------- |
+| 025 | `expo-crypto-dotnet`                                | P1    | M      | 024, 036     | TODO        | [025](plans/025-expo-crypto-dotnet.md)                                      |
+| 028 | Annotation-insensitive shared-object boundaries     | P2    | S      | —            | DONE        | —                                                                           |
+| 029 | Typed codec conversion descriptors                  | P1    | M      | 028          | DONE        | —                                                                           |
+| 030 | Composable codec leaf release                       | P1    | L      | 029          | DONE        | —                                                                           |
+| 031 | Nullable ArrayBuffer codecs                         | P1    | M      | 030          | DONE        | —                                                                           |
+| 032 | Nullable JavaScript callback parameters             | P2    | M      | 031          | DONE        | —                                                                           |
+| 033 | Nullable concrete SharedObject classes              | P2    | M      | 032          | IN PROGRESS | [033](plans/033-nullable-concrete-shared-object-codecs.md)                  |
+| 034 | Base-class shared-object arguments                  | P1    | M      | 030          | TODO        | —                                                                           |
+| 035 | Union arguments (`string \| ArrayBuffer`)           | P1    | M      | 030          | TODO        | —                                                                           |
+| 036 | Typed-array codecs (`Uint8Array`)                   | P1    | M      | 030          | TODO        | —                                                                           |
+| 037 | Coded JavaScript errors                             | P2    | M      | —            | TODO        | —                                                                           |
+| 038 | `expo-file-system-dotnet` write, bytes, copy, move  | P1    | M      | 024, 034–036 | TODO        | —                                                                           |
+| 040 | Windows opt-in `*-dotnet` substitution              | P1    | L      | 039          | TODO        | [040](plans/040-windows-dotnet-module-substitution.md)                      |
+| 011 | Hermes prebuilts as downloadable artifacts          | P3    | M      | 008          | BACKLOG     | —                                                                           |
+| 001 | Fast CI checks workflow                             | P1    | S      | —            | DONE        | —                                                                           |
+| 002 | Autolinking CLI command tests                       | P1    | M      | —            | DONE        | —                                                                           |
+| 003 | Bridge edge-case tests                              | P2    | M      | —            | DONE        | —                                                                           |
+| 004 | Bridge string hygiene                               | P2    | S      | 003          | DONE        | —                                                                           |
+| 005 | Docs refresh and module authoring guide             | P3    | M      | —            | DONE        | —                                                                           |
+| 006 | ArrayBuffer and binary codecs                       | P2    | L      | 003          | DONE        | —                                                                           |
+| 007 | SharedObject design spike                           | P3    | M      | —            | DONE        | —                                                                           |
+| 008 | Linux testhost + native tests workflow              | P1    | M–L    | 001          | DONE        | —                                                                           |
+| 009 | Windows testhost teardown crash                     | P1    | M      | 008          | DONE        | —                                                                           |
+| 010 | Darwin installer lifecycle locking                  | P1    | M      | —            | DONE        | —                                                                           |
+| 012 | Typed JS facade base classes                        | P2    | M      | 005          | DONE        | —                                                                           |
+| 013 | camelCase JS naming + `[JS]` properties             | P2    | M      | —            | DONE        | —                                                                           |
+| 014 | Typed `[Event]` members                             | P2    | M      | 013          | DONE        | —                                                                           |
+| 015 | Promise state on runtime-owned collection           | P2    | M      | —            | DONE        | —                                                                           |
+| 016 | NativeAOT publish check in CI                       | P1    | S      | —            | DONE        | —                                                                           |
+| 017 | SharedObject authoring surface                      | P2    | L      | 015          | DONE        | —                                                                           |
+| 018 | Windows build/deploy reliability + `ReactNativeDir` | P1/P2 | L      | 039          | DONE        | —                                                                           |
+| 019 | Typed events on shared objects                      | P2    | M      | 017, 021     | DONE        | —                                                                           |
+| 020 | Console app Linux port + loader CI lane             | P1    | M      | 016          | DONE        | —                                                                           |
+| 021 | Owned host-function callback-state disposal         | P2    | S–M    | —            | DONE        | —                                                                           |
+| 022 | `expo-asset-dotnet`                                 | P1    | M      | 027          | DONE        | —                                                                           |
+| 023 | `expo-constants-dotnet`                             | P1    | M      | —            | DONE        | —                                                                           |
+| 024 | `expo-file-system-dotnet` local files core          | P1    | L      | —            | DONE        | —                                                                           |
+| 026 | Nullable reference-type codecs                      | P1    | M      | —            | DONE        | —                                                                           |
+| 027 | Host-supplied app directories                       | P1    | L      | —            | DONE        | —                                                                           |
+| 039 | expo-desktop 1.0 prebuild for `desktop-app`         | P1    | L      | —            | DONE        | —                                                                           |
 
 The next free ID is 041.
 
