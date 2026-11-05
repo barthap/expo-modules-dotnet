@@ -143,9 +143,10 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
 - Binary data: `ArrayBuffer`, plus `byte[]`, `Memory<byte>` and
   `ReadOnlyMemory<byte>` as convenience types. These copy in both directions.
   `Span<byte>` and `ReadOnlySpan<byte>` borrow one synchronous input parameter,
-  and a returned span is copied. `ArrayBuffer` works directly, as a record
-  field, a list element, and a dictionary value, but not as a nullable inner
-  type, a callback type argument, or a nested typed-event payload. See the
+  and a returned span is copied. `ArrayBuffer` and `ArrayBuffer?` work
+  directly, as a record field, a list element, a dictionary value, and a direct
+  typed-event payload; neither works as a callback type argument or a nested
+  typed-event payload. See the
   "Module-facing ArrayBuffer And Binary Codecs" requirement in
   `docs/specs/modules-core-boundary.md`.
 - Shared objects, declared as described in section 8.
@@ -174,7 +175,7 @@ values work wherever the nested type is supported, so `IReadOnlyList<string?>?`
 composes. `List<T>` stays unsupported in both forms, because its non-nullable
 form has no codec either.
 
-`JavaScriptValue?`, `ArrayBuffer?`, `JavaScriptCallback<...>?`, `SharedObject?`,
+`JavaScriptValue?`, `JavaScriptCallback<...>?`, `SharedObject?`,
 `SharedRef<T>?`, and a nullable concrete `[ExpoSharedObject]` class are build
 diagnostics. Their conversion carries JSI ownership, retained callback state, or
 shared-object identity, and a null axis multiplies those states.
@@ -306,6 +307,9 @@ lifetime rules:
 - A `JavaScriptValue` original stays alive until the event task completes. Its
   invocation copy can only be retained while running on the owning JavaScript
   runtime.
+- A `Func<ArrayBuffer?, Task>` event delivers C# `null` as one JavaScript `null`
+  argument and retains no lease. A non-null buffer follows the `ArrayBuffer`
+  rule.
 
 Nested owned wrappers, including `JavaScriptValue` and `ArrayBuffer`, and
 callback payloads are rejected for typed events. `JavaScriptObject` is not
