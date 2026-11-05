@@ -49,24 +49,35 @@ public sealed partial class ExpoModulesGenerator
   private static string GetCodecTypeArgumentName(ITypeSymbol typeSymbol) =>
       typeSymbol.ToDisplayString(CodecTypeArgumentFormat);
 
-  // The ordinary row of the descriptor table: a JavaScriptCodec with Decode, no context, and a
-  // borrowed decoded value. Branches that differ set their fields explicitly.
+  // The ordinary row of the descriptor table: a JavaScriptCodec with Decode, no context, and no
+  // wrapper leaf. Branches that differ set their fields explicitly.
   private static ExpoCodecDescriptor OrdinaryCodec(string expression) => new(
       expression,
       ExpoCodecShape.JavaScriptCodec,
       ExpoCodecCapabilities.DecodeAndEncode,
       ExpoDecodeOperation.Decode,
       ExpoContextRequirement.None,
-      ExpoDecodedOwnership.Borrowed,
-      ExpoEncodeOperation.Standard
+      ExpoResourceOwnership.Borrowed
   );
 
-  private static bool IsInvocationOwned(ExpoParameterModel parameter) =>
-      parameter.Codec?.DecodedOwnership == ExpoDecodedOwnership.InvocationOwned;
+  // The scoped row: a codec that implements only the scoped codec protocol and holds a wrapper
+  // leaf. Generated glue decodes it into the invocation's conversion scope.
+  private static ExpoCodecDescriptor ScopedCodec(string expression) => new(
+      expression,
+      ExpoCodecShape.ScopedOnly,
+      ExpoCodecCapabilities.DecodeAndEncode,
+      ExpoDecodeOperation.Decode,
+      ExpoContextRequirement.None,
+      ExpoResourceOwnership.ScopedResource
+  );
+
+  private static bool IsScopedResource(ExpoCodecDescriptor? codec) =>
+      codec?.ResourceOwnership == ExpoResourceOwnership.ScopedResource;
 
   // Composition rule: a list element, dictionary value, Nullable<T> or nullable-reference inner
   // type, callback result, and callback argument tuple element are generic type arguments. A
-  // StaticHelper codec is a static class and cannot be one.
+  // StaticHelper codec is a static class and cannot be one, and a ScopedOnly codec has no
+  // IJavaScriptCodec<T> implementation.
   private static ExpoCodecDescriptor? AsGenericArgumentCodec(ExpoCodecDescriptor? codec) =>
       codec is { Shape: ExpoCodecShape.JavaScriptCodec } ? codec : null;
 
@@ -392,6 +403,12 @@ public sealed partial class ExpoModulesGenerator
       int index,
       string runtimeParameterName)
   {
+    if (IsScopedResource(codec))
+    {
+      // Scoped decode always calls the scoped Decode and registers the leaves in the scope.
+      return $"{codec.Expression}.Decode(arguments.GetValue({index}), {runtimeParameterName}, __expoScope)";
+    }
+
     var methodName = codec.DecodeOperation switch
     {
       ExpoDecodeOperation.DecodeToArray => "DecodeToArray",
@@ -453,15 +470,7 @@ public sealed partial class ExpoModulesGenerator
 
     if (typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == ArrayBufferMetadataName)
     {
-      return new ExpoCodecDescriptor(
-          "ArrayBufferCodec",
-          ExpoCodecShape.StaticHelper,
-          ExpoCodecCapabilities.DecodeAndEncode,
-          ExpoDecodeOperation.Decode,
-          ExpoContextRequirement.None,
-          ExpoDecodedOwnership.InvocationOwned,
-          ExpoEncodeOperation.EncodeThenDisposeArrayBuffer
-      );
+      return ScopedCodec("ArrayBufferCodec");
     }
 
     if (typeSymbol is IArrayTypeSymbol { Rank: 1, ElementType.SpecialType: SpecialType.System_Byte })
@@ -485,8 +494,7 @@ public sealed partial class ExpoModulesGenerator
     {
       return OrdinaryCodec("JavaScriptValueCodec") with
       {
-        DecodedOwnership = ExpoDecodedOwnership.InvocationOwned,
-        EncodeOperation = ExpoEncodeOperation.TransferJavaScriptValue,
+        ResourceOwnership = ExpoResourceOwnership.ScopedResource,
       };
     }
 
@@ -685,8 +693,7 @@ public sealed partial class ExpoModulesGenerator
       ExpoCodecCapabilities.DecodeOnly,
       ExpoDecodeOperation.Decode,
       ExpoContextRequirement.DotnetRuntimeContext,
-      ExpoDecodedOwnership.ContextRetained,
-      ExpoEncodeOperation.Standard
+      ExpoResourceOwnership.ContextRetained
   );
 
   private static string? TryGetValueTupleArgsCodec(
