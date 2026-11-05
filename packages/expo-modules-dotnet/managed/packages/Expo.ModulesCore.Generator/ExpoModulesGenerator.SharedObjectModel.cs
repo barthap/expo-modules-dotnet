@@ -123,6 +123,7 @@ public sealed partial class ExpoModulesGenerator
           parameter.Type,
           typeSymbol.Name,
           positionDescription,
+          isParameter: true,
           parameterLocation,
           diagnostics,
           out var sharedParameterCodec))
