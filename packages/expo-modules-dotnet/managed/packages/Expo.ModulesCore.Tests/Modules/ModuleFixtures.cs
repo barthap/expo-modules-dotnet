@@ -281,6 +281,59 @@ public sealed partial class GeneratedCallbacksModule
   }
 }
 
+[ExpoModule("GeneratedNullableCallbacks", Classes = new[] { typeof(NullableCallbackEntry) })]
+public sealed partial class GeneratedNullableCallbacksModule
+{
+  // The last callback CallOptional received, so tests can reach it after the call returns.
+  public static JavaScriptCallback<int>? LastOptional { get; private set; }
+
+  [JS("callOptional")]
+  public int CallOptional(JavaScriptCallback<int>? callback)
+  {
+    LastOptional = callback;
+    return callback?.Invoke() ?? -1;
+  }
+
+  [JS("callStoredOptional")]
+  public int CallStoredOptional() => LastOptional?.Invoke() ?? -1;
+
+  [JS("disposeStoredOptional")]
+  public void DisposeStoredOptional() => LastOptional?.Dispose();
+
+  [JS("callOptionalAfterAwait")]
+  public async Task<int> CallOptionalAfterAwaitAsync(JavaScriptCallback<int>? callback)
+  {
+    await Task.Yield();
+    if (callback is null)
+    {
+      return -1;
+    }
+
+    return await callback.InvokeAsync();
+  }
+
+  [JS("callDefaulted")]
+  public string CallDefaulted(JavaScriptCallback<ValueTuple<string>, string>? callback = null) =>
+      callback?.Invoke(ValueTuple.Create("JS")) ?? "null";
+}
+
+[ExpoSharedObject]
+public sealed partial class NullableCallbackEntry : SharedObject
+{
+  [JS]
+  public NullableCallbackEntry(JavaScriptCallback<int>? seed)
+  {
+    Seed = seed?.Invoke() ?? -1;
+  }
+
+  [JS]
+  public int Seed { get; }
+
+  [JS]
+  public string Call(JavaScriptCallback<ValueTuple<string>, string>? callback = null) =>
+      callback?.Invoke(ValueTuple.Create("entry")) ?? "null";
+}
+
 public record CodecUser(string Name, int Age);
 
 public record class CodecUserClass(string Name, int Age);

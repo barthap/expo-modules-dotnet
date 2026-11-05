@@ -390,6 +390,22 @@ public sealed partial class LeafReleaseModule : Module, IDisposable
     return buffer?.ByteLength ?? -1;
   }
 
+  // A nullable callback is context-retained, never a leaf holder. The buffer passed to it stays
+  // with the author, and the buffer it returns belongs to the author, who disposes it.
+  [JS]
+  public int ExchangeThroughOptionalCallback(
+      ArrayBuffer buffer,
+      JavaScriptCallback<ValueTuple<ArrayBuffer>, ArrayBuffer>? callback)
+  {
+    if (callback is null)
+    {
+      return -1;
+    }
+
+    using var result = callback.Invoke(ValueTuple.Create(buffer));
+    return result.ByteLength + buffer.ByteLength;
+  }
+
   [Event]
   public partial Func<IReadOnlyList<ArrayBuffer?>, Task> OnOptionalBuffers { get; }
 
