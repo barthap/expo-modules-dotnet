@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Expo.JSI;
 using Expo.ModulesCore;
@@ -1134,6 +1136,397 @@ public sealed class GeneratedSharedObjectTests
       );
       Assert.Equal("true", result.AsString());
       context!.Dispose();
+      return true;
+    });
+  }
+
+  private const string JsErrHelper =
+      "const err = f => { try { f(); return 'no error'; } " +
+      "catch (error) { return error instanceof Error ? error.message : typeof error; } }; ";
+
+  private static DotnetRuntimeContext CreateNullableThingsContext(
+      HermesRuntimeFixture fixture,
+      JavaScriptRuntime runtime)
+  {
+    NullableSharedThingsModule.LastEntry = null;
+    OptionalTrackedRef.LastCreated = null;
+    var context = new DotnetRuntimeContext(runtime);
+    using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+    ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+    using var setup = fixture.Evaluate(
+        "globalThis.m = globalThis._expoDotnet.modules.NullableSharedThings; 'ready'",
+        "nullable-shared-object-module-setup.js"
+    );
+    return context;
+  }
+
+  [Fact]
+  public async Task NullableSharedObjectNullCrossesEveryBoundaryWithoutPairing()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    DotnetRuntimeContext? context = null;
+    var steps = new List<SharedObjectPairingStep>();
+    var before = 0;
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      context = CreateNullableThingsContext(fixture, runtime);
+      using var setup = fixture.Evaluate(
+          "globalThis.e = new m.OptionalEntry('e'); globalThis.e2 = new m.OptionalEntry('e2'); " +
+          "globalThis.r0 = m.makeRef(); m.stored = e; e.parent = e2; e.tracked = r0; m.storedRef = r0; m.echo(e); 'ready'",
+          "nullable-shared-object-null-setup.js"
+      );
+
+      // Every instance is created and paired, and every setter holds a live value, before the hook
+      // is set and the registry count is read. The null assignments below then change real state,
+      // and only decodes run after this point, so a pairing step would mean a null reached the
+      // registry.
+      context.SharedObjects.PairingStepForTesting = steps.Add;
+      before = context.SharedObjects.Count;
+
+      using var result = fixture.Evaluate(
+          "[m.echo(null) === null, m.echo(undefined) === null, " +
+          "(m.stored = null, m.stored === null), (m.stored = e, m.stored = undefined, m.stored === null), " +
+          "m.echoRef(null) === null, m.echoRef(undefined) === null, " +
+          "(m.storedRef = null, m.storedRef === null), " +
+          "(e.parent = null, e.parent === null), (e.parent = e2, e.parent = undefined, e.parent === null), " +
+          "e.echoParent(null) === null, e.echoParent(undefined) === null, " +
+          "(e.tracked = null, e.tracked === null)].join(':')",
+          "nullable-shared-object-null-sync.js"
+      );
+      Assert.Equal(
+          "true:true:true:true:true:true:true:true:true:true:true:true",
+          result.AsString()
+      );
+      Assert.Null(NullableSharedThingsModule.LastEntry);
+
+      using var pending = fixture.Evaluate(
+          "m.echoLater(null).then(v => { globalThis.__later = String(v === null); }, " +
+          "error => { globalThis.__later = 'error:' + error.message; }); " +
+          "m.echoRefLater(undefined).then(v => { globalThis.__refLater = String(v === null); }, " +
+          "error => { globalThis.__refLater = 'error:' + error.message; }); 'pending'",
+          "nullable-shared-object-null-async.js"
+      );
+      return true;
+    });
+
+    await WaitForConditionAsync(
+        fixture,
+        "typeof globalThis.__later !== 'undefined' && typeof globalThis.__refLater !== 'undefined'"
+    );
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var later = fixture.Evaluate(
+          "[__later, __refLater].join(':')",
+          "nullable-shared-object-null-async-check.js"
+      );
+      Assert.Equal("true:true", later.AsString());
+      Assert.Empty(steps);
+      Assert.Equal(before, context!.SharedObjects.Count);
+
+      // Control: a non-null native-created return records the pairing steps, so the empty list
+      // above is meaningful.
+      using var control = fixture.Evaluate("m.makeEntry('x'); 'made'", "nullable-shared-object-null-control.js");
+      Assert.Equal(
+          new[]
+          {
+            SharedObjectPairingStep.InstanceObjectCreated,
+            SharedObjectPairingStep.NativeStateAttached,
+            SharedObjectPairingStep.WeakObjectCreated,
+          },
+          steps
+      );
+      context!.Dispose();
+      return true;
+    });
+  }
+
+  [Fact]
+  public async Task NullableSharedObjectNonNullKeepsIdentity()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    DotnetRuntimeContext? context = null;
+    var steps = new List<SharedObjectPairingStep>();
+    var before = 0;
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      context = CreateNullableThingsContext(fixture, runtime);
+      using var setup = fixture.Evaluate(
+          "globalThis.a = m.makeEntry('a'); globalThis.b = new m.OptionalEntry('b'); " +
+          "globalThis.r = m.makeRef(); 'ready'",
+          "nullable-shared-object-identity-setup.js"
+      );
+
+      using var echoA = fixture.Evaluate("m.echo(globalThis.a); 'once'", "nullable-shared-object-identity-a1.js");
+      var first = NullableSharedThingsModule.LastEntry;
+      Assert.Equal("a", first!.Label);
+      using var echoAAgain = fixture.Evaluate("m.echo(globalThis.a); 'twice'", "nullable-shared-object-identity-a2.js");
+      Assert.Same(first, NullableSharedThingsModule.LastEntry);
+
+      using var echoB = fixture.Evaluate("m.echo(globalThis.b); 'once'", "nullable-shared-object-identity-b1.js");
+      var firstB = NullableSharedThingsModule.LastEntry;
+      Assert.Equal("b", firstB!.Label);
+      using var echoBAgain = fixture.Evaluate("m.echo(globalThis.b); 'twice'", "nullable-shared-object-identity-b2.js");
+      Assert.Same(firstB, NullableSharedThingsModule.LastEntry);
+
+      context.SharedObjects.PairingStepForTesting = steps.Add;
+      before = context.SharedObjects.Count;
+
+      using var result = fixture.Evaluate(
+          "[m.echo(a) === a, m.echo(a) === a, m.echo(b) === b, " +
+          "(m.stored = a, m.stored === a), m.stored === a, m.describe(b), " +
+          "m.echoRef(r) === r, m.echoRef(r) === r, (m.storedRef = r, m.storedRef === r), " +
+          "b.echoParent(a) === a, (b.parent = a, b.parent === a), " +
+          "new m.OptionalEntry('c', a).parent === a, (b.tracked = r, b.tracked === r)].join(':')",
+          "nullable-shared-object-identity-sync.js"
+      );
+      Assert.Equal("true:true:true:true:true:b:true:true:true:true:true:true:true", result.AsString());
+      // Only 'c' is new, so exactly one instance object is created.
+      Assert.Equal(1, steps.Count(s => s == SharedObjectPairingStep.InstanceObjectCreated));
+      Assert.Equal(before + 1, context.SharedObjects.Count);
+
+      using var pending = fixture.Evaluate(
+          "m.echoLater(globalThis.a).then(v => { globalThis.__later = String(v === globalThis.a); }, " +
+          "error => { globalThis.__later = 'error:' + error.message; }); " +
+          "m.echoRefLater(globalThis.r).then(v => { globalThis.__refLater = String(v === globalThis.r); }, " +
+          "error => { globalThis.__refLater = 'error:' + error.message; }); 'pending'",
+          "nullable-shared-object-identity-async.js"
+      );
+      return true;
+    });
+
+    await WaitForConditionAsync(
+        fixture,
+        "typeof globalThis.__later !== 'undefined' && typeof globalThis.__refLater !== 'undefined'"
+    );
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var later = fixture.Evaluate(
+          "[__later, __refLater].join(':')",
+          "nullable-shared-object-identity-async-check.js"
+      );
+      Assert.Equal("true:true", later.AsString());
+      context!.Dispose();
+      return true;
+    });
+  }
+
+  [Theory]
+  [InlineData("({})", "NativeState entry for SharedObjectNativeState is missing.")]
+  [InlineData("m.makeRef()", "is not a 'Expo.ModulesCore.Tests.Modules.OptionalEntry' instance.")]
+  [InlineData("globalThis.released", "not an active shared object")]
+  [InlineData("globalThis.foreign", "not an active shared object")]
+  [InlineData("0", "Value is not an object.")]
+  [InlineData("false", "Value is not an object.")]
+  [InlineData("''", "Value is not an object.")]
+  [InlineData("5", "Value is not an object.")]
+  public void NullableSharedObjectFailuresMatchTheExactParameter(string input, string expected)
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = CreateNullableThingsContext(fixture, runtime);
+      using var setup = fixture.Evaluate(
+          "globalThis.kept = m.makeEntry('kept'); m.stored = kept; " +
+          "globalThis.e = new m.OptionalEntry('e', kept); " +
+          "globalThis.released = m.makeEntry('released'); released.release(); 'ready'",
+          "nullable-shared-object-failures-setup.js"
+      );
+
+      // An entry installed by another context in the same runtime is not active in this one.
+      var contextB = new DotnetRuntimeContext(runtime);
+      try
+      {
+        using var holder = runtime.CreateObject();
+        GeneratedSharedObjectClass.Install(contextB, holder, typeof(OptionalEntry), "OptionalEntry", 0, null, null);
+        using var foreign = SharedObjectCodec<OptionalEntry>.Encode(new OptionalEntry("foreign"), runtime, contextB);
+        using var global = runtime.Global();
+        global.SetProperty("foreign", foreign);
+
+        using var result = fixture.Evaluate(
+            JsErrHelper +
+            $"const v = () => ({input}); " +
+            "[err(() => m.echo(v())), err(() => m.echoExact(v())), " +
+            "err(() => { m.stored = v(); }), err(() => e.echoParent(v())), " +
+            "err(() => { e.parent = v(); }), String(m.stored === kept && e.parent === kept)].join('|')",
+            "nullable-shared-object-failures.js"
+        );
+
+        var parts = result.AsString().Split('|');
+        Assert.Equal(6, parts.Length);
+        for (var i = 0; i < 5; i++)
+        {
+          Assert.Contains(expected, parts[i]);
+        }
+        // The nullable parameter fails exactly as the non-null one does. The JavaScript message is
+        // the full exception text with its stack trace, and the two functions have different
+        // frames, so compare the first line (exception type and message).
+        Assert.Equal(parts[0].Split('\n')[0], parts[1].Split('\n')[0]);
+        // A failed setter did not change the stored value.
+        Assert.Equal("true", parts[5]);
+      }
+      finally
+      {
+        contextB.Dispose();
+      }
+      return true;
+    });
+  }
+
+  [Theory]
+  [InlineData("({})", "NativeState entry for SharedObjectNativeState is missing.")]
+  [InlineData("m.makeEntry('x')", "is not a 'Expo.ModulesCore.Tests.Modules.OptionalTrackedRef' instance.")]
+  [InlineData("0", "Value is not an object.")]
+  [InlineData("5", "Value is not an object.")]
+  public void NullableSharedRefFailuresMatchTheExactParameter(string input, string expected)
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = CreateNullableThingsContext(fixture, runtime);
+      using var setup = fixture.Evaluate(
+          "globalThis.r0 = m.makeRef(); m.storedRef = r0; 'ready'",
+          "nullable-shared-ref-failures-setup.js"
+      );
+
+      using var result = fixture.Evaluate(
+          JsErrHelper +
+          $"const v = () => ({input}); " +
+          "[err(() => m.echoRef(v())), err(() => { m.storedRef = v(); }), " +
+          "String(m.storedRef === r0)].join('|')",
+          "nullable-shared-ref-failures.js"
+      );
+
+      var parts = result.AsString().Split('|');
+      Assert.Equal(3, parts.Length);
+      Assert.Contains(expected, parts[0]);
+      Assert.Contains(expected, parts[1]);
+      // A failed setter did not change the stored value.
+      Assert.Equal("true", parts[2]);
+      return true;
+    });
+  }
+
+  [Fact]
+  public void NullableSharedRefSubclassDoesNotDisposeItsValue()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    DotnetRuntimeContext? context = null;
+    OptionalTrackedRef? released = null;
+    OptionalTrackedRef? kept = null;
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      context = CreateNullableThingsContext(fixture, runtime);
+
+      using var first = fixture.Evaluate(
+          "const r = m.makeRef(); " +
+          "const results = [m.echoRef(r) === r, m.echoRef(null) === null, " +
+          "(m.storedRef = r, m.storedRef === r), (m.storedRef = null, m.storedRef === null), " +
+          "r.isDisposed]; r.release(); results.join(':')",
+          "nullable-shared-ref-subclass-first.js"
+      );
+      Assert.Equal("true:true:true:true:false", first.AsString());
+      released = OptionalTrackedRef.LastCreated;
+      Assert.False(released!.Ref.Disposed);
+
+      using var second = fixture.Evaluate(
+          "globalThis.k = m.makeRef(); m.storedRef = k; m.storedRef = null; String(m.echoRef(k) === k)",
+          "nullable-shared-ref-subclass-second.js"
+      );
+      Assert.Equal("true", second.AsString());
+      kept = OptionalTrackedRef.LastCreated;
+      Assert.NotSame(released, kept);
+
+      context.Dispose();
+      return true;
+    });
+
+    Assert.False(released!.Ref.Disposed);
+    Assert.False(kept!.Ref.Disposed);
+  }
+
+  [Fact]
+  public void OptionalNullableSharedObjectDefaultsToNull()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = CreateNullableThingsContext(fixture, runtime);
+
+      // The only legal default of a shared-object reference is null, so omission, undefined, and
+      // explicit null cannot be told apart at runtime.
+      using var result = fixture.Evaluate(
+          "globalThis.a = m.makeEntry('a'); " +
+          "[m.describe(), m.describe(undefined), m.describe(null), m.describe(a), " +
+          "new m.OptionalEntry('c').parent === null, new m.OptionalEntry('d', undefined).parent === null, " +
+          "new m.OptionalEntry('f', null).parent === null, new m.OptionalEntry('g', a).parent === a].join(':')",
+          "nullable-shared-object-optional-default.js"
+      );
+      Assert.Equal("null:null:null:a:true:true:true:true", result.AsString());
+      return true;
+    });
+  }
+
+  [Fact]
+  public void RequiredNullableSharedObjectStillRequiresItsArgument()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = CreateNullableThingsContext(fixture, runtime);
+      using var setup = fixture.Evaluate(
+          "globalThis.e = new m.OptionalEntry('e'); m.echo(e); 'ready'",
+          "nullable-shared-object-required-setup.js"
+      );
+      var sentinel = NullableSharedThingsModule.LastEntry;
+      Assert.NotNull(sentinel);
+
+      using var result = fixture.Evaluate(
+          JsErrHelper +
+          "[err(() => m.echo()), err(() => m.echoRef()), err(() => globalThis.e.echoParent())].join('|')",
+          "nullable-shared-object-required.js"
+      );
+
+      var parts = result.AsString().Split('|');
+      Assert.Equal(3, parts.Length);
+      foreach (var part in parts)
+      {
+        Assert.Contains("got 0", part);
+      }
+      // The failing calls never reached authored code, so the sentinel is still the last entry.
+      Assert.Same(sentinel, NullableSharedThingsModule.LastEntry);
+      return true;
+    });
+  }
+
+  [Fact]
+  public void NonNullSharedObjectParameterStaysStrict()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = CreateNullableThingsContext(fixture, runtime);
+
+      using var result = fixture.Evaluate(
+          JsErrHelper + "[err(() => m.echoExact(null)), err(() => m.echoExact(undefined))].join('|')",
+          "nullable-shared-object-non-null-strict.js"
+      );
+
+      var parts = result.AsString().Split('|');
+      Assert.Equal(2, parts.Length);
+      foreach (var part in parts)
+      {
+        Assert.Contains("Value is not an object.", part);
+      }
       return true;
     });
   }
