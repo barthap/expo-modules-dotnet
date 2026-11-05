@@ -46,7 +46,7 @@ internal sealed record ExpoEventModel(
     string DelegateTypeName,
     string PayloadTypeName,
     ExpoEventPayloadKind PayloadKind,
-    string CodecExpression,
+    ExpoCodecDescriptor? Codec,
     Location? Location,
     bool IsShapeValid,
     bool IsDispatchable);
@@ -70,40 +70,38 @@ internal enum ExpoModuleConstructorStrategy
   RuntimeContext,
 }
 
-// ReturnRequiresRuntimeContext and AsyncResultRequiresRuntimeContext mark direct shared-object
-// encode locations that must receive the current DotnetRuntimeContext explicitly. For an async
-// result, the generated host callback must capture GeneratedFunction.CurrentRuntimeContext while
-// the host-function frame is still valid and pass that captured context into Promise settlement;
-// settlement code must never consult the thread-static accessor after the frame exits.
+// ReturnCodec and AsyncResultCodec are null when the function has no codec (void, async void, the
+// other position, or a span return). A codec whose ContextRequirement is DotnetRuntimeContext
+// marks a direct encode location that must receive the current DotnetRuntimeContext explicitly.
+// For an async result, the generated host callback must capture
+// GeneratedFunction.CurrentRuntimeContext while the host-function frame is still valid and pass
+// that captured context into Promise settlement; settlement code must never consult the
+// thread-static accessor after the frame exits.
 internal sealed record ExpoFunctionModel(
     string MethodName,
     string JavaScriptName,
     Location? Location,
     string ReturnType,
-    string ReturnCodecExpression,
+    ExpoCodecDescriptor? ReturnCodec,
     bool ReturnsVoid,
     bool IsAsync,
     bool AsyncReturnsVoid,
     string AsyncResultType,
-    string AsyncResultCodecExpression,
+    ExpoCodecDescriptor? AsyncResultCodec,
     EquatableArray<ExpoParameterModel> Parameters,
     ExpoReturnPassingKind ReturnPassingKind = ExpoReturnPassingKind.Codec,
-    ExpoReturnPassingKind AsyncResultPassingKind = ExpoReturnPassingKind.Codec,
-    bool ReturnRequiresRuntimeContext = false,
-    bool AsyncResultRequiresRuntimeContext = false);
+    ExpoReturnPassingKind AsyncResultPassingKind = ExpoReturnPassingKind.Codec);
 
-// RequiresRuntimeContext covers both direct decode/encode locations of the property codec: the
-// generated getter encode and the generated setter decode receive the current
-// DotnetRuntimeContext explicitly when it is set.
+// A Codec with a DotnetRuntimeContext requirement covers both direct decode/encode locations of
+// the property: the generated getter encode and the generated setter decode receive the current
+// DotnetRuntimeContext explicitly.
 internal sealed record ExpoPropertyModel(
     string PropertyName,
     string JavaScriptName,
     Location? Location,
     string TypeName,
-    string CodecExpression,
-    bool HasSetter,
-    bool OwnsDecodedValue,
-    bool RequiresRuntimeContext);
+    ExpoCodecDescriptor Codec,
+    bool HasSetter);
 
 internal enum ExpoParameterPassingKind
 {
@@ -132,9 +130,7 @@ internal sealed record ExpoLifecycleHookModel(
 internal sealed record ExpoParameterModel(
     string Name,
     string TypeName,
-    string CodecExpression,
-    bool RequiresRuntimeContext,
-    bool OwnsDecodedValue,
+    ExpoCodecDescriptor? Codec,
     bool HasDefaultValue,
     string DefaultValueExpression,
     ExpoParameterPassingKind PassingKind = ExpoParameterPassingKind.Codec);
@@ -155,7 +151,7 @@ internal sealed record ExpoGeneratedRecordFieldModel(
     string CSharpPropertyName,
     string JavaScriptName,
     string TypeName,
-    string CodecExpression,
+    ExpoCodecDescriptor Codec,
     Location? Location);
 
 internal readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>

@@ -108,8 +108,6 @@ public sealed partial class ExpoModulesGenerator
 
   private static ExpoDiagnosticModel CreateUnsupportedSharedObjectUsage(string memberName, string reason, Location? location) => new(ExpoModulesDiagnostics.UnsupportedSharedObjectUsage.Id, location, new EquatableArray<string>(new[] { memberName, reason }));
 
-  private static bool IsSharedObjectCodecExpression(string codecExpression) => codecExpression.StartsWith("SharedObjectCodec<", StringComparison.Ordinal);
-
   private static bool IsSharedObjectRelatedType(ITypeSymbol typeSymbol) => IsPolymorphicSharedObjectBase(typeSymbol) || (typeSymbol is INamedTypeSymbol namedType && DerivesFromSharedObject(namedType));
 
   private static string? GetDirectSharedObjectBoundaryIssue(ITypeSymbol typeSymbol)
@@ -123,13 +121,13 @@ public sealed partial class ExpoModulesGenerator
 
   private static bool HasExpoSharedObjectAttribute(ITypeSymbol typeSymbol) => typeSymbol.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString() == ExpoSharedObjectAttributeMetadataName);
 
-  private static bool TryAnalyzeSharedObjectBoundaryType(ITypeSymbol typeSymbol, string memberName, string positionDescription, Location? location, List<ExpoDiagnosticModel> diagnostics, out string? codecExpression)
+  private static bool TryAnalyzeSharedObjectBoundaryType(ITypeSymbol typeSymbol, string memberName, string positionDescription, Location? location, List<ExpoDiagnosticModel> diagnostics, out ExpoCodecDescriptor? codec)
   {
-    codecExpression = null;
+    codec = null;
     if (IsSharedObjectRelatedType(typeSymbol))
     {
       var issue = GetDirectSharedObjectBoundaryIssue(typeSymbol);
-      if (issue is null) { codecExpression = $"SharedObjectCodec<{typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>"; return true; }
+      if (issue is null) { codec = SharedObjectCodec($"SharedObjectCodec<{typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>"); return true; }
       diagnostics.Add(CreateUnsupportedSharedObjectUsage(memberName, $"{positionDescription} uses shared-object type '{GetDiagnosticTypeName(typeSymbol)}', {issue}", location));
       return true;
     }
@@ -137,6 +135,8 @@ public sealed partial class ExpoModulesGenerator
     diagnostics.Add(CreateUnsupportedSharedObjectUsage(memberName, $"{positionDescription} uses shared-object type '{GetDiagnosticTypeName(nestedSharedObjectType)}' inside a composed codec; shared-object types are supported only directly at the generated boundary", location));
     return true;
   }
+
+  private static ExpoCodecDescriptor SharedObjectCodec(string expression) => new(expression, ExpoCodecShape.StaticHelper, ExpoCodecCapabilities.DecodeAndEncode, ExpoDecodeOperation.Decode, ExpoContextRequirement.DotnetRuntimeContext, ExpoDecodedOwnership.Borrowed, ExpoEncodeOperation.Standard);
 
   private static bool TryFindNestedSharedObjectType(ITypeSymbol typeSymbol, out ITypeSymbol sharedObjectType) => TryFindNestedSharedObjectType(typeSymbol, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default), out sharedObjectType);
 
