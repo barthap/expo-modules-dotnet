@@ -476,7 +476,7 @@ public sealed partial class ExpoModulesGenerator
       var asyncReturnsVoid = isAsync && asyncResultType is null;
       var asyncResultTypeName = asyncResultType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? string.Empty;
       var asyncResultPassingKind = GetReturnPassingKind(asyncResultType);
-      string? asyncResultCodec;
+      ExpoCodecDescriptor? asyncResultCodec;
       if (asyncResultType is not null &&
           asyncResultPassingKind == ExpoReturnPassingKind.Codec &&
           TryAnalyzeSharedObjectBoundaryType(
@@ -496,8 +496,8 @@ public sealed partial class ExpoModulesGenerator
       else
       {
         asyncResultCodec = asyncResultType is null || asyncResultPassingKind != ExpoReturnPassingKind.Codec
-            ? string.Empty
-            : GetCodecExpression(
+            ? null
+            : GetCodec(
                 asyncResultType,
                 diagnostics,
                 recordCodecs,
@@ -526,7 +526,7 @@ public sealed partial class ExpoModulesGenerator
       var returnPassingKind = returnsVoid || isAsync
           ? ExpoReturnPassingKind.Codec
           : GetReturnPassingKind(member.ReturnType);
-      string? returnCodec;
+      ExpoCodecDescriptor? returnCodec;
       if (!isAsync && !returnsVoid &&
           returnPassingKind == ExpoReturnPassingKind.Codec &&
           TryAnalyzeSharedObjectBoundaryType(
@@ -546,8 +546,8 @@ public sealed partial class ExpoModulesGenerator
       else
       {
         returnCodec = returnsVoid || isAsync || returnPassingKind != ExpoReturnPassingKind.Codec
-            ? string.Empty
-            : GetCodecExpression(
+            ? null
+            : GetCodec(
                 member.ReturnType,
                 diagnostics,
                 recordCodecs,
@@ -614,7 +614,7 @@ public sealed partial class ExpoModulesGenerator
       foreach (var parameter in member.Parameters)
       {
         var passingKind = GetParameterPassingKind(parameter.Type);
-        string? parameterCodec;
+        ExpoCodecDescriptor? parameterCodec;
         if (passingKind == ExpoParameterPassingKind.Codec &&
             TryAnalyzeSharedObjectBoundaryType(
                 parameter.Type,
@@ -632,7 +632,7 @@ public sealed partial class ExpoModulesGenerator
         }
         else
         {
-          parameterCodec = GetCodecExpression(
+          parameterCodec = GetCodec(
               parameter.Type,
               diagnostics,
               recordCodecs,
@@ -662,10 +662,7 @@ public sealed partial class ExpoModulesGenerator
         parameters.Add(new ExpoParameterModel(
             parameter.Name,
             parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-            parameterCodec ?? string.Empty,
-            IsJavaScriptCallbackType(parameter.Type) ||
-                IsSharedObjectCodecExpression(parameterCodec ?? string.Empty),
-            parameterCodec is "JavaScriptValueCodec" or "ArrayBufferCodec",
+            parameterCodec,
             parameter.HasExplicitDefaultValue,
             parameter.HasExplicitDefaultValue
                 ? GetDefaultValueExpression(parameter.Type, parameter.ExplicitDefaultValue)
@@ -686,17 +683,15 @@ public sealed partial class ExpoModulesGenerator
           javaScriptName,
           member.Locations.FirstOrDefault(),
           member.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-          returnCodec ?? string.Empty,
+          returnCodec,
           returnsVoid,
           isAsync,
           asyncReturnsVoid,
           asyncResultTypeName,
-          asyncResultCodec ?? string.Empty,
+          asyncResultCodec,
           new EquatableArray<ExpoParameterModel>(parameters),
           returnPassingKind,
-          asyncResultPassingKind,
-          IsSharedObjectCodecExpression(returnCodec ?? string.Empty),
-          IsSharedObjectCodecExpression(asyncResultCodec ?? string.Empty)
+          asyncResultPassingKind
       ));
     }
 
@@ -774,7 +769,7 @@ public sealed partial class ExpoModulesGenerator
         continue;
       }
 
-      string? codecExpression;
+      ExpoCodecDescriptor? codec;
       if (TryAnalyzeSharedObjectBoundaryType(
           member.Type,
           member.Name,
@@ -787,13 +782,13 @@ public sealed partial class ExpoModulesGenerator
         {
           continue;
         }
-        codecExpression = sharedPropertyCodec;
+        codec = sharedPropertyCodec;
       }
       else
       {
-        codecExpression = GetCodecExpression(member.Type, diagnostics, recordCodecs, member.GetAttributes());
+        codec = GetCodec(member.Type, diagnostics, recordCodecs, member.GetAttributes());
       }
-      if (codecExpression is null)
+      if (codec is null)
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedJSPropertyType.Id,
@@ -819,10 +814,8 @@ public sealed partial class ExpoModulesGenerator
           javaScriptName,
           member.Locations.FirstOrDefault(),
           member.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-          codecExpression,
-          IsSupportedPropertySetter(member.SetMethod),
-          codecExpression is "JavaScriptValueCodec" or "ArrayBufferCodec",
-          IsJavaScriptCallbackType(member.Type) || IsSharedObjectCodecExpression(codecExpression)
+          codec,
+          IsSupportedPropertySetter(member.SetMethod)
       ));
     }
 

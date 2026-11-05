@@ -114,7 +114,7 @@ public sealed partial class ExpoModulesGenerator
     {
       var parameterLocation = parameter.Locations.FirstOrDefault() ?? target.Locations.FirstOrDefault();
       var positionDescription = $"its [JS] constructor parameter '{parameter.Name}'";
-      string? parameterCodec;
+      ExpoCodecDescriptor? parameterCodec;
       if (GetParameterPassingKind(parameter.Type) != ExpoParameterPassingKind.Codec)
       {
         parameterCodec = null;
@@ -135,7 +135,7 @@ public sealed partial class ExpoModulesGenerator
       }
       else
       {
-        parameterCodec = GetCodecExpression(parameter.Type, diagnostics, recordCodecs, parameter.GetAttributes());
+        parameterCodec = GetCodec(parameter.Type, diagnostics, recordCodecs, parameter.GetAttributes());
       }
 
       if (parameterCodec is null)
@@ -152,8 +152,6 @@ public sealed partial class ExpoModulesGenerator
           parameter.Name,
           parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
           parameterCodec,
-          IsJavaScriptCallbackType(parameter.Type) || IsSharedObjectCodecExpression(parameterCodec),
-          parameterCodec is "JavaScriptValueCodec" or "ArrayBufferCodec",
           parameter.HasExplicitDefaultValue,
           parameter.HasExplicitDefaultValue
               ? GetDefaultValueExpression(parameter.Type, parameter.ExplicitDefaultValue)
