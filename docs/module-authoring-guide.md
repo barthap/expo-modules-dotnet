@@ -135,12 +135,15 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
 - `Dictionary<string, T>` / `IReadOnlyDictionary<string, T>` where `T` has a
   generated codec, mapped to/from a plain JavaScript object.
 - `IReadOnlyList<T>` where `T` has a generated codec, mapped to/from a
-  JavaScript array. `List<T>` is not supported.
+  JavaScript array. `List<T>` is not supported. Lists and dictionaries nest in
+  each other, in records, in callback types, and in typed event payloads.
 - Binary data: `ArrayBuffer`, plus `byte[]`, `Memory<byte>` and
   `ReadOnlyMemory<byte>` as convenience types. These copy in both directions.
   `Span<byte>` and `ReadOnlySpan<byte>` borrow one synchronous input parameter,
-  and a returned span is copied. See the "Module-facing ArrayBuffer And Binary
-  Codecs" requirement in `docs/specs/modules-core-boundary.md`.
+  and a returned span is copied. `ArrayBuffer` works directly and as a record
+  field, but not as a list element, dictionary value, or callback type
+  argument. See the "Module-facing ArrayBuffer And Binary Codecs" requirement
+  in `docs/specs/modules-core-boundary.md`.
 - Shared objects, declared as described in section 8.
 - C# `enum` values — encoded as JavaScript strings by default; annotate with
   `[JSEnum(EnumRepresentation.Number)]` for integer-backed representation.
@@ -151,7 +154,8 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
   wrappers transfer ownership to generated glue, so keep a retained copy if you
   need to hold onto or dispose your own reference afterward).
 - `JavaScriptCallback<TResult>` / `JavaScriptCallback<TArgs, TResult>` for
-  JS function arguments (see Callbacks below).
+  JS function arguments (see Callbacks below). A callback is a parameter type
+  only: it cannot be a return value, a collection element, or a record field.
 
 Nullable reference types work for the codecs that carry no JSI ownership:
 `string?`, `Uri?`, `byte[]?`, positional reference records, and the
