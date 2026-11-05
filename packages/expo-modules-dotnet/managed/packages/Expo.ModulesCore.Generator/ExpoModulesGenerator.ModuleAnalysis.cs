@@ -505,7 +505,15 @@ public sealed partial class ExpoModulesGenerator
             );
       }
 
-      if (isAsync && !asyncReturnsVoid && asyncResultPassingKind == ExpoReturnPassingKind.Codec && asyncResultCodec is null)
+      // Encode position: an async result is encoded, so a decode-only codec has no valid output. A
+      // span result has no codec, and a span cannot be a Task type argument.
+      if (asyncResultCodec is { Capabilities: ExpoCodecCapabilities.DecodeOnly })
+      {
+        asyncResultCodec = null;
+      }
+
+      if (isAsync && !asyncReturnsVoid &&
+          (asyncResultPassingKind != ExpoReturnPassingKind.Codec || asyncResultCodec is null))
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedReturnType.Id,
@@ -554,6 +562,12 @@ public sealed partial class ExpoModulesGenerator
                 member.GetReturnTypeAttributes()
             );
       }
+      // Encode position: a sync return is encoded, so a decode-only codec has no valid output.
+      if (returnCodec is { Capabilities: ExpoCodecCapabilities.DecodeOnly })
+      {
+        returnCodec = null;
+      }
+
       if (!isAsync && !returnsVoid && returnPassingKind == ExpoReturnPassingKind.Codec && returnCodec is null)
       {
         diagnostics.Add(new ExpoDiagnosticModel(

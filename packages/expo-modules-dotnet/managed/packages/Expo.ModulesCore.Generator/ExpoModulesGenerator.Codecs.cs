@@ -64,14 +64,11 @@ public sealed partial class ExpoModulesGenerator
   private static bool IsInvocationOwned(ExpoParameterModel parameter) =>
       parameter.Codec?.DecodedOwnership == ExpoDecodedOwnership.InvocationOwned;
 
-  // Encode locations pass the runtime context for an encodable context-bearing codec. A decode-only
-  // callback codec in a return position keeps its current output until the encode-position rule.
-  private static bool RequiresEncodeRuntimeContext(ExpoCodecDescriptor? codec) =>
-      codec is
-      {
-        ContextRequirement: ExpoContextRequirement.DotnetRuntimeContext,
-        Capabilities: ExpoCodecCapabilities.DecodeAndEncode,
-      };
+  // Composition rule: a list element, dictionary value, Nullable<T> or nullable-reference inner
+  // type, callback result, and callback argument tuple element are generic type arguments. A
+  // StaticHelper codec is a static class and cannot be one.
+  private static ExpoCodecDescriptor? AsGenericArgumentCodec(ExpoCodecDescriptor? codec) =>
+      codec is { Shape: ExpoCodecShape.JavaScriptCodec } ? codec : null;
 
   private static string GetNumberCodecExpression(ITypeSymbol typeSymbol) =>
       $"NumberCodec<{typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>";
@@ -142,7 +139,7 @@ public sealed partial class ExpoModulesGenerator
     }
 
     var valueType = namedType.TypeArguments.Single();
-    var valueCodec = GetCodec(valueType, diagnostics, recordCodecs);
+    var valueCodec = AsGenericArgumentCodec(GetCodec(valueType, diagnostics, recordCodecs));
     if (valueCodec is null)
     {
       return null;
@@ -209,7 +206,7 @@ public sealed partial class ExpoModulesGenerator
       if (constructedType == "global::System.Collections.Generic.IReadOnlyList<T>")
       {
         var elementType = namedType.TypeArguments.Single();
-        if (GetCodec(elementType, diagnostics, recordCodecs) is { } elementCodec)
+        if (AsGenericArgumentCodec(GetCodec(elementType, diagnostics, recordCodecs)) is { } elementCodec)
         {
           codec = OrdinaryCodec(
               $"NullableReadOnlyListCodec<{GetCodecTypeArgumentName(elementType)}, {elementCodec.Expression}>"
@@ -228,7 +225,7 @@ public sealed partial class ExpoModulesGenerator
         }
 
         var dictionaryValueType = namedType.TypeArguments[1];
-        if (GetCodec(dictionaryValueType, diagnostics, recordCodecs) is { } dictionaryValueCodec)
+        if (AsGenericArgumentCodec(GetCodec(dictionaryValueType, diagnostics, recordCodecs)) is { } dictionaryValueCodec)
         {
           var codecName =
               constructedType == "global::System.Collections.Generic.Dictionary<TKey, TValue>"
@@ -243,7 +240,7 @@ public sealed partial class ExpoModulesGenerator
       }
     }
 
-    if (GetCodec(valueType, diagnostics, recordCodecs) is { } valueCodec)
+    if (AsGenericArgumentCodec(GetCodec(valueType, diagnostics, recordCodecs)) is { } valueCodec)
     {
       codec = OrdinaryCodec(
           $"NullableReferenceCodec<{GetCodecTypeArgumentName(valueType)}, {valueCodec.Expression}>"
@@ -266,7 +263,7 @@ public sealed partial class ExpoModulesGenerator
     }
 
     var elementType = namedType.TypeArguments.Single();
-    var elementCodec = GetCodec(elementType, diagnostics, recordCodecs);
+    var elementCodec = AsGenericArgumentCodec(GetCodec(elementType, diagnostics, recordCodecs));
     if (elementCodec is null)
     {
       return null;
@@ -302,7 +299,7 @@ public sealed partial class ExpoModulesGenerator
     }
 
     var valueType = namedType.TypeArguments[1];
-    var valueCodec = GetCodec(valueType, diagnostics, recordCodecs);
+    var valueCodec = AsGenericArgumentCodec(GetCodec(valueType, diagnostics, recordCodecs));
     if (valueCodec is null)
     {
       return null;
@@ -339,7 +336,14 @@ public sealed partial class ExpoModulesGenerator
       var property = typeSymbol.GetMembers().OfType<IPropertySymbol>()
           .FirstOrDefault(item => item.Name == parameter.Name);
       var fieldCodec = GetCodec(parameter.Type, diagnostics, recordCodecs);
-      if (property is null || fieldCodec is null)
+      // Composition rule: generated record codecs call field codecs directly with Decode and
+      // Encode. A field needs both, and a context-bearing codec has no runtime context there.
+      if (property is null ||
+          fieldCodec is not
+          {
+            Capabilities: ExpoCodecCapabilities.DecodeAndEncode,
+            ContextRequirement: ExpoContextRequirement.None,
+          })
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedRecordField.Id,
@@ -650,7 +654,7 @@ public sealed partial class ExpoModulesGenerator
     if (namedType.TypeArguments.Length == 1)
     {
       var zeroArgResultType = namedType.TypeArguments[0];
-      var zeroArgResultCodec = GetCodec(zeroArgResultType, diagnostics, recordCodecs);
+      var zeroArgResultCodec = AsGenericArgumentCodec(GetCodec(zeroArgResultType, diagnostics, recordCodecs));
       if (zeroArgResultCodec is null)
       {
         return null;
@@ -664,7 +668,7 @@ public sealed partial class ExpoModulesGenerator
     var argsType = namedType.TypeArguments[0];
     var resultType = namedType.TypeArguments[1];
     var argsCodec = TryGetValueTupleArgsCodec(argsType, diagnostics, recordCodecs);
-    var resultCodec = GetCodec(resultType, diagnostics, recordCodecs);
+    var resultCodec = AsGenericArgumentCodec(GetCodec(resultType, diagnostics, recordCodecs));
     if (argsCodec is null || resultCodec is null)
     {
       return null;
@@ -704,7 +708,7 @@ public sealed partial class ExpoModulesGenerator
     var codecParts = new List<string>();
     foreach (var element in elements)
     {
-      var codec = GetCodec(element, diagnostics, recordCodecs);
+      var codec = AsGenericArgumentCodec(GetCodec(element, diagnostics, recordCodecs));
       if (codec is null)
       {
         return null;
