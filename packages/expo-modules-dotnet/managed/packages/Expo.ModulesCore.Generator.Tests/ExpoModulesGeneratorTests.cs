@@ -4251,32 +4251,6 @@ public sealed class ExpoModulesGeneratorTests
   }
 
   [Fact]
-  public void GeneratorReportsCallbackDiagnosticForNullableCallbackParameter()
-  {
-    var result = GeneratorTestHost.Run(
-        """
-        #nullable enable
-        using Expo.ModulesCore;
-
-        namespace Expo.TestModules;
-
-        [ExpoModule("Callbacks")]
-        public sealed partial class CallbacksModule
-        {
-          [JS] public string CallIt(JavaScriptCallback<string>? callback) => "x";
-        }
-        """
-    );
-
-    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI008");
-    Assert.Contains("callback", diagnostic.GetMessage());
-    var source = GeneratedText(result);
-    Assert.DoesNotContain("JavaScriptCallbackCodec", source);
-    Assert.DoesNotContain("\"callIt\"", source);
-    AssertNoCompilerErrors(result);
-  }
-
-  [Fact]
   public void GeneratorReportsPropertyDiagnosticForExcludedNullableProperty()
   {
     var result = GeneratorTestHost.Run(
@@ -5306,6 +5280,114 @@ public sealed class ExpoModulesGeneratorTests
     var text = GeneratedText(result);
     Assert.Contains(Nabc, text, StringComparison.Ordinal);
     Assert.Contains(expectedFragment, text, StringComparison.Ordinal);
+  }
+
+  // The codec expressions of JavaScriptCallback<int>? and JavaScriptCallback<ValueTuple<string>, string>?:
+  // the nullable callback codec with the same type arguments as the non-null codec.
+  private const string Nc1 = "NullableJavaScriptCallbackCodec<int, NumberCodec<int>>";
+  private const string Nc2 = "NullableJavaScriptCallbackCodec<global::System.ValueTuple<string>, ValueTupleCodec<string, StringCodec>, string, StringCodec>";
+  private const string NullableCallbackDefaultPrefix =
+      "var __expoArg0 = arguments.Count <= 0 || arguments.GetValue(0).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? null : ";
+
+  [Theory]
+  [InlineData("[JS] public int M(JavaScriptCallback<int>? callback) => 0;", "var __expoArg0 = " + Nc1 + ".Decode(arguments.GetValue(0), runtime, GeneratedFunction.CurrentRuntimeContext);")]
+  [InlineData("[JS] public string M(JavaScriptCallback<ValueTuple<string>, string>? callback) => \"\";", "var __expoArg0 = " + Nc2 + ".Decode(arguments.GetValue(0), runtime, GeneratedFunction.CurrentRuntimeContext);")]
+  [InlineData("[JS] public Task<int> M(JavaScriptCallback<int>? callback) => Task.FromResult(0);", "var __expoArg0 = " + Nc1 + ".Decode(arguments.GetValue(0), jsRuntime, GeneratedFunction.CurrentRuntimeContext);")]
+  [InlineData("[JS] public Task<string> M(JavaScriptCallback<ValueTuple<string>, string>? callback) => Task.FromResult(\"\");", "var __expoArg0 = " + Nc2 + ".Decode(arguments.GetValue(0), jsRuntime, GeneratedFunction.CurrentRuntimeContext);")]
+  [InlineData("[JS] public int M(JavaScriptCallback<int>? callback = null) => 0;", NullableCallbackDefaultPrefix + Nc1 + ".Decode(arguments.GetValue(0), runtime, GeneratedFunction.CurrentRuntimeContext);")]
+  [InlineData("[JS] public string M(JavaScriptCallback<ValueTuple<string>, string>? callback = null) => \"\";", NullableCallbackDefaultPrefix + Nc2 + ".Decode(arguments.GetValue(0), runtime, GeneratedFunction.CurrentRuntimeContext);")]
+  [InlineData("[JS] public Task<int> M(JavaScriptCallback<int>? callback = null) => Task.FromResult(0);", "? null : " + Nc1 + ".Decode(arguments.GetValue(0), jsRuntime, GeneratedFunction.CurrentRuntimeContext)")]
+  public void GeneratorAcceptsNullableCallbackParameters(string member, string expectedFragment)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(string.Empty, member));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var text = GeneratedText(result);
+    Assert.Contains(expectedFragment, text, StringComparison.Ordinal);
+    AssertNullableCallbackCodecsOnly(text);
+  }
+
+  [Theory]
+  [InlineData("[JS] public Entry(JavaScriptCallback<int>? callback) { }", "var __expoArg0 = " + Nc1 + ".Decode(arguments.GetValue(0), runtime, GeneratedFunction.CurrentRuntimeContext);", "ConstructSharedObject_")]
+  [InlineData("[JS] public Entry(JavaScriptCallback<ValueTuple<string>, string>? callback = null) { }", "arguments.Length <= 0 || arguments.GetValue(0).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? null : " + Nc2 + ".Decode(arguments.GetValue(0), runtime, GeneratedFunction.CurrentRuntimeContext)", "ConstructSharedObject_")]
+  [InlineData("[JS] public int Run(JavaScriptCallback<int>? callback) => 0;", "var __expoArg0 = " + Nc1 + ".Decode(arguments.GetValue(0), runtime, GeneratedFunction.CurrentRuntimeContext);", null)]
+  [InlineData("[JS] public Task<string> RunAsync(JavaScriptCallback<ValueTuple<string>, string>? callback) => Task.FromResult(\"\");", "var __expoArg0 = " + Nc2 + ".Decode(arguments.GetValue(0), jsRuntime, GeneratedFunction.CurrentRuntimeContext);", null)]
+  [InlineData("[JS] public int Run(JavaScriptCallback<int>? callback = null) => 0;", "arguments.Count <= 0 || arguments.GetValue(0).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? null : " + Nc1 + ".Decode(arguments.GetValue(0), runtime, GeneratedFunction.CurrentRuntimeContext)", null)]
+  public void GeneratorAcceptsNullableCallbackParametersOnSharedObjects(
+      string member,
+      string expectedFragment,
+      string? extraFragment)
+  {
+    var result = GeneratorTestHost.Run(SharedObjectMemberSource(member));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerErrors(result);
+    Assert.DoesNotContain(result.Diagnostics, item => item.Id is "CS8604" or "CS8625");
+    var text = GeneratedText(result);
+    Assert.Contains(expectedFragment, text, StringComparison.Ordinal);
+    if (extraFragment is not null)
+    {
+      Assert.Contains(extraFragment, text, StringComparison.Ordinal);
+    }
+
+    AssertNullableCallbackCodecsOnly(text);
+  }
+
+  // The spec: an annotated callback is accepted as a parameter only. No scope registration, no
+  // disposal at the end of the invocation, and every callback codec in the text is the nullable one
+  // (a bare search for JavaScriptCallbackCodec would match inside the nullable name).
+  private static void AssertNullableCallbackCodecsOnly(string text)
+  {
+    Assert.DoesNotContain("GeneratedConversionScope", text, StringComparison.Ordinal);
+    Assert.DoesNotContain("__expoArg0.Dispose", text, StringComparison.Ordinal);
+    Assert.Equal(
+        CountOccurrences(text, "JavaScriptCallbackCodec<"),
+        CountOccurrences(text, "NullableJavaScriptCallbackCodec<"));
+  }
+
+  // Characterization: an annotation on a callback outside a parameter changes nothing. The run
+  // without the annotation is the oracle for the expected diagnostics.
+  [Theory]
+  [InlineData("", "[JS] public JavaScriptCallback<int>$N M() => throw new NotImplementedException();", false, "EXPOJSI002", "\"m\"")]
+  [InlineData("", "[JS] public Task<JavaScriptCallback<int>$N> M() => throw new NotImplementedException();", false, "EXPOJSI002", "\"m\"")]
+  [InlineData("", "[JS] public JavaScriptCallback<int>$N Callback { get; } = null!;", false, "EXPOJSI015", "\"callback\"")]
+  [InlineData("public sealed record Holder(JavaScriptCallback<int>$N Field);", "[JS] public int M(Holder holder) => 0;", false, "EXPOJSI007,EXPOJSI001", "\"m\"")]
+  [InlineData("", "[JS] public int M(IReadOnlyList<JavaScriptCallback<int>$N> value) => 0;", false, "EXPOJSI001", "\"m\"")]
+  [InlineData("", "[JS] public int M(Dictionary<string, JavaScriptCallback<int>$N> value) => 0;", false, "EXPOJSI001", "\"m\"")]
+  [InlineData("", "[JS] public int M(JavaScriptCallback<JavaScriptCallback<int>$N> value) => 0;", false, "EXPOJSI008", "\"m\"")]
+  [InlineData("", "[JS] public int M(JavaScriptCallback<ValueTuple<JavaScriptCallback<int>$N>, int> value) => 0;", false, "EXPOJSI008", "\"m\"")]
+  [InlineData("", "[JS] public int M(JavaScriptCallback<decimal>$N callback) => 0;", false, "EXPOJSI008", "\"m\"")]
+  [InlineData("public sealed record Holder(JavaScriptValue Value);", "[JS] public int M(JavaScriptCallback<Holder>$N callback) => 0;", false, "EXPOJSI008", "\"m\"")]
+  [InlineData("", "[Event] public partial Func<JavaScriptCallback<int>$N, Task> OnCallback { get; }", false, "EXPOJSI019", "\"onCallback\"")]
+  [InlineData("", "[Event] public partial Func<JavaScriptCallback<int>$N, Task> OnCallback { get; }", true, "EXPOJSI027", "\"onCallback\"")]
+  [InlineData("", "[JS] public JavaScriptCallback<int>$N Make() => throw new NotImplementedException();", true, "EXPOJSI023", "\"make\"")]
+  [InlineData("", "[JS] public JavaScriptCallback<int>$N Callback { get; } = null!;", true, "EXPOJSI023", "\"callback\"")]
+  [InlineData("", "[JS] public void Run(JavaScriptCallback<decimal>$N callback) { }", true, "EXPOJSI023", "\"run\"")]
+  [InlineData("", "[JS] public Entry(JavaScriptCallback<decimal>$N callback) { }", true, "EXPOJSI023", "ConstructSharedObject_")]
+  public void GeneratorKeepsCallbackDiagnosticsForNullableCallbacks(
+      string declarations,
+      string member,
+      bool onSharedObject,
+      string expectedIds,
+      string absentFragment)
+  {
+    foreach (var annotation in new[] { string.Empty, "?" })
+    {
+      var runDeclarations = declarations.Replace("$N", annotation, StringComparison.Ordinal);
+      var runMember = member.Replace("$N", annotation, StringComparison.Ordinal);
+      var result = GeneratorTestHost.Run(
+          onSharedObject
+              ? SharedObjectMemberSource(runMember, runDeclarations)
+              : ModuleSource(runDeclarations, runMember)
+      );
+
+      AssertNoCompilerErrors(result);
+      Assert.Equal(expectedIds.Split(','), GeneratorDiagnosticIds(result));
+      var text = GeneratedText(result);
+      Assert.DoesNotContain(absentFragment, text, StringComparison.Ordinal);
+      Assert.DoesNotContain("NullableJavaScriptCallbackCodec", text, StringComparison.Ordinal);
+    }
   }
 
   [Theory]
