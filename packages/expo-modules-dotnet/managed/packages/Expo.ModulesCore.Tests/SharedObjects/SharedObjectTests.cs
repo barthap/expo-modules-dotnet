@@ -1531,6 +1531,271 @@ public sealed class GeneratedSharedObjectTests
     });
   }
 
+  private static DotnetRuntimeContext CreateBaseThingsContext(
+      HermesRuntimeFixture fixture,
+      JavaScriptRuntime runtime)
+  {
+    BaseThingsModule.LastPath = null;
+    var context = new DotnetRuntimeContext(runtime);
+    using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+    ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+    using var setup = fixture.Evaluate(
+        "globalThis.m = globalThis._expoDotnet.modules.BaseThings; 'ready'",
+        "base-shared-object-module-setup.js"
+    );
+    return context;
+  }
+
+  [Fact]
+  public void SharedObjectBaseParameterReceivesEverySubclass()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = CreateBaseThingsContext(fixture, runtime);
+      var steps = new List<SharedObjectPairingStep>();
+
+      using var setup = fixture.Evaluate(
+          // The Hermes test host does not compile `class` syntax, so the subclass is built with
+          // Reflect.construct and a prototype link, which gives the same prototype chain.
+          "globalThis.f = new m.FileEntry('f'); " +
+          "globalThis.SubFile = function SubFile(name) { return Reflect.construct(m.FileEntry, [name], SubFile); }; " +
+          "Object.setPrototypeOf(SubFile.prototype, m.FileEntry.prototype); " +
+          "Object.setPrototypeOf(SubFile, m.FileEntry); " +
+          "globalThis.s = new SubFile('s'); globalThis.d = new m.DirEntry('d', f); 'ready'",
+          "base-shared-object-subclass-setup.js"
+      );
+      // The DirEntry constructor received `f` as its PathBase parent.
+      var file = Assert.IsType<FileEntry>(BaseThingsModule.LastPath);
+      Assert.Equal("f", file.Name);
+
+      using var describeDir = fixture.Evaluate("m.describe(d)", "base-shared-object-describe-dir.js");
+      var dir = Assert.IsType<DirEntry>(BaseThingsModule.LastPath);
+      Assert.Same(file, dir.Parent);
+
+      using var describeSub = fixture.Evaluate("m.describe(s)", "base-shared-object-describe-sub.js");
+      var sub = Assert.IsType<FileEntry>(BaseThingsModule.LastPath);
+      Assert.Equal("s", sub.Name);
+
+      // A JavaScript subclass instance as a constructor argument.
+      BaseThingsModule.LastPath = null;
+      using var madeFromSub = fixture.Evaluate("new m.DirEntry('d2', s); 'made'", "base-shared-object-ctor-sub.js");
+      Assert.Same(sub, BaseThingsModule.LastPath);
+
+      // Repeated calls receive the same instance.
+      BaseThingsModule.LastPath = null;
+      using var describeFileOnce = fixture.Evaluate("m.describe(f)", "base-shared-object-describe-file-1.js");
+      Assert.Same(file, BaseThingsModule.LastPath);
+      BaseThingsModule.LastPath = null;
+      using var describeFileTwice = fixture.Evaluate("m.describe(f)", "base-shared-object-describe-file-2.js");
+      Assert.Same(file, BaseThingsModule.LastPath);
+
+      // Every instance is created and paired above, so only decodes run while the hook is set.
+      context.SharedObjects.PairingStepForTesting = steps.Add;
+      var before = context.SharedObjects.Count;
+
+      using var result = fixture.Evaluate(
+          "[m.describe(f), m.describe(d), m.describe(s), d.compare(f), d.compare(d), d.compare(s), " +
+          "Object.getPrototypeOf(s) === SubFile.prototype, s instanceof m.FileEntry].join('|')",
+          "base-shared-object-every-subclass.js"
+      );
+      Assert.Equal("FileEntry:f|DirEntry:d|FileEntry:s|parent|DirEntry:d|FileEntry:s|true|true", result.AsString());
+      // The last call was d.compare(s).
+      Assert.Same(sub, BaseThingsModule.LastPath);
+      Assert.Empty(steps);
+      Assert.Equal(before, context.SharedObjects.Count);
+
+      // Control: a native entry creation records the pairing steps, so the empty list above is meaningful.
+      using var control = fixture.Evaluate("new m.FileEntry('x'); 'made'", "base-shared-object-control.js");
+      Assert.Equal(1, steps.Count(step => step == SharedObjectPairingStep.InstanceObjectCreated));
+      return true;
+    });
+  }
+
+  [Fact]
+  public async Task SharedObjectBaseParameterKeepsIdentityAcrossAwait()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    DotnetRuntimeContext? context = null;
+    FileEntry? file = null;
+    DirEntry? dir = null;
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      context = CreateBaseThingsContext(fixture, runtime);
+      using var setup = fixture.Evaluate(
+          "globalThis.f = new m.FileEntry('f'); globalThis.d = new m.DirEntry('d', f); 'ready'",
+          "base-shared-object-async-setup.js"
+      );
+      using var describeDir = fixture.Evaluate("m.describe(d)", "base-shared-object-async-describe-dir.js");
+      dir = (DirEntry)BaseThingsModule.LastPath!;
+      file = (FileEntry)dir.Parent;
+
+      BaseThingsModule.LastPath = null;
+      using var pending = fixture.Evaluate(
+          "m.describeLater(f).then(v => { globalThis.__f = v; }, " +
+          "error => { globalThis.__f = 'error:' + error.message; }); 'pending'",
+          "base-shared-object-async-file.js"
+      );
+      return true;
+    });
+
+    await WaitForConditionAsync(fixture, "typeof globalThis.__f !== 'undefined'");
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var later = fixture.Evaluate("globalThis.__f", "base-shared-object-async-file-check.js");
+      Assert.Equal("FileEntry:f", later.AsString());
+      Assert.Same(file, BaseThingsModule.LastPath);
+
+      BaseThingsModule.LastPath = null;
+      using var pending = fixture.Evaluate(
+          "m.describeLater(d).then(v => { globalThis.__d = v; }, " +
+          "error => { globalThis.__d = 'error:' + error.message; }); 'pending'",
+          "base-shared-object-async-dir.js"
+      );
+      return true;
+    });
+
+    await WaitForConditionAsync(fixture, "typeof globalThis.__d !== 'undefined'");
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var later = fixture.Evaluate("globalThis.__d", "base-shared-object-async-dir-check.js");
+      Assert.Equal("DirEntry:d", later.AsString());
+      Assert.Same(dir, BaseThingsModule.LastPath);
+
+      // An unrelated class is rejected before DescribeLater runs, so LastPath keeps the sentinel.
+      using var sentinel = fixture.Evaluate("m.describe(f)", "base-shared-object-async-sentinel.js");
+      Assert.Same(file, BaseThingsModule.LastPath);
+      using var pending = fixture.Evaluate(
+          "m.describeLater(globalThis._expoDotnet.modules.SharedThings.makeSnapshot()).then(" +
+          "v => { globalThis.__bad = 'resolved:' + v; }, error => { globalThis.__bad = error.message; }); " +
+          "'pending'",
+          "base-shared-object-async-unrelated.js"
+      );
+      return true;
+    });
+
+    await WaitForConditionAsync(fixture, "typeof globalThis.__bad !== 'undefined'");
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var bad = fixture.Evaluate("globalThis.__bad", "base-shared-object-async-unrelated-check.js");
+      Assert.Contains(
+          "The shared object receiver is not a 'Expo.ModulesCore.Tests.Modules.PathBase' instance.",
+          bad.AsString()
+      );
+      Assert.Same(file, BaseThingsModule.LastPath);
+      context!.Dispose();
+      return true;
+    });
+  }
+
+  [Theory]
+  [InlineData("({})", "NativeState entry for SharedObjectNativeState is missing.", "NativeState entry for SharedObjectNativeState is missing.")]
+  [InlineData("null", "Value is not an object.", "Value is not an object.")]
+  [InlineData("undefined", "Value is not an object.", "Value is not an object.")]
+  [InlineData("0", "Value is not an object.", "Value is not an object.")]
+  [InlineData("'x'", "Value is not an object.", "Value is not an object.")]
+  [InlineData("globalThis.released", "not an active shared object", "not an active shared object")]
+  [InlineData("globalThis.foreign", "not an active shared object", "not an active shared object")]
+  [InlineData(
+      "globalThis.snapshot",
+      "is not a 'Expo.ModulesCore.Tests.Modules.PathBase' instance.",
+      "is not a 'Expo.ModulesCore.Tests.Modules.FileEntry' instance.")]
+  public void SharedObjectBaseParameterFailuresMatchTheExactParameter(
+      string input,
+      string expected,
+      string exactExpected)
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = CreateBaseThingsContext(fixture, runtime);
+      using var setup = fixture.Evaluate(
+          "globalThis.kept = new m.FileEntry('kept'); globalThis.d = new m.DirEntry('d', kept); " +
+          "globalThis.released = new m.FileEntry('released'); released.release(); " +
+          "globalThis.snapshot = globalThis._expoDotnet.modules.SharedThings.makeSnapshot(); 'ready'",
+          "base-shared-object-failures-setup.js"
+      );
+      var sentinel = BaseThingsModule.LastPath;
+
+      // An entry installed by another context in the same runtime is not active in this one.
+      var contextB = new DotnetRuntimeContext(runtime);
+      try
+      {
+        using var holder = runtime.CreateObject();
+        GeneratedSharedObjectClass.Install(contextB, holder, typeof(FileEntry), "FileEntry", 0, null, null);
+        using var foreign = SharedObjectCodec<FileEntry>.Encode(new FileEntry("foreign"), runtime, contextB);
+        using var global = runtime.Global();
+        global.SetProperty("foreign", foreign);
+
+        var before = context.SharedObjects.Count;
+        using var result = fixture.Evaluate(
+            JsErrHelper +
+            $"const v = () => ({input}); " +
+            "[err(() => m.describe(v())), err(() => m.describeFile(v())), " +
+            "err(() => d.compare(v())), err(() => new m.DirEntry('x', v()))].join('|')",
+            "base-shared-object-failures.js"
+        );
+
+        var parts = result.AsString().Split('|');
+        Assert.Equal(4, parts.Length);
+        Assert.Contains(expected, parts[0]);
+        Assert.Contains(exactExpected, parts[1]);
+        Assert.Contains(expected, parts[2]);
+        Assert.Contains(expected, parts[3]);
+        if (expected == exactExpected)
+        {
+          // The base parameter fails exactly as the concrete one does. Compare the first line
+          // only, because the two functions have different frames in the stack trace.
+          Assert.Equal(parts[0].Split('\n')[0], parts[1].Split('\n')[0]);
+        }
+        // No authored code ran, and the failed constructor left no DirEntry behind.
+        Assert.Same(sentinel, BaseThingsModule.LastPath);
+        Assert.Equal(before, context.SharedObjects.Count);
+      }
+      finally
+      {
+        contextB.Dispose();
+      }
+      return true;
+    });
+  }
+
+  [Fact]
+  public void SharedObjectBaseParameterStillRequiresItsArgument()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = CreateBaseThingsContext(fixture, runtime);
+      using var setup = fixture.Evaluate(
+          "globalThis.f = new m.FileEntry('f'); globalThis.d = new m.DirEntry('d', f); 'ready'",
+          "base-shared-object-required-setup.js"
+      );
+      var sentinel = BaseThingsModule.LastPath;
+
+      using var result = fixture.Evaluate(
+          JsErrHelper +
+          "[err(() => m.describe()), err(() => d.compare()), err(() => new m.DirEntry('x'))].join('|')",
+          "base-shared-object-required.js"
+      );
+
+      var parts = result.AsString().Split('|');
+      Assert.Equal(3, parts.Length);
+      Assert.Contains("got 0", parts[0]);
+      Assert.Contains("got 0", parts[1]);
+      Assert.Contains("new DirEntry expects 2 arguments, got 1.", parts[2]);
+      Assert.Same(sentinel, BaseThingsModule.LastPath);
+      return true;
+    });
+  }
+
   [System.Runtime.CompilerServices.MethodImpl(
       System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
   private static WeakReference CreateDisposedContextWithRetainedSubscription(
