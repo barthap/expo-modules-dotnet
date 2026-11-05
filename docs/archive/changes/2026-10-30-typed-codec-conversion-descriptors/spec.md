@@ -255,7 +255,8 @@ Add these scenarios:
 #### Scenario: Static helper codec is used as a generic codec argument
 - **GIVEN** a list element, dictionary value, nullable inner type, callback
   result, or callback-argument tuple element is `ArrayBuffer`, a
-  `JavaScriptCallback`, or a type that contains one
+  `JavaScriptCallback`, or a collection, nullable, or callback type that
+  contains one
 - **WHEN** the project is compiled
 - **THEN** the generator SHALL report the using member's unsupported-type
   diagnostic: `EXPOJSI001`, `EXPOJSI002`, `EXPOJSI008`, `EXPOJSI015`, or
