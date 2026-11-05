@@ -805,3 +805,45 @@ public sealed partial class OptionalTrackedRef : SharedRef<TrackedResource>
   [JS]
   public bool IsDisposed => Ref.Disposed;
 }
+
+// The authored abstract base of FileEntry and DirEntry. It has no [ExpoSharedObject] attribute.
+public abstract class PathBase : SharedObject
+{
+  protected PathBase(string name)
+  {
+    Name = name;
+  }
+
+  public string Name { get; }
+
+  // The concrete class name plus the name, so a test sees which instance authored code received.
+  public string Describe() => $"{GetType().Name}:{Name}";
+}
+
+[ExpoSharedObject]
+public sealed partial class FileEntry : PathBase
+{
+  [JS]
+  public FileEntry(string name)
+      : base(name)
+  {
+  }
+}
+
+[ExpoSharedObject]
+public sealed partial class DirEntry : PathBase
+{
+  public DirEntry(string name, PathBase parent)
+      : base(name)
+  {
+    Parent = parent;
+  }
+
+  public PathBase Parent { get; }
+}
+
+// Owns FileEntry and DirEntry, so neither reports EXPOJSI024. No other module may list them.
+[ExpoModule("BaseThings", Classes = new[] { typeof(FileEntry), typeof(DirEntry) })]
+public sealed partial class BaseThingsModule
+{
+}
