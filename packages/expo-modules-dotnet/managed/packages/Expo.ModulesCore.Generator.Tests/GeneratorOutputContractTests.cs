@@ -141,8 +141,10 @@ public sealed class GeneratorOutputContractTests
   }
 
   [Fact]
-  public void GeneratorPreservesCodecPolicyModuleOutputContract()
+  public void GeneratorPreservesLeafFreeCodecPolicyModuleOutputContract()
   {
+    // OnValue and OnBuffer stay here on purpose: typed-event payloads keep today's ownership,
+    // so a change to their generated text must break this frozen digest.
     var result = GeneratorTestHost.Run(
         """
         using System;
@@ -155,13 +157,13 @@ public sealed class GeneratorOutputContractTests
 
         public enum PolicyMode { First, Second }
 
-        public sealed record PolicyRecord(ArrayBuffer Buffer, JavaScriptValue Value);
-
         public sealed record PolicyPayload(string Label, int Count);
 
-        [ExpoModule("Policy")]
+        public sealed record PolicyPayloadRecord(string Label, int Count);
+
+        [ExpoModule("PolicyLeafFree")]
         [Events("onLegacy")]
-        public sealed partial class PolicyModule
+        public sealed partial class PolicyLeafFreeModule
         {
           [JS] public int Int(int value) => value;
           [JS] public string Text(string value) => value;
@@ -173,31 +175,19 @@ public sealed class GeneratorOutputContractTests
           [JS] public int Dict(Dictionary<string, int> value) => value.Count;
           [JS] public int ReadOnlyDict(IReadOnlyDictionary<string, string> value) => value.Count;
           [JS] public int? Nullable(int? value) => value;
-          [JS] public int Record(PolicyRecord value) => 0;
-          [JS] public int Value(JavaScriptValue value) => 0;
-          [JS] public int Buffer(ArrayBuffer value) => 0;
+          [JS] public int Record(PolicyPayloadRecord value) => 0;
           [JS] public int Callback(JavaScriptCallback<int> callback) => 0;
           [JS] public string TupleCallback(JavaScriptCallback<ValueTuple<string>, string> callback) => "";
           [JS] public int Optional(int value = 5) => value;
 
-          [JS] public Task ValueTask(JavaScriptValue value) => Task.CompletedTask;
-          [JS] public Task BufferTask(ArrayBuffer value) => Task.CompletedTask;
-          [JS] public Task<JavaScriptValue> ValueResultAsync(JavaScriptValue value) => Task.FromResult(value);
-          [JS] public Task<ArrayBuffer> BufferResultAsync(ArrayBuffer value) => Task.FromResult(value);
           [JS] public Task<IReadOnlyList<int>> ListResultAsync() => Task.FromResult<IReadOnlyList<int>>(new[] { 1 });
 
-          [JS] public JavaScriptValue ValueReturn(JavaScriptValue value) => value;
-          [JS] public ArrayBuffer BufferReturn(ArrayBuffer value) => value;
           [JS] public IReadOnlyList<int> ListReturn() => new[] { 1 };
-          [JS] public PolicyRecord RecordReturn(PolicyRecord value) => value;
+          [JS] public PolicyPayloadRecord RecordReturn(PolicyPayloadRecord value) => value;
           [JS] public Span<byte> SpanReturn() => new byte[1];
 
-          [JS] public ArrayBuffer SpanToBuffer(ReadOnlySpan<byte> value) => ArrayBuffer.CopyFrom(value);
-          [JS] public JavaScriptValue SpanToValue(ReadOnlySpan<byte> value) => default;
           [JS] public string SpanToString(ReadOnlySpan<byte> value) => "";
 
-          [JS] public ArrayBuffer BufferProperty { get; set; }
-          [JS] public JavaScriptValue ValueProperty { get; set; }
           [JS] public IReadOnlyList<int> ListProperty { get; set; } = Array.Empty<int>();
           [JS] public string TextProperty { get; set; } = "";
 
@@ -212,8 +202,8 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:82BE2EAE96835927B90FB096D23AE62EF463E4A425738B63A55900147E3684A4",
-          "global__Expo_TestModules_PolicyModule_693C040F.Events.g.cs:AA28278948F20E51BA6C2B8C24FE45510611866B6150D0CA22D078C797E7BE22",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:6DB0AD5C3DF264ECCE035674CDEFF7A06C0B2C160C7C09FB540D52E9853B4195",
+          "global__Expo_TestModules_PolicyLeafFreeModule_8D511E8D.Events.g.cs:EB0CCDFABDF861EE54188FA227D628F2A6534E012C2B43EAEF6AFB0C0CA9DE8A",
         },
         result.GetOutputContract()
     );
@@ -221,7 +211,61 @@ public sealed class GeneratorOutputContractTests
   }
 
   [Fact]
-  public void GeneratorPreservesCodecPolicySharedObjectOutputContract()
+  public void GeneratorPinsLeafCodecPolicyModuleOutputContract()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using System.Collections.Generic;
+        using System.Threading.Tasks;
+        using Expo.JSI;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public sealed record PolicyRecord(ArrayBuffer Buffer, JavaScriptValue Value);
+
+        [ExpoModule("PolicyLeaf")]
+        public sealed partial class PolicyLeafModule
+        {
+          [JS] public int Record(PolicyRecord value) => 0;
+          [JS] public int Value(JavaScriptValue value) => 0;
+          [JS] public int Buffer(ArrayBuffer value) => 0;
+          [JS] public int Values(IReadOnlyList<JavaScriptValue> value) => 0;
+          [JS] public int ValueMap(Dictionary<string, JavaScriptValue> value) => 0;
+
+          [JS] public Task ValueTask(JavaScriptValue value) => Task.CompletedTask;
+          [JS] public Task BufferTask(ArrayBuffer value) => Task.CompletedTask;
+          [JS] public Task<JavaScriptValue> ValueResultAsync(JavaScriptValue value) => Task.FromResult(value);
+          [JS] public Task<ArrayBuffer> BufferResultAsync(ArrayBuffer value) => Task.FromResult(value);
+
+          [JS] public JavaScriptValue ValueReturn(JavaScriptValue value) => value;
+          [JS] public ArrayBuffer BufferReturn(ArrayBuffer value) => value;
+          [JS] public PolicyRecord RecordReturn(PolicyRecord value) => value;
+          [JS] public IReadOnlyList<JavaScriptValue> ValuesReturn() => Array.Empty<JavaScriptValue>();
+
+          [JS] public ArrayBuffer SpanToBuffer(ReadOnlySpan<byte> value) => ArrayBuffer.CopyFrom(value);
+          [JS] public JavaScriptValue SpanToValue(ReadOnlySpan<byte> value) => default;
+
+          [JS] public ArrayBuffer BufferProperty { get; set; }
+          [JS] public JavaScriptValue ValueProperty { get; set; }
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, d => d.Severity == DiagnosticSeverity.Error && d.Id.StartsWith("CS", StringComparison.Ordinal));
+    Assert.Equal(
+        new[]
+        {
+          "ExpoModulesProvider_Expo_TestModules.g.cs:3552A505885F6E43E14DD4BD434D470335B17A7ABD9C5FCB77AFB77950AB905D",
+        },
+        result.GetOutputContract()
+    );
+    Assert.Empty(result.GetDiagnosticContract());
+  }
+
+  [Fact]
+  public void GeneratorPreservesLeafFreeCodecPolicySharedObjectOutputContract()
   {
     var result = GeneratorTestHost.Run(
         """
@@ -246,7 +290,6 @@ public sealed class GeneratorOutputContractTests
           [JS]
           public PolicyEntry(
               string label,
-              JavaScriptValue value,
               JavaScriptCallback<int> callback,
               PolicyOther other)
           {
@@ -263,7 +306,7 @@ public sealed class GeneratorOutputContractTests
         [ExpoModule("PolicyOwner", Classes = new[] { typeof(PolicyEntry), typeof(PolicyOther) })]
         public sealed partial class PolicyOwnerModule
         {
-          [JS] public PolicyEntry MakeEntry() => new("", default, default, new PolicyOther());
+          [JS] public PolicyEntry MakeEntry() => new("", default, new PolicyOther());
         }
         """
     );
@@ -272,8 +315,46 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:5ECCD1D96E230CFB5D76DE6056E3B942F6FAC07BF2D54191A0BB098CCAB52E5E",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:CCBAE180F3668CAB107C689360A8CC52EA32FB3AD601B266BF1FB296EB2CC475",
           "global__Expo_TestModules_PolicyEntry_7B42955D.SharedObjectEvents.g.cs:7350FE94400C181F149408B9E9810B59C0B87573FD669DAB1B5D5C808A9A2A92",
+        },
+        result.GetOutputContract()
+    );
+    Assert.Empty(result.GetDiagnosticContract());
+  }
+
+  [Fact]
+  public void GeneratorPinsLeafCodecPolicySharedObjectOutputContract()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.JSI;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject("PolicyLeafEntry")]
+        public sealed partial class PolicyLeafEntry : SharedObject
+        {
+          [JS] public PolicyLeafEntry(string label, JavaScriptValue value) { }
+          [JS] public int Measure(ArrayBuffer value) => 0;
+          [JS] public JavaScriptValue Echo(JavaScriptValue value) => value;
+          [JS] public JavaScriptValue Tag { get; set; }
+        }
+
+        [ExpoModule("PolicyLeafOwner", Classes = new[] { typeof(PolicyLeafEntry) })]
+        public sealed partial class PolicyLeafOwnerModule
+        {
+          [JS] public PolicyLeafEntry Make() => new("", null!);
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, d => d.Severity == DiagnosticSeverity.Error && d.Id.StartsWith("CS", StringComparison.Ordinal));
+    Assert.Equal(
+        new[]
+        {
+          "ExpoModulesProvider_Expo_TestModules.g.cs:4E4C200F9222FD770184B8C51781E887A653BFF7CB58A06D8A8047F82E2EC823",
         },
         result.GetOutputContract()
     );
