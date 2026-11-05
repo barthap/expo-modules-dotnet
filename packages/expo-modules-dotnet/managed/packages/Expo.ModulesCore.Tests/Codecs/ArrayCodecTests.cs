@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Expo.JSI;
@@ -112,5 +113,109 @@ public sealed class GeneratedArrayModuleTests
       var module = (ArrayModule)context;
       return JavaScriptArrayCodec<string, StringCodec>.Encode(module.Labels(), runtime);
     }
+  }
+}
+
+public sealed class JavaScriptCollectionCodecTests
+{
+  [Fact]
+  public void ArrayCodecImplementsJavaScriptCodecForNestedLists()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      IReadOnlyList<IReadOnlyList<int>> grid = [[1, 2], [], [3]];
+
+      var (viaRef, viaOwned) = RoundTrip<
+          IReadOnlyList<IReadOnlyList<int>>,
+          JavaScriptArrayCodec<IReadOnlyList<int>, JavaScriptArrayCodec<int, NumberCodec<int>>>>(
+          grid,
+          runtime
+      );
+
+      AssertGrid(viaRef);
+      AssertGrid(viaOwned);
+      return true;
+    });
+  }
+
+  [Fact]
+  public void DictionaryCodecImplementsBothDictionaryInterfaces()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      var source = new Dictionary<string, int> { ["a"] = 1, ["b"] = 2 };
+
+      var (mutableRef, mutableOwned) = RoundTrip<
+          Dictionary<string, int>,
+          JavaScriptDictionaryCodec<int, NumberCodec<int>>>(source, runtime);
+      var (readOnlyRef, readOnlyOwned) = RoundTrip<
+          IReadOnlyDictionary<string, int>,
+          JavaScriptDictionaryCodec<int, NumberCodec<int>>>(source, runtime);
+
+      Assert.Equal(source.OrderBy(pair => pair.Key), mutableRef.OrderBy(pair => pair.Key));
+      Assert.Equal(source.OrderBy(pair => pair.Key), mutableOwned.OrderBy(pair => pair.Key));
+      Assert.Equal(source.OrderBy(pair => pair.Key), readOnlyRef.OrderBy(pair => pair.Key));
+      Assert.Equal(source.OrderBy(pair => pair.Key), readOnlyOwned.OrderBy(pair => pair.Key));
+      return true;
+    });
+  }
+
+  [Fact]
+  public void ArrayCodecOwnedDecodeReturnsElementsAndLeavesInputUsable()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var input = fixture.Evaluate("['a', 'b', 'c']", "array-owned-decode.js");
+
+      var decoded = JavaScriptArrayCodec<string, StringCodec>.Decode(input, runtime);
+      var array = JavaScriptArrayCodec<string, StringCodec>.DecodeToArray(input, runtime);
+
+      Assert.Equal(new[] { "a", "b", "c" }, decoded);
+      Assert.Equal(new[] { "a", "b", "c" }, array);
+      using var inputArray = input.AsArray();
+      Assert.Equal(3u, inputArray.Length);
+      return true;
+    });
+  }
+
+  [Fact]
+  public void ArrayCodecOwnedDecodeThrowsForInvalidElementAndLeavesInputUsable()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var input = fixture.Evaluate("[1, 'x']", "array-owned-decode-throws.js");
+
+      Assert.Throws<InvalidOperationException>(() =>
+          JavaScriptArrayCodec<int, NumberCodec<int>>.Decode(input, runtime));
+
+      using var inputArray = input.AsArray();
+      Assert.Equal(2u, inputArray.Length);
+      return true;
+    });
+  }
+
+  private static (T ViaRef, T ViaOwned) RoundTrip<T, TCodec>(T value, JavaScriptRuntime runtime)
+      where TCodec : IJavaScriptCodec<T>
+  {
+    using var encoded = TCodec.Encode(value, runtime);
+    var viaRef = TCodec.Decode(encoded.Ref, runtime);
+    var viaOwned = TCodec.Decode(encoded, runtime);
+    return (viaRef, viaOwned);
+  }
+
+  private static void AssertGrid(IReadOnlyList<IReadOnlyList<int>> grid)
+  {
+    Assert.Equal(3, grid.Count);
+    Assert.Equal(new[] { 1, 2 }, grid[0]);
+    Assert.Empty(grid[1]);
+    Assert.Equal(new[] { 3 }, grid[2]);
   }
 }

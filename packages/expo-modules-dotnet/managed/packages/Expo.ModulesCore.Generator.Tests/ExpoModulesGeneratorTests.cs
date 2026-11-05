@@ -4663,6 +4663,75 @@ public sealed class ExpoModulesGeneratorTests
     AssertNoCompilerErrors(result);
   }
 
+  [Theory]
+  [InlineData("", "[JS] public int Take(IReadOnlyList<IReadOnlyList<int>> grid) => 0;")]
+  [InlineData("", "[JS] public int Take(IReadOnlyList<IReadOnlyList<int>>? grid) => 0;")]
+  [InlineData("", "[JS] public int Take(Dictionary<string, IReadOnlyList<int>> groups) => 0;")]
+  [InlineData("", "[JS] public IReadOnlyList<Dictionary<string, int>> Make() => new List<Dictionary<string, int>>();")]
+  [InlineData("public sealed record Holder(IReadOnlyList<int> Values);", "[JS] public Holder Echo(Holder holder) => holder;")]
+  [InlineData("public sealed record Holder(Dictionary<string, int> Values);", "[JS] public Holder Echo(Holder holder) => holder;")]
+  [InlineData("", "[JS] public int Call(JavaScriptCallback<IReadOnlyList<int>> callback) => 0;")]
+  [InlineData("", "[JS] public string Call(JavaScriptCallback<ValueTuple<IReadOnlyList<int>>, string> callback) => \"\";")]
+  [InlineData("", "[Event] public partial Func<IReadOnlyList<int>, Task> OnChange { get; }")]
+  public void GeneratorCompilesNonNullCollectionsInComposedPositions(string declarations, string members)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        #nullable enable
+        using System;
+        using System.Collections.Generic;
+        using System.Threading.Tasks;
+        using Expo.JSI;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        {{declarations}}
+
+        [ExpoModule("Composed")]
+        public sealed partial class ComposedModule : Module
+        {
+          public ComposedModule(DotnetRuntimeContext context) : base(context) {}
+
+          {{members}}
+        }
+        """
+    );
+
+    Assert.Empty(result.GeneratorDiagnostics ?? Array.Empty<Diagnostic>());
+    AssertNoCompilerErrors(result);
+  }
+
+  [Fact]
+  public void GeneratorCompilesNonNullCollectionEventPayloadOnSharedObject()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using System;
+        using System.Collections.Generic;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject]
+        public sealed partial class CacheEntry : SharedObject
+        {
+          [Event]
+          public partial Func<IReadOnlyList<int>, Task> OnChange { get; }
+        }
+
+        [ExpoModule(Classes = new[] { typeof(CacheEntry) })]
+        public sealed partial class CacheModule
+        {
+        }
+        """
+    );
+
+    Assert.Empty(result.GeneratorDiagnostics ?? Array.Empty<Diagnostic>());
+    AssertNoCompilerErrors(result);
+  }
+
   private static void AssertNoCompilerErrors(GeneratorRunResult result) =>
       Assert.DoesNotContain(result.Diagnostics, item =>
           item.Id.StartsWith("CS", StringComparison.Ordinal) &&

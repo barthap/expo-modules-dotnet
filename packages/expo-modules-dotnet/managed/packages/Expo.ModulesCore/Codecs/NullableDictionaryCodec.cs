@@ -4,9 +4,9 @@ namespace Expo.ModulesCore.Codecs;
 
 /// <summary>Adds nullish handling to a string-keyed dictionary container.</summary>
 /// <remarks>
-/// <see cref="JavaScriptDictionaryCodec{T, TCodec}"/> decodes through <c>DecodeToDictionary</c> and
-/// does not implement <see cref="IJavaScriptCodec{T}"/>, so a nullable dictionary container needs its
-/// own adapter instead of composing through <see cref="NullableReferenceCodec{T, TCodec}"/>.
+/// A nullable dictionary container needs nullish handling that
+/// <see cref="JavaScriptDictionaryCodec{T, TCodec}"/> does not have, so this adapter wraps it instead
+/// of composing through <see cref="NullableReferenceCodec{T, TCodec}"/>.
 /// </remarks>
 public readonly struct NullableDictionaryCodec<T, TCodec> : IJavaScriptCodec<Dictionary<string, T>?>
     where TCodec : IJavaScriptCodec<T>
