@@ -487,7 +487,8 @@ public sealed class LeafReleaseModuleTests
     leaf.Fixture.WaitUntilIdle();
 
     Assert.Equal("true:true", result);
-    // The returned leaves are the decoded ones: Release disposes each once.
+    // Each decoded lease shares its entry with a returned Retain() copy, so each entry releases
+    // only when the result release drops the copy too.
     Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
     Assert.Equal("7", leaf.ReadString("String(new Uint8Array(r.first)[0])"));
   }
@@ -591,6 +592,7 @@ public sealed class LeafReleaseModuleTests
     leaf.Fixture.WaitUntilIdle();
 
     Assert.Equal("true:true:true:true:true", result);
+    // Three decoded entries; each releases only when the result release drops its Retain() copy too.
     Assert.Equal(3u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
     // The JavaScript results stay usable after Release disposed the leases.
     Assert.Equal("1:2:1", leaf.ReadString("`${new Uint8Array(l[0])[0]}:${l[1].byteLength}:${new Uint8Array(d.a)[0]}`"));
@@ -607,6 +609,7 @@ public sealed class LeafReleaseModuleTests
     leaf.Fixture.WaitUntilIdle();
 
     Assert.Equal("true", result);
+    // The decoded lease and the returned Retain() copy share one entry.
     Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
@@ -630,7 +633,8 @@ public sealed class LeafReleaseModuleTests
     // faults, and the entry releases then need another runtime turn.
     leaf.WaitForArrayBufferReleases(2u);
 
-    // The returned record holds the decoded leaves, so abandon releases each once.
+    // The returned record holds Retain() copies, so each entry releases only when abandon drops
+    // both the decoded lease and the copy.
     Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
     Assert.Equal("pending", leaf.ReadString("__outcome.status"));
   }
@@ -679,8 +683,9 @@ public sealed class LeafReleaseModuleTests
 
     Assert.Equal("true:true", result);
     Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
-    // The decoded value field; encode makes a new JavaScript value and leaves the author value usable.
-    Assert.Equal(twinReleases + 1, leafReleases);
+    // The decoded value field and its returned Retain() copy; encode makes a new JavaScript value
+    // and leaves both wrappers for the release.
+    Assert.Equal(twinReleases + 2, leafReleases);
   }
 
   [Fact]

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Expo.JSI;
 
@@ -151,8 +152,9 @@ public sealed partial class LeafReleaseModule : Module, IDisposable
   [JS]
   public int MeasurePair(BufferPair pair) => pair.First.ByteLength + pair.Second.ByteLength;
 
+  // The echo fixtures return Retain() copies, so only the result release drops the returned leases.
   [JS]
-  public BufferPair EchoPair(BufferPair pair) => pair;
+  public BufferPair EchoPair(BufferPair pair) => new(pair.First.Retain(), pair.Second.Retain());
 
   [JS]
   public int MeasureCounted(CountedBuffer value) => value.Count;
@@ -178,13 +180,14 @@ public sealed partial class LeafReleaseModule : Module, IDisposable
   }
 
   [JS]
-  public IReadOnlyList<ArrayBuffer> EchoList(IReadOnlyList<ArrayBuffer> values) => values;
+  public IReadOnlyList<ArrayBuffer> EchoList(IReadOnlyList<ArrayBuffer> values) =>
+      values.Select(value => value.Retain()).ToArray();
 
   [JS]
-  public Dictionary<string, ArrayBuffer> EchoMap(Dictionary<string, ArrayBuffer> values) => values;
+  public Dictionary<string, ArrayBuffer> EchoMap(Dictionary<string, ArrayBuffer> values) => RetainEntries(values);
 
   [JS]
-  public Shelf EchoShelf(Shelf shelf) => shelf;
+  public Shelf EchoShelf(Shelf shelf) => new(shelf.Rows.Select(RetainEntries).ToArray());
 
   [JS]
   public async Task<BufferPair> EchoPairAsync(BufferPair pair)
@@ -197,7 +200,7 @@ public sealed partial class LeafReleaseModule : Module, IDisposable
   public async Task<BufferPair> HoldPairAsync(BufferPair pair)
   {
     await Gate.Task;
-    return pair;
+    return new BufferPair(pair.First.Retain(), pair.Second.Retain());
   }
 
   [JS]
@@ -216,7 +219,7 @@ public sealed partial class LeafReleaseModule : Module, IDisposable
   public TextSlot? EchoTextSlot(TextSlot? slot) => slot;
 
   [JS]
-  public Mixed EchoMixed(Mixed value) => value;
+  public Mixed EchoMixed(Mixed value) => new(value.Buffer.Retain(), value.Value.Retain());
 
   [JS]
   public TextMixed EchoTextMixed(TextMixed value) => value;
@@ -325,6 +328,9 @@ public sealed partial class LeafReleaseModule : Module, IDisposable
     pair?.First.Dispose();
     pair?.Second.Dispose();
   }
+
+  private static Dictionary<string, ArrayBuffer> RetainEntries(Dictionary<string, ArrayBuffer> values) =>
+      values.ToDictionary(entry => entry.Key, entry => entry.Value.Retain());
 }
 
 [ExpoSharedObject("LeafReleaseEntry")]
