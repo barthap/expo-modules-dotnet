@@ -126,7 +126,7 @@ The next free ID is 041.
   passed, 0 failed, 0 skipped). It replaced the first scoped-codec design with
   `Release` on the one codec protocol, so `JavaScriptValue` and `ArrayBuffer`
   leaves now compose in every position. 031 is done: it landed on 2026-11-06
-  with a local `scripts/test-managed.sh` run (1128 passed, 0 failed,
+  with a local `scripts/test-managed.sh` run (1129 passed, 0 failed,
   0 skipped). `ArrayBuffer?` now works wherever `ArrayBuffer` does, through
   `NullableReferenceCodec<ArrayBuffer, ArrayBufferCodec>`, and a direct
   `Func<ArrayBuffer?, Task>` event delivers one JavaScript `null` with no

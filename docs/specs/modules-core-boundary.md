@@ -929,9 +929,9 @@ Records, lists, and dictionaries that hold a `JavaScriptValue`, an
 `ArrayBuffer`, or an `ArrayBuffer?` SHALL be valid typed event payloads.
 Generated glue SHALL encode them on the owning runtime and SHALL dispose only
 the encoded value. A nested null `ArrayBuffer?` SHALL encode as JavaScript
-`null`. The
-author keeps every nested leaf and SHALL keep it alive until the returned task
-completes. A payload containing `JavaScriptCallback` SHALL stay rejected.
+`null`. The author keeps every nested leaf and SHALL keep it alive until the
+returned task completes. A payload containing `JavaScriptCallback` SHALL stay
+rejected.
 Event-safety classification SHALL run before general codec resolution can
 mutate generated-record-codec state, and SHALL inspect only encoded inputs
 such as selected record-constructor parameters, list elements, dictionary
@@ -985,8 +985,9 @@ or blank explicit names; unsupported static, indexed, non-partial, implemented,
 setter, explicit-interface, ref-return, `[JS]`, or modifier shapes; unsupported
 delegate types; and file-local, nested, generic, or non-partial containers.
 `EXPOJSI019` covers payloads with no encode-capable event codec, a callback
-codec, or a nullable annotation on a `JavaScriptValue` at any depth. Legacy-only invalid or duplicate
-`[Events]` declarations SHALL continue to use `EXPOJSI009`.
+codec, or a nullable annotation on a `JavaScriptValue` at any depth.
+Legacy-only invalid or duplicate `[Events]` declarations SHALL continue to use
+`EXPOJSI009`.
 
 When a rejected member's partial-property declaration can be reproduced safely,
 the generator SHALL emit an inert matching implementation so the consuming
@@ -1840,13 +1841,14 @@ The generator SHALL reject a nullable annotation on `JavaScriptValue`,
 `SharedObject`, `SharedRef<T>`, and a concrete `[ExpoSharedObject]` class.
 `JavaScriptValue` already represents JavaScript `null` and `undefined`. The
 others carry retained callback state, shared-object identity, or
-runtime-context state, and a null axis multiplies those states. The generator SHALL report an existing
-context-specific diagnostic at error severity. It SHALL NOT add a new diagnostic
-code, SHALL NOT raise a context-free diagnostic from codec resolution, SHALL NOT
-emit a binding for the rejected member, and SHALL NOT fall through to that
-type's non-nullable codec. The same non-nullable types SHALL keep their current
-supported or diagnostic behavior. `ArrayBuffer?` is supported through
-`NullableReferenceCodec` (see "Nullable ArrayBuffer Is A Nullable Reference").
+runtime-context state, and a null axis multiplies those states. The generator
+SHALL report an existing context-specific diagnostic at error severity. It SHALL
+NOT add a new diagnostic code, SHALL NOT raise a context-free diagnostic from
+codec resolution, SHALL NOT emit a binding for the rejected member, and SHALL
+NOT fall through to that type's non-nullable codec. The same non-nullable types
+SHALL keep their current supported or diagnostic behavior. `ArrayBuffer?` is
+supported through `NullableReferenceCodec` (see "Nullable ArrayBuffer Is A
+Nullable Reference").
 
 Codec resolution does not know the member context, so the codes come from the
 callers: `EXPOJSI001` for a parameter, `EXPOJSI002` for a return, `EXPOJSI007`
@@ -2842,7 +2844,7 @@ source order SHALL NOT select one declaration for dispatch glue.
 #### Scenario: Unsupported payload is diagnosed
 
 - **GIVEN** a valid-shaped shared-object event uses a callback payload or a
-  nullable `JavaScriptValue` or `ArrayBuffer` at any depth
+  nullable `JavaScriptValue` at any depth
 - **WHEN** the generator analyzes it
 - **THEN** it SHALL report `EXPOJSI027`
 - **AND** it SHALL not emit reflection, dynamic conversion, or callback encode

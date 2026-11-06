@@ -1231,6 +1231,31 @@ public sealed class LeafReleaseModuleTests
     Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
+  [Fact]
+  public void SharedObjectNestedNullableBufferEventPayloadStaysWithTheAuthor()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(
+        "globalThis.b = new ArrayBuffer(4); globalThis.seen = []; " +
+        "globalThis.e = new m.LeafReleaseOptionalEntry(null); " +
+        "e.addListener('onOptionalPair', p => { " +
+        "seen.push(`${p.first === null}:${p.second === null ? 'null' : p.second === b}`); }); true"
+    );
+
+    leaf.Fixture.ResetCounters();
+    var empty = leaf.ReadString("`${e.emitOptionalPair(null)}:${seen.join(',')}`");
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("-1:true:null", empty);
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    var present = leaf.ReadString("`${e.emitOptionalPair(b)}:${seen.join(',')}`");
+    leaf.Fixture.WaitUntilIdle();
+    // The author reads the buffer after the emit, and only the member's own decode releases.
+    Assert.Equal("4:true:null,true:true", present);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
   private sealed class LeafReleaseFixture : IDisposable
   {
     private LeafReleaseFixture(

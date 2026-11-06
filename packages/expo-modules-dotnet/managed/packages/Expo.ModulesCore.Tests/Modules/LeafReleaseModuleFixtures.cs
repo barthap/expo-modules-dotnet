@@ -478,6 +478,17 @@ public sealed partial class LeafReleaseOptionalEntry : SharedObject
     }
   }
 
+  [Event]
+  public partial Func<OptionalBufferPair, Task> OnOptionalPair { get; }
+
+  // Reads the buffer after the event, so the test proves the payload leaf stays with the author.
+  [JS]
+  public int EmitOptionalPair(ArrayBuffer? buffer)
+  {
+    OnOptionalPair(new OptionalBufferPair(null, buffer)).GetAwaiter().GetResult();
+    return buffer?.ByteLength ?? -1;
+  }
+
   protected override void OnRelease()
   {
     stored?.Dispose();
