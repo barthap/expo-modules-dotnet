@@ -24,4 +24,13 @@ public readonly struct NullableReferenceCodec<T, TCodec> : IJavaScriptCodec<T?>
   /// <summary>Encodes <c>null</c> as JavaScript <c>null</c> and delegates every other value.</summary>
   public static JavaScriptValue Encode(T? value, JavaScriptRuntime runtime) =>
       value is null ? runtime.CreateNull() : TCodec.Encode(value, runtime);
+
+  /// <summary>Releases a non-null value through <typeparamref name="TCodec"/>.</summary>
+  public static void Release(T? value)
+  {
+    if (value is not null)
+    {
+      TCodec.Release(value);
+    }
+  }
 }

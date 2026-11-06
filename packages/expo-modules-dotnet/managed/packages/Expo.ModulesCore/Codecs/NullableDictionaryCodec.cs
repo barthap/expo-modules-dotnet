@@ -24,4 +24,13 @@ public readonly struct NullableDictionaryCodec<T, TCodec> : IJavaScriptCodec<Dic
       value is null
           ? runtime.CreateNull()
           : JavaScriptDictionaryCodec<T, TCodec>.Encode(value, runtime);
+
+  /// <summary>Releases every value of a non-null dictionary.</summary>
+  public static void Release(Dictionary<string, T>? value)
+  {
+    if (value is not null)
+    {
+      JavaScriptDictionaryCodec<T, TCodec>.Release(value);
+    }
+  }
 }

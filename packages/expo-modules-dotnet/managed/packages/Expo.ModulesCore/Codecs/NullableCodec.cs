@@ -14,4 +14,12 @@ public readonly struct NullableCodec<T, TCodec> : IJavaScriptCodec<T?>
 
   public static JavaScriptValue Encode(T? value, JavaScriptRuntime runtime) =>
       value.HasValue ? TCodec.Encode(value.Value, runtime) : runtime.CreateNull();
+
+  public static void Release(T? value)
+  {
+    if (value.HasValue)
+    {
+      TCodec.Release(value.Value);
+    }
+  }
 }
