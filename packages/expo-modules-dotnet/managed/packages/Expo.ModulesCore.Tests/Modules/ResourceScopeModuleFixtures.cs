@@ -98,6 +98,9 @@ public sealed partial class ResourceScopeModule : Module, IDisposable
   }
 
   [JS]
+  public Task<int> ThrowBeforeTaskAsync(ArrayBuffer value) => throw new InvalidOperationException("before task");
+
+  [JS]
   public async Task<ArrayBuffer> HoldAsync(ArrayBuffer value)
   {
     await Gate.Task;
@@ -130,6 +133,9 @@ public sealed partial class ResourceScopeModule : Module, IDisposable
   public ArrayBuffer Pick(ReadOnlySpan<byte> bytes, ArrayBuffer other) => other;
 
   [JS]
+  public ArrayBuffer PickRetained(ReadOnlySpan<byte> bytes, ArrayBuffer other) => other.Retain();
+
+  [JS]
   public int MeasurePair(BufferPair pair) => pair.First.ByteLength + pair.Second.ByteLength;
 
   [JS]
@@ -150,6 +156,13 @@ public sealed partial class ResourceScopeModule : Module, IDisposable
 
   [JS]
   public BufferPair BrokenPair(ArrayBuffer value) => new(value.Retain(), null!);
+
+  [JS]
+  public async Task<BufferPair> BrokenPairAsync(ArrayBuffer value)
+  {
+    await Task.Yield();
+    return new BufferPair(value.Retain(), null!);
+  }
 
   [JS]
   public IReadOnlyList<ArrayBuffer> EchoList(IReadOnlyList<ArrayBuffer> values) => values;

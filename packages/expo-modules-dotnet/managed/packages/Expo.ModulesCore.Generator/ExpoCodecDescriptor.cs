@@ -1,13 +1,9 @@
 namespace Expo.ModulesCore.Generator;
 
-/// <summary>
-/// Whether a codec can be a generic type argument or generated glue calls it directly. A
-/// <c>ScopedOnly</c> codec implements only the scoped codec protocol.
-/// </summary>
+/// <summary>Whether a codec can be a generic type argument or generated glue calls it directly.</summary>
 internal enum ExpoCodecShape
 {
   JavaScriptCodec,
-  ScopedOnly,
   StaticHelper,
 }
 
@@ -34,13 +30,13 @@ internal enum ExpoContextRequirement
 }
 
 /// <summary>
-/// Who releases the wrapper leaves of a value. A scoped resource holds at least one leaf, and
-/// generated glue releases it through the invocation's conversion scope.
+/// Who releases the wrapper leaves of a value. A value that holds leaves has at least one, and
+/// generated glue releases it through its codec's <c>Release</c>.
 /// </summary>
 internal enum ExpoResourceOwnership
 {
   Borrowed,
-  ScopedResource,
+  HoldsLeaves,
   ContextRetained,
 }
 
@@ -54,4 +50,11 @@ internal sealed record ExpoCodecDescriptor(
     ExpoCodecCapabilities Capabilities,
     ExpoDecodeOperation DecodeOperation,
     ExpoContextRequirement ContextRequirement,
-    ExpoResourceOwnership ResourceOwnership);
+    ExpoResourceOwnership ResourceOwnership)
+{
+  /// <summary>
+  /// The codec's value type with its nullable annotation, which generated glue uses to declare
+  /// leaf-bearing locals and as the type argument of <c>CodecRelease.Release</c>.
+  /// </summary>
+  public string ValueTypeName { get; init; } = string.Empty;
+}

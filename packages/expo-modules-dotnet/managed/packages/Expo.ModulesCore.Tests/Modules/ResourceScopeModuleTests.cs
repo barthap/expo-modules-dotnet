@@ -183,6 +183,64 @@ public sealed class ResourceScopeModuleTests
   }
 
   [Fact]
+  public async Task AsyncLeafMethodThrowingBeforeTaskReleasesOnce()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    scope.Fixture.WaitUntilIdle();
+    scope.Fixture.ResetCounters();
+    scope.StartOutcome("m.throwBeforeTaskAsync(b)");
+    await scope.WaitForOutcomeAsync();
+    scope.Fixture.WaitUntilIdle();
+
+    // The method throws before it returns a Task, so the outer catch releases the argument.
+    Assert.Equal(
+        "rejected:Error:true",
+        scope.ReadString("`${__outcome.status}:${__outcome.name}:${__outcome.message.includes('before task')}`")
+    );
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public async Task AsyncRetainedResultReleasesInputAndResultOnce()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    scope.Fixture.WaitUntilIdle();
+    scope.Fixture.ResetCounters();
+    scope.StartOutcome("m.holdRetainedAsync(b)");
+    scope.Module.Gate.SetResult();
+    await scope.WaitForOutcomeAsync();
+    scope.Fixture.WaitUntilIdle();
+
+    Assert.Equal("fulfilled:true", scope.ReadString("`${__outcome.status}:${__outcome.value === b}`"));
+    // The decoded lease and the returned Retain() copy share one entry, which releases only when
+    // the factory releases both after it encodes the result.
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public async Task AsyncResultEncodeFailureRejectsAndReleasesOnce()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    scope.Fixture.WaitUntilIdle();
+    scope.Fixture.ResetCounters();
+    scope.StartOutcome("m.brokenPairAsync(b)");
+    await scope.WaitForOutcomeAsync();
+    scope.Fixture.WaitUntilIdle();
+
+    // The factory's Encode throws on the null field and still releases the result and the input.
+    Assert.Equal("rejected:Error", scope.ReadString("`${__outcome.status}:${__outcome.name}`"));
+    scope.WaitForArrayBufferReleases(1u);
+    // The decoded lease and the Retain() copy share one entry.
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
   public void AsyncInputLeafLivesUntilSettlement()
   {
     using var scope = ResourceScopeFixture.Create();
@@ -324,6 +382,23 @@ public sealed class ResourceScopeModuleTests
 
     Assert.Equal("true", result);
     // The span lease and the scoped argument; the returned argument is the same registered leaf.
+    Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void SpanFunctionReleasesReturnedRetainedCopy()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true");
+
+    scope.Fixture.WaitUntilIdle();
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString("String(m.pickRetained(b1, b2) === b2)");
+    scope.Fixture.WaitUntilIdle();
+
+    Assert.Equal("true", result);
+    // The span lease, and the argument entry, which releases only when the returned Retain() copy
+    // drops too.
     Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 

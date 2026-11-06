@@ -293,15 +293,18 @@ public sealed class ExpoModulesGeneratorTests
 
     Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
     var source = Assert.Single(result.GeneratedSources).Text;
-    Assert.Contains("var __expoArg0 = ArrayBufferCodec.Decode(arguments.GetValue(0), runtime, __expoScope);", source);
+    Assert.Contains("__expoArg0 = ArrayBufferCodec.Decode(arguments.GetValue(0), runtime);", source);
     Assert.Contains("ByteArrayCodec.Decode", source);
     Assert.Contains("__expoSpanBuffer0.WithReadOnlyBytes(__expoArg0 =>", source);
     Assert.Contains("module.Sum(__expoArg0)", source);
-    // Returned buffers transfer into the conversion scope, which releases them after the encode.
-    Assert.Contains("var __expoResult = module.Echo(__expoArg0);", source);
-    Assert.Contains("var __expoResult = module.Transform(__expoArg0);", source);
-    Assert.Contains("ArrayBufferCodec.Transfer(__expoResult, __expoScope);", source);
-    Assert.Contains("return ArrayBufferCodec.EncodeBorrowed(__expoResult, runtime);", source);
+    // Returned buffers are encoded and then released in finally.
+    Assert.Contains("__expoResult = module.Echo(__expoArg0);", source);
+    Assert.Contains("__expoResult = module.Transform(__expoArg0);", source);
+    Assert.Contains("return ArrayBufferCodec.Encode(__expoResult, runtime);", source);
+    Assert.Contains(
+        "CodecRelease.Release<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>(__expoResult, ref __expoReleaseFailures);",
+        source
+    );
     Assert.DoesNotContain("using var __expoArg", source);
     Assert.DoesNotContain("using var __expoResult", source);
     Assert.DoesNotContain("__expoResult.Dispose();", source);
@@ -423,15 +426,15 @@ public sealed class ExpoModulesGeneratorTests
         """
     );
 
-    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    AssertNoCompilerDiagnostics(result);
     var source = Assert.Single(result.GeneratedSources).Text;
-    // GeneratedTransferredResult claims or abandons the result through ResolveOwned and releases
-    // the scope that holds the input and the result.
+    // ResolveOwned claims or abandons the result, and both paths release the result and the input.
+    Assert.Contains("global::Expo.JSI.JavaScriptPromiseResult.ResolveOwned(", source);
     Assert.Contains(
-        "return GeneratedTransferredResult<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>.Resolve(__expoResult, __expoScope);",
+        "new global::System.Runtime.CompilerServices.StrongBox<(global::Expo.ModulesCore.ArrayBuffer, global::Expo.ModulesCore.ArrayBuffer)>((__expoResult, __expoArg0))",
         source
     );
-    Assert.DoesNotContain("JavaScriptPromiseResult.ResolveOwned(", source);
+    Assert.DoesNotContain("GeneratedTransferredResult", source);
     Assert.DoesNotContain("static value => value.Dispose()", source);
   }
 
@@ -1032,16 +1035,15 @@ public sealed class ExpoModulesGeneratorTests
 
     Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
     var source = Assert.Single(result.GeneratedSources).Text;
-    Assert.Contains("var __expoArg0 = JavaScriptValueCodec.Decode(arguments.GetValue(0), runtime, __expoScope);", source);
-    Assert.Contains("var __expoResult = module.Echo(__expoArg0);", source);
-    Assert.Contains("JavaScriptValueCodec.Transfer(__expoResult, __expoScope);", source);
-    Assert.Contains("return JavaScriptValueCodec.EncodeBorrowed(__expoResult, runtime);", source);
+    Assert.Contains("__expoArg0 = JavaScriptValueCodec.Decode(arguments.GetValue(0), runtime);", source);
+    Assert.Contains("__expoResult = module.Echo(__expoArg0);", source);
+    Assert.Contains("return JavaScriptValueCodec.Encode(__expoResult, runtime);", source);
     Assert.DoesNotContain("using var __expoResult = module.Echo(__expoArg0);", source);
     Assert.DoesNotContain("using var __expoArg", source);
-    Assert.Contains("var __expoArg0 = JavaScriptValueCodec.Decode(arguments.GetValue(0), jsRuntime, __expoScope);", source);
+    Assert.Contains("__expoArg0 = JavaScriptValueCodec.Decode(arguments.GetValue(0), jsRuntime);", source);
     Assert.Contains("var __expoTask = module.EchoAsync(__expoArg0);", source);
     Assert.Contains(
-        "return GeneratedTransferredResult<global::Expo.JSI.JavaScriptValue, JavaScriptValueCodec>.Resolve(__expoResult, __expoScope);",
+        "StrongBox<(global::Expo.JSI.JavaScriptValue, global::Expo.JSI.JavaScriptValue)>((__expoResult, __expoArg0))",
         source
     );
     Assert.DoesNotContain("__expoResult.Dispose();", source);
@@ -4764,8 +4766,6 @@ public sealed class ExpoModulesGeneratorTests
   [InlineData("[JS] public int M(Dictionary<string, JavaScriptCallback<int>> value) => 0;", "EXPOJSI001")]
   [InlineData("[JS] public int M(JavaScriptCallback<ValueTuple<JavaScriptCallback<int>>, int> value) => 0;", "EXPOJSI008")]
   [InlineData("[JS] public int M(JavaScriptCallback<JavaScriptCallback<int>> value) => 0;", "EXPOJSI008")]
-  [InlineData("[JS] public int M(JavaScriptCallback<ValueTuple<ArrayBuffer>, int> value) => 0;", "EXPOJSI008")]
-  [InlineData("[JS] public int M(JavaScriptCallback<ArrayBuffer> value) => 0;", "EXPOJSI008")]
   public void GeneratorRejectsStaticHelperCodecsInGenericPositions(string member, string expectedId)
   {
     var result = GeneratorTestHost.Run(ModuleSource(string.Empty, member));
@@ -4880,32 +4880,33 @@ public sealed class ExpoModulesGeneratorTests
   }
 
   [Theory]
-  [InlineData("[JS] public int M(JavaScriptValue value) => 0;", 1, "var __expoArg0 = JavaScriptValueCodec.Decode(arguments.GetValue(0), runtime, __expoScope);")]
-  [InlineData("[JS] public int M(ArrayBuffer value) => 0;", 1, "var __expoArg0 = ArrayBufferCodec.Decode(arguments.GetValue(0), runtime, __expoScope);")]
-  [InlineData("[JS] public JavaScriptValue M() => throw new NotImplementedException();", 1, "return JavaScriptValueCodec.EncodeBorrowed(__expoResult, runtime);")]
-  [InlineData("[JS] public ArrayBuffer M() => throw new NotImplementedException();", 1, "ArrayBufferCodec.Transfer(__expoResult, __expoScope);")]
-  [InlineData("[JS] public JavaScriptValue Value { get; set; } = null!;", 2, "var __expoValue = JavaScriptValueCodec.Decode(arguments.GetValue(0), runtime, __expoScope);")]
-  [InlineData("[JS] public JavaScriptValue M(ReadOnlySpan<byte> data, JavaScriptValue label) => label;", 1, "var __expoArg1 = JavaScriptValueCodec.Decode(arguments.GetValue(1), runtime, __expoScope);")]
-  public void GeneratorEmitsOneConversionScopePerDirectLeafMember(
+  [InlineData("[JS] public int M(JavaScriptValue value) => 0;", 1, "__expoArg0 = JavaScriptValueCodec.Decode(arguments.GetValue(0), runtime);")]
+  [InlineData("[JS] public int M(ArrayBuffer value) => 0;", 1, "global::Expo.ModulesCore.ArrayBuffer __expoArg0 = default!;")]
+  [InlineData("[JS] public JavaScriptValue M() => throw new NotImplementedException();", 1, "CodecRelease.Release<global::Expo.JSI.JavaScriptValue, JavaScriptValueCodec>(__expoResult, ref __expoReleaseFailures);")]
+  [InlineData("[JS] public ArrayBuffer M() => throw new NotImplementedException();", 1, "CodecRelease.Release<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>(__expoResult, ref __expoReleaseFailures);")]
+  [InlineData("[JS] public JavaScriptValue Value { get; set; } = null!;", 2, "__expoValue = JavaScriptValueCodec.Decode(arguments.GetValue(0), runtime);")]
+  [InlineData("[JS] public JavaScriptValue M(ReadOnlySpan<byte> data, JavaScriptValue label) => label;", 1, "global::Expo.JSI.JavaScriptValue __expoArg1 = default!;")]
+  public void GeneratorReleasesDirectLeafMembersInFinally(
       string member,
-      int expectedScopeCount,
+      int expectedReleaseBlockCount,
       string expectedLine)
   {
     var result = GeneratorTestHost.Run(ModuleSource(string.Empty, member));
 
     Assert.Empty(GeneratorDiagnosticIds(result));
-    AssertNoCompilerErrors(result);
+    AssertNoCompilerDiagnostics(result);
     var source = GeneratedText(result);
-    // One scope per leaf-bearing host function replaces every per-leaf `using` and `?.Dispose()`.
-    Assert.Equal(expectedScopeCount, CountOccurrences(source, "new GeneratedConversionScope()"));
+    // One release block per leaf-bearing host function replaces every per-leaf `using` and `?.Dispose()`.
+    Assert.Equal(expectedReleaseBlockCount, CountOccurrences(source, "CodecRelease.ThrowIfFailed("));
     Assert.Contains(expectedLine, source, StringComparison.Ordinal);
+    Assert.DoesNotContain("__expoScope", source, StringComparison.Ordinal);
     Assert.DoesNotContain("?.Dispose();", source, StringComparison.Ordinal);
     Assert.DoesNotContain("using var __expoArg", source, StringComparison.Ordinal);
     Assert.DoesNotContain("using var __expoResult", source, StringComparison.Ordinal);
   }
 
   [Fact]
-  public void GeneratorEmitsConversionScopeInSharedObjectFactoryAndMembers()
+  public void GeneratorReleasesLeavesInSharedObjectFactoryAndMembers()
   {
     var result = GeneratorTestHost.Run(
         """
@@ -4933,61 +4934,66 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Empty(GeneratorDiagnosticIds(result));
     AssertNoCompilerErrors(result);
     var source = GeneratedText(result);
-    // The constructor factory and the prototype member each own one scope for their leaves.
-    Assert.Equal(2, CountOccurrences(source, "new GeneratedConversionScope()"));
-    var factory = source.IndexOf("SharedObject ConstructSharedObject_", StringComparison.Ordinal);
-    Assert.True(factory >= 0);
-    Assert.Contains(
-        "JavaScriptValueCodec.Decode(arguments.GetValue(0), runtime, __expoScope)",
-        source[factory..],
-        StringComparison.Ordinal
-    );
+    // The constructor factory and the prototype member each release their own leaves.
+    var normalized = source.Replace("\r\n", "\n", StringComparison.Ordinal);
+    var factoryStart = normalized.IndexOf("SharedObject ConstructSharedObject_", StringComparison.Ordinal);
+    Assert.True(factoryStart >= 0);
+    var factory = normalized[factoryStart..normalized.IndexOf("\n  }\n", factoryStart, StringComparison.Ordinal)];
+    var memberStart = normalized.IndexOf("JavaScriptValue InvokeSharedObject_", StringComparison.Ordinal);
+    Assert.True(memberStart >= 0);
+    var member = normalized[memberStart..normalized.IndexOf("\n  }\n", memberStart, StringComparison.Ordinal)];
+    Assert.Equal(1, CountOccurrences(factory, "CodecRelease.ThrowIfFailed("));
+    Assert.Equal(1, CountOccurrences(member, "CodecRelease.ThrowIfFailed("));
+    // The constructor runs inside the try, so the finally releases its argument after it returns or throws.
+    var tryStart = factory.IndexOf("    try\n", StringComparison.Ordinal);
+    var construct = factory.IndexOf("return new global::Expo.TestModules.", StringComparison.Ordinal);
+    var finallyStart = factory.IndexOf("    finally\n", StringComparison.Ordinal);
+    Assert.True(tryStart >= 0 && tryStart < construct && construct < finallyStart);
   }
 
   [Theory]
-  [InlineData("[JS] public Task M(JavaScriptValue value) => Task.CompletedTask;", "return global::Expo.JSI.JavaScriptPromiseResult.Resolve(", "GeneratedTransferredResult", false)]
-  [InlineData("[JS] public Task<int> M(ArrayBuffer value) => Task.FromResult(0);", "return global::Expo.JSI.JavaScriptPromiseResult.Resolve(", "GeneratedTransferredResult", false)]
-  [InlineData("[JS] public Task<JavaScriptValue> M() => throw new NotImplementedException();", "return GeneratedTransferredResult<global::Expo.JSI.JavaScriptValue, JavaScriptValueCodec>.Resolve(__expoResult, __expoScope);", "ResolveOwned", true)]
-  [InlineData("[JS] public Task<ArrayBuffer> M(JavaScriptValue value) => throw new NotImplementedException();", "GeneratedTransferredResult<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>.Resolve(", "ResolveOwned", true)]
-  public void GeneratorEmitsAsyncConversionScopeShapes(
+  [InlineData("[JS] public Task M(JavaScriptValue value) => Task.CompletedTask;", "return global::Expo.JSI.JavaScriptPromiseResult.Resolve(", "", false)]
+  [InlineData("[JS] public Task<int> M(ArrayBuffer value) => Task.FromResult(0);", "return global::Expo.JSI.JavaScriptPromiseResult.Resolve(", "", false)]
+  [InlineData("[JS] public Task<JavaScriptValue> M() => throw new NotImplementedException();", "new global::System.Runtime.CompilerServices.StrongBox<global::Expo.JSI.JavaScriptValue>(__expoResult)", "JavaScriptValueCodec.Encode(__expoState.Value!, runtime)", true)]
+  [InlineData("[JS] public Task<ArrayBuffer> M(JavaScriptValue value) => throw new NotImplementedException();", "StrongBox<(global::Expo.ModulesCore.ArrayBuffer, global::Expo.JSI.JavaScriptValue)>((__expoResult, __expoArg0))", "ArrayBufferCodec.Encode(__expoState.Value.Item1, runtime)", true)]
+  public void GeneratorEmitsAsyncLeafReleaseShapes(
       string member,
       string expectedFragment,
-      string forbiddenFragment,
-      bool transfersResult)
+      string expectedEncode,
+      bool resultHoldsLeaves)
   {
     var result = GeneratorTestHost.Run(ModuleSource(string.Empty, member));
 
     Assert.Empty(GeneratorDiagnosticIds(result));
-    AssertNoCompilerErrors(result);
+    // Errors and warnings: reading StrongBox<T>.Value without `!` would warn with CS8604.
+    AssertNoCompilerDiagnostics(result);
     var body = HostFunctionBody(GeneratedText(result), "Rejects_m_HostFunction");
     Assert.Contains(expectedFragment, body, StringComparison.Ordinal);
-    Assert.DoesNotContain(forbiddenFragment, body, StringComparison.Ordinal);
+    Assert.Contains(expectedEncode, body, StringComparison.Ordinal);
+    Assert.DoesNotContain("GeneratedTransferredResult", body, StringComparison.Ordinal);
+    // A leaf-free result releases the arguments when the lambda finishes. A leaf-bearing result
+    // carries them in a StrongBox to the factory or the abandon callback.
+    Assert.Equal(resultHoldsLeaves, body.Contains("StrongBox", StringComparison.Ordinal));
 
-    // A leaf-free result releases the scope when the lambda finishes. A transferred result keeps
-    // the scope until settlement or abandon, so the lambda releases it only on failure.
-    const string finallyCleanup =
-        "            finally\n            {\n              __expoScope.Dispose();\n            }";
-    const string catchCleanup =
-        "            catch\n            {\n              __expoScope.Dispose();\n              throw;\n            }";
-    Assert.Contains(transfersResult ? catchCleanup : finallyCleanup, body, StringComparison.Ordinal);
-    Assert.DoesNotContain(transfersResult ? finallyCleanup : catchCleanup, body, StringComparison.Ordinal);
-
-    // The scope exists before the outer try, so a failure before CreatePromise returns can release
-    // it. The outer catch disposes it before rejecting, and AsValue runs after that catch, so the
-    // host frame never touches the scope once the Promise lambda owns it.
-    var scope = body.IndexOf("var __expoScope = new GeneratedConversionScope();", StringComparison.Ordinal);
-    var firstTry = body.IndexOf("try", StringComparison.Ordinal);
-    Assert.True(scope >= 0 && scope < firstTry);
-    var rejected = body.IndexOf("return GeneratedFunction.CreateRejectedPromise(jsRuntime, exception);", StringComparison.Ordinal);
-    var lastDispose = body.LastIndexOf("__expoScope.Dispose();", StringComparison.Ordinal);
-    Assert.True(lastDispose >= 0 && lastDispose < rejected);
-    var outerCatch = body.IndexOf("catch (global::System.Exception exception)", StringComparison.Ordinal);
-    var asValue = body.IndexOf("return __expoPromiseValue.AsValue();", StringComparison.Ordinal);
-    Assert.True(outerCatch >= 0 && asValue > outerCatch);
+    // A leaf-bearing argument is declared before the outer try, so a failure before CreatePromise
+    // returns can release it in the outer catch. AsValue runs after that catch, so the host frame
+    // never touches the arguments once the Promise lambda owns them.
+    if (body.Contains("__expoArg0 = default!;", StringComparison.Ordinal))
+    {
+      var declaration = body.IndexOf("__expoArg0 = default!;", StringComparison.Ordinal);
+      var firstTry = body.IndexOf("try", StringComparison.Ordinal);
+      Assert.True(declaration < firstTry);
+      var outerCatch = body.IndexOf("catch (global::System.Exception exception)", StringComparison.Ordinal);
+      var outerRelease = body.IndexOf("(__expoArg0, ref __expoReleaseFailures);", outerCatch, StringComparison.Ordinal);
+      var rejected = body.IndexOf("return GeneratedFunction.CreateRejectedPromise(jsRuntime, exception);", StringComparison.Ordinal);
+      Assert.True(outerCatch >= 0 && outerRelease > outerCatch && outerRelease < rejected);
+      var asValue = body.IndexOf("return __expoPromiseValue.AsValue();", StringComparison.Ordinal);
+      Assert.True(asValue > rejected);
+    }
   }
 
   [Fact]
-  public void GeneratorEmitsNoConversionScopeForLeafFreeMembers()
+  public void GeneratorEmitsNoReleaseForLeafFreeMembers()
   {
     var result = GeneratorTestHost.Run(
         """
@@ -5025,27 +5031,29 @@ public sealed class ExpoModulesGeneratorTests
 
     Assert.Empty(GeneratorDiagnosticIds(result));
     AssertNoCompilerErrors(result);
-    // Bindings with no wrapper leaf allocate no scope and keep their generated text.
-    Assert.DoesNotContain("GeneratedConversionScope", GeneratedText(result), StringComparison.Ordinal);
+    // Bindings with no wrapper leaf release nothing and keep their generated text.
+    var source = GeneratedText(result);
+    Assert.DoesNotContain("CodecRelease", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("default!", source, StringComparison.Ordinal);
   }
 
   [Theory]
-  [InlineData("", "[JS] public int M(IReadOnlyList<ArrayBuffer> value) => 0;", "GeneratedScopedListCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>.Decode(arguments.GetValue(0), runtime, __expoScope)")]
-  [InlineData("", "[JS] public int M(IReadOnlyList<ArrayBuffer>? value) => 0;", "GeneratedScopedNullableReferenceCodec<global::System.Collections.Generic.IReadOnlyList<global::Expo.ModulesCore.ArrayBuffer>, GeneratedScopedListCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>>")]
+  [InlineData("", "[JS] public int M(IReadOnlyList<ArrayBuffer> value) => 0;", "JavaScriptArrayCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>.DecodeToArray(arguments.GetValue(0), runtime)")]
+  [InlineData("", "[JS] public int M(IReadOnlyList<ArrayBuffer>? value) => 0;", "NullableReadOnlyListCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>")]
   [InlineData("", "[JS] public int M(IReadOnlyList<ArrayBuffer>? buffers = null) => 0;", "arguments.Count <= 0 ||")]
-  [InlineData("", "[JS] public int M(Dictionary<string, ArrayBuffer> value) => 0;", "GeneratedScopedDictionaryCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>.Decode(")]
-  [InlineData("", "[JS] public IReadOnlyDictionary<string, ArrayBuffer> M() => throw new NotImplementedException();", "GeneratedScopedDictionaryCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>.Transfer(__expoResult, __expoScope);")]
-  [InlineData("", "[JS] public IReadOnlyList<ArrayBuffer> Buffers { get; } = null!;", "GeneratedScopedListCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>.EncodeBorrowed(__expoResult, runtime)")]
-  [InlineData("", "[JS] public Task<IReadOnlyList<ArrayBuffer>?> M() => throw new NotImplementedException();", "GeneratedTransferredResult<global::System.Collections.Generic.IReadOnlyList<global::Expo.ModulesCore.ArrayBuffer>?, GeneratedScopedNullableReferenceCodec<")]
-  [InlineData("", "[JS] public int M(IReadOnlyList<JavaScriptValue> value) => 0;", "GeneratedScopedListCodec<global::Expo.JSI.JavaScriptValue, JavaScriptValueCodec>")]
-  [InlineData("", "[JS] public int M(Dictionary<string, JavaScriptValue> value) => 0;", "GeneratedScopedDictionaryCodec<global::Expo.JSI.JavaScriptValue, JavaScriptValueCodec>")]
-  [InlineData("public sealed record Holder(IReadOnlyList<ArrayBuffer> Field);", "[JS] public int M(Holder holder) => 0;", "IGeneratedScopedCodec<global::Expo.TestModules.Holder>")]
-  [InlineData("public sealed record Shelf(IReadOnlyList<Dictionary<string, ArrayBuffer>> Rows);", "[JS] public Shelf M(Shelf shelf) => shelf;", ".Transfer(value.Rows, __expoScope);")]
-  [InlineData("public readonly record struct Slot(JavaScriptValue Value);", "[JS] public int M(Slot? slot) => 0;", "GeneratedScopedNullableCodec<global::Expo.TestModules.Slot, ")]
-  [InlineData("", "[JS] public int M(Dictionary<string, ArrayBuffer>? value) => 0;", "GeneratedScopedNullableReferenceCodec<global::System.Collections.Generic.Dictionary<string, global::Expo.ModulesCore.ArrayBuffer>, GeneratedScopedDictionaryCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>>.Decode(arguments.GetValue(0), runtime, __expoScope)")]
-  [InlineData("", "[JS] public IReadOnlyDictionary<string, JavaScriptValue>? M() => null;", "GeneratedScopedNullableReferenceCodec<global::System.Collections.Generic.IReadOnlyDictionary<string, global::Expo.JSI.JavaScriptValue>, GeneratedScopedDictionaryCodec<global::Expo.JSI.JavaScriptValue, JavaScriptValueCodec>>.Transfer(__expoResult, __expoScope);")]
-  [InlineData("public sealed record Holder(ArrayBuffer Buffer);", "[JS] public int M(Holder? holder) => 0;", "GeneratedScopedNullableReferenceCodec<global::Expo.TestModules.Holder, HolderCodec_")]
-  public void GeneratorCompilesScopedCompositesAtBoundaryPositions(
+  [InlineData("", "[JS] public int M(Dictionary<string, ArrayBuffer> value) => 0;", "JavaScriptDictionaryCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>.DecodeToDictionary(")]
+  [InlineData("", "[JS] public IReadOnlyDictionary<string, ArrayBuffer> M() => throw new NotImplementedException();", "CodecRelease.Release<global::System.Collections.Generic.IReadOnlyDictionary<string, global::Expo.ModulesCore.ArrayBuffer>, JavaScriptDictionaryCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>>(__expoResult, ref __expoReleaseFailures);")]
+  [InlineData("", "[JS] public IReadOnlyList<ArrayBuffer> Buffers { get; } = null!;", "JavaScriptArrayCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>.Encode(__expoResult, runtime)")]
+  [InlineData("", "[JS] public Task<IReadOnlyList<ArrayBuffer>?> M() => throw new NotImplementedException();", "StrongBox<global::System.Collections.Generic.IReadOnlyList<global::Expo.ModulesCore.ArrayBuffer>?>(__expoResult)")]
+  [InlineData("", "[JS] public int M(IReadOnlyList<JavaScriptValue> value) => 0;", "JavaScriptArrayCodec<global::Expo.JSI.JavaScriptValue, JavaScriptValueCodec>")]
+  [InlineData("", "[JS] public int M(Dictionary<string, JavaScriptValue> value) => 0;", "JavaScriptDictionaryCodec<global::Expo.JSI.JavaScriptValue, JavaScriptValueCodec>")]
+  [InlineData("public sealed record Holder(IReadOnlyList<ArrayBuffer> Field);", "[JS] public int M(Holder holder) => 0;", "IJavaScriptCodec<global::Expo.TestModules.Holder>")]
+  [InlineData("public sealed record Shelf(IReadOnlyList<Dictionary<string, ArrayBuffer>> Rows);", "[JS] public Shelf M(Shelf shelf) => shelf;", "CodecRelease.Release<global::System.Collections.Generic.IReadOnlyList<global::System.Collections.Generic.Dictionary<string, global::Expo.ModulesCore.ArrayBuffer>>, ")]
+  [InlineData("public readonly record struct Slot(JavaScriptValue Value);", "[JS] public int M(Slot? slot) => 0;", "__expoArg0 = NullableCodec<global::Expo.TestModules.Slot, ")]
+  [InlineData("", "[JS] public int M(Dictionary<string, ArrayBuffer>? value) => 0;", "NullableDictionaryCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>.Decode(arguments.GetValue(0), runtime)")]
+  [InlineData("", "[JS] public IReadOnlyDictionary<string, JavaScriptValue>? M() => null;", "CodecRelease.Release<global::System.Collections.Generic.IReadOnlyDictionary<string, global::Expo.JSI.JavaScriptValue>?, NullableReadOnlyDictionaryCodec<global::Expo.JSI.JavaScriptValue, JavaScriptValueCodec>>(__expoResult, ref __expoReleaseFailures);")]
+  [InlineData("public sealed record Holder(ArrayBuffer Buffer);", "[JS] public int M(Holder? holder) => 0;", "__expoArg0 = NullableReferenceCodec<global::Expo.TestModules.Holder, HolderCodec_")]
+  public void GeneratorCompilesLeafBearingCompositesAtBoundaryPositions(
       string declarations,
       string member,
       string expectedFragment)
@@ -5053,13 +5061,13 @@ public sealed class ExpoModulesGeneratorTests
     var result = GeneratorTestHost.Run(ModuleSource(declarations, member));
 
     Assert.Empty(GeneratorDiagnosticIds(result));
-    // Errors and warnings: an annotation-erased scoped type argument would warn with CS8631.
+    // Errors and warnings: an annotation-erased type argument would warn with CS8631.
     AssertNoCompilerDiagnostics(result);
     Assert.Contains(expectedFragment, GeneratedText(result), StringComparison.Ordinal);
   }
 
   [Fact]
-  public void GeneratorCompilesScopedCompositesOnSharedObjectMembers()
+  public void GeneratorCompilesLeafBearingCompositesOnSharedObjectMembers()
   {
     var result = GeneratorTestHost.Run(
         """
@@ -5086,13 +5094,13 @@ public sealed class ExpoModulesGeneratorTests
     );
 
     Assert.Empty(GeneratorDiagnosticIds(result));
-    AssertNoCompilerErrors(result);
-    // The constructor factory and the prototype member each own one scope for their composite leaves.
-    Assert.Equal(2, CountOccurrences(GeneratedText(result), "new GeneratedConversionScope()"));
+    AssertNoCompilerDiagnostics(result);
+    // The constructor factory and the prototype member each release their composite leaves.
+    Assert.Contains("CodecRelease.ThrowIfFailed(", GeneratedText(result), StringComparison.Ordinal);
   }
 
   [Fact]
-  public void GeneratorRecordCodecUsesScopeOnlyForLeafFields()
+  public void GeneratorRecordCodecReleasesOnlyLeafFields()
   {
     var result = GeneratorTestHost.Run(
         ModuleSource(
@@ -5103,23 +5111,30 @@ public sealed class ExpoModulesGeneratorTests
 
     Assert.Empty(GeneratorDiagnosticIds(result));
     AssertNoCompilerDiagnostics(result);
-    var source = GeneratedText(result);
-    // Leaf fields go through the scoped protocol; other fields keep their ordinary codec calls.
-    Assert.Contains("ArrayBufferCodec.Decode(obj.GetProperty(\"buffer\"), runtime, __expoScope)", source, StringComparison.Ordinal);
-    Assert.Contains("StringCodec.Decode(obj.GetProperty(\"label\"), runtime)", source, StringComparison.Ordinal);
-    Assert.Contains("ArrayBufferCodec.Transfer(value.Buffer, __expoScope);", source, StringComparison.Ordinal);
-    Assert.Contains("using var buffer = ArrayBufferCodec.EncodeBorrowed(value.Buffer, runtime);", source, StringComparison.Ordinal);
+    var source = GeneratedText(result).Replace("\r\n", "\n", StringComparison.Ordinal);
+    // Release reaches only the leaf field; the string field has nothing to release.
+    var release = RecordCodecRelease(source, "Mixed");
+    Assert.Contains(
+        "CodecRelease.Release<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>(value.Buffer, ref __expoReleaseFailures);",
+        release,
+        StringComparison.Ordinal
+    );
+    Assert.Equal(1, CountOccurrences(release, "CodecRelease.Release<"));
+    Assert.DoesNotContain("value.Label", release, StringComparison.Ordinal);
+    // Decode and Encode call the ordinary codecs of both fields.
+    Assert.Contains("buffer = ArrayBufferCodec.Decode(obj.GetProperty(\"buffer\"), runtime);", source, StringComparison.Ordinal);
+    Assert.Contains("var label = StringCodec.Decode(obj.GetProperty(\"label\"), runtime);", source, StringComparison.Ordinal);
+    Assert.Contains("using var buffer = ArrayBufferCodec.Encode(value.Buffer, runtime);", source, StringComparison.Ordinal);
     Assert.Contains("using var label = StringCodec.Encode(value.Label, runtime);", source, StringComparison.Ordinal);
-    Assert.DoesNotContain("StringCodec.Transfer", source, StringComparison.Ordinal);
   }
 
   [Theory]
   [InlineData("public sealed record Boxed(ArrayBuffer Buffer);", "Boxed", true)]
   [InlineData("public readonly record struct BoxedSlot(ArrayBuffer Buffer);", "BoxedSlot", false)]
-  public void GeneratorRecordNullGuardsOnlyForClassRecords(
+  public void GeneratorRecordReleaseNullGuardsOnlyForClassRecords(
       string declaration,
       string recordName,
-      bool expectsNullGuards)
+      bool expectsNullGuard)
   {
     var result = GeneratorTestHost.Run(
         ModuleSource(declaration, $"[JS] public {recordName} M({recordName} value) => value;")
@@ -5128,23 +5143,21 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Empty(GeneratorDiagnosticIds(result));
     AssertNoCompilerDiagnostics(result);
     var source = GeneratedText(result).Replace("\r\n", "\n", StringComparison.Ordinal);
-    // A class record can be null inside a list: Transfer stays total and EncodeBorrowed fails like
-    // the ordinary codecs. A record struct cannot be null and gets neither guard.
-    var codecStart = source.IndexOf(
-        $"private readonly struct {RecordCodecName(recordName, $"global::Expo.TestModules.{recordName}")}",
-        StringComparison.Ordinal
-    );
-    Assert.True(codecStart >= 0);
-    var codec = source[codecStart..source.IndexOf("\n  }\n", codecStart, StringComparison.Ordinal)];
-    Assert.Equal(expectsNullGuards, codec.Contains("if (value is null) return;", StringComparison.Ordinal));
+    // A class record can be null inside a list, so Release skips it and the list still releases
+    // the other elements. A record struct cannot be null and gets no guard.
+    var release = RecordCodecRelease(source, recordName);
     Assert.Equal(
-        expectsNullGuards,
-        codec.Contains("global::System.ArgumentNullException.ThrowIfNull(value);", StringComparison.Ordinal)
+        expectsNullGuard,
+        release.StartsWith(
+            $"public static void Release(global::Expo.TestModules.{recordName} value)\n    {{\n      if (value is null) return;\n",
+            StringComparison.Ordinal
+        )
     );
+    Assert.Equal(expectsNullGuard, release.Contains("if (value is null) return;", StringComparison.Ordinal));
   }
 
   [Fact]
-  public void GeneratorRecordCacheHitKeepsScopedResource()
+  public void GeneratorRecordCacheHitKeepsHoldsLeaves()
   {
     var result = GeneratorTestHost.Run(
         """
@@ -5176,9 +5189,9 @@ public sealed class ExpoModulesGeneratorTests
     AssertNoCompilerErrors(result);
     var source = GeneratedText(result);
     var codecName = RecordCodecName("Boxed", "global::Expo.TestModules.Boxed");
-    // The second use hits the record cache, which must rebuild the scoped descriptor.
+    // The second use hits the record cache, which must rebuild the leaf-bearing descriptor.
     Assert.Contains(
-        $"{codecName}.Transfer(__expoResult, __expoScope);",
+        $"CodecRelease.Release<global::Expo.TestModules.Boxed, {codecName}>(__expoResult, ref __expoReleaseFailures);",
         HostFunctionBody(source, "Rejects_second_HostFunction"),
         StringComparison.Ordinal
     );
@@ -5186,23 +5199,25 @@ public sealed class ExpoModulesGeneratorTests
   }
 
   [Theory]
-  [InlineData("public sealed record Holder(JavaScriptValue Value);", "[JS] public int M(JavaScriptCallback<Holder> callback) => 0;", false, "EXPOJSI008")]
-  [InlineData("", "[JS] public int M(JavaScriptCallback<IReadOnlyList<JavaScriptValue>> callback) => 0;", false, "EXPOJSI008")]
-  [InlineData("", "[JS] public int M(JavaScriptCallback<ValueTuple<Dictionary<string, JavaScriptValue>>, int> callback) => 0;", false, "EXPOJSI008")]
-  [InlineData("", "[JS] public int M(JavaScriptCallback<IReadOnlyList<JavaScriptValue>?> callback) => 0;", false, "EXPOJSI008")]
-  [InlineData("", "[JS] public void Store(JavaScriptCallback<IReadOnlyList<JavaScriptValue>> callback) { }", true, "EXPOJSI023")]
-  public void GeneratorRejectsLeafBearingCompositeCallbackTypeArguments(
+  [InlineData("public sealed record Holder(JavaScriptValue Value);", "[JS] public int M(JavaScriptCallback<Holder> callback) => 0;", false)]
+  [InlineData("", "[JS] public int M(JavaScriptCallback<IReadOnlyList<JavaScriptValue>> callback) => 0;", false)]
+  [InlineData("", "[JS] public int M(JavaScriptCallback<ValueTuple<Dictionary<string, JavaScriptValue>>, int> callback) => 0;", false)]
+  [InlineData("", "[JS] public int M(JavaScriptCallback<IReadOnlyList<JavaScriptValue>?> callback) => 0;", false)]
+  [InlineData("", "[JS] public void Store(JavaScriptCallback<IReadOnlyList<JavaScriptValue>> callback) { }", true)]
+  [InlineData("", "[JS] public int M(JavaScriptCallback<ArrayBuffer> callback) => 0;", false)]
+  [InlineData("", "[JS] public int M(JavaScriptCallback<ValueTuple<ArrayBuffer>, int> callback) => 0;", false)]
+  public void GeneratorAcceptsLeafBearingCallbackTypeArguments(
       string declarations,
       string member,
-      bool onSharedObject,
-      string expectedId)
+      bool onSharedObject)
   {
     var result = GeneratorTestHost.Run(
         onSharedObject ? SharedObjectMemberSource(member) : ModuleSource(declarations, member)
     );
 
-    AssertNoCompilerErrors(result);
-    Assert.Equal(new[] { expectedId }, GeneratorDiagnosticIds(result));
+    // Every leaf-bearing codec implements IJavaScriptCodec<T>, so it is a valid callback type argument.
+    AssertNoCompilerDiagnostics(result);
+    Assert.Empty(GeneratorDiagnosticIds(result));
   }
 
   [Theory]
@@ -5319,6 +5334,18 @@ public sealed class ExpoModulesGeneratorTests
 
   private static string GeneratedText(GeneratorRunResult result) =>
       string.Join("\n", result.GeneratedSources.Select(source => source.Text));
+
+  // The generated Release method of a record codec, from its signature to its closing brace, in
+  // normalized source text.
+  private static string RecordCodecRelease(string normalizedSource, string recordName)
+  {
+    var start = normalizedSource.IndexOf(
+        $"public static void Release(global::Expo.TestModules.{recordName} value)",
+        StringComparison.Ordinal
+    );
+    Assert.True(start >= 0);
+    return normalizedSource[start..normalizedSource.IndexOf("\n    }\n", start, StringComparison.Ordinal)];
+  }
 
   private static string RecordCodecName(string simpleName, string fullyQualifiedTypeName)
   {

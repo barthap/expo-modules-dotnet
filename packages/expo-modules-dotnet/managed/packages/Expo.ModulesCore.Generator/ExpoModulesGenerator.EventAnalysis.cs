@@ -218,7 +218,7 @@ public sealed partial class ExpoModulesGenerator
         {
           var scratchRecordCodecs = recordCodecs.ToList();
           var scratchDiagnostics = new List<ExpoDiagnosticModel>();
-          eventCodec = AsJavaScriptCodecArgument(GetCodec(payloadType, scratchDiagnostics, scratchRecordCodecs));
+          eventCodec = AsCompositeChildCodec(GetCodec(payloadType, scratchDiagnostics, scratchRecordCodecs));
           if (eventCodec is null)
           {
             diagnostics.Add(CreateUnsupportedEventPayload(
