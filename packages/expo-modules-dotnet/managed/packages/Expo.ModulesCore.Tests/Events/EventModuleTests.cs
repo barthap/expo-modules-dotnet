@@ -255,6 +255,7 @@ public sealed class GeneratedEventModuleTests
     var progress = module.OnProgress;
     var value = module.OnValue;
     var buffer = module.OnBuffer;
+    var optionalBuffer = module.OnOptionalBuffer;
 
     typed.RegisterProviderAgain();
 
@@ -263,6 +264,7 @@ public sealed class GeneratedEventModuleTests
     Assert.Same(progress, module.OnProgress);
     Assert.Same(value, module.OnValue);
     Assert.Same(buffer, module.OnBuffer);
+    Assert.Same(optionalBuffer, module.OnOptionalBuffer);
   }
 
   [Fact]
@@ -276,6 +278,7 @@ public sealed class GeneratedEventModuleTests
           typed.Module.__ExpoModulesCoreInitializeEvents(
               secondContext,
               static () => Task.CompletedTask,
+              static _ => Task.CompletedTask,
               static _ => Task.CompletedTask,
               static _ => Task.CompletedTask,
               static _ => Task.CompletedTask,
@@ -545,6 +548,64 @@ public sealed class GeneratedEventModuleTests
     typed.Fixture.SetSyncExecutionSupportedForTesting(true);
 
     Assert.Equal("7,8,9", typed.ReadString("globalThis.__typedBuffer"));
+    Assert.Equal(1u, typed.Fixture.Counters.LongLivedArrayBuffersReleased);
+    Assert.Equal(0u, typed.Fixture.Counters.LongLivedArrayBuffersAbandoned);
+  }
+
+  [Fact]
+  public async Task TypedNullableArrayBufferEventDeliversOneNullArgumentWithoutLease()
+  {
+    using var typed = TypedEventsFixture.Create();
+    typed.Evaluate(
+        """
+        const events = globalThis._expoDotnet.modules.GeneratedTypedEvents;
+        events.addListener('onOptionalBuffer', (...args) => {
+          globalThis.__typedOptionalBuffer = args.length + ':' +
+            (args[0] === null ? 'null' : Array.from(new Uint8Array(args[0])).join(','));
+        });
+        true
+        """,
+        "typed-events-optional-buffer-listener.js"
+    );
+
+    typed.Fixture.ResetCounters();
+    await typed.Module.OnOptionalBuffer(null);
+    typed.Fixture.WaitUntilIdle();
+
+    Assert.Equal("1:null", typed.ReadString("globalThis.__typedOptionalBuffer"));
+    Assert.Equal(0u, typed.Fixture.Counters.LongLivedArrayBuffersReleased);
+    Assert.Equal(0u, typed.Fixture.Counters.LongLivedArrayBuffersAbandoned);
+  }
+
+  [Fact]
+  public async Task TypedNullableArrayBufferEventReleasesItsScheduledInvocationLeaseExactlyOnce()
+  {
+    using var typed = TypedEventsFixture.Create();
+    typed.Evaluate(
+        """
+        const events = globalThis._expoDotnet.modules.GeneratedTypedEvents;
+        events.addListener('onOptionalBuffer', (...args) => {
+          globalThis.__typedOptionalBuffer = args.length + ':' +
+            (args[0] === null ? 'null' : Array.from(new Uint8Array(args[0])).join(','));
+        });
+        true
+        """,
+        "typed-events-optional-buffer-listener.js"
+    );
+    var payload = CreateJavaScriptBackedArrayBuffer(typed.Fixture, "7,8,9");
+
+    typed.Fixture.ResetCounters();
+    typed.Fixture.DisableSyncExecutionForTesting();
+    typed.Fixture.PauseRuntimeExecutor();
+    var emitted = typed.Module.OnOptionalBuffer(payload);
+    payload.Dispose();
+    typed.Fixture.WaitUntilRuntimeTaskQueued(JavaScriptTaskPriority.Immediate);
+    typed.Fixture.ResumeRuntimeExecutor();
+    await emitted;
+    typed.Fixture.WaitUntilIdle();
+    typed.Fixture.SetSyncExecutionSupportedForTesting(true);
+
+    Assert.Equal("1:7,8,9", typed.ReadString("globalThis.__typedOptionalBuffer"));
     Assert.Equal(1u, typed.Fixture.Counters.LongLivedArrayBuffersReleased);
     Assert.Equal(0u, typed.Fixture.Counters.LongLivedArrayBuffersAbandoned);
   }

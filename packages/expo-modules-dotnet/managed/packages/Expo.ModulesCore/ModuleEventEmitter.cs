@@ -115,23 +115,25 @@ public sealed class ModuleEventEmitter : IDisposable
   /// <remarks>
   /// The emitter retains an invocation lease before scheduling runtime work, so the caller may
   /// dispose <paramref name="payload" /> after this method returns. The lease is released when
-  /// the returned task completes.
+  /// the returned task completes. A null <paramref name="payload" /> dispatches one JavaScript
+  /// <c>null</c> argument and retains no lease.
   /// </remarks>
   public async Task EmitAsync(
       object module,
       string eventName,
-      ArrayBuffer payload,
+      ArrayBuffer? payload,
       CancellationToken cancellationToken = default)
   {
     ArgumentNullException.ThrowIfNull(module);
     ArgumentException.ThrowIfNullOrWhiteSpace(eventName);
-    ArgumentNullException.ThrowIfNull(payload);
 
-    using var invocationPayload = payload.Retain();
+    using var invocationPayload = payload?.Retain();
     await ExecuteEventAsync(
         runtime =>
         {
-          using var eventValue = invocationPayload.Encode(runtime);
+          using var eventValue = invocationPayload is null
+              ? runtime.CreateNull()
+              : invocationPayload.Encode(runtime);
           return Emit(runtime, module, eventName, eventValue);
         },
         cancellationToken

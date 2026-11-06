@@ -205,7 +205,8 @@ Generated bindings SHALL follow the ownership matrix in `### Requirement:
 Generated Bindings Compose Leaves Through One Scope` in
 `modules-core-boundary.md`, with at most one scope per invocation. Authored
 code SHALL store only `Retain()` copies of leaves beyond an invocation. A
-returned value SHALL transfer all its leaves to generated glue.
+returned value SHALL transfer all its leaves to generated glue. A decoded
+`ArrayBuffer?` that is `null` holds no leaf and registers nothing.
 
 #### Scenario: Stored state is returned
 - **GIVEN** a getter exposes a stored record with a `JavaScriptValue` field

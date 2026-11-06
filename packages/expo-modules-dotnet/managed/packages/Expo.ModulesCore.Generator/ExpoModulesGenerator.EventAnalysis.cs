@@ -383,12 +383,14 @@ public sealed partial class ExpoModulesGenerator
       var typeName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
       if (typeName is JavaScriptValueMetadataName or ArrayBufferMetadataName)
       {
-        // A transfer-sensitive wrapper keeps its non-nullable transfer rules, and its payload kind
-        // bypasses codec resolution, so the nullable annotation has to be rejected here.
-        if (isTopLevel && typeSymbol.NullableAnnotation != NullableAnnotation.Annotated) return null;
-        return isTopLevel
+        // A wrapper inside a record, list, dictionary, or Nullable<T> is rejected. At the top level
+        // the payload kind bypasses codec resolution. A direct buffer payload accepts null, which
+        // the emitter dispatches as JavaScript null. A direct JavaScriptValue payload does not, so
+        // an annotated one is rejected here.
+        if (!isTopLevel) return "it contains a nested transfer-sensitive wrapper";
+        return typeName == JavaScriptValueMetadataName && typeSymbol.NullableAnnotation == NullableAnnotation.Annotated
             ? "it applies a nullable annotation to a transfer-sensitive wrapper"
-            : "it contains a nested transfer-sensitive wrapper";
+            : null;
       }
       if (typeSymbol is not INamedTypeSymbol namedType) return null;
       if (namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
