@@ -354,3 +354,144 @@ public sealed partial class ResourceScopeOptionalEntry : SharedObject
     stored = null;
   }
 }
+
+public sealed record ViewHolder(Uint8Array Bytes, string Label);
+
+[ExpoSharedObject]
+public sealed partial class TypedArrayEntry : SharedObject
+{
+  private readonly string seed;
+
+  [JS]
+  public TypedArrayEntry(Uint8Array seed)
+  {
+    this.seed = TypedArrayThingsModule.Describe(seed);
+  }
+
+  [JS]
+  public string ReadSeed() => seed;
+
+  [JS]
+  public string Describe(Uint8Array bytes) => TypedArrayThingsModule.Describe(bytes);
+}
+
+// Owns TypedArrayEntry, so it does not report EXPOJSI024. No other module may list it.
+[ExpoModule("TypedArrayThings", Classes = new[] { typeof(TypedArrayEntry) })]
+public sealed partial class TypedArrayThingsModule : Module, IDisposable
+{
+  private Uint8Array? held;
+  private Uint8Array? stored;
+
+  public TypedArrayThingsModule(DotnetRuntimeContext context)
+      : base(context)
+  {
+  }
+
+  // Counts every authored read of a view, so a test proves a failed decode never reached authored code.
+  public static int Calls;
+
+  // "{ByteOffset}:{Length}:{uppercase hex}". Synchronous, so runtime thread only.
+  public static string Describe(Uint8Array bytes)
+  {
+    Calls++;
+    return $"{bytes.ByteOffset}:{bytes.Length}:{Convert.ToHexString(bytes.ToArray())}";
+  }
+
+  [JS]
+  public void Fill(Uint8Array bytes)
+  {
+    Calls++;
+    bytes.WithBytes(span => span.Fill(0x42));
+  }
+
+  [JS]
+  public string FillOptional(Uint8Array? bytes) => bytes is null ? "null" : Describe(bytes);
+
+  [JS]
+  public int FailAfterRead(Uint8Array bytes)
+  {
+    Calls++;
+    throw new InvalidOperationException("view failed");
+  }
+
+  [JS]
+  public string Hex(Uint8Array bytes) => Describe(bytes);
+
+  [JS]
+  public async Task<string> HexLater(Uint8Array bytes)
+  {
+    await Task.Yield();
+    var copy = await bytes.ToArrayAsync();
+    Calls++;
+    return $"{bytes.ByteOffset}:{bytes.Length}:{Convert.ToHexString(copy)}";
+  }
+
+  [JS]
+  public Uint8Array Make() => Uint8Array.CopyFrom(new byte[] { 1, 2, 3 });
+
+  [JS]
+  public Uint8Array Echo(Uint8Array bytes) => bytes.Retain();
+
+  [JS]
+  public async Task<Uint8Array> EchoLater(Uint8Array bytes)
+  {
+    await Task.Yield();
+    return bytes.Retain();
+  }
+
+  // Stores and returns only Retain() copies; the module owns the stored copy until Dispose.
+  [JS]
+  public Uint8Array? Stored
+  {
+    get => stored?.Retain();
+    set
+    {
+      var copy = value?.Retain();
+      stored?.Dispose();
+      stored = copy;
+    }
+  }
+
+  [JS]
+  public string HexAll(IReadOnlyList<Uint8Array> parts) => string.Join("|", parts.Select(Describe));
+
+  [JS]
+  public IReadOnlyList<Uint8Array> EchoList(IReadOnlyList<Uint8Array> views) => views;
+
+  [JS]
+  public Dictionary<string, Uint8Array> EchoMap(Dictionary<string, Uint8Array> views) => views;
+
+  [JS]
+  public ViewHolder EchoHolder(ViewHolder holder) => holder;
+
+  [JS]
+  public void Hold(Uint8Array bytes)
+  {
+    held?.Dispose();
+    held = bytes.Retain();
+  }
+
+  [JS]
+  public string ReadHeld() => held is null ? "none" : Describe(held);
+
+  [JS]
+  public void ReleaseHeld()
+  {
+    held?.Dispose();
+    held = null;
+  }
+
+  [JS]
+  public int TakeBuffer(ArrayBuffer buffer) => buffer.ByteLength;
+
+  [JS]
+  public int TakeBytes(byte[] bytes) => bytes.Length;
+
+  public void Dispose()
+  {
+    held?.Dispose();
+    held = null;
+    stored?.Dispose();
+    stored = null;
+  }
+}

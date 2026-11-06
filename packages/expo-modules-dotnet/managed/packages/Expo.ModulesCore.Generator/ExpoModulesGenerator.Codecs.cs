@@ -317,6 +317,8 @@ public sealed partial class ExpoModulesGenerator
 
   private const string EitherMetadataName = "global::Expo.ModulesCore.Either<TFirst, TSecond>";
 
+  private const string Uint8ArrayMetadataName = "global::Expo.ModulesCore.Uint8Array";
+
   // The ten numeric special types that NumberCodec<T> decodes.
   private static bool IsNumberSpecialType(SpecialType specialType) =>
       specialType is
@@ -652,6 +654,11 @@ public sealed partial class ExpoModulesGenerator
     if (typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == ArrayBufferMetadataName)
     {
       return ScopedCodec("ArrayBufferCodec");
+    }
+
+    if (typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == Uint8ArrayMetadataName)
+    {
+      return ScopedCodec("Uint8ArrayCodec");
     }
 
     if (typeSymbol is IArrayTypeSymbol { Rank: 1, ElementType.SpecialType: SpecialType.System_Byte })

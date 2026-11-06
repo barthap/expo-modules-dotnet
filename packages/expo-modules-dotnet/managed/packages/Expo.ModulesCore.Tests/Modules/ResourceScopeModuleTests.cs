@@ -1122,6 +1122,277 @@ public sealed class ResourceScopeModuleTests
     Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
+  private const string TypedArraySetup =
+      "globalThis.t = globalThis._expoDotnet.modules.TypedArrayThings; " +
+      "globalThis.buf = new Uint8Array(16).map((_, i) => i).buffer; " +
+      "globalThis.s = new Uint8Array(buf, 4, 8); true";
+
+  // Hex of bytes 4 to 11 of the setup buffer, the bytes that the sub-view `s` covers.
+  private const string S8 = "0405060708090A0B";
+
+  private const string NotU8 = "Value is not a Uint8Array.";
+
+  // A Uint8Array whose prototype is a subclass prototype, accepted by prototype-chain membership.
+  private const string Sub =
+      "(() => { function Sub() {} Sub.prototype = Object.create(Uint8Array.prototype); "
+      + "Sub.prototype.constructor = Sub; const v = new Uint8Array(4); "
+      + "Object.setPrototypeOf(v, Sub.prototype); return v; })()";
+
+  // Evaluates the expression with a reset counter, lets lease releases land, and asserts the count.
+  private static string ReadCounted(ResourceScopeFixture scope, string expression, uint expectedReleases)
+  {
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString(expression);
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal(expectedReleases, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+    return result;
+  }
+
+  [Fact]
+  public void Uint8ArrayFillWritesInPlaceAndReleasesOnce()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(TypedArraySetup);
+    TypedArrayThingsModule.Calls = 0;
+
+    Assert.Equal(
+        "66,66,66,66",
+        ReadCounted(scope, "globalThis.v = new Uint8Array(4); t.fill(v); Array.from(v).join(',')", 1)
+    );
+    Assert.Equal(
+        "0,1,2,3,66,66,66,66,66,66,66,66,12,13,14,15",
+        ReadCounted(scope, "t.fill(s); Array.from(new Uint8Array(buf)).join(',')", 1)
+    );
+    Assert.Equal(
+        "66,66,66,66",
+        ReadCounted(scope, "globalThis.w = " + Sub + "; t.fill(w); Array.from(w).join(',')", 1)
+    );
+    Assert.Equal(3, TypedArrayThingsModule.Calls);
+  }
+
+  [Fact]
+  public async Task Uint8ArraySubViewSeesOnlyItsSliceSyncAndAsync()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(TypedArraySetup);
+    TypedArrayThingsModule.Calls = 0;
+
+    Assert.Equal("4:8:" + S8, ReadCounted(scope, "t.hex(s)", 1));
+
+    scope.Fixture.ResetCounters();
+    scope.StartOutcome("t.hexLater(s)");
+    await scope.WaitForOutcomeAsync();
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("fulfilled:4:8:" + S8, scope.ReadString("`${__outcome.status}:${__outcome.value}`"));
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public async Task Uint8ArrayReturnsAndPropertiesEncodeViews()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(TypedArraySetup);
+    TypedArrayThingsModule.Calls = 0;
+
+    // On the Hermes testhost, jsi::Runtime::tryGetMutableBuffer is the base implementation and
+    // returns null. A native-backed buffer that comes back from JavaScript therefore decodes as a
+    // JavaScript-backed lease and counts one entry. The bytes still alias. Another engine can
+    // count differently, so these two calls assert no count.
+    Assert.Equal(
+        "true:0:3:1,2,3",
+        scope.ReadString(
+            "globalThis.r = t.make(); [r instanceof Uint8Array, r.byteOffset, r.length, Array.from(r).join(',')].join(':')"
+        )
+    );
+    Assert.Equal("0:3:010203", scope.ReadString("t.hex(t.make())"));
+    scope.Fixture.WaitUntilIdle();
+
+    Assert.Equal(
+        "true:false:true:4:8",
+        ReadCounted(
+            scope,
+            "globalThis.e = t.echo(s); [e instanceof Uint8Array, e === s, e.buffer === buf, e.byteOffset, e.length].join(':')",
+            1
+        )
+    );
+
+    scope.Fixture.ResetCounters();
+    scope.StartOutcome("t.echoLater(s)");
+    await scope.WaitForOutcomeAsync();
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal(
+        "fulfilled:true:true:4:8",
+        scope.ReadString(
+            "`${__outcome.status}:${__outcome.value instanceof Uint8Array}:${__outcome.value.buffer === buf}:"
+            + "${__outcome.value.byteOffset}:${__outcome.value.length}`"
+        )
+    );
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    Assert.Equal("null", ReadCounted(scope, "String(t.stored)", 0));
+    // The stored copy pins the entry, as in NullableBufferPropertyStoresNullOrRetainedCopy.
+    Assert.Equal(
+        "true:true:4:8",
+        ReadCounted(
+            scope,
+            "t.stored = s; const p = t.stored; [p instanceof Uint8Array, p.buffer === buf, p.byteOffset, p.length].join(':')",
+            0
+        )
+    );
+    // The setter disposed the stored copy.
+    Assert.Equal("null", ReadCounted(scope, "t.stored = null; String(t.stored)", 1));
+  }
+
+  [Theory]
+  [InlineData("new ArrayBuffer(4)", false)]
+  [InlineData("new Int32Array(2)", false)]
+  [InlineData("new DataView(new ArrayBuffer(4))", false)]
+  [InlineData("({})", false)]
+  [InlineData("5", false)]
+  [InlineData("null", true)]
+  [InlineData("undefined", true)]
+  public void Uint8ArrayParametersRejectWrongShapes(string input, bool nullish)
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(TypedArraySetup);
+    scope.Run("globalThis.e = new t.TypedArrayEntry(s); true");
+    // The constructor decoded a view; let its lease release land before the counter reset.
+    scope.Fixture.WaitUntilIdle();
+    TypedArrayThingsModule.Calls = 0;
+    var before = scope.Fixture.Runtime.Execute(_ => scope.Context.SharedObjects.Count);
+
+    var result = ReadCounted(
+        scope,
+        "const v = () => (" + input + "); "
+            + "const err = f => { try { return 'ok:' + f(); } "
+            + "catch (error) { return error instanceof Error ? error.message : 'not an Error'; } }; "
+            + "[err(() => t.fill(v())), err(() => e.describe(v())), "
+            + "err(() => new t.TypedArrayEntry(v())), err(() => t.fillOptional(v()))].join('|')",
+        0
+    );
+
+    var parts = result.Split('|');
+    Assert.Equal(4, parts.Length);
+    Assert.Contains(NotU8, parts[0]);
+    Assert.Contains(NotU8, parts[1]);
+    Assert.Contains(NotU8, parts[2]);
+    if (nullish)
+    {
+      Assert.Equal("ok:null", parts[3]);
+    }
+    else
+    {
+      Assert.Contains(NotU8, parts[3]);
+    }
+    Assert.Equal(0, TypedArrayThingsModule.Calls);
+    Assert.Equal(before, scope.Fixture.Runtime.Execute(_ => scope.Context.SharedObjects.Count));
+  }
+
+  [Fact]
+  public void Uint8ArrayCompositionReleasesEachLeafOnce()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(TypedArraySetup);
+    TypedArrayThingsModule.Calls = 0;
+
+    Assert.Equal(
+        "0:2:0001|0:1:00",
+        ReadCounted(scope, "t.hexAll([new Uint8Array(buf, 0, 2), new Uint8Array(new ArrayBuffer(1))])", 2)
+    );
+
+    // Two decodes of one buffer are two entries.
+    Assert.Equal(
+        "2:true:4:8",
+        ReadCounted(
+            scope,
+            "const l = t.echoList([s, s]); [l.length, l[0].buffer === buf, l[1].byteOffset, l[1].length].join(':')",
+            2
+        )
+    );
+
+    Assert.Equal(
+        "true:4:2",
+        ReadCounted(
+            scope,
+            "const m = t.echoMap({ a: s, b: new Uint8Array(2) }); [m.a.buffer === buf, m.a.byteOffset, m.b.length].join(':')",
+            2
+        )
+    );
+
+    Assert.Equal(
+        "x:true:4:8",
+        ReadCounted(
+            scope,
+            "const h = t.echoHolder({ bytes: s, label: 'x' }); "
+                + "[h.label, h.bytes.buffer === buf, h.bytes.byteOffset, h.bytes.length].join(':')",
+            1
+        )
+    );
+
+    // The constructor decode and the method decode are two entries.
+    Assert.Equal(
+        "4:8:" + S8 + "|4:8:" + S8,
+        ReadCounted(
+            scope,
+            "globalThis.e = new t.TypedArrayEntry(s); [e.readSeed(), e.describe(s)].join('|')",
+            2
+        )
+    );
+  }
+
+  [Fact]
+  public void RetainedUint8ArrayOutlivesTheCall()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(TypedArraySetup);
+    TypedArrayThingsModule.Calls = 0;
+
+    Assert.Equal("held", ReadCounted(scope, "t.hold(s); 'held'", 0));
+    // The held copy shares the JavaScript bytes.
+    Assert.Equal("4:8:6305060708090A0B", ReadCounted(scope, "s[0] = 99; t.readHeld()", 0));
+    Assert.Equal("none", ReadCounted(scope, "t.releaseHeld(); t.readHeld()", 1));
+  }
+
+  [Fact]
+  public void ExactBinaryParametersStillRejectUint8Array()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(TypedArraySetup);
+    TypedArrayThingsModule.Calls = 0;
+
+    var result = ReadCounted(
+        scope,
+        "let a, b; "
+            + "try { t.takeBuffer(new Uint8Array(4)); a = 'no error'; } catch (error) { a = error.message; } "
+            + "try { t.takeBytes(new Uint8Array(4)); b = 'no error'; } catch (error) { b = error.message; } "
+            + "[a, b].join('|')",
+        0
+    );
+    var parts = result.Split('|');
+    Assert.Equal(2, parts.Length);
+    Assert.Contains("Value is not a JavaScript ArrayBuffer.", parts[0]);
+    Assert.Contains("Value is not a JavaScript ArrayBuffer.", parts[1]);
+
+    // Control: an ArrayBuffer still decodes.
+    Assert.Equal("4", scope.ReadString("String(t.takeBuffer(new Uint8Array(4).buffer))"));
+  }
+
+  [Fact]
+  public void Uint8ArrayLeaseReleasesWhenAuthoredCodeThrows()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(TypedArraySetup);
+    TypedArrayThingsModule.Calls = 0;
+
+    var result = ReadCounted(
+        scope,
+        "let failed; try { t.failAfterRead(s); failed = 'no error'; } catch (error) { failed = error.message; } String(failed)",
+        1
+    );
+    Assert.Contains("view failed", result);
+    Assert.Equal(1, TypedArrayThingsModule.Calls);
+  }
+
   private sealed class ResourceScopeFixture : IDisposable
   {
     private ResourceScopeFixture(

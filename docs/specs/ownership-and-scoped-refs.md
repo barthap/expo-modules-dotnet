@@ -104,14 +104,17 @@ not raw managed object pointers.
 
 ### Requirement: Binary Borrowing And Ownership
 
-ArrayBuffer byte callbacks SHALL borrow native storage only for the duration
-of the synchronous callback. Managed `byte[]`, `Memory<byte>`, and
-`ReadOnlyMemory<byte>` values SHALL be copied at codec boundaries. Memory
-decoding SHALL produce independent managed storage, and memory encoding SHALL
-copy exactly the current logical slice into JavaScript storage. Span return
-values SHALL be copied immediately because a span has no owner that JavaScript
-can retain. No managed array or memory storage SHALL be pinned, retained, or
-aliased as JavaScript storage for a long-lived or asynchronous operation.
+ArrayBuffer byte callbacks SHALL borrow native storage only for the duration of
+the synchronous callback. A `Uint8Array` decoded from JavaScript SHALL hold one
+retained lease on the JavaScript buffer, with no byte copy, and its byte
+callbacks SHALL borrow only its slice for the duration of the synchronous
+callback. Managed `byte[]`, `Memory<byte>`, and `ReadOnlyMemory<byte>` values
+SHALL be copied at codec boundaries. Memory decoding SHALL produce independent
+managed storage, and memory encoding SHALL copy exactly the current logical
+slice into JavaScript storage. Span return values SHALL be copied immediately
+because a span has no owner that JavaScript can retain. No managed array or
+memory storage SHALL be pinned, retained, or aliased as JavaScript storage for
+a long-lived or asynchronous operation.
 
 #### Scenario: A span is projected into a module call
 - **GIVEN** a generated synchronous method has one `Span<byte>` or
@@ -154,19 +157,20 @@ whose caller must dispose or transfer it independently.
 
 ### Requirement: Conversion Scope Owns Boundary Wrapper Leaves
 
-`GeneratedConversionScope` SHALL own every `JavaScriptValue` and `ArrayBuffer`
-leaf that generated decode creates or that a returned value transfers.
-Registration SHALL append and SHALL NOT scan for duplicates. A leaf registered
-more than once SHALL be disposed once per registration. Only leaves whose
-`Dispose` is idempotent SHALL register, which `JavaScriptValue` and
-`ArrayBuffer` are, so the native handle of a repeated leaf releases exactly
-once. The scope's own `Dispose` SHALL be idempotent. It SHALL dispose the
-registrations in registration order and SHALL attempt every registration even
-when one fails. Only `JavaScriptValueCodec` and `ArrayBufferCodec` SHALL
-register leaves. When a scoped `Decode` cannot register the leaf it created,
-it SHALL dispose that leaf and rethrow. The scope SHALL NOT own the JavaScript
-value returned to the host. It SHALL have one owner at a time and SHALL NOT be
-thread-safe. It SHALL NOT use ambient, thread-static, async-local,
+`GeneratedConversionScope` SHALL own every `JavaScriptValue`, `ArrayBuffer`,
+and `Uint8Array` leaf that generated decode creates or that a returned value
+transfers. Registration SHALL append and SHALL NOT scan for duplicates. A leaf
+registered more than once SHALL be disposed once per registration. Only leaves
+whose `Dispose` is idempotent SHALL register, which `JavaScriptValue`,
+`ArrayBuffer`, and `Uint8Array` are, so the native handle of a repeated leaf
+releases exactly once. The scope's own `Dispose` SHALL be idempotent. It SHALL
+dispose the registrations in registration order and SHALL attempt every
+registration even when one fails. Only `JavaScriptValueCodec`,
+`ArrayBufferCodec`, and `Uint8ArrayCodec` SHALL register leaves; a `Uint8Array`
+leaf holds one buffer lease. When a scoped `Decode` cannot register the leaf it
+created, it SHALL dispose that leaf and rethrow. The scope SHALL NOT own the
+JavaScript value returned to the host. It SHALL have one owner at a time and
+SHALL NOT be thread-safe. It SHALL NOT use ambient, thread-static, async-local,
 reflection, or finalizer ownership, and SHALL NOT register a value because it
 implements `IDisposable`.
 
@@ -206,13 +210,13 @@ Generated Bindings Compose Leaves Through One Scope` in
 `modules-core-boundary.md`, with at most one scope per invocation. Authored
 code SHALL store only `Retain()` copies of leaves beyond an invocation. A
 returned value SHALL transfer all its leaves to generated glue. A decoded
-`ArrayBuffer?` that is `null` holds no leaf and registers nothing. A union
-member that is an `ArrayBuffer` is a scoped leaf registered once; the other
-member holds no leaf. A nullable callback parameter that decodes to `null` holds
-nothing. A non-null one is context-retained by `DotnetRuntimeContext`, not
-scope-owned. A nullable concrete `[ExpoSharedObject]` value that is `null` holds
-nothing and is not scope-owned; a non-null one stays a borrowed shared object
-owned by the registry.
+`ArrayBuffer?` or `Uint8Array?` that is `null` holds no leaf and registers
+nothing. A union member that is an `ArrayBuffer` is a scoped leaf registered
+once; the other member holds no leaf. A nullable callback parameter that
+decodes to `null` holds nothing. A non-null one is context-retained by
+`DotnetRuntimeContext`, not scope-owned. A nullable concrete `[ExpoSharedObject]`
+value that is `null` holds nothing and is not scope-owned; a non-null one stays
+a borrowed shared object owned by the registry.
 
 #### Scenario: Stored state is returned
 - **GIVEN** a getter exposes a stored record with a `JavaScriptValue` field

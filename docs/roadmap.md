@@ -58,7 +58,7 @@ Open briefs live in `docs/plans/`. Briefs for DONE items move to
 | 033 | Nullable concrete SharedObject classes              | P2    | M      | 032          | DONE    | [033](archive/plans/033-nullable-concrete-shared-object-codecs.md)          |
 | 034 | Base-class shared-object arguments                  | P1    | M      | 030          | DONE    | [034](archive/plans/034-base-class-shared-object-arguments.md)              |
 | 035 | Union arguments (`string \| ArrayBuffer`)           | P1    | M      | 030          | DONE    | [035](archive/plans/035-union-arguments.md)                                 |
-| 036 | Typed-array codecs (`Uint8Array`)                   | P1    | M      | 030          | TODO    | —                                                                           |
+| 036 | Typed-array codecs (`Uint8Array`)                   | P1    | M      | 030          | DONE    | [036](archive/plans/036-typed-array-codecs.md)                              |
 | 037 | Coded JavaScript errors                             | P2    | M      | —            | TODO    | —                                                                           |
 | 038 | `expo-file-system-dotnet` write, bytes, copy, move  | P1    | M      | 024, 034–036 | TODO    | —                                                                           |
 | 040 | Windows opt-in `*-dotnet` substitution              | P1    | L      | 039          | TODO    | [040](plans/040-windows-dotnet-module-substitution.md)                      |
@@ -122,6 +122,14 @@ The next free ID is 041.
   and binary, so 038 can port `write(content: string | ArrayBuffer)`. Unions
   stay decode-only, and a decode-only child now makes its list, dictionary, or
   nullable composite decode-only too.
+- **036**: done ([change](archive/changes/2026-11-06-typed-array-codecs/spec.md)):
+  it landed on 2026-11-06 with a local `scripts/test-managed.sh` run (1427
+  passed, 0 failed, 0 skipped). `Uint8Array` now crosses the boundary as a view
+  over one buffer lease with no byte copy, wherever `ArrayBuffer` does except as
+  a direct typed-event payload or a union member, so 038 can port `bytes()` and
+  025 can fill a caller's array. Typed arrays needed no ABI entry: the kind
+  proof, the buffer, the offset and length, and the construction are property
+  reads and one constructor call that `Expo.JSI` already had.
 - **037**: upstream Expo errors carry a `code`. Generated glue rejects with a
   plain `Error` today. Not a blocker for 038.
 - **025**: crypto follows file system and needs typed arrays (036). Plan 027
@@ -252,6 +260,14 @@ and a status row.
   without the parameter name. Carrying it at the generated-glue wrap site (one
   place, not per codec) would make `Value kind ... is not one of ...` and
   `Value is not an object.` messages self-locating.
+- **P3 — Native-backed buffers round-trip as JavaScript-backed leases**: a
+  native-backed `ArrayBuffer` or `Uint8Array` that returns from JavaScript
+  decodes as a JavaScript-backed, runtime-affine lease on the Hermes testhost,
+  because that engine's `jsi::Runtime::tryGetMutableBuffer` is the base
+  implementation and returns null. Bytes still alias and nothing leaks, but
+  authored code loses synchronous off-thread access and the lease counters
+  count an entry. Document the per-engine behavior in the 030 capability
+  scenarios, or add a recognition fallback.
 
 ### Runtime, performance, and tooling
 

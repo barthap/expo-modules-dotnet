@@ -930,11 +930,11 @@ invocation copy only while executing on the owning runtime. The caller SHALL
 keep the original wrapper alive until the returned task completes. Generated
 glue SHALL dispose only its invocation copy and SHALL NOT consume the original.
 
-Records, lists, and dictionaries containing nested `JavaScriptValue` or
-`ArrayBuffer`, and any payload containing `JavaScriptCallback`, SHALL be
-rejected in this slice. Event-safety classification SHALL run before general
-codec resolution can mutate generated-record-codec state, and SHALL inspect
-only encoded inputs such as selected record-constructor parameters, list
+Records, lists, and dictionaries containing nested `JavaScriptValue`,
+`ArrayBuffer`, or `Uint8Array`, and any payload containing `JavaScriptCallback`,
+SHALL be rejected in this slice. Event-safety classification SHALL run before
+general codec resolution can mutate generated-record-codec state, and SHALL
+inspect only encoded inputs such as selected record-constructor parameters, list
 elements, dictionary values, and nullable-value inner types. A rejected payload
 SHALL not leave callback `Encode` source or secondary compiler errors behind.
 `JavaScriptObject` remains a possible future optional advanced convertible; it
@@ -1002,8 +1002,8 @@ safely.
 
 #### Scenario: Nested leaf in a typed event payload stays rejected
 - **GIVEN** a module or shared-object `[Event]` payload is a record, list, or
-  dictionary that holds a `JavaScriptValue` or `ArrayBuffer`, including
-  `IReadOnlyList<ArrayBuffer>`
+  dictionary that holds a `JavaScriptValue`, `ArrayBuffer`, or `Uint8Array`,
+  including `IReadOnlyList<ArrayBuffer>`
 - **WHEN** the generator analyzes the event
 - **THEN** it SHALL report `EXPOJSI019` on a module or `EXPOJSI027` on a
   shared object
@@ -1394,8 +1394,8 @@ conversion decision.
 
 ### Requirement: Generated Bindings Compose Leaves Through One Scope
 
-A leaf is a `JavaScriptValue` or an `ArrayBuffer` wrapper. Every generated
-binding with a `ScopedResource` parameter or result SHALL use one
+A leaf is a `JavaScriptValue`, `ArrayBuffer`, or `Uint8Array` wrapper. Every
+generated binding with a `ScopedResource` parameter or result SHALL use one
 `GeneratedConversionScope` per invocation, the `IGeneratedScopedCodec<T>`
 protocol, and the ownership matrix and execution order below. Bindings with no
 leaf SHALL keep their generated text and SHALL NOT allocate a scope.
@@ -1463,6 +1463,10 @@ that union). All live in `Expo.ModulesCore/Codecs/` and carry the remark
   unchanged. Scoped `Decode` decodes and registers, and disposes the lease if
   registration throws. `Transfer` registers the source. `EncodeBorrowed` calls
   `Encode`, which creates a new JavaScript value with no byte copy.
+- `Uint8ArrayCodec` is a `readonly struct` that implements only
+  `IGeneratedScopedCodec<Uint8Array>`. Scoped `Decode` decodes and registers the
+  view, and disposes it if registration throws. `Transfer` registers a returned
+  view. `EncodeBorrowed` encodes without a byte copy.
 - A generated record codec whose record holds a leaf implements only
   `IGeneratedScopedCodec<TRecord>`. It passes the scope to each leaf-bearing
   field, calls the ordinary codec for other fields, and disposes every encoded
@@ -1514,7 +1518,7 @@ position:
 | --- | --- |
 | Top-level boundary (parameter, return, async result, property, shared-object constructor or member, span-function return) | Any shape with `DecodeAndEncode`. `ScopedResource` uses the scoped path. An authored abstract shared-object base resolves to the decode-only `SharedObjectBaseCodec<TBase>` and is accepted only as a module method, shared-object method, or shared-object constructor parameter. A two-member union `Either<TFirst, TSecond>` resolves to the decode-only `EitherCodec` or `GeneratedScopedEitherCodec` and is accepted only as a module method, shared-object method, or shared-object constructor parameter. |
 | List element, dictionary value | `JavaScriptCodec` or `ScopedOnly`. A `ScopedResource` child selects the scoped composite. The composite has its child's capabilities, so it is decode-only over a decode-only child. |
-| `Nullable<T>` inner, nullable-reference inner | `JavaScriptCodec` or `ScopedOnly`. `JavaScriptValue?` stays excluded before resolution. `ArrayBuffer?` resolves to `GeneratedScopedNullableReferenceCodec<ArrayBuffer, ArrayBufferCodec>`. `IReadOnlyList<ArrayBuffer>?` is accepted, because the nullable-list branch resolves the element under the list-element rule. A direct `JavaScriptCallback<...>?` resolves to the callback descriptor with `NullableJavaScriptCallbackCodec` before this rule. A direct nullable concrete `[ExpoSharedObject]` class never reaches this rule: shared-object boundary analysis selects `NullableSharedObjectCodec<T>` first. The composite has its child's capabilities, so it is decode-only over a decode-only child. |
+| `Nullable<T>` inner, nullable-reference inner | `JavaScriptCodec` or `ScopedOnly`. `JavaScriptValue?` stays excluded before resolution. `ArrayBuffer?` resolves to `GeneratedScopedNullableReferenceCodec<ArrayBuffer, ArrayBufferCodec>`, and `Uint8Array?` resolves to `GeneratedScopedNullableReferenceCodec<Uint8Array, Uint8ArrayCodec>`. `IReadOnlyList<ArrayBuffer>?` is accepted, because the nullable-list branch resolves the element under the list-element rule. A direct `JavaScriptCallback<...>?` resolves to the callback descriptor with `NullableJavaScriptCallbackCodec` before this rule. A direct nullable concrete `[ExpoSharedObject]` class never reaches this rule: shared-object boundary analysis selects `NullableSharedObjectCodec<T>` first. The composite has its child's capabilities, so it is decode-only over a decode-only child. |
 | Record field | `DecodeAndEncode` and no context requirement. |
 | Callback result, callback-argument tuple element | `JavaScriptCodec` with `DecodeAndEncode` only, so a direct `JavaScriptValue` keeps working. `ScopedOnly` and `StaticHelper` report `EXPOJSI008` (`EXPOJSI023` on a shared object). |
 | Typed event payload | The nested-resource check reports `EXPOJSI019` (module) or `EXPOJSI027` (shared object) before codec resolution. The payload codec must then be a `JavaScriptCodec` with `DecodeAndEncode`. |
@@ -1533,6 +1537,7 @@ cache hit rebuilds the same descriptor.
 | Leaf-free types | as before | `Borrowed` |
 | `JavaScriptValue` | `JavaScriptCodec` | `ScopedResource` |
 | `ArrayBuffer` | `ScopedOnly` | `ScopedResource` |
+| `Uint8Array` | `ScopedOnly` | `ScopedResource` |
 | List, dictionary, or nullable over a `ScopedResource` child | `ScopedOnly` | `ScopedResource` |
 | Record with any `ScopedResource` field | `ScopedOnly` | `ScopedResource` |
 | `JavaScriptCallback<...>` and `JavaScriptCallback<...>?` | `StaticHelper` | `ContextRetained` |
@@ -1660,6 +1665,7 @@ additional backing kinds.
 | CLR type | Boundary behavior | Generated-binding constraints |
 | --- | --- | --- |
 | `ArrayBuffer` | Preserves wrapper ownership semantics | Direct parameters, returns, properties, record fields, list elements, dictionary values, and direct typed-event payloads, each also as `ArrayBuffer?`; not a callback type argument or a nested typed-event payload |
+| `Uint8Array` | A view over one retained buffer lease with its offset and length; no byte copy in either direction | The `ArrayBuffer` positions, each also as `Uint8Array?`, except direct typed-event payloads; not a callback type argument or a union member |
 | `byte[]` | Copies in both directions | Rank-one arrays only |
 | `Memory<byte>` / `ReadOnlyMemory<byte>` | Copies in both directions, encoding exactly the current logical slice | Ordinary codecs |
 | `Span<byte>` / `ReadOnlySpan<byte>` | Borrows an input slice or copies a return value | One synchronous parameter only |
@@ -1705,6 +1711,56 @@ additional backing kinds.
   SHALL produce unsupported-type diagnostics
 - **AND** the one-span limit SHALL not restrict `ArrayBuffer`, `byte[]`,
   `Memory<byte>`, or `ReadOnlyMemory<byte>` arity
+
+### Requirement: Uint8Array Is A Scoped Byte View
+
+`Uint8Array` SHALL be accepted wherever `ArrayBuffer` is, except as a direct
+typed-event payload or a union member, through `Uint8ArrayCodec`, a
+`ScopedOnly`, `ScopedResource` codec. Decoding SHALL prove the value is a
+`Uint8Array` by prototype-chain membership
+(`Uint8Array.prototype.isPrototypeOf`), accepting a subclass instance and
+rejecting every other shape, SHALL retain the backing buffer without copying
+bytes, and SHALL keep the offset and length. Encoding SHALL produce a
+JavaScript `Uint8Array` over the encoded buffer with the same offset and length
+through the global constructor. The view SHALL fail loudly when the buffer no
+longer covers it. No native or ABI surface SHALL be added for typed arrays.
+
+#### Scenario: In-place write
+- **GIVEN** a method `void Fill(Uint8Array bytes)` that writes `0x42` to every
+  byte
+- **WHEN** JavaScript passes `new Uint8Array(4)`, and then an instance of a
+  `Uint8Array` subclass, and reads each after its call
+- **THEN** every element SHALL be `0x42`
+- **AND** the lease SHALL be released once at invocation end
+
+#### Scenario: Sub-view
+- **GIVEN** a method `string Hex(Uint8Array bytes)`
+- **WHEN** JavaScript passes `new Uint8Array(buffer, 4, 8)` over a 16-byte
+  buffer
+- **THEN** authored code SHALL see `ByteOffset 4`, `Length 8`, and exactly
+  those bytes
+
+#### Scenario: Return and property
+- **GIVEN** a method `Uint8Array Make()`, a `Task<Uint8Array>` method, and a
+  `Uint8Array?` property
+- **WHEN** JavaScript reads them
+- **THEN** each SHALL be a `Uint8Array` with matching bytes, `byteOffset`, and
+  `length`, and `null` for a null property
+
+#### Scenario: Wrong shapes are rejected
+- **GIVEN** the `Fill` parameter and a `Uint8Array?` parameter
+- **WHEN** JavaScript passes an `ArrayBuffer`, an `Int32Array`, a `DataView`, a
+  plain object, `5`, `null`, or `undefined`
+- **THEN** `Fill` SHALL throw `Value is not a Uint8Array.` for every input
+- **AND** the nullable parameter SHALL pass `null` for `null` and `undefined`
+  and throw for the rest
+
+#### Scenario: Composition follows ArrayBuffer
+- **GIVEN** `IReadOnlyList<Uint8Array>` and `Dictionary<string, Uint8Array>`
+  parameters and returns, and a record with a `Uint8Array` field
+- **WHEN** JavaScript passes and receives them
+- **THEN** each leaf SHALL be registered once and released once, as the 030
+  ownership matrix states for `ArrayBuffer`
 
 ### Requirement: Two-Member Unions Decode By Value Kind
 
@@ -1849,8 +1905,8 @@ signatures and behavior. Generated bindings SHALL support a non-null
 T>` wherever a codec of `T` is supported: as a list element, a dictionary
 value, a nullable container's content, a callback result or argument, a
 generated record field, and a typed event payload. A list element or
-dictionary value MAY be `ArrayBuffer`, or any type that holds a leaf. Such a
-collection SHALL use `GeneratedScopedListCodec<T, TCodec>` or
+dictionary value MAY be `ArrayBuffer`, `Uint8Array`, or any type that holds a
+leaf. Such a collection SHALL use `GeneratedScopedListCodec<T, TCodec>` or
 `GeneratedScopedDictionaryCodec<T, TCodec>`. `JavaScriptValue` elements SHALL
 NOT leak on decode or dispose the author's wrapper on encode. A collection that
 holds a leaf SHALL NOT be a callback result or callback argument, and SHALL
@@ -1946,11 +2002,12 @@ SHALL report an existing context-specific diagnostic at error severity. It SHALL
 NOT add a new diagnostic code, SHALL NOT raise a context-free diagnostic from
 codec resolution, SHALL NOT emit a binding for the rejected member, and SHALL
 NOT fall through to that type's non-nullable codec. The same non-nullable types
-SHALL keep their current supported or diagnostic behavior. `ArrayBuffer?` is
-supported through the scoped nullable-reference codec (see "Nullable ArrayBuffer
-Is A Scoped Nullable Reference"). A nullable callback is supported as a method
-or constructor parameter (see "Nullish Callback Parameters Decode To Null
-Without Retention") and keeps the non-null rejection on every other position.
+SHALL keep their current supported or diagnostic behavior. `ArrayBuffer?` and
+`Uint8Array?` are supported through the scoped nullable-reference codec (see
+"Nullable ArrayBuffer Is A Scoped Nullable Reference"). A nullable callback is
+supported as a method or constructor parameter (see "Nullish Callback
+Parameters Decode To Null Without Retention") and keeps the non-null rejection
+on every other position.
 
 Codec resolution does not know the member context, so the codes come from the
 callers: `EXPOJSI001` for a parameter, `EXPOJSI002` for a return, `EXPOJSI007`

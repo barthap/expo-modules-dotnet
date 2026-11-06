@@ -157,13 +157,13 @@ For `JavaScriptValueCodec` and generated `[JS]` functions:
   no longer uses it for boundary returns: it transfers the wrapper into the
   invocation's `GeneratedConversionScope` and returns an independent retained
   wrapper from `EncodeBorrowed`.
-- `JavaScriptValue` and `ArrayBuffer` parameters, at any depth inside records,
-  lists, and dictionaries, are registered in the invocation's
+- `JavaScriptValue`, `ArrayBuffer`, and `Uint8Array` parameters, at any depth
+  inside records, lists, and dictionaries, are registered in the invocation's
   `GeneratedConversionScope`, which releases them. Authored code must not
   dispose or store them.
-- A returned `JavaScriptValue`, `ArrayBuffer`, or value that holds either
-  transfers every leaf into the scope. Authored code must not dispose a
-  returned leaf. It stores and exposes only `Retain()` copies.
+- A returned `JavaScriptValue`, `ArrayBuffer`, `Uint8Array`, or value that holds
+  any of them transfers every leaf into the scope. Authored code must not
+  dispose a returned leaf. It stores and exposes only `Retain()` copies.
 - `Task<JavaScriptValue>` results transfer into the same scope through
   `GeneratedTransferredResult<T, TCodec>`; the scope releases input and result
   leaves after the Promise factory encodes the value, or when the result is

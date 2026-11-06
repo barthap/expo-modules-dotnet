@@ -5,9 +5,10 @@ namespace Expo.ModulesCore.Codecs;
 /// <summary>Decodes, transfers, and encodes a type whose leaves a conversion scope owns.</summary>
 /// <remarks>
 /// This helper is for generated bindings, not ordinary module author code. A leaf is a
-/// <see cref="JavaScriptValue"/> or an <see cref="ArrayBuffer"/>. <c>Decode</c> registers each leaf
-/// it creates in the scope, and <c>Transfer</c> registers each leaf of a value the module returns.
-/// <c>EncodeBorrowed</c> never consumes or disposes a source leaf.
+/// <see cref="JavaScriptValue"/>, an <see cref="ArrayBuffer"/>, or a <see cref="Uint8Array"/>.
+/// <c>Decode</c> registers each leaf it creates in the scope, and <c>Transfer</c> registers each
+/// leaf of a value the module returns. <c>EncodeBorrowed</c> never consumes or disposes a source
+/// leaf.
 /// </remarks>
 /// <typeparam name="T">The decoded type.</typeparam>
 public interface IGeneratedScopedCodec<T>
