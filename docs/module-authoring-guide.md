@@ -336,6 +336,8 @@ lifetime rules:
 - A `Func<ArrayBuffer?, Task>` event delivers C# `null` as one JavaScript `null`
   argument and retains no lease. A non-null buffer follows the `ArrayBuffer`
   rule.
+- A direct `Uint8Array` or `Uint8Array?` gets no lease; keep it alive until the
+  task completes.
 
 Records, lists, and dictionaries that hold `JavaScriptValue`, `ArrayBuffer`,
 `ArrayBuffer?`, or `Uint8Array` are valid payloads, and so is a direct

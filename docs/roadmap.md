@@ -118,7 +118,7 @@ The next free ID is 041.
   binary, so 038 can port `write(content: string | ArrayBuffer)`. One
   `EitherCodec` decodes by kind and releases only the member it holds.
 - **036**: done: it landed on 2026-11-06 with a local
-  `scripts/test-managed.sh` run (1451 passed, 0 failed, 0 skipped).
+  `scripts/test-managed.sh` run (1455 passed, 0 failed, 0 skipped).
   `Uint8Array` now crosses the boundary as a view over one buffer lease with no
   byte copy, in every codec position where `ArrayBuffer` does and as a union
   member of kind `Object`, so 038 can port `bytes()` and 025 can fill a

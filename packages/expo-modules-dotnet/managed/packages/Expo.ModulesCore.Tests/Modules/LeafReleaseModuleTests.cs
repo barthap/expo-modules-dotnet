@@ -1903,7 +1903,6 @@ public sealed class LeafReleaseModuleTests
     Assert.Equal(1, TypedArrayThingsModule.Calls);
   }
 
-
   [Fact]
   public void Uint8ArrayUnionDecodesByKind()
   {

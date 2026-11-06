@@ -930,9 +930,9 @@ Records, lists, and dictionaries that hold a `JavaScriptValue`, an
 or `Uint8Array?`, SHALL be valid typed event payloads. Generated glue SHALL
 encode them on the owning runtime and SHALL dispose only the encoded value. A
 null `ArrayBuffer?` or `Uint8Array?` inside such a payload, and a direct null
-`Uint8Array?`, SHALL encode as JavaScript `null`. The author keeps every nested leaf and SHALL keep it alive until the
-returned task completes. A payload containing `JavaScriptCallback` SHALL stay
-rejected.
+`Uint8Array?`, SHALL encode as JavaScript `null`. The author keeps every leaf
+and SHALL keep it alive until the returned task completes. A payload
+containing `JavaScriptCallback` SHALL stay rejected.
 Event-safety classification SHALL run before general codec resolution can
 mutate generated-record-codec state, and SHALL inspect only encoded inputs
 such as selected record-constructor parameters, list elements, dictionary
@@ -1675,10 +1675,10 @@ member type maps to one of the JavaScript value kinds `String`, `Bool`,
 `Number`, `ArrayBuffer`, or `Object`, and the two kinds differ. `string` maps
 to `String`, `bool` to `Bool`, the types of `NumberCodec<T>` to `Number`,
 `ArrayBuffer`, `byte[]`, `Memory<byte>`, and `ReadOnlyMemory<byte>` to
-`ArrayBuffer`, and `Uint8Array` to `Object`. The positions are parameters, returns, async results,
-properties, record fields, list elements, dictionary values, the `Nullable<T>`
-inner type, callback type arguments, typed event payloads, and shared-object
-constructors and members.
+`ArrayBuffer`, and `Uint8Array` to `Object`. The positions are parameters,
+returns, async results, properties, record fields, list elements, dictionary
+values, the `Nullable<T>` inner type, callback type arguments, typed event
+payloads, and shared-object constructors and members.
 
 `EitherCodec<TFirst, TFirstCodec, TSecond, TSecondCodec>` SHALL read the value
 kind once and decode through that member's codec. It SHALL NOT try one member
@@ -1997,9 +1997,10 @@ codec resolution, SHALL NOT emit a binding for the rejected member, and SHALL
 NOT fall through to that type's non-nullable codec. The same non-nullable types
 SHALL keep their current supported or diagnostic behavior. `ArrayBuffer?` and
 `Uint8Array?` are supported through `NullableReferenceCodec` (see "Nullable
-ArrayBuffer Is A Nullable Reference" and "Uint8Array Is A Byte View"). A nullable callback is supported as a method or
-constructor parameter (see "Nullish Callback Parameters Decode To Null Without
-Retention") and keeps the non-null rejection on every other position.
+ArrayBuffer Is A Nullable Reference" and "Uint8Array Is A Byte View"). A
+nullable callback is supported as a method or constructor parameter (see
+"Nullish Callback Parameters Decode To Null Without Retention") and keeps the
+non-null rejection on every other position.
 
 Codec resolution does not know the member context, so the codes come from the
 callers: `EXPOJSI001` for a parameter, `EXPOJSI002` for a return, `EXPOJSI007`

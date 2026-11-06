@@ -7,6 +7,11 @@ using StringOrView = Expo.ModulesCore.Codecs.EitherCodec<
     Expo.ModulesCore.Codecs.StringCodec,
     Expo.ModulesCore.Uint8Array,
     Expo.ModulesCore.Codecs.Uint8ArrayCodec>;
+using BufferOrView = Expo.ModulesCore.Codecs.EitherCodec<
+    Expo.ModulesCore.ArrayBuffer,
+    Expo.ModulesCore.Codecs.ArrayBufferCodec,
+    Expo.ModulesCore.Uint8Array,
+    Expo.ModulesCore.Codecs.Uint8ArrayCodec>;
 
 namespace Expo.ModulesCore.Tests.Codecs;
 
@@ -321,6 +326,36 @@ public sealed class Uint8ArrayCodecTests
     StringOrView.Release(bytes);
     fixture.WaitUntilIdle();
 
+    Assert.Equal(1u, fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void BufferOrViewUnionReleasesTheLeafItHolds()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    var (buffer, view) = fixture.Runtime.Execute(runtime =>
+    {
+      using var bufferSource = fixture.Evaluate("new ArrayBuffer(2)", "u8-union-either-buffer.js");
+      var buffer = BufferOrView.Decode(bufferSource.Ref, runtime);
+      Assert.True(buffer.IsFirst);
+      Assert.Equal(2, buffer.First.ByteLength);
+
+      using var viewSource = fixture.Evaluate("new Uint8Array([7, 8, 9])", "u8-union-either-view.js");
+      var view = BufferOrView.Decode(viewSource.Ref, runtime);
+      Assert.False(view.IsFirst);
+      Assert.Equal(new byte[] { 7, 8, 9 }, view.Second.ToArray());
+      return (buffer, view);
+    });
+
+    fixture.ResetCounters();
+    BufferOrView.Release(buffer);
+    fixture.WaitUntilIdle();
+    Assert.Equal(1u, fixture.Counters.LongLivedArrayBuffersReleased);
+
+    fixture.ResetCounters();
+    BufferOrView.Release(view);
+    fixture.WaitUntilIdle();
     Assert.Equal(1u, fixture.Counters.LongLivedArrayBuffersReleased);
   }
 

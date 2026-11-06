@@ -613,13 +613,15 @@ public sealed partial class TypedArrayThingsModule : Module, IDisposable
   public string HexAll(IReadOnlyList<Uint8Array> parts) => string.Join("|", parts.Select(Describe));
 
   [JS]
-  public IReadOnlyList<Uint8Array> EchoList(IReadOnlyList<Uint8Array> views) => views;
+  public IReadOnlyList<Uint8Array> EchoList(IReadOnlyList<Uint8Array> views) =>
+      views.Select(view => view.Retain()).ToArray();
 
   [JS]
-  public Dictionary<string, Uint8Array> EchoMap(Dictionary<string, Uint8Array> views) => views;
+  public Dictionary<string, Uint8Array> EchoMap(Dictionary<string, Uint8Array> views) =>
+      views.ToDictionary(entry => entry.Key, entry => entry.Value.Retain());
 
   [JS]
-  public ViewHolder EchoHolder(ViewHolder holder) => holder;
+  public ViewHolder EchoHolder(ViewHolder holder) => holder with { Bytes = holder.Bytes.Retain() };
 
   [JS]
   public void Hold(Uint8Array bytes)
