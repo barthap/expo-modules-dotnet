@@ -2496,9 +2496,9 @@ expo_jsi_value_result createHostFunction(
         try {
           result = context->call(thisHandle.get(), &argumentsHandle);
           if (result.ok == 0 || result.value == nullptr) {
-            const char *message = result.error.message != nullptr ? result.error.message
-                                                                  : "Managed host function failed.";
-            throw jsi::JSError(jsRuntime, message);
+            // The managed message is length-delimited and not NUL-terminated.
+            throw jsi::JSError(
+              jsRuntime, copyAndReleaseErrorMessage(result.error, "Managed host function failed."));
           }
           auto jsResult = jsi::Value(jsRuntime, result.value->value());
           delete result.value;

@@ -239,6 +239,13 @@ frames.
 - **THEN** it SHALL copy the UTF-8 message
 - **AND** it SHALL invoke the native release callback exactly once when present
 
+#### Scenario: Native code consumes a managed host-function error
+- **GIVEN** a managed host function fails and reports an `expo_jsi_error`
+  whose message is `message_len` bytes and not NUL-terminated
+- **WHEN** native converts the error into a JavaScript error
+- **THEN** it SHALL copy exactly `message_len` bytes of the message
+- **AND** it SHALL NOT read the message as a NUL-terminated string
+
 #### Scenario: Success error result is returned
 - **GIVEN** an ABI operation succeeds
 - **WHEN** native returns an `expo_jsi_error`
