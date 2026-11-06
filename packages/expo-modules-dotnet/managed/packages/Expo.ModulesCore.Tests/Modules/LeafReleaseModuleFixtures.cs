@@ -245,6 +245,11 @@ public sealed partial class LeafReleaseModule : Module, IDisposable
   public string ForwardValue(JavaScriptValue value, JavaScriptCallback<ValueTuple<ValuePair>, bool> callback)
       => $"{(callback.Invoke(ValueTuple.Create(new ValuePair(value, value))) ? "true" : "false")}:{value.Kind}";
 
+  // Leaf-free twin of ForwardValue for ReleasedValues calibration.
+  [JS]
+  public string ForwardText(string value, JavaScriptCallback<ValueTuple<TextPair>, bool> callback)
+      => $"{(callback.Invoke(ValueTuple.Create(new TextPair(value, value))) ? "true" : "false")}:{value}";
+
   // The decoded callback result belongs to the author, who disposes every returned buffer.
   [JS]
   public int TakeBuffers(JavaScriptCallback<IReadOnlyList<ArrayBuffer>> callback)

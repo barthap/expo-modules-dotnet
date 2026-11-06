@@ -809,9 +809,20 @@ public sealed class LeafReleaseModuleTests
     using var leaf = LeafReleaseFixture.Create();
     leaf.Run("globalThis.o = {}; true");
 
+    leaf.Fixture.WaitUntilIdle();
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("true:x", leaf.ReadString("m.forwardText('x', p => p.first === 'x' && p.second === 'x')"));
+    leaf.Fixture.WaitUntilIdle();
+    var twinReleases = leaf.Fixture.Counters.ReleasedValues;
+
+    leaf.Fixture.ResetCounters();
     var result = leaf.ReadString("m.forwardValue(o, p => p.first === o && p.second === o)");
+    leaf.Fixture.WaitUntilIdle();
+    var leafReleases = leaf.Fixture.Counters.ReleasedValues;
 
     Assert.Equal("true:Object", result);
+    // The decoded argument releases once, after the callback returns.
+    Assert.Equal(twinReleases + 1, leafReleases);
   }
 
   [Fact]

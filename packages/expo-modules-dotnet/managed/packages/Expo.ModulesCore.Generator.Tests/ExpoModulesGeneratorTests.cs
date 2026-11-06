@@ -5229,11 +5229,17 @@ public sealed class ExpoModulesGeneratorTests
   }
 
   [Theory]
-  [InlineData(false)]
-  [InlineData(true)]
-  public void GeneratorAcceptsNestedLeafEventPayloads(bool onSharedObject)
+  [InlineData(false, "ArrayBuffer", "global::Expo.ModulesCore.ArrayBuffer", "ArrayBufferCodec")]
+  [InlineData(true, "ArrayBuffer", "global::Expo.ModulesCore.ArrayBuffer", "ArrayBufferCodec")]
+  [InlineData(false, "JavaScriptValue", "global::Expo.JSI.JavaScriptValue", "JavaScriptValueCodec")]
+  [InlineData(true, "JavaScriptValue", "global::Expo.JSI.JavaScriptValue", "JavaScriptValueCodec")]
+  public void GeneratorAcceptsNestedLeafEventPayloads(
+      bool onSharedObject,
+      string leaf,
+      string leafType,
+      string leafCodec)
   {
-    const string member = "[Event] public partial Func<IReadOnlyList<ArrayBuffer>, Task> OnBuffers { get; }";
+    var member = $"[Event] public partial Func<IReadOnlyList<{leaf}>, Task> OnLeaves {{ get; }}";
     var result = GeneratorTestHost.Run(
         onSharedObject ? SharedObjectMemberSource(member) : ModuleSource(string.Empty, member)
     );
@@ -5241,7 +5247,7 @@ public sealed class ExpoModulesGeneratorTests
     AssertNoCompilerErrors(result);
     Assert.Empty(GeneratorDiagnosticIds(result));
     Assert.Contains(
-        "EmitAsync<JavaScriptArrayCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>, global::System.Collections.Generic.IReadOnlyList<global::Expo.ModulesCore.ArrayBuffer>>",
+        $"EmitAsync<JavaScriptArrayCodec<{leafType}, {leafCodec}>, global::System.Collections.Generic.IReadOnlyList<{leafType}>>",
         GeneratedText(result),
         StringComparison.Ordinal
     );

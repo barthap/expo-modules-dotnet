@@ -384,7 +384,7 @@ public sealed partial class ExpoModulesGenerator
       {
         // A transfer-sensitive wrapper keeps its non-nullable transfer rules at any depth, and its
         // top-level payload kind bypasses codec resolution, so the nullable annotation has to be
-        // rejected here.
+        // rejected here. A nested nullable leaf would otherwise get the generic no-codec reason.
         return typeSymbol.NullableAnnotation == NullableAnnotation.Annotated
             ? "it applies a nullable annotation to a transfer-sensitive wrapper"
             : null;
