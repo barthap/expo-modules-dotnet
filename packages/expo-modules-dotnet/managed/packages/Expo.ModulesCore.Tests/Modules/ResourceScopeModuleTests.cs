@@ -93,6 +93,25 @@ public sealed class ResourceScopeModuleTests
   }
 
   [Fact]
+  public void SyncReturnedRetainedValueCopyReleasesOnce()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.o = {}; true");
+
+    // Calibration: the same call shape where the returned wrapper is the argument itself.
+    scope.Fixture.ResetCounters();
+    Assert.Equal("true", scope.ReadString("String(m.sameValue(o) === o)"));
+    var aliasReleases = scope.Fixture.Counters.ReleasedValues;
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("true", scope.ReadString("String(m.retainedValue(o) === o)"));
+    var copyReleases = scope.Fixture.Counters.ReleasedValues;
+
+    // The returned Retain() copy is one more wrapper, and the glue releases it after the encode.
+    Assert.Equal(aliasReleases + 1, copyReleases);
+  }
+
+  [Fact]
   public void ReturnedRetainedCopyOfInputReleasesBothLeases()
   {
     using var scope = ResourceScopeFixture.Create();
@@ -147,6 +166,33 @@ public sealed class ResourceScopeModuleTests
     await scope.WaitForOutcomeAsync();
 
     Assert.Equal("fulfilled:true", scope.ReadString("`${__outcome.status}:${__outcome.value === o}`"));
+  }
+
+  [Fact]
+  public async Task AsyncReturnedRetainedValueCopyReleasesOnce()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run("globalThis.o = {}; true");
+
+    // Calibration: the same call shape where the returned wrapper is the argument itself.
+    scope.Fixture.WaitUntilIdle();
+    scope.Fixture.ResetCounters();
+    scope.StartOutcome("m.sameValueAsync(o)");
+    await scope.WaitForOutcomeAsync();
+    scope.Fixture.WaitUntilIdle();
+    var aliasReleases = scope.Fixture.Counters.ReleasedValues;
+    Assert.Equal("fulfilled:true", scope.ReadString("`${__outcome.status}:${__outcome.value === o}`"));
+
+    scope.Fixture.WaitUntilIdle();
+    scope.Fixture.ResetCounters();
+    scope.StartOutcome("m.retainedValueAsync(o)");
+    await scope.WaitForOutcomeAsync();
+    scope.Fixture.WaitUntilIdle();
+    var copyReleases = scope.Fixture.Counters.ReleasedValues;
+    Assert.Equal("fulfilled:true", scope.ReadString("`${__outcome.status}:${__outcome.value === o}`"));
+
+    // The returned Retain() copy is one more wrapper, and the factory releases it after the encode.
+    Assert.Equal(aliasReleases + 1, copyReleases);
   }
 
   [Fact]

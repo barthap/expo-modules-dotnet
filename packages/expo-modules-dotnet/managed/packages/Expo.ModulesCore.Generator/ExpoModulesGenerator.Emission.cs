@@ -308,7 +308,7 @@ public sealed partial class ExpoModulesGenerator
           decodeExpression =
               $"arguments.Length <= {index} || arguments.GetValue({index}).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? {parameter.DefaultValueExpression} : {decodeExpression}";
         }
-        builder.AppendLine($"{indent}{GetParameterDeclaration(parameter, index, decodeExpression)}");
+        builder.AppendLine($"{indent}{GetLocalDeclaration(parameter.Codec, GetParameterLocalName(index), decodeExpression)}");
       }
 
       builder.AppendLine($"{indent}return new {sharedObject.FullyQualifiedTypeName}({argumentList});");
@@ -822,7 +822,7 @@ public sealed partial class ExpoModulesGenerator
     var leafArguments = GetLeafArguments(function.Parameters.Values);
     if (function.IsAsync)
     {
-      EmitAsyncHostFunctionBody(builder, function, label, targetDeclaration, argumentList, leafArguments);
+      EmitAsyncHostFunctionBody(builder, function, runtimeParameterName, label, targetDeclaration, argumentList, leafArguments);
     }
     else
     {
@@ -834,7 +834,7 @@ public sealed partial class ExpoModulesGenerator
         for (var index = 0; index < function.Parameters.Values.Count; index++)
         {
           var parameter = function.Parameters.Values[index];
-          builder.AppendLine($"{indent}{GetParameterDeclaration(parameter, index, GetParameterExpression(parameter, index, runtimeParameterName))}");
+          builder.AppendLine($"{indent}{GetLocalDeclaration(parameter.Codec, GetParameterLocalName(index), GetParameterExpression(parameter, index, runtimeParameterName))}");
         }
 
         EmitSyncInvocation(builder, indent, function, $"module.{function.MethodName}({argumentList})");
@@ -846,6 +846,7 @@ public sealed partial class ExpoModulesGenerator
   private static void EmitAsyncHostFunctionBody(
       StringBuilder builder,
       ExpoFunctionModel function,
+      string runtimeParameterName,
       string label,
       string targetDeclaration,
       string argumentList,
@@ -873,13 +874,13 @@ public sealed partial class ExpoModulesGenerator
     for (var index = 0; index < function.Parameters.Values.Count; index++)
     {
       var parameter = function.Parameters.Values[index];
-      builder.AppendLine($"      {GetParameterDeclaration(parameter, index, GetParameterExpression(parameter, index, "jsRuntime"))}");
+      builder.AppendLine($"      {GetLocalDeclaration(parameter.Codec, GetParameterLocalName(index), GetParameterExpression(parameter, index, runtimeParameterName))}");
     }
 
     builder.AppendLine($"      var __expoTask = module.{function.MethodName}({argumentList});");
     builder.AppendLine(hasLeafArguments
-        ? "      __expoPromiseValue = jsRuntime.CreatePromise("
-        : "      using var __expoPromiseValue = jsRuntime.CreatePromise(");
+        ? $"      __expoPromiseValue = {runtimeParameterName}.CreatePromise("
+        : $"      using var __expoPromiseValue = {runtimeParameterName}.CreatePromise(");
     builder.AppendLine("          async _ =>");
     builder.AppendLine("          {");
     if (GetLeafResult(function.AsyncResultCodec) is not null)
@@ -915,7 +916,7 @@ public sealed partial class ExpoModulesGenerator
     {
       EmitRelease(builder, "      ", leafArguments);
     }
-    builder.AppendLine("      return GeneratedFunction.CreateRejectedPromise(jsRuntime, exception);");
+    builder.AppendLine($"      return GeneratedFunction.CreateRejectedPromise({runtimeParameterName}, exception);");
     builder.AppendLine("    }");
     if (hasLeafArguments)
     {
@@ -1070,11 +1071,9 @@ public sealed partial class ExpoModulesGenerator
   private static LeafValue? GetLeafResult(ExpoCodecDescriptor? codec) =>
       HoldsLeaves(codec) ? new LeafValue(codec!.ValueTypeName, codec.Expression, "__expoResult") : null;
 
-  // A leaf-bearing argument is declared before the try, so it is only assigned here.
-  private static string GetParameterDeclaration(ExpoParameterModel parameter, int index, string expression) =>
-      parameter.PassingKind == ExpoParameterPassingKind.Codec && HoldsLeaves(parameter.Codec)
-          ? $"{GetParameterLocalName(index)} = {expression};"
-          : $"var {GetParameterLocalName(index)} = {expression};";
+  // A leaf-bearing local is declared before the try, so it is only assigned here.
+  private static string GetLocalDeclaration(ExpoCodecDescriptor? codec, string local, string expression) =>
+      HoldsLeaves(codec) ? $"{local} = {expression};" : $"var {local} = {expression};";
 
   private static void EmitLeafDeclarations(StringBuilder builder, string indent, IEnumerable<LeafValue> values)
   {
@@ -1187,13 +1186,12 @@ public sealed partial class ExpoModulesGenerator
     builder.AppendLine("  {");
     builder.AppendLine($"    GeneratedFunction.RequireArgumentCount(\"{EscapeString(label)}.{EscapeString(property.JavaScriptName)}\", arguments, 1);");
     builder.AppendLine($"    {targetDeclaration}");
-    var holdsLeaves = HoldsLeaves(property.Codec);
-    var leafValues = holdsLeaves
+    var leafValues = HoldsLeaves(property.Codec)
         ? new[] { new LeafValue(property.Codec.ValueTypeName, property.Codec.Expression, "__expoValue") }
         : Array.Empty<LeafValue>();
     EmitLeafReleasingCall(builder, leafValues, null, indent =>
     {
-      builder.AppendLine($"{indent}{(holdsLeaves ? string.Empty : "var ")}__expoValue = {GetDecodeExpression(property.Codec, 0, "runtime")};");
+      builder.AppendLine($"{indent}{GetLocalDeclaration(property.Codec, "__expoValue", GetDecodeExpression(property.Codec, 0, "runtime"))}");
       builder.AppendLine($"{indent}module.{property.PropertyName} = __expoValue;");
       builder.AppendLine($"{indent}return runtime.CreateUndefined();");
     });
@@ -1241,7 +1239,7 @@ public sealed partial class ExpoModulesGenerator
         {
           continue;
         }
-        builder.AppendLine($"{indent}{GetParameterDeclaration(parameter, index, GetParameterExpression(parameter, index, "runtime"))}");
+        builder.AppendLine($"{indent}{GetLocalDeclaration(parameter.Codec, GetParameterLocalName(index), GetParameterExpression(parameter, index, "runtime"))}");
       }
       builder.AppendLine($"{indent}using var {spanBuffer} = ArrayBufferCodec.Decode(arguments.GetValue({spanIndex}), runtime);");
       builder.AppendLine($"{indent}return {spanBuffer}.{spanMethod}(__expoArg{spanIndex} =>");
@@ -1296,10 +1294,6 @@ public sealed partial class ExpoModulesGenerator
     var leafFields = leafFieldModels
         .Select(field => new LeafValue(field.Codec.ValueTypeName, field.Codec.Expression, GetRecordFieldLocalName(field)))
         .ToArray();
-    string GetFieldDeclaration(ExpoGeneratedRecordFieldModel field, string expression) =>
-        HoldsLeaves(field.Codec)
-            ? $"{GetRecordFieldLocalName(field)} = {expression};"
-            : $"var {GetRecordFieldLocalName(field)} = {expression};";
 
     builder.AppendLine($"  private readonly struct {codec.CodecTypeName} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<{codec.RecordTypeName}>");
     builder.AppendLine("  {");
@@ -1310,7 +1304,7 @@ public sealed partial class ExpoModulesGenerator
     {
       foreach (var field in codec.Fields.Values)
       {
-        builder.AppendLine($"{indent}{GetFieldDeclaration(field, $"{field.Codec.Expression}.Decode(obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\"), runtime)")}");
+        builder.AppendLine($"{indent}{GetLocalDeclaration(field.Codec, GetRecordFieldLocalName(field), $"{field.Codec.Expression}.Decode(obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\"), runtime)")}");
       }
     });
     builder.AppendLine("    }");
@@ -1323,7 +1317,7 @@ public sealed partial class ExpoModulesGenerator
       foreach (var field in codec.Fields.Values)
       {
         builder.AppendLine($"{indent}using var {field.ParameterName}Value = obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\");");
-        builder.AppendLine($"{indent}{GetFieldDeclaration(field, $"{field.Codec.Expression}.Decode({field.ParameterName}Value, runtime)")}");
+        builder.AppendLine($"{indent}{GetLocalDeclaration(field.Codec, GetRecordFieldLocalName(field), $"{field.Codec.Expression}.Decode({field.ParameterName}Value, runtime)")}");
       }
     });
     builder.AppendLine("    }");

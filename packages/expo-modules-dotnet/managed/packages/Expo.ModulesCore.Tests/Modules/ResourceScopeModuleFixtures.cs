@@ -69,6 +69,9 @@ public sealed partial class ResourceScopeModule : Module, IDisposable
   public JavaScriptValue SameValue(JavaScriptValue value) => value;
 
   [JS]
+  public JavaScriptValue RetainedValue(JavaScriptValue value) => value.Retain();
+
+  [JS]
   public JavaScriptValue DisposedValue()
   {
     var value = RuntimeContext.Runtime.CreateString("gone");
@@ -81,6 +84,15 @@ public sealed partial class ResourceScopeModule : Module, IDisposable
   {
     await Task.Yield();
     return value;
+  }
+
+  // Retain() is a runtime call, so it runs before the await, on the runtime thread.
+  [JS]
+  public async Task<JavaScriptValue> RetainedValueAsync(JavaScriptValue value)
+  {
+    var copy = value.Retain();
+    await Task.Yield();
+    return copy;
   }
 
   [JS]
