@@ -4,9 +4,9 @@ namespace Expo.ModulesCore.Codecs;
 
 /// <summary>Adds nullish handling to a read-only list container.</summary>
 /// <remarks>
-/// <see cref="JavaScriptArrayCodec{T, TCodec}"/> decodes through <c>DecodeToArray</c> and does not
-/// implement <see cref="IJavaScriptCodec{T}"/>, so a nullable list container needs its own adapter
-/// instead of composing through <see cref="NullableReferenceCodec{T, TCodec}"/>.
+/// A nullable list container needs nullish handling that <see cref="JavaScriptArrayCodec{T, TCodec}"/>
+/// does not have, so this adapter wraps it instead of composing through
+/// <see cref="NullableReferenceCodec{T, TCodec}"/>.
 /// </remarks>
 public readonly struct NullableReadOnlyListCodec<T, TCodec> : IJavaScriptCodec<IReadOnlyList<T>?>
     where TCodec : IJavaScriptCodec<T>

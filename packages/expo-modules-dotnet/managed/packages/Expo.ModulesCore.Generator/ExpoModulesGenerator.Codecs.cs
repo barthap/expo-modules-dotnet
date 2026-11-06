@@ -49,6 +49,27 @@ public sealed partial class ExpoModulesGenerator
   private static string GetCodecTypeArgumentName(ITypeSymbol typeSymbol) =>
       typeSymbol.ToDisplayString(CodecTypeArgumentFormat);
 
+  // The ordinary row of the descriptor table: a JavaScriptCodec with Decode, no context, and a
+  // borrowed decoded value. Branches that differ set their fields explicitly.
+  private static ExpoCodecDescriptor OrdinaryCodec(string expression) => new(
+      expression,
+      ExpoCodecShape.JavaScriptCodec,
+      ExpoCodecCapabilities.DecodeAndEncode,
+      ExpoDecodeOperation.Decode,
+      ExpoContextRequirement.None,
+      ExpoDecodedOwnership.Borrowed,
+      ExpoEncodeOperation.Standard
+  );
+
+  private static bool IsInvocationOwned(ExpoParameterModel parameter) =>
+      parameter.Codec?.DecodedOwnership == ExpoDecodedOwnership.InvocationOwned;
+
+  // Composition rule: a list element, dictionary value, Nullable<T> or nullable-reference inner
+  // type, callback result, and callback argument tuple element are generic type arguments. A
+  // StaticHelper codec is a static class and cannot be one.
+  private static ExpoCodecDescriptor? AsGenericArgumentCodec(ExpoCodecDescriptor? codec) =>
+      codec is { Shape: ExpoCodecShape.JavaScriptCodec } ? codec : null;
+
   private static string GetNumberCodecExpression(ITypeSymbol typeSymbol) =>
       $"NumberCodec<{typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>";
 
@@ -106,7 +127,7 @@ public sealed partial class ExpoModulesGenerator
     };
   }
 
-  private static string? TryGetNullableCodec(
+  private static ExpoCodecDescriptor? TryGetNullableCodec(
       ITypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
       List<ExpoGeneratedRecordCodecModel> recordCodecs)
@@ -118,14 +139,14 @@ public sealed partial class ExpoModulesGenerator
     }
 
     var valueType = namedType.TypeArguments.Single();
-    var valueCodec = GetCodecExpression(valueType, diagnostics, recordCodecs);
+    var valueCodec = AsGenericArgumentCodec(GetCodec(valueType, diagnostics, recordCodecs));
     if (valueCodec is null)
     {
       return null;
     }
 
     var valueTypeName = GetCodecTypeArgumentName(valueType);
-    return $"NullableCodec<{valueTypeName}, {valueCodec}>";
+    return OrdinaryCodec($"NullableCodec<{valueTypeName}, {valueCodec.Expression}>");
   }
 
   // Ownership-bearing and runtime-context-bearing wrappers keep their non-nullable conversion
@@ -148,7 +169,7 @@ public sealed partial class ExpoModulesGenerator
   /// <returns>
   /// <see langword="false"/> when the type is not an annotated reference, so ordinary dispatch
   /// continues. <see langword="true"/> when the annotated reference was handled, either with a
-  /// codec expression or with a <see langword="null"/> expression that tells the calling analysis
+  /// codec descriptor or with a <see langword="null"/> descriptor that tells the calling analysis
   /// to report its own context-specific unsupported-type diagnostic. A handled type never falls
   /// through to the codec of its non-nullable form.
   /// </returns>
@@ -156,9 +177,9 @@ public sealed partial class ExpoModulesGenerator
       ITypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
       List<ExpoGeneratedRecordCodecModel> recordCodecs,
-      out string? codecExpression)
+      out ExpoCodecDescriptor? codec)
   {
-    codecExpression = null;
+    codec = null;
 
     // Only an explicit annotation activates nullable reference handling. A non-nullable reference
     // and an oblivious reference from a disabled nullable context keep their strict codec, and
@@ -185,10 +206,11 @@ public sealed partial class ExpoModulesGenerator
       if (constructedType == "global::System.Collections.Generic.IReadOnlyList<T>")
       {
         var elementType = namedType.TypeArguments.Single();
-        if (GetCodecExpression(elementType, diagnostics, recordCodecs) is { } elementCodec)
+        if (AsGenericArgumentCodec(GetCodec(elementType, diagnostics, recordCodecs)) is { } elementCodec)
         {
-          codecExpression =
-              $"NullableReadOnlyListCodec<{GetCodecTypeArgumentName(elementType)}, {elementCodec}>";
+          codec = OrdinaryCodec(
+              $"NullableReadOnlyListCodec<{GetCodecTypeArgumentName(elementType)}, {elementCodec.Expression}>"
+          );
         }
 
         return true;
@@ -203,29 +225,32 @@ public sealed partial class ExpoModulesGenerator
         }
 
         var dictionaryValueType = namedType.TypeArguments[1];
-        if (GetCodecExpression(dictionaryValueType, diagnostics, recordCodecs) is { } dictionaryValueCodec)
+        if (AsGenericArgumentCodec(GetCodec(dictionaryValueType, diagnostics, recordCodecs)) is { } dictionaryValueCodec)
         {
           var codecName =
               constructedType == "global::System.Collections.Generic.Dictionary<TKey, TValue>"
                   ? "NullableDictionaryCodec"
                   : "NullableReadOnlyDictionaryCodec";
-          codecExpression =
-              $"{codecName}<{GetCodecTypeArgumentName(dictionaryValueType)}, {dictionaryValueCodec}>";
+          codec = OrdinaryCodec(
+              $"{codecName}<{GetCodecTypeArgumentName(dictionaryValueType)}, {dictionaryValueCodec.Expression}>"
+          );
         }
 
         return true;
       }
     }
 
-    if (GetCodecExpression(valueType, diagnostics, recordCodecs) is { } valueCodec)
+    if (AsGenericArgumentCodec(GetCodec(valueType, diagnostics, recordCodecs)) is { } valueCodec)
     {
-      codecExpression = $"NullableReferenceCodec<{GetCodecTypeArgumentName(valueType)}, {valueCodec}>";
+      codec = OrdinaryCodec(
+          $"NullableReferenceCodec<{GetCodecTypeArgumentName(valueType)}, {valueCodec.Expression}>"
+      );
     }
 
     return true;
   }
 
-  private static string? TryGetReadOnlyListCodec(
+  private static ExpoCodecDescriptor? TryGetReadOnlyListCodec(
       ITypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
       List<ExpoGeneratedRecordCodecModel> recordCodecs)
@@ -238,17 +263,20 @@ public sealed partial class ExpoModulesGenerator
     }
 
     var elementType = namedType.TypeArguments.Single();
-    var elementCodec = GetCodecExpression(elementType, diagnostics, recordCodecs);
+    var elementCodec = AsGenericArgumentCodec(GetCodec(elementType, diagnostics, recordCodecs));
     if (elementCodec is null)
     {
       return null;
     }
 
     var elementTypeName = GetCodecTypeArgumentName(elementType);
-    return $"JavaScriptArrayCodec<{elementTypeName}, {elementCodec}>";
+    return OrdinaryCodec($"JavaScriptArrayCodec<{elementTypeName}, {elementCodec.Expression}>") with
+    {
+      DecodeOperation = ExpoDecodeOperation.DecodeToArray,
+    };
   }
 
-  private static string? TryGetDictionaryCodec(
+  private static ExpoCodecDescriptor? TryGetDictionaryCodec(
       ITypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
       List<ExpoGeneratedRecordCodecModel> recordCodecs)
@@ -271,17 +299,20 @@ public sealed partial class ExpoModulesGenerator
     }
 
     var valueType = namedType.TypeArguments[1];
-    var valueCodec = GetCodecExpression(valueType, diagnostics, recordCodecs);
+    var valueCodec = AsGenericArgumentCodec(GetCodec(valueType, diagnostics, recordCodecs));
     if (valueCodec is null)
     {
       return null;
     }
 
     var valueTypeName = GetCodecTypeArgumentName(valueType);
-    return $"JavaScriptDictionaryCodec<{valueTypeName}, {valueCodec}>";
+    return OrdinaryCodec($"JavaScriptDictionaryCodec<{valueTypeName}, {valueCodec.Expression}>") with
+    {
+      DecodeOperation = ExpoDecodeOperation.DecodeToDictionary,
+    };
   }
 
-  private static string? TryGetRecordCodec(
+  private static ExpoCodecDescriptor? TryGetRecordCodec(
       INamedTypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
       List<ExpoGeneratedRecordCodecModel> recordCodecs)
@@ -290,7 +321,7 @@ public sealed partial class ExpoModulesGenerator
     var existing = recordCodecs.FirstOrDefault(codec => codec.RecordTypeName == recordTypeName);
     if (existing is not null)
     {
-      return existing.CodecTypeName;
+      return OrdinaryCodec(existing.CodecTypeName);
     }
 
     var constructor = GetRecordCodecConstructor(typeSymbol);
@@ -304,8 +335,15 @@ public sealed partial class ExpoModulesGenerator
     {
       var property = typeSymbol.GetMembers().OfType<IPropertySymbol>()
           .FirstOrDefault(item => item.Name == parameter.Name);
-      var fieldCodec = GetCodecExpression(parameter.Type, diagnostics, recordCodecs);
-      if (property is null || fieldCodec is null)
+      var fieldCodec = GetCodec(parameter.Type, diagnostics, recordCodecs);
+      // Composition rule: generated record codecs call field codecs directly with Decode and
+      // Encode. A field needs both, and a context-bearing codec has no runtime context there.
+      if (property is null ||
+          fieldCodec is not
+          {
+            Capabilities: ExpoCodecCapabilities.DecodeAndEncode,
+            ContextRequirement: ExpoContextRequirement.None,
+          })
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedRecordField.Id,
@@ -329,7 +367,7 @@ public sealed partial class ExpoModulesGenerator
         typeSymbol.Locations.FirstOrDefault()
     );
     recordCodecs.Add(codec);
-    return codec.CodecTypeName;
+    return OrdinaryCodec(codec.CodecTypeName);
   }
   private static string GetParameterExpression(
       ExpoParameterModel parameter,
@@ -337,10 +375,9 @@ public sealed partial class ExpoModulesGenerator
       string runtimeParameterName)
   {
     var decodeExpression = GetDecodeExpression(
-        parameter.CodecExpression,
+        parameter.Codec!,
         index,
-        runtimeParameterName,
-        parameter.RequiresRuntimeContext
+        runtimeParameterName
     );
     if (!parameter.HasDefaultValue)
     {
@@ -351,23 +388,21 @@ public sealed partial class ExpoModulesGenerator
   }
 
   private static string GetDecodeExpression(
-      string codecExpression,
+      ExpoCodecDescriptor codec,
       int index,
-      string runtimeParameterName,
-      bool requiresRuntimeContext)
+      string runtimeParameterName)
   {
-    var methodName = "Decode";
-    if (codecExpression.StartsWith("JavaScriptArrayCodec<", StringComparison.Ordinal))
+    var methodName = codec.DecodeOperation switch
     {
-      methodName = "DecodeToArray";
-    }
-    else if (codecExpression.StartsWith("JavaScriptDictionaryCodec<", StringComparison.Ordinal))
-    {
-      methodName = "DecodeToDictionary";
-    }
+      ExpoDecodeOperation.DecodeToArray => "DecodeToArray",
+      ExpoDecodeOperation.DecodeToDictionary => "DecodeToDictionary",
+      _ => "Decode",
+    };
 
-    var contextArgument = requiresRuntimeContext ? ", GeneratedFunction.CurrentRuntimeContext" : string.Empty;
-    return $"{codecExpression}.{methodName}(arguments.GetValue({index}), {runtimeParameterName}{contextArgument})";
+    var contextArgument = codec.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext
+        ? ", GeneratedFunction.CurrentRuntimeContext"
+        : string.Empty;
+    return $"{codec.Expression}.{methodName}(arguments.GetValue({index}), {runtimeParameterName}{contextArgument})";
   }
 
   private static bool TryGetTaskResultType(
@@ -397,7 +432,7 @@ public sealed partial class ExpoModulesGenerator
     return false;
   }
 
-  private static string? GetCodecExpression(
+  private static ExpoCodecDescriptor? GetCodec(
       ITypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
       List<ExpoGeneratedRecordCodecModel> recordCodecs,
@@ -418,29 +453,41 @@ public sealed partial class ExpoModulesGenerator
 
     if (typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == ArrayBufferMetadataName)
     {
-      return "ArrayBufferCodec";
+      return new ExpoCodecDescriptor(
+          "ArrayBufferCodec",
+          ExpoCodecShape.StaticHelper,
+          ExpoCodecCapabilities.DecodeAndEncode,
+          ExpoDecodeOperation.Decode,
+          ExpoContextRequirement.None,
+          ExpoDecodedOwnership.InvocationOwned,
+          ExpoEncodeOperation.EncodeThenDisposeArrayBuffer
+      );
     }
 
     if (typeSymbol is IArrayTypeSymbol { Rank: 1, ElementType.SpecialType: SpecialType.System_Byte })
     {
-      return "ByteArrayCodec";
+      return OrdinaryCodec("ByteArrayCodec");
     }
 
     if (typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ==
         "global::System.Memory<byte>")
     {
-      return "MemoryByteCodec";
+      return OrdinaryCodec("MemoryByteCodec");
     }
 
     if (typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ==
         "global::System.ReadOnlyMemory<byte>")
     {
-      return "ReadOnlyMemoryByteCodec";
+      return OrdinaryCodec("ReadOnlyMemoryByteCodec");
     }
 
     if (typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == JavaScriptValueMetadataName)
     {
-      return "JavaScriptValueCodec";
+      return OrdinaryCodec("JavaScriptValueCodec") with
+      {
+        DecodedOwnership = ExpoDecodedOwnership.InvocationOwned,
+        EncodeOperation = ExpoEncodeOperation.TransferJavaScriptValue,
+      };
     }
 
     if (TryGetNullableCodec(typeSymbol, diagnostics, recordCodecs) is { } nullableCodec)
@@ -450,15 +497,17 @@ public sealed partial class ExpoModulesGenerator
 
     if (TryGetConvertibleCodec(typeSymbol) is { } convertibleCodec)
     {
-      return convertibleCodec;
+      return OrdinaryCodec(convertibleCodec);
     }
     if (typeSymbol.TypeKind == TypeKind.Enum)
     {
       // Usage-level enum metadata wins over enum-type metadata; string remains the default.
       var enumTypeName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-      return UsesNumberEnumRepresentation(typeSymbol, usageAttributes)
-          ? $"NumberEnumCodec<{enumTypeName}>"
-          : $"StringEnumCodec<{enumTypeName}>";
+      return OrdinaryCodec(
+          UsesNumberEnumRepresentation(typeSymbol, usageAttributes)
+              ? $"NumberEnumCodec<{enumTypeName}>"
+              : $"StringEnumCodec<{enumTypeName}>"
+      );
     }
     if (typeSymbol is INamedTypeSymbol { IsRecord: true } recordType)
     {
@@ -467,8 +516,8 @@ public sealed partial class ExpoModulesGenerator
 
     return typeSymbol.SpecialType switch
     {
-      SpecialType.System_Boolean => "BoolCodec",
-      SpecialType.System_String => "StringCodec",
+      SpecialType.System_Boolean => OrdinaryCodec("BoolCodec"),
+      SpecialType.System_String => OrdinaryCodec("StringCodec"),
       SpecialType.System_SByte or
       SpecialType.System_Byte or
       SpecialType.System_Int16 or
@@ -478,7 +527,7 @@ public sealed partial class ExpoModulesGenerator
       SpecialType.System_Int64 or
       SpecialType.System_UInt64 or
       SpecialType.System_Single or
-      SpecialType.System_Double => GetNumberCodecExpression(typeSymbol),
+      SpecialType.System_Double => OrdinaryCodec(GetNumberCodecExpression(typeSymbol)),
       _ => TryGetReadOnlyListCodec(typeSymbol, diagnostics, recordCodecs) ??
           TryGetDictionaryCodec(typeSymbol, diagnostics, recordCodecs),
     };
@@ -592,7 +641,7 @@ public sealed partial class ExpoModulesGenerator
         ContainsJavaScriptCallback(parameter.Type, visitedTypes));
   }
 
-  private static string? TryGetJavaScriptCallbackCodec(
+  private static ExpoCodecDescriptor? TryGetJavaScriptCallbackCodec(
       ITypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
       List<ExpoGeneratedRecordCodecModel> recordCodecs)
@@ -605,26 +654,40 @@ public sealed partial class ExpoModulesGenerator
     if (namedType.TypeArguments.Length == 1)
     {
       var zeroArgResultType = namedType.TypeArguments[0];
-      var zeroArgResultCodec = GetCodecExpression(zeroArgResultType, diagnostics, recordCodecs);
+      var zeroArgResultCodec = AsGenericArgumentCodec(GetCodec(zeroArgResultType, diagnostics, recordCodecs));
       if (zeroArgResultCodec is null)
       {
         return null;
       }
 
-      return $"JavaScriptCallbackCodec<{GetCodecTypeArgumentName(zeroArgResultType)}, {zeroArgResultCodec}>";
+      return CallbackCodec(
+          $"JavaScriptCallbackCodec<{GetCodecTypeArgumentName(zeroArgResultType)}, {zeroArgResultCodec.Expression}>"
+      );
     }
 
     var argsType = namedType.TypeArguments[0];
     var resultType = namedType.TypeArguments[1];
     var argsCodec = TryGetValueTupleArgsCodec(argsType, diagnostics, recordCodecs);
-    var resultCodec = GetCodecExpression(resultType, diagnostics, recordCodecs);
+    var resultCodec = AsGenericArgumentCodec(GetCodec(resultType, diagnostics, recordCodecs));
     if (argsCodec is null || resultCodec is null)
     {
       return null;
     }
 
-    return $"JavaScriptCallbackCodec<{GetCodecTypeArgumentName(argsType)}, {argsCodec}, {GetCodecTypeArgumentName(resultType)}, {resultCodec}>";
+    return CallbackCodec(
+        $"JavaScriptCallbackCodec<{GetCodecTypeArgumentName(argsType)}, {argsCodec}, {GetCodecTypeArgumentName(resultType)}, {resultCodec.Expression}>"
+    );
   }
+
+  private static ExpoCodecDescriptor CallbackCodec(string expression) => new(
+      expression,
+      ExpoCodecShape.StaticHelper,
+      ExpoCodecCapabilities.DecodeOnly,
+      ExpoDecodeOperation.Decode,
+      ExpoContextRequirement.DotnetRuntimeContext,
+      ExpoDecodedOwnership.ContextRetained,
+      ExpoEncodeOperation.Standard
+  );
 
   private static string? TryGetValueTupleArgsCodec(
       ITypeSymbol typeSymbol,
@@ -645,14 +708,14 @@ public sealed partial class ExpoModulesGenerator
     var codecParts = new List<string>();
     foreach (var element in elements)
     {
-      var codec = GetCodecExpression(element, diagnostics, recordCodecs);
+      var codec = AsGenericArgumentCodec(GetCodec(element, diagnostics, recordCodecs));
       if (codec is null)
       {
         return null;
       }
 
       codecParts.Add(GetCodecTypeArgumentName(element));
-      codecParts.Add(codec);
+      codecParts.Add(codec.Expression);
     }
 
     return $"ValueTupleCodec<{string.Join(", ", codecParts)}>";
