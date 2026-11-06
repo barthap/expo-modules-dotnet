@@ -10,6 +10,10 @@ public sealed record BufferPair(ArrayBuffer First, ArrayBuffer Second);
 
 public sealed record CountedBuffer(ArrayBuffer Buffer, int Count);
 
+public sealed record OptionalBufferPair(ArrayBuffer? First, ArrayBuffer? Second);
+
+public sealed record OptionalCountedBuffer(ArrayBuffer? Buffer, int Count);
+
 public sealed record ValuePair(JavaScriptValue First, JavaScriptValue Second);
 
 public sealed record Shelf(IReadOnlyList<Dictionary<string, ArrayBuffer>> Rows);
@@ -25,10 +29,11 @@ public readonly record struct TextSlot(string Value);
 
 public sealed record TextMixed(string Buffer, string Value);
 
-[ExpoModule("LeafRelease", Classes = new[] { typeof(LeafReleaseEntry) })]
+[ExpoModule("LeafRelease", Classes = new[] { typeof(LeafReleaseEntry), typeof(LeafReleaseOptionalEntry) })]
 public sealed partial class LeafReleaseModule : Module, IDisposable
 {
   private BufferPair? stored;
+  private ArrayBuffer? storedOptional;
 
   public LeafReleaseModule(DotnetRuntimeContext context)
       : base(context)
@@ -318,10 +323,89 @@ public sealed partial class LeafReleaseModule : Module, IDisposable
     }
   }
 
+  [JS]
+  public int MeasureOptional(ArrayBuffer? value) => value?.ByteLength ?? -1;
+
+  [JS]
+  public async Task<int> MeasureOptionalAfterAwaitAsync(ArrayBuffer? value)
+  {
+    await Task.Yield();
+    return value?.ByteLength ?? -1;
+  }
+
+  [JS]
+  public int MeasureDefaulted(ArrayBuffer? value = null) => value?.ByteLength ?? -1;
+
+  [JS]
+  public ArrayBuffer? EchoOptional(ArrayBuffer? value) => value;
+
+  [JS]
+  public async Task<ArrayBuffer?> EchoOptionalAsync(ArrayBuffer? value)
+  {
+    await Task.Yield();
+    return value;
+  }
+
+  // Stores and returns only Retain() copies; the module owns the stored copy until Dispose.
+  [JS]
+  public ArrayBuffer? OptionalBuffer
+  {
+    get => storedOptional?.Retain();
+    set
+    {
+      var copy = value?.Retain();
+      storedOptional?.Dispose();
+      storedOptional = copy;
+    }
+  }
+
+  [JS]
+  public int MeasureOptionalPair(OptionalBufferPair pair) => (pair.First?.ByteLength ?? 0) + (pair.Second?.ByteLength ?? 0);
+
+  [JS]
+  public OptionalBufferPair EchoOptionalPair(OptionalBufferPair pair) => pair;
+
+  [JS]
+  public int MeasureOptionalCounted(OptionalCountedBuffer value) => value.Count;
+
+  [JS]
+  public int CountPresent(IReadOnlyList<ArrayBuffer?> values) => values.Count(value => value is not null);
+
+  [JS]
+  public IReadOnlyList<ArrayBuffer?> EchoOptionalList(IReadOnlyList<ArrayBuffer?> values) => values;
+
+  [JS]
+  public Dictionary<string, ArrayBuffer?> EchoOptionalMap(Dictionary<string, ArrayBuffer?> values) => values;
+
+  // The callback argument stays with the author, so the buffer is still readable afterwards.
+  [JS]
+  public int ForwardOptionalBuffer(ArrayBuffer? buffer, JavaScriptCallback<ValueTuple<ArrayBuffer?>, int> callback)
+      => callback.Invoke(ValueTuple.Create(buffer)) + (buffer?.ByteLength ?? 0);
+
+  // The decoded callback result belongs to the author, who disposes a returned buffer.
+  [JS]
+  public int TakeOptionalBuffer(JavaScriptCallback<ArrayBuffer?> callback)
+  {
+    using var buffer = callback.Invoke();
+    return buffer?.ByteLength ?? -1;
+  }
+
+  [Event]
+  public partial Func<IReadOnlyList<ArrayBuffer?>, Task> OnOptionalBuffers { get; }
+
+  [JS]
+  public int EmitOptionalBuffers(ArrayBuffer? buffer)
+  {
+    OnOptionalBuffers(new[] { null, buffer }).GetAwaiter().GetResult();
+    return buffer?.ByteLength ?? -1;
+  }
+
   public void Dispose()
   {
     Release(stored);
     stored = null;
+    storedOptional?.Dispose();
+    storedOptional = null;
   }
 
   private static void Release(BufferPair? pair)
@@ -360,5 +444,43 @@ public sealed partial class LeafReleaseEntry : SharedObject
   {
     OnBuffers(new[] { buffer }).GetAwaiter().GetResult();
     return buffer.ByteLength;
+  }
+}
+
+[ExpoSharedObject("LeafReleaseOptionalEntry")]
+public sealed partial class LeafReleaseOptionalEntry : SharedObject
+{
+  private readonly int seedLength;
+  private ArrayBuffer? stored;
+
+  [JS]
+  public LeafReleaseOptionalEntry(ArrayBuffer? seed)
+  {
+    seedLength = seed?.ByteLength ?? -1;
+  }
+
+  [JS]
+  public int ReadSeed() => seedLength;
+
+  [JS]
+  public int Measure(ArrayBuffer? value) => value?.ByteLength ?? -1;
+
+  // Stores and returns only Retain() copies; the entry owns the stored copy until OnRelease.
+  [JS]
+  public ArrayBuffer? Buffer
+  {
+    get => stored?.Retain();
+    set
+    {
+      var copy = value?.Retain();
+      stored?.Dispose();
+      stored = copy;
+    }
+  }
+
+  protected override void OnRelease()
+  {
+    stored?.Dispose();
+    stored = null;
   }
 }

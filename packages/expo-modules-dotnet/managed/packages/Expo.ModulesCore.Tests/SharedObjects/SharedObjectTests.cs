@@ -830,9 +830,57 @@ public sealed class GeneratedSharedObjectTests
     fixture.Runtime.Execute(_ => { context.Dispose(); return true; });
   }
 
+  [Fact]
+  public async Task GeneratedSharedObjectNullableBufferEventDeliversOneNullArgument()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var (context, instance, payload) = SetUpBufferEvent(
+        fixture,
+        "generated-shared-object-events-optional-null-buffer.js",
+        "onOptionalBuffer"
+    );
+    payload.Dispose();
+    fixture.WaitUntilIdle();
+
+    fixture.ResetCounters();
+    await instance.EmitOptionalBufferAsync(null);
+    fixture.WaitUntilIdle();
+
+    Assert.Equal("1:null", ReadSharedBuffer(fixture));
+    Assert.Equal(0u, fixture.Counters.LongLivedArrayBuffersReleased);
+    fixture.Runtime.Execute(_ => { context.Dispose(); return true; });
+  }
+
+  [Fact]
+  public async Task GeneratedSharedObjectNullableBufferEventKeepsItsLeaseAfterCallerDisposes()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var (context, instance, payload) = SetUpBufferEvent(
+        fixture,
+        "generated-shared-object-events-optional-buffer.js",
+        "onOptionalBuffer"
+    );
+
+    fixture.ResetCounters();
+    fixture.DisableSyncExecutionForTesting();
+    fixture.PauseRuntimeExecutor();
+    var emitted = instance.EmitOptionalBufferAsync(payload);
+    payload.Dispose();
+    fixture.ResumeRuntimeExecutor();
+    await emitted;
+    fixture.WaitUntilIdle();
+    fixture.SetSyncExecutionSupportedForTesting(true);
+
+    Assert.Equal("1:7,8,9", ReadSharedBuffer(fixture));
+    Assert.Equal(1u, fixture.Counters.LongLivedArrayBuffersReleased);
+    Assert.Equal(0u, fixture.Counters.LongLivedArrayBuffersAbandoned);
+    fixture.Runtime.Execute(_ => { context.Dispose(); return true; });
+  }
+
   private static (DotnetRuntimeContext Context, CounterEntry Instance, ArrayBuffer Payload) SetUpBufferEvent(
       HermesRuntimeFixture fixture,
-      string sourceName)
+      string sourceName,
+      string eventName = "onBuffer")
   {
     DotnetRuntimeContext? context = null;
     CounterEntry? instance = null;
@@ -845,7 +893,7 @@ public sealed class GeneratedSharedObjectTests
       using var setup = fixture.Evaluate(
           "const m = globalThis._expoDotnet.modules.SharedThings; " +
           "globalThis.__bufferCounter = new m.CounterEntry(1); " +
-          "__bufferCounter.addListener('onBuffer', (...args) => { " +
+          $"__bufferCounter.addListener('{eventName}', (...args) => {{ " +
           "globalThis.__sharedBuffer = args.length + ':' + " +
           "(args[0] === null ? 'null' : Array.from(new Uint8Array(args[0])).join(',')); }); " +
           "m.echoCounter(__bufferCounter); 'ready'",

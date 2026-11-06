@@ -919,6 +919,318 @@ public sealed class LeafReleaseModuleTests
     Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
+  [Fact]
+  public void NullishBufferParameterHoldsNoLeaf()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString("[m.measureOptional(null), m.measureOptional(undefined)].join(':')");
+    leaf.Fixture.WaitUntilIdle();
+
+    Assert.Equal("-1:-1", result);
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public async Task NonNullNullableBufferParameterReleasesOnceSyncAndAsync()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("4", leaf.ReadString("String(m.measureOptional(b))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    leaf.StartOutcome("m.measureOptionalAfterAwaitAsync(b)");
+    await leaf.WaitForOutcomeAsync();
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("fulfilled:4", leaf.ReadString("`${__outcome.status}:${__outcome.value}`"));
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    leaf.StartOutcome("m.measureOptionalAfterAwaitAsync(null)");
+    await leaf.WaitForOutcomeAsync();
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("fulfilled:-1", leaf.ReadString("`${__outcome.status}:${__outcome.value}`"));
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void OptionalNullableBufferUsesAuthoredDefault()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    var defaults = leaf.ReadString("[m.measureDefaulted(), m.measureDefaulted(undefined), m.measureDefaulted(null)].join(':')");
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("-1:-1:-1", defaults);
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("4", leaf.ReadString("String(m.measureDefaulted(b))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public async Task NullableBufferReturnEncodesNullOrTheBufferSyncAndAsync()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); new Uint8Array(b)[0] = 7; true");
+
+    leaf.Fixture.ResetCounters();
+    var nulls = leaf.ReadString("[m.echoOptional(null) === null, m.echoOptional(undefined) === null].join(':')");
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("true:true", nulls);
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    var echoed = leaf.ReadString("globalThis.r = m.echoOptional(b); [r === b, new Uint8Array(r)[0]].join(':')");
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("true:7", echoed);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    leaf.StartOutcome("m.echoOptionalAsync(null)");
+    await leaf.WaitForOutcomeAsync();
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("fulfilled:true", leaf.ReadString("`${__outcome.status}:${__outcome.value === null}`"));
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    leaf.StartOutcome("m.echoOptionalAsync(b)");
+    await leaf.WaitForOutcomeAsync();
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("fulfilled:true", leaf.ReadString("`${__outcome.status}:${__outcome.value === b}`"));
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void NullableBufferPropertyStoresNullOrRetainedCopy()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("null", leaf.ReadString("String(m.optionalBuffer)"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    var stored = leaf.ReadString("m.optionalBuffer = b; [m.optionalBuffer === b, m.optionalBuffer === b].join(':')");
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("true:true", stored);
+    // The stored copy pins the entry, as in PropertyBufferLeasesReleaseWhenStoredCopyDrops.
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    var cleared = leaf.ReadString("m.optionalBuffer = null; String(m.optionalBuffer)");
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("null", cleared);
+    // The setter disposed the stored copy.
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void NullableBufferRecordFieldsReleaseOnlyPresentLeaves()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true");
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("4", leaf.ReadString("String(m.measureOptionalPair({ first: b1, second: null }))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    // JavaScript omits the field: it decodes to null and releases nothing.
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("2", leaf.ReadString("String(m.measureOptionalPair({ second: b2 }))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    var echoed = leaf.ReadString(
+        "globalThis.r = m.echoOptionalPair({ first: null, second: b2 }); [r.first === null, r.second === b2].join(':')"
+    );
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("true:true", echoed);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void LaterFieldDecodeFailureReleasesEarlierNullableLease()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    var present = leaf.ReadString(
+        "let failed; try { m.measureOptionalCounted({ buffer: b, count: 'x' }); failed = 'no error'; } " +
+        "catch (error) { failed = error instanceof Error; } String(failed)"
+    );
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("true", present);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    var absent = leaf.ReadString(
+        "let failed; try { m.measureOptionalCounted({ buffer: null, count: 'x' }); failed = 'no error'; } " +
+        "catch (error) { failed = error instanceof Error; } String(failed)"
+    );
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("true", absent);
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void NullableBufferCollectionsReleaseOnlyPresentLeaves()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true");
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("2", leaf.ReadString("String(m.countPresent([b1, null, undefined, b2]))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    var list = leaf.ReadString("globalThis.r = m.echoOptionalList([null, b1]); [r[0] === null, r[1] === b1].join(':')");
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("true:true", list);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    var map = leaf.ReadString("globalThis.r = m.echoOptionalMap({ a: null, b: b2 }); [r.a === null, r.b === b2].join(':')");
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("true:true", map);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    // The same buffer in two slots decodes to two entries; each releases once.
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("2", leaf.ReadString("String(m.countPresent([b1, b1]))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void NullableBufferParameterRejectsNonBufferValues()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "const outcomes = []; " +
+        "for (const bad of ['x', {}]) { " +
+        "try { m.measureOptional(bad); outcomes.push('no error'); } " +
+        "catch (error) { outcomes.push(error instanceof Error); } } " +
+        "outcomes.join(':')"
+    );
+    leaf.Fixture.WaitUntilIdle();
+
+    Assert.Equal("true:true", result);
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void NonNullBufferParameterStaysStrict()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "const outcomes = []; " +
+        "for (const bad of [null, undefined]) { " +
+        "try { m.measure(bad); outcomes.push('no error'); } " +
+        "catch (error) { outcomes.push(error instanceof Error); } } " +
+        "outcomes.join(':')"
+    );
+    leaf.Fixture.WaitUntilIdle();
+
+    Assert.Equal("true:true", result);
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void SharedObjectNullableBufferMembersReleaseOnlyPresentLeaves()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "globalThis.e0 = new m.LeafReleaseOptionalEntry(null); " +
+        "globalThis.e1 = new m.LeafReleaseOptionalEntry(b); " +
+        "[e0.readSeed(), e1.readSeed(), e1.measure(null), e1.measure(b)].join(':')"
+    );
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("-1:4:-1:4", result);
+    // The constructor decode and the method decode are two entries.
+    Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    var property = leaf.ReadString(
+        "e1.buffer = b; const same = e1.buffer === b; e1.buffer = null; [same, e1.buffer === null].join(':')"
+    );
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("true:true", property);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void NullableBufferCallbackArgumentStaysWithTheAuthor()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "[m.forwardOptionalBuffer(b, x => x === b ? 10 : -1), m.forwardOptionalBuffer(null, x => x === null ? 10 : -1)].join(':')"
+    );
+    leaf.Fixture.WaitUntilIdle();
+
+    // The author's buffer stays usable after the callback, and only its own decode releases.
+    Assert.Equal("14:10", result);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void NullableBufferCallbackResultBelongsToTheAuthor()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    var nulls = leaf.ReadString("[m.takeOptionalBuffer(() => null), m.takeOptionalBuffer(() => undefined)].join(':')");
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("-1:-1", nulls);
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("4", leaf.ReadString("String(m.takeOptionalBuffer(() => b))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void NestedNullableBufferEventPayloadStaysWithTheAuthor()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "let seen; m.addListener('onOptionalBuffers', l => { seen = l.length === 2 && l[0] === null && l[1] === b; }); " +
+        "`${m.emitOptionalBuffers(b)}:${seen}`"
+    );
+    leaf.Fixture.WaitUntilIdle();
+
+    Assert.Equal("4:true", result);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
   private sealed class LeafReleaseFixture : IDisposable
   {
     private LeafReleaseFixture(

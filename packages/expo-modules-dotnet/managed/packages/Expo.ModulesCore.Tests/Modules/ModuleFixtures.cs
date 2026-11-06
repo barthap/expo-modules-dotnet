@@ -474,6 +474,9 @@ public sealed partial class GeneratedTypedEventsModule : Module
   public partial Func<ArrayBuffer, Task> OnBuffer { get; }
 
   [Event]
+  public partial Func<ArrayBuffer?, Task> OnOptionalBuffer { get; }
+
+  [Event]
   public partial Func<string?, Task> OnText { get; }
 
   public string? ConstructorEventError { get; }
@@ -569,6 +572,9 @@ public sealed partial class CounterEntry : SharedObject
   [Event]
   public partial Func<ArrayBuffer, Task> OnBuffer { get; }
 
+  [Event]
+  public partial Func<ArrayBuffer?, Task> OnOptionalBuffer { get; }
+
   [JS("increment")]
   public double Increment(double by)
   {
@@ -599,6 +605,8 @@ public sealed partial class CounterEntry : SharedObject
   public Task EmitValueAsync(JavaScriptValue value) => OnEventValue(value);
 
   public Task EmitBufferAsync(ArrayBuffer value) => OnBuffer(value);
+
+  public Task EmitOptionalBufferAsync(ArrayBuffer? value) => OnOptionalBuffer(value);
 
   protected override void OnRelease() => ReleaseCount++;
 }
