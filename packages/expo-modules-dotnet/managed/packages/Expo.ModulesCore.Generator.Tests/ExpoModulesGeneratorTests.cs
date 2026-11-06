@@ -5223,6 +5223,169 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Contains(expectedFragment, text, StringComparison.Ordinal);
   }
 
+  // Codec expressions and type argument of a two-member union: a scoped union holds an ArrayBuffer,
+  // and its ordinary member is lifted by GeneratedScopedOrdinaryCodec. Codec names are unqualified.
+  private const string UnionScopedCodec = "GeneratedScopedEitherCodec<string, GeneratedScopedOrdinaryCodec<string, StringCodec>, global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>";
+  private const string UnionOrdinaryCodec = "EitherCodec<double, NumberCodec<double>, bool, BoolCodec>";
+  private const string UnionScopedType = "global::Expo.ModulesCore.Either<string, global::Expo.ModulesCore.ArrayBuffer>";
+
+  [Theory]
+  [InlineData("[JS] public string M(Either<string, ArrayBuffer> content) => \"\";", "var __expoArg0 = " + UnionScopedCodec + ".Decode(arguments.GetValue(0), runtime, __expoScope);")]
+  [InlineData("[JS] public Task<string> M(Either<string, ArrayBuffer> content) => Task.FromResult(\"\");", "var __expoArg0 = " + UnionScopedCodec + ".Decode(arguments.GetValue(0), jsRuntime, __expoScope);")]
+  [InlineData("[JS] public string M(string path, Either<string, ArrayBuffer> content) => path;", "var __expoArg1 = " + UnionScopedCodec + ".Decode(arguments.GetValue(1), runtime, __expoScope);")]
+  [InlineData("[JS] public string M(Either<string, ArrayBuffer>? content) => \"\";", "var __expoArg0 = GeneratedScopedNullableCodec<" + UnionScopedType + ", " + UnionScopedCodec + ">.Decode(arguments.GetValue(0), runtime, __expoScope);")]
+  [InlineData("[JS] public int M(IReadOnlyList<Either<string, ArrayBuffer>> parts) => 0;", "GeneratedScopedListCodec<" + UnionScopedType + ", " + UnionScopedCodec + ">.Decode(arguments.GetValue(0), runtime, __expoScope)")]
+  [InlineData("[JS] public int M(IReadOnlyDictionary<string, Either<string, ArrayBuffer>> parts) => 0;", "GeneratedScopedDictionaryCodec<" + UnionScopedType + ", " + UnionScopedCodec + ">.Decode(arguments.GetValue(0), runtime, __expoScope)")]
+  public void GeneratorAcceptsScopedUnionParameters(string member, string expectedFragment)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(string.Empty, member));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var text = GeneratedText(result);
+    Assert.Contains("__expoScope = new GeneratedConversionScope();", text, StringComparison.Ordinal);
+    Assert.Contains(expectedFragment, text, StringComparison.Ordinal);
+  }
+
+  [Theory]
+  [InlineData("[JS] public int M(Either<double, bool> value) => 0;", "var __expoArg0 = " + UnionOrdinaryCodec + ".Decode(arguments.GetValue(0), runtime);")]
+  [InlineData("[JS] public Task<int> M(Either<double, bool> value) => Task.FromResult(0);", "var __expoArg0 = " + UnionOrdinaryCodec + ".Decode(arguments.GetValue(0), jsRuntime);")]
+  [InlineData("[JS] public int M(Either<int, string> value) => 0;", "EitherCodec<int, NumberCodec<int>, string, StringCodec>.Decode(arguments.GetValue(0), runtime)")]
+  [InlineData("[JS] public int M(Either<string, byte[]> value) => 0;", "EitherCodec<string, StringCodec, byte[], ByteArrayCodec>.Decode(arguments.GetValue(0), runtime)")]
+  [InlineData("[JS] public int M(Either<bool, ReadOnlyMemory<byte>> value) => 0;", "EitherCodec<bool, BoolCodec, global::System.ReadOnlyMemory<byte>, ReadOnlyMemoryByteCodec>.Decode(arguments.GetValue(0), runtime)")]
+  [InlineData("[JS] public int M(Either<double, bool>? value) => 0;", "NullableCodec<global::Expo.ModulesCore.Either<double, bool>, " + UnionOrdinaryCodec + ">.Decode(arguments.GetValue(0), runtime)")]
+  [InlineData("[JS] public int M(IReadOnlyList<Either<double, bool>> values) => 0;", "JavaScriptArrayCodec<global::Expo.ModulesCore.Either<double, bool>, " + UnionOrdinaryCodec + ">.DecodeToArray(arguments.GetValue(0), runtime)")]
+  public void GeneratorAcceptsOrdinaryUnionParametersWithoutAScope(string member, string expectedFragment)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(string.Empty, member));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var text = GeneratedText(result);
+    Assert.DoesNotContain("GeneratedConversionScope", text, StringComparison.Ordinal);
+    Assert.Contains(expectedFragment, text, StringComparison.Ordinal);
+  }
+
+  [Theory]
+  [InlineData("[JS] public Entry(Either<string, ArrayBuffer> seed) { }", "var __expoArg0 = " + UnionScopedCodec + ".Decode(arguments.GetValue(0), runtime, __expoScope);")]
+  [InlineData("[JS] public string Write(Either<string, ArrayBuffer> content) => \"\";", "var __expoArg0 = " + UnionScopedCodec + ".Decode(arguments.GetValue(0), runtime, __expoScope);")]
+  [InlineData("[JS] public Task<string> WriteLater(Either<string, ArrayBuffer> content) => Task.FromResult(\"\");", "var __expoArg0 = " + UnionScopedCodec + ".Decode(arguments.GetValue(0), jsRuntime, __expoScope);")]
+  [InlineData("[JS] public int Pick(Either<double, bool> value) => 0;", "var __expoArg0 = " + UnionOrdinaryCodec + ".Decode(arguments.GetValue(0), runtime);")]
+  public void GeneratorAcceptsUnionParametersOnSharedObjects(string member, string expectedFragment)
+  {
+    var result = GeneratorTestHost.Run(SharedObjectMemberSource(member));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerErrors(result);
+    Assert.Contains(expectedFragment, GeneratedText(result), StringComparison.Ordinal);
+  }
+
+  [Theory]
+  [InlineData("", "string, Uri", "string, global::System.Uri")]
+  [InlineData("", "double, int", "double, int")]
+  [InlineData("", "string, string", "string, string")]
+  [InlineData("", "ArrayBuffer, byte[]", "global::Expo.ModulesCore.ArrayBuffer, byte[]")]
+  [InlineData("", "string?, double", "string, double")]
+  [InlineData("", "double?, bool", "double?, bool")]
+  [InlineData("public sealed record Holder(string Name);", "string, Holder", "string, global::Expo.TestModules.Holder")]
+  [InlineData("", "string, JavaScriptValue", "string, global::Expo.JSI.JavaScriptValue")]
+  [InlineData("", "string, JavaScriptCallback<int>", "string, global::Expo.ModulesCore.JavaScriptCallback<int>")]
+  [InlineData("", "string, IReadOnlyList<string>", "string, global::System.Collections.Generic.IReadOnlyList<string>")]
+  [InlineData("", "string, Either<double, bool>", "string, global::Expo.ModulesCore.Either<double, bool>")]
+  public void GeneratorRejectsUnsupportedUnionMembers(
+      string declarations,
+      string typeArguments,
+      string diagnosticTypeArguments)
+  {
+    var result = GeneratorTestHost.Run(
+        ModuleSource(declarations, $"[JS] public int M(Either<{typeArguments}> value) => 0;")
+    );
+
+    AssertNoCompilerErrors(result);
+    Assert.Equal(new[] { "EXPOJSI001" }, GeneratorDiagnosticIds(result));
+    var message = result.GeneratorDiagnostics!.Single().GetMessage();
+    Assert.Contains("on 'M'", message, StringComparison.Ordinal);
+    Assert.Contains($"'global::Expo.ModulesCore.Either<{diagnosticTypeArguments}>'", message, StringComparison.Ordinal);
+    var text = GeneratedText(result);
+    Assert.DoesNotContain("EitherCodec", text, StringComparison.Ordinal);
+    Assert.DoesNotContain("\"m\"", text, StringComparison.Ordinal);
+    // The kind check runs before member resolution, so no record codec is generated.
+    Assert.DoesNotContain("HolderCodec_", text, StringComparison.Ordinal);
+  }
+
+  [Theory]
+  [InlineData("[JS] public string Write(Either<string, Entry> content) => \"\";", "Write", "parameter 'content' uses unsupported type 'global::Expo.ModulesCore.Either<string, global::Expo.TestModules.Entry>'", "\"write\"")]
+  [InlineData("[JS] public Entry(Either<string, Entry> other) { }", "Entry", "its [JS] constructor parameter 'other' uses unsupported type 'global::Expo.ModulesCore.Either<string, global::Expo.TestModules.Entry>'", null)]
+  [InlineData("[JS] public int Pick(Either<double, int> value) => 0;", "Pick", "parameter 'value' uses unsupported type 'global::Expo.ModulesCore.Either<double, int>'", "\"pick\"")]
+  [InlineData("[JS] public Entry(Either<double, int> value) { }", "Entry", "its [JS] constructor parameter 'value' uses unsupported type 'global::Expo.ModulesCore.Either<double, int>'", null)]
+  public void GeneratorRejectsUnsupportedUnionsOnSharedObjectMembers(
+      string member,
+      string memberName,
+      string reason,
+      string? jsName)
+  {
+    var result = GeneratorTestHost.Run(SharedObjectMemberSource(member));
+
+    AssertNoCompilerErrors(result);
+    Assert.Equal(new[] { "EXPOJSI023" }, GeneratorDiagnosticIds(result));
+    var message = result.GeneratorDiagnostics!.Single().GetMessage();
+    Assert.Contains($"'{memberName}'", message, StringComparison.Ordinal);
+    Assert.Contains(reason, message, StringComparison.Ordinal);
+    var text = GeneratedText(result);
+    Assert.DoesNotContain("EitherCodec", text, StringComparison.Ordinal);
+    if (jsName is not null)
+    {
+      Assert.DoesNotContain(jsName, text, StringComparison.Ordinal);
+    }
+  }
+
+  // A union is a parameter type only. Each row names the guard that rejects it as a return, async
+  // result, property, record field, callback type argument, or event payload.
+  [Theory]
+  [InlineData(false, "", "[JS] public Either<string, double> M() => default;", "EXPOJSI002", "m")]
+  [InlineData(false, "", "[JS] public Either<string, ArrayBuffer> M() => default;", "EXPOJSI002", "m")]
+  [InlineData(false, "", "[JS] public Task<Either<string, double>> M() => Task.FromResult(default(Either<string, double>));", "EXPOJSI002", "m")]
+  [InlineData(false, "", "[JS] public Either<string, double>? M() => null;", "EXPOJSI002", "m")]
+  [InlineData(false, "", "[JS] public IReadOnlyList<Either<string, ArrayBuffer>> M() => Array.Empty<Either<string, ArrayBuffer>>();", "EXPOJSI002", "m")]
+  [InlineData(false, "", "[JS] public Dictionary<string, Either<double, bool>> M() => new();", "EXPOJSI002", "m")]
+  [InlineData(false, "", "[JS] public Either<string, double> Value { get; set; }", "EXPOJSI015", "value")]
+  [InlineData(false, "", "[JS] public Either<string, ArrayBuffer> Content => default;", "EXPOJSI015", "content")]
+  [InlineData(false, "", "[JS] public Either<double, bool>? Value { get; set; }", "EXPOJSI015", "value")]
+  [InlineData(false, "public sealed record Holder(Either<string, double> Content);", "[JS] public int M(Holder holder) => 0;", "EXPOJSI007,EXPOJSI001", "m")]
+  [InlineData(false, "public sealed record Holder(Either<string, double> Content);", "[JS] public Holder M() => null!;", "EXPOJSI007,EXPOJSI002", "m")]
+  [InlineData(false, "public sealed record Shelf(IReadOnlyList<Either<string, ArrayBuffer>> Parts);", "[JS] public int M(Shelf shelf) => 0;", "EXPOJSI007,EXPOJSI001", "m")]
+  [InlineData(false, "", "[JS] public int M(JavaScriptCallback<Either<string, double>> callback) => 0;", "EXPOJSI008", "m")]
+  [InlineData(false, "", "[JS] public int M(JavaScriptCallback<ValueTuple<Either<string, double>>, int> callback) => 0;", "EXPOJSI008", "m")]
+  [InlineData(false, "", "[Event] public partial Func<Either<string, double>, Task> OnValue { get; }", "EXPOJSI019", "onValue")]
+  [InlineData(false, "", "[Event] public partial Func<Either<string, ArrayBuffer>, Task> OnContent { get; }", "EXPOJSI019", "onContent")]
+  [InlineData(true, "", "[JS] public Either<string, double> Give() => default;", "EXPOJSI023", "give")]
+  [InlineData(true, "", "[JS] public Either<string, double> Value { get; set; }", "EXPOJSI023", "value")]
+  [InlineData(true, "", "[Event] public partial Func<Either<string, double>, Task> OnValue { get; }", "EXPOJSI027", "onValue")]
+  public void GeneratorKeepsUnionsDecodeOnly(
+      bool onSharedObject,
+      string declarations,
+      string member,
+      string expectedIds,
+      string jsName)
+  {
+    var result = GeneratorTestHost.Run(
+        onSharedObject ? SharedObjectMemberSource(member, declarations) : ModuleSource(declarations, member)
+    );
+
+    AssertNoCompilerErrors(result);
+    Assert.Equal(expectedIds.Split(','), GeneratorDiagnosticIds(result));
+    Assert.DoesNotContain($"\"{jsName}\"", GeneratedText(result), StringComparison.Ordinal);
+    Assert.DoesNotContain("EitherCodec", GeneratedText(result), StringComparison.Ordinal);
+    if (member.StartsWith("[Event]", StringComparison.Ordinal))
+    {
+      Assert.Contains(
+          "no encode-capable codec is available",
+          result.GeneratorDiagnostics!.Single().GetMessage(),
+          StringComparison.Ordinal
+      );
+    }
+  }
+
   // The codec expressions of JavaScriptCallback<int>? and JavaScriptCallback<ValueTuple<string>, string>?:
   // the nullable callback codec with the same type arguments as the non-null codec.
   private const string Nc1 = "NullableJavaScriptCallbackCodec<int, NumberCodec<int>>";

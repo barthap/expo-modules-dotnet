@@ -76,15 +76,20 @@ public sealed partial class ExpoModulesGenerator
 
   // Composition rule: a list element, dictionary value, Nullable<T> inner, and nullable-reference
   // inner type are generic type arguments of an ordinary or a scoped composite codec. A
-  // StaticHelper codec is a static class and cannot be one.
+  // StaticHelper codec is a static class and cannot be one. A composite has its child's
+  // capabilities, so it is decode-only over a decode-only child.
   private static ExpoCodecDescriptor? AsCompositeChildCodec(ExpoCodecDescriptor? codec) =>
       codec is { Shape: ExpoCodecShape.JavaScriptCodec or ExpoCodecShape.ScopedOnly } ? codec : null;
 
   // A callback result, callback argument tuple element, and typed event payload are type arguments
   // that need IJavaScriptCodec<T>. A ScopedOnly codec has no such implementation, so a leaf-bearing
-  // composite is rejected there, while a direct JavaScriptValue stays accepted.
+  // composite is rejected there, while a direct JavaScriptValue stays accepted. A decode-only
+  // JavaScriptCodec (an ordinary union) is rejected there too, because a union is a parameter type
+  // only.
   private static ExpoCodecDescriptor? AsJavaScriptCodecArgument(ExpoCodecDescriptor? codec) =>
-      codec is { Shape: ExpoCodecShape.JavaScriptCodec } ? codec : null;
+      codec is { Shape: ExpoCodecShape.JavaScriptCodec, Capabilities: ExpoCodecCapabilities.DecodeAndEncode }
+          ? codec
+          : null;
 
   // A record codec is scoped when any field holds a leaf. The cache-hit path rebuilds the
   // descriptor from the stored ownership, not from the type name alone.
@@ -169,9 +174,12 @@ public sealed partial class ExpoModulesGenerator
     }
 
     var valueTypeName = GetCodecTypeArgumentName(valueType);
-    return IsScopedResource(valueCodec)
+    return (IsScopedResource(valueCodec)
         ? ScopedCodec($"GeneratedScopedNullableCodec<{valueTypeName}, {valueCodec.Expression}>")
-        : OrdinaryCodec($"NullableCodec<{valueTypeName}, {valueCodec.Expression}>");
+        : OrdinaryCodec($"NullableCodec<{valueTypeName}, {valueCodec.Expression}>")) with
+    {
+      Capabilities = valueCodec.Capabilities,
+    };
   }
 
   // JavaScriptValue keeps its non-nullable conversion rules. Its retain, transfer, and
@@ -236,12 +244,15 @@ public sealed partial class ExpoModulesGenerator
         if (AsCompositeChildCodec(GetCodec(elementType, diagnostics, recordCodecs)) is { } elementCodec)
         {
           var elementTypeName = GetCodecTypeArgumentName(elementType);
-          codec = IsScopedResource(elementCodec)
+          codec = (IsScopedResource(elementCodec)
               ? ScopedNullableReferenceCodec(
                   valueType,
                   $"GeneratedScopedListCodec<{elementTypeName}, {elementCodec.Expression}>"
               )
-              : OrdinaryCodec($"NullableReadOnlyListCodec<{elementTypeName}, {elementCodec.Expression}>");
+              : OrdinaryCodec($"NullableReadOnlyListCodec<{elementTypeName}, {elementCodec.Expression}>")) with
+          {
+            Capabilities = elementCodec.Capabilities,
+          };
         }
 
         return true;
@@ -264,7 +275,10 @@ public sealed partial class ExpoModulesGenerator
             codec = ScopedNullableReferenceCodec(
                 valueType,
                 $"GeneratedScopedDictionaryCodec<{dictionaryValueTypeName}, {dictionaryValueCodec.Expression}>"
-            );
+            ) with
+            {
+              Capabilities = dictionaryValueCodec.Capabilities,
+            };
           }
           else
           {
@@ -272,7 +286,10 @@ public sealed partial class ExpoModulesGenerator
                 constructedType == "global::System.Collections.Generic.Dictionary<TKey, TValue>"
                     ? "NullableDictionaryCodec"
                     : "NullableReadOnlyDictionaryCodec";
-            codec = OrdinaryCodec($"{codecName}<{dictionaryValueTypeName}, {dictionaryValueCodec.Expression}>");
+            codec = OrdinaryCodec($"{codecName}<{dictionaryValueTypeName}, {dictionaryValueCodec.Expression}>") with
+            {
+              Capabilities = dictionaryValueCodec.Capabilities,
+            };
           }
         }
 
@@ -282,9 +299,12 @@ public sealed partial class ExpoModulesGenerator
 
     if (AsCompositeChildCodec(GetCodec(valueType, diagnostics, recordCodecs)) is { } valueCodec)
     {
-      codec = IsScopedResource(valueCodec)
+      codec = (IsScopedResource(valueCodec)
           ? ScopedNullableReferenceCodec(valueType, valueCodec.Expression)
-          : OrdinaryCodec($"NullableReferenceCodec<{GetCodecTypeArgumentName(valueType)}, {valueCodec.Expression}>");
+          : OrdinaryCodec($"NullableReferenceCodec<{GetCodecTypeArgumentName(valueType)}, {valueCodec.Expression}>")) with
+      {
+        Capabilities = valueCodec.Capabilities,
+      };
     }
 
     return true;
@@ -294,6 +314,110 @@ public sealed partial class ExpoModulesGenerator
   // content codec, which is the scoped list or dictionary codec for a collection.
   private static ExpoCodecDescriptor ScopedNullableReferenceCodec(ITypeSymbol valueType, string innerCodec) =>
       ScopedCodec($"GeneratedScopedNullableReferenceCodec<{GetCodecTypeArgumentName(valueType)}, {innerCodec}>");
+
+  private const string EitherMetadataName = "global::Expo.ModulesCore.Either<TFirst, TSecond>";
+
+  // The ten numeric special types that NumberCodec<T> decodes.
+  private static bool IsNumberSpecialType(SpecialType specialType) =>
+      specialType is
+          SpecialType.System_SByte or
+          SpecialType.System_Byte or
+          SpecialType.System_Int16 or
+          SpecialType.System_UInt16 or
+          SpecialType.System_Int32 or
+          SpecialType.System_UInt32 or
+          SpecialType.System_Int64 or
+          SpecialType.System_UInt64 or
+          SpecialType.System_Single or
+          SpecialType.System_Double;
+
+  // The JavaScript kind a union member decodes from. The names mirror JavaScriptValueKind and the
+  // Kind of the leaf codecs, which the managed union codec compares at runtime. A type outside the
+  // table, or an annotated one (null is not a kind), is not a union member.
+  private static string? GetUnionMemberKind(ITypeSymbol typeSymbol)
+  {
+    if (typeSymbol.NullableAnnotation == NullableAnnotation.Annotated)
+    {
+      return null;
+    }
+
+    switch (typeSymbol.SpecialType)
+    {
+      case SpecialType.System_String:
+        return "String";
+      case SpecialType.System_Boolean:
+        return "Bool";
+      case var specialType when IsNumberSpecialType(specialType):
+        return "Number";
+    }
+
+    if (typeSymbol is IArrayTypeSymbol { Rank: 1, ElementType.SpecialType: SpecialType.System_Byte })
+    {
+      return "ArrayBuffer";
+    }
+
+    return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) is
+        ArrayBufferMetadataName or
+        "global::System.Memory<byte>" or
+        "global::System.ReadOnlyMemory<byte>"
+        ? "ArrayBuffer"
+        : null;
+  }
+
+  private static ExpoCodecDescriptor? GetEitherCodec(
+      INamedTypeSymbol typeSymbol,
+      List<ExpoDiagnosticModel> diagnostics,
+      List<ExpoGeneratedRecordCodecModel> recordCodecs)
+  {
+    var firstType = typeSymbol.TypeArguments[0];
+    var secondType = typeSymbol.TypeArguments[1];
+
+    // The kinds are checked before any member codec resolves, so a rejected union adds no record
+    // codec and no diagnostic as a side effect.
+    var firstKind = GetUnionMemberKind(firstType);
+    var secondKind = GetUnionMemberKind(secondType);
+    if (firstKind is null || secondKind is null || firstKind == secondKind)
+    {
+      return null;
+    }
+
+    var firstCodec = AsCompositeChildCodec(GetCodec(firstType, diagnostics, recordCodecs));
+    var secondCodec = AsCompositeChildCodec(GetCodec(secondType, diagnostics, recordCodecs));
+    if (firstCodec is null || secondCodec is null)
+    {
+      return null;
+    }
+
+    var firstTypeName = GetCodecTypeArgumentName(firstType);
+    var secondTypeName = GetCodecTypeArgumentName(secondType);
+
+    // A union is decode-only and accepted only at parameters, and its members must be of different
+    // JavaScript kinds.
+    if (!IsScopedResource(firstCodec) && !IsScopedResource(secondCodec))
+    {
+      return OrdinaryCodec(
+          $"EitherCodec<{firstTypeName}, {firstCodec.Expression}, {secondTypeName}, {secondCodec.Expression}>"
+      ) with
+      {
+        Capabilities = ExpoCodecCapabilities.DecodeOnly,
+      };
+    }
+
+    return ScopedCodec(
+        $"GeneratedScopedEitherCodec<{firstTypeName}, {GetScopedUnionMemberExpression(firstTypeName, firstCodec)}, " +
+        $"{secondTypeName}, {GetScopedUnionMemberExpression(secondTypeName, secondCodec)}>"
+    ) with
+    {
+      Capabilities = ExpoCodecCapabilities.DecodeOnly,
+    };
+  }
+
+  // A scoped union decodes both members through the scoped protocol, so an ordinary member is
+  // wrapped and a scoped member keeps its own codec.
+  private static string GetScopedUnionMemberExpression(string typeName, ExpoCodecDescriptor codec) =>
+      IsScopedResource(codec)
+          ? codec.Expression
+          : $"GeneratedScopedOrdinaryCodec<{typeName}, {codec.Expression}>";
 
   private static ExpoCodecDescriptor? TryGetReadOnlyListCodec(
       ITypeSymbol typeSymbol,
@@ -317,12 +441,16 @@ public sealed partial class ExpoModulesGenerator
     var elementTypeName = GetCodecTypeArgumentName(elementType);
     if (IsScopedResource(elementCodec))
     {
-      return ScopedCodec($"GeneratedScopedListCodec<{elementTypeName}, {elementCodec.Expression}>");
+      return ScopedCodec($"GeneratedScopedListCodec<{elementTypeName}, {elementCodec.Expression}>") with
+      {
+        Capabilities = elementCodec.Capabilities,
+      };
     }
 
     return OrdinaryCodec($"JavaScriptArrayCodec<{elementTypeName}, {elementCodec.Expression}>") with
     {
       DecodeOperation = ExpoDecodeOperation.DecodeToArray,
+      Capabilities = elementCodec.Capabilities,
     };
   }
 
@@ -359,12 +487,16 @@ public sealed partial class ExpoModulesGenerator
     if (IsScopedResource(valueCodec))
     {
       // One scoped dictionary codec serves both Dictionary and IReadOnlyDictionary.
-      return ScopedCodec($"GeneratedScopedDictionaryCodec<{valueTypeName}, {valueCodec.Expression}>");
+      return ScopedCodec($"GeneratedScopedDictionaryCodec<{valueTypeName}, {valueCodec.Expression}>") with
+      {
+        Capabilities = valueCodec.Capabilities,
+      };
     }
 
     return OrdinaryCodec($"JavaScriptDictionaryCodec<{valueTypeName}, {valueCodec.Expression}>") with
     {
       DecodeOperation = ExpoDecodeOperation.DecodeToDictionary,
+      Capabilities = valueCodec.Capabilities,
     };
   }
 
@@ -547,6 +679,14 @@ public sealed partial class ExpoModulesGenerator
       };
     }
 
+    // A union never reaches the later branches, even when it is rejected. Either<,>? reaches this
+    // branch through TryGetNullableCodec.
+    if (typeSymbol is INamedTypeSymbol eitherType &&
+        eitherType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == EitherMetadataName)
+    {
+      return GetEitherCodec(eitherType, diagnostics, recordCodecs);
+    }
+
     if (TryGetNullableCodec(typeSymbol, diagnostics, recordCodecs) is { } nullableCodec)
     {
       return nullableCodec;
@@ -575,16 +715,8 @@ public sealed partial class ExpoModulesGenerator
     {
       SpecialType.System_Boolean => OrdinaryCodec("BoolCodec"),
       SpecialType.System_String => OrdinaryCodec("StringCodec"),
-      SpecialType.System_SByte or
-      SpecialType.System_Byte or
-      SpecialType.System_Int16 or
-      SpecialType.System_UInt16 or
-      SpecialType.System_Int32 or
-      SpecialType.System_UInt32 or
-      SpecialType.System_Int64 or
-      SpecialType.System_UInt64 or
-      SpecialType.System_Single or
-      SpecialType.System_Double => OrdinaryCodec(GetNumberCodecExpression(typeSymbol)),
+      var specialType when IsNumberSpecialType(specialType) =>
+          OrdinaryCodec(GetNumberCodecExpression(typeSymbol)),
       _ => TryGetReadOnlyListCodec(typeSymbol, diagnostics, recordCodecs) ??
           TryGetDictionaryCodec(typeSymbol, diagnostics, recordCodecs),
     };
