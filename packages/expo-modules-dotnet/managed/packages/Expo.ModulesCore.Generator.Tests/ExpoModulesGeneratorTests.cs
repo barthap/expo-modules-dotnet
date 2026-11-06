@@ -5170,6 +5170,7 @@ public sealed class ExpoModulesGeneratorTests
 
   [Theory]
   [InlineData("public sealed record Holder(JavaScriptValue Value);", "[JS] public int M(JavaScriptCallback<Holder> callback) => 0;", false)]
+  [InlineData("public sealed record Holder(JavaScriptValue Value);", "[JS] public int M(JavaScriptCallback<Holder?> callback) => 0;", false)]
   [InlineData("", "[JS] public int M(JavaScriptCallback<IReadOnlyList<JavaScriptValue>> callback) => 0;", false)]
   [InlineData("", "[JS] public int M(JavaScriptCallback<ValueTuple<Dictionary<string, JavaScriptValue>>, int> callback) => 0;", false)]
   [InlineData("", "[JS] public int M(JavaScriptCallback<IReadOnlyList<JavaScriptValue>?> callback) => 0;", false)]

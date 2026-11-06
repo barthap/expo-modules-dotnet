@@ -2074,7 +2074,8 @@ follow the non-null rule, so they can hold leaves at any depth.
 #### Scenario: Leaf-bearing nullable callback follows the leaf rules
 - **GIVEN** a `JavaScriptCallback<ValueTuple<ArrayBuffer>, ArrayBuffer>?`
   parameter
-- **WHEN** JavaScript passes `null`, or a function that returns a new buffer
+- **WHEN** JavaScript passes `null`, or a function that returns another
+  buffer that JavaScript already holds
 - **THEN** authored code SHALL receive C# `null` for `null`
 - **AND** for a function, the buffer the author passes SHALL stay the
   author's, and the returned buffer SHALL be the author's to dispose

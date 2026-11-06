@@ -131,7 +131,7 @@ The next free ID is 041.
   `NullableReferenceCodec<ArrayBuffer, ArrayBufferCodec>`, and a direct
   `Func<ArrayBuffer?, Task>` event delivers one JavaScript `null` with no
   lease. 032 is done: it landed on 2026-11-06 with a local
-  `scripts/test-managed.sh` run (1176 passed, 0 failed, 0 skipped).
+  `scripts/test-managed.sh` run (1177 passed, 0 failed, 0 skipped).
   `JavaScriptCallback<...>?` now works as a module or shared-object method or
   constructor parameter; `null` and `undefined` decode to C# `null` and
   register nothing. 033 then applies its own null policy; its brief needs a
