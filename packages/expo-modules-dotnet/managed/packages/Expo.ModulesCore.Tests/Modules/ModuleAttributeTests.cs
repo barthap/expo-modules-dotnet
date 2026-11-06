@@ -114,15 +114,15 @@ public sealed class GeneratedAttributeModuleTests
       );
       Assert.Equal("stored:stored", result.AsString());
 
-      // Assignment releases its invocation-owned decode wrapper. Both getter reads prove the
-      // authored retained copy survived that release and each getter transferred an independent
-      // wrapper through the host-function boundary.
-      Assert.Equal(1u, fixture.Counters.ReleasedValues);
+      // Assignment releases its scoped decode wrapper. Each getter read transfers the authored
+      // Retain() copy into the conversion scope and returns an independent retained wrapper, so
+      // each of the two reads adds one release.
+      Assert.Equal(3u, fixture.Counters.ReleasedValues);
 
       propertyModule.Dispose();
       // The module releases exactly its one retained owner; context teardown later calls the
       // idempotent module disposal path again without releasing it a second time.
-      Assert.Equal(2u, fixture.Counters.ReleasedValues);
+      Assert.Equal(4u, fixture.Counters.ReleasedValues);
       return true;
     });
   }

@@ -151,3 +151,79 @@ whose caller must dispose or transfer it independently.
 - **WHEN** JSI is no longer safe
 - **THEN** native SHALL abandon the payload without JSI access
 - **AND** both terminal paths SHALL erase the long-lived collection entry
+
+### Requirement: Conversion Scope Owns Boundary Wrapper Leaves
+
+`GeneratedConversionScope` SHALL own every `JavaScriptValue` and `ArrayBuffer`
+leaf that generated decode creates or that a returned value transfers.
+Registration SHALL append and SHALL NOT scan for duplicates. A leaf registered
+more than once SHALL be disposed once per registration. Only leaves whose
+`Dispose` is idempotent SHALL register, which `JavaScriptValue` and
+`ArrayBuffer` are, so the native handle of a repeated leaf releases exactly
+once. The scope's own `Dispose` SHALL be idempotent. It SHALL dispose the
+registrations in registration order and SHALL attempt every registration even
+when one fails. Only `JavaScriptValueCodec` and `ArrayBufferCodec` SHALL
+register leaves. When a scoped `Decode` cannot register the leaf it created,
+it SHALL dispose that leaf and rethrow. The scope SHALL NOT own the JavaScript
+value returned to the host. It SHALL have one owner at a time and SHALL NOT be
+thread-safe. It SHALL NOT use ambient, thread-static, async-local,
+reflection, or finalizer ownership, and SHALL NOT register a value because it
+implements `IDisposable`.
+
+#### Scenario: Repeated registration releases the native handle once
+- **GIVEN** a scope where the same wrapper is registered twice
+- **WHEN** the scope is disposed twice
+- **THEN** the scope SHALL dispose the wrapper once per registration, in
+  registration order, during the first disposal only
+- **AND** the wrapper's native handle SHALL release exactly once
+
+#### Scenario: Decode into a disposed scope releases the new leaf
+- **GIVEN** a scope that is already disposed
+- **WHEN** a scoped `Decode` retains a value and the scope refuses it
+- **THEN** `Decode` SHALL throw `ObjectDisposedException`
+- **AND** the retained wrapper SHALL release exactly once
+
+#### Scenario: Equal but distinct leaves both release
+- **GIVEN** two distinct wrappers that compare equal
+- **WHEN** both are registered and the scope is disposed
+- **THEN** both SHALL release
+
+#### Scenario: Registration after disposal
+- **GIVEN** a disposed scope
+- **WHEN** a codec registers a leaf
+- **THEN** the scope SHALL throw `ObjectDisposedException`
+
+#### Scenario: Cleanup failure is aggregated
+- **GIVEN** a scope where one registered `IDisposable` throws from `Dispose`
+- **WHEN** the scope is disposed
+- **THEN** every other registration SHALL still be disposed
+- **AND** the scope SHALL throw `AggregateException` with the failure
+
+### Requirement: Boundary Leaf Ownership Is Explicit
+
+Generated bindings SHALL follow the ownership matrix in `### Requirement:
+Generated Bindings Compose Leaves Through One Scope` in
+`modules-core-boundary.md`, with at most one scope per invocation. Authored
+code SHALL store only `Retain()` copies of leaves beyond an invocation. A
+returned value SHALL transfer all its leaves to generated glue.
+
+#### Scenario: Stored state is returned
+- **GIVEN** a getter exposes a stored record with a `JavaScriptValue` field
+- **WHEN** JavaScript reads it
+- **THEN** the getter SHALL return a new record built from `Retain()` copies
+- **AND** the stored record SHALL stay usable
+
+#### Scenario: Method returns its own input leaf
+- **GIVEN** a sync or async method returns one of its `JavaScriptValue`
+  inputs, or a record that contains one
+- **WHEN** JavaScript calls it
+- **THEN** the call or the Promise SHALL produce that value
+- **AND** the leaf SHALL release exactly once
+
+#### Scenario: Async inputs live until settlement
+- **GIVEN** an async method has a leaf-bearing parameter and a leaf-bearing
+  result
+- **WHEN** the Task completes
+- **THEN** the input leaf SHALL stay alive until the factory has encoded the
+  result or the result is abandoned
+- **AND** it SHALL release exactly once
