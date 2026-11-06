@@ -235,6 +235,57 @@ public sealed partial class LeafReleaseModule : Module, IDisposable
   public IReadOnlyList<BufferPair> PairsWithNull(BufferPair pair) =>
       new[] { null!, new BufferPair(pair.First.Retain(), pair.Second.Retain()) };
 
+  // The callback payload is encoded without being consumed, so the author's buffer stays usable.
+  [JS]
+  public int ForwardBuffer(ArrayBuffer buffer, JavaScriptCallback<ValueTuple<BufferPair>, int> callback)
+      => callback.Invoke(ValueTuple.Create(new BufferPair(buffer, buffer))) + buffer.ByteLength;
+
+  [JS]
+  public string ForwardValue(JavaScriptValue value, JavaScriptCallback<ValueTuple<ValuePair>, bool> callback)
+      => $"{(callback.Invoke(ValueTuple.Create(new ValuePair(value, value))) ? "true" : "false")}:{value.Kind}";
+
+  // The decoded callback result belongs to the author, who disposes every returned buffer.
+  [JS]
+  public int TakeBuffers(JavaScriptCallback<IReadOnlyList<ArrayBuffer>> callback)
+  {
+    var buffers = callback.Invoke();
+    try
+    {
+      var total = 0;
+      foreach (var buffer in buffers)
+      {
+        total += buffer.ByteLength;
+      }
+      return total;
+    }
+    finally
+    {
+      foreach (var buffer in buffers)
+      {
+        buffer.Dispose();
+      }
+    }
+  }
+
+  [Event]
+  public partial Func<BufferPair, Task> OnPair { get; }
+
+  [JS]
+  public int EmitPair(ArrayBuffer buffer)
+  {
+    OnPair(new BufferPair(buffer, buffer)).GetAwaiter().GetResult();
+    return buffer.ByteLength;
+  }
+
+  // Retain() is a runtime call, so it runs before the await, on the runtime thread.
+  [JS]
+  public async Task EmitPairLater(ArrayBuffer buffer)
+  {
+    using var copy = buffer.Retain();
+    await Task.Yield();
+    await OnPair(new BufferPair(copy, copy));
+  }
+
   // Stores and returns only Retain() copies; the module owns the stored copies until Dispose.
   [JS]
   public BufferPair StoredPair
@@ -278,4 +329,14 @@ public sealed partial class LeafReleaseEntry : SharedObject
 
   [JS]
   public int Measure(ArrayBuffer value) => value.ByteLength;
+
+  [Event]
+  public partial Func<IReadOnlyList<ArrayBuffer>, Task> OnBuffers { get; }
+
+  [JS]
+  public int EmitBuffers(ArrayBuffer buffer)
+  {
+    OnBuffers(new[] { buffer }).GetAwaiter().GetResult();
+    return buffer.ByteLength;
+  }
 }

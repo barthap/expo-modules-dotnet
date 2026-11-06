@@ -1740,7 +1740,6 @@ public sealed class ExpoModulesGeneratorTests
   [InlineData("JavaScriptCallback<string>")]
   [InlineData("System.Collections.Generic.IReadOnlyList<JavaScriptCallback<string>>")]
   [InlineData("System.Collections.Generic.Dictionary<string, JavaScriptCallback<string>>")]
-  [InlineData("System.Collections.Generic.IReadOnlyList<JavaScriptValue>")]
   public void TypedEventPayloadFailuresDoNotGenerateCallbackCodecs(string payloadType)
   {
     var result = GeneratorTestHost.Run(
@@ -5230,9 +5229,9 @@ public sealed class ExpoModulesGeneratorTests
   }
 
   [Theory]
-  [InlineData(false, "EXPOJSI019")]
-  [InlineData(true, "EXPOJSI027")]
-  public void GeneratorRejectsNestedBufferEventPayloads(bool onSharedObject, string expectedId)
+  [InlineData(false)]
+  [InlineData(true)]
+  public void GeneratorAcceptsNestedLeafEventPayloads(bool onSharedObject)
   {
     const string member = "[Event] public partial Func<IReadOnlyList<ArrayBuffer>, Task> OnBuffers { get; }";
     var result = GeneratorTestHost.Run(
@@ -5240,6 +5239,26 @@ public sealed class ExpoModulesGeneratorTests
     );
 
     AssertNoCompilerErrors(result);
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    Assert.Contains(
+        "EmitAsync<JavaScriptArrayCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>, global::System.Collections.Generic.IReadOnlyList<global::Expo.ModulesCore.ArrayBuffer>>",
+        GeneratedText(result),
+        StringComparison.Ordinal
+    );
+  }
+
+  [Theory]
+  [InlineData(false, "EXPOJSI019")]
+  [InlineData(true, "EXPOJSI027")]
+  public void GeneratorRejectsNestedNullableLeafEventPayloads(bool onSharedObject, string expectedId)
+  {
+    const string member = "[Event] public partial Func<IReadOnlyList<ArrayBuffer?>, Task> OnBuffers { get; }";
+    var result = GeneratorTestHost.Run(
+        onSharedObject ? SharedObjectMemberSource(member) : ModuleSource(string.Empty, member)
+    );
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == expectedId);
+    Assert.Contains("nullable annotation", diagnostic.GetMessage(), StringComparison.Ordinal);
     Assert.Equal(new[] { expectedId }, GeneratorDiagnosticIds(result));
   }
 

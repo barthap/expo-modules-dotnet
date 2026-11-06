@@ -779,6 +779,103 @@ public sealed class LeafReleaseModuleTests
     Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
+  [Fact]
+  public void CallbackArgumentStaysWithTheAuthor()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "String(m.forwardBuffer(b, p => p.first === b && p.second === b ? p.first.byteLength : -1))"
+    );
+    leaf.Fixture.WaitUntilIdle();
+
+    Assert.Equal("8", result);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void CallbackValueArgumentStaysUsable()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.o = {}; true");
+
+    var result = leaf.ReadString("m.forwardValue(o, p => p.first === o && p.second === o)");
+
+    Assert.Equal("true:Object", result);
+  }
+
+  [Fact]
+  public void CallbackResultBelongsToTheAuthor()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b1 = new ArrayBuffer(2); globalThis.b2 = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString("String(m.takeBuffers(() => [b1, b2]))");
+    leaf.Fixture.WaitUntilIdle();
+
+    Assert.Equal("6", result);
+    Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void NestedEventPayloadStaysWithTheAuthor()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "let seen; m.addListener('onPair', p => { seen = p.first === b && p.second === b; }); " +
+        "`${m.emitPair(b)}:${seen}`"
+    );
+    leaf.Fixture.WaitUntilIdle();
+
+    Assert.Equal("4:true", result);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public async Task NestedEventPayloadEmittedLaterStaysWithTheAuthor()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(
+        "globalThis.b = new ArrayBuffer(4); globalThis.seen = false; " +
+        "m.addListener('onPair', p => { globalThis.seen = p.first === b && p.second === b; }); true"
+    );
+
+    leaf.Fixture.ResetCounters();
+    leaf.StartOutcome("m.emitPairLater(b)");
+    await leaf.WaitForOutcomeAsync();
+    leaf.WaitForArrayBufferReleases(1u);
+    leaf.Fixture.WaitUntilIdle();
+
+    Assert.Equal("fulfilled", leaf.ReadString("__outcome.status"));
+    Assert.Equal("true", leaf.ReadString("String(seen)"));
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void SharedObjectNestedEventPayloadStaysWithTheAuthor()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "const e = new m.LeafReleaseEntry(b, false); let seen; " +
+        "e.addListener('onBuffers', l => { seen = l.length === 1 && l[0] === b; }); " +
+        "`${e.emitBuffers(b)}:${seen}`"
+    );
+    leaf.Fixture.WaitUntilIdle();
+
+    Assert.Equal("4:true", result);
+    // The constructor lease and the member lease are separate decodes of the same buffer.
+    Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
   private sealed class LeafReleaseFixture : IDisposable
   {
     private LeafReleaseFixture(
