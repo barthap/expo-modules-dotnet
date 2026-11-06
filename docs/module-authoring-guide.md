@@ -145,6 +145,17 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
   position. See the
   "Module-facing ArrayBuffer And Binary Codecs" requirement in
   `docs/specs/modules-core-boundary.md`.
+- `Either<TFirst, TSecond>` for a value that JavaScript passes as one of
+  two kinds, such as `string | ArrayBuffer`. Each member is `string`, `bool`,
+  a numeric type, or a binary type (`ArrayBuffer`, `byte[]`, `Memory<byte>`,
+  `ReadOnlyMemory<byte>`), and the two members must have different JavaScript
+  kinds: `Either<double, bool>` works, `Either<double, int>` does not. Read
+  `IsFirst`, then `First` or `Second`, or call `Match`. Create one with
+  `Either<TFirst, TSecond>.FromFirst` or `FromSecond`. A union works in every
+  position. JavaScript `null`, `undefined`, and any other kind fail before
+  your code runs; `Either<TFirst, TSecond>?` turns `null` and `undefined` into
+  C# `null`. An `ArrayBuffer` member is a leaf and follows the leaf rules
+  below.
 - Shared objects, declared as described in section 8.
 - C# `enum` values — encoded as JavaScript strings by default; annotate with
   `[JSEnum(EnumRepresentation.Number)]` for integer-backed representation.
