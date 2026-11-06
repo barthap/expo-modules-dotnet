@@ -71,7 +71,8 @@ When sources conflict, prefer:
 1. Current code and ABI.
 2. Current tests.
 3. Current living specs in `docs/specs/`.
-4. Archived specs, plans, and spike results under `docs/archive/`.
+4. Closed specs, plans, and spike results in git history (local copies may
+   sit in the git-ignored `docs/archive/`).
 5. Learning guides and historical references.
 
 ## Request Classification
@@ -120,8 +121,10 @@ For non-trivial behavior changes, run this sequence:
 9. Archive or remove transient planning artifacts. Plans are not durable
    current-state docs after implementation.
 10. Close the roadmap item: set its row to `DONE` (or `OPEN` with a note when a
-    follow-up remains), move its brief to `docs/archive/plans/`, update the
-    row link, and add deferred follow-ups to "Unplanned backlog".
+    follow-up remains), remove its brief from git, set the row's brief cell to
+    `—`, and add deferred follow-ups to "Unplanned backlog". `docs/archive/`
+    is git-ignored: moving the brief, spec, and plan there keeps a local copy
+    and removes them from git in one step.
 
 Set the row to `IN PROGRESS` in the commit that adds `spec.md`.
 

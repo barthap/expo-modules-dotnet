@@ -112,8 +112,8 @@ looks stale.
 
 For each roadmap row:
 
-- `DONE`: check that the brief sits in `docs/archive/plans/` and that the
-  change directory is archived. Spot-check cheap done criteria.
+- `DONE`: check that the brief and the change directory are gone from git.
+  Spot-check cheap done criteria.
 - `IN PROGRESS`: if no branch or recent commit shows progress, report it.
 - `BLOCKED` / `OPEN`: check whether the blocker still holds.
 - `TODO`: run the brief's drift check. If drifted, confirm the problem still

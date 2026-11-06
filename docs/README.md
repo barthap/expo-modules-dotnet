@@ -4,7 +4,7 @@ Last refreshed: 2026-09-25.
 
 This directory contains the current documentation for the portable C# / JSI
 bridge. The authoritative current-state specs live in `docs/specs/`. Historical
-plans, spike notes, and one-slice Superpowers artifacts live in `docs/archive/`.
+plans, spike notes, and one-slice Superpowers artifacts live in git history.
 
 The architecture rule is non-negotiable:
 
@@ -72,7 +72,6 @@ exception rules.
 - `experiments/hostfxr-smoke/` and `experiments/nativeaot-smoke/` preserve
   narrow loader smoke proofs.
 - `docs/specs/` contains the living spec baseline.
-- `docs/archive/` contains historical planning, spike, and execution artifacts.
 
 `Expo.JSI` is the current low-level wrapper package. It contains runtime,
 value, object, array, function, promise, error, scoped-ref, host-function, and
@@ -98,11 +97,8 @@ For current implementation work:
    writing a .NET-backed Expo module using `packages/example-module`
 7. `docs/roadmap.md` for direction, open work, and status; open briefs live
    in `docs/plans/`
-8. `docs/archive/` only when historical rationale or proof evidence is needed
-
-`docs/archive/learning-guide/` holds educational walkthroughs written before
-this repo's code existed. They are historical background only; current
-implementation, tests, and `docs/specs/` always win where they conflict.
+8. Git history only when historical rationale or proof evidence is needed.
+   `docs/archive/` is git-ignored and holds only local copies.
 
 ## Spec Workflow
 
@@ -118,7 +114,7 @@ roadmap rows, and each slice below starts from one roadmap item.
 6. Implement and verify behavior with focused commits for plan/task slices.
 7. Merge accepted deltas into `docs/specs/`.
 8. Archive or remove transient planning artifacts.
-9. Mark the roadmap row DONE and move its brief to `docs/archive/plans/`.
+9. Mark the roadmap row DONE and remove its brief from git.
 
 A change spec is for a milestone that is ready to continue into planning and
 implementation. For pure exploration, keep decisions in the conversation or

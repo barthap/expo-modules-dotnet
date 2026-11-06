@@ -18,7 +18,7 @@ File name: `docs/plans/NNN-<slug>.md`, where `NNN` is the roadmap ID.
 > **Deliver with `living-spec-workflow`**: brainstorm, delta spec, plan,
 > implement, verify, merge into `docs/specs/`. Set this item's row in
 > `docs/roadmap.md` to `IN PROGRESS` when you start and `DONE` when the
-> slice closes, then move this brief to `docs/archive/plans/`.
+> slice closes, then remove this brief from git.
 >
 > **Drift check (run first)**: `git diff --stat <planned-at SHA>..HEAD -- <in-scope paths>`
 > If an in-scope file changed, compare "Current state" with the live code.
@@ -73,7 +73,7 @@ Machine-checkable. All must hold:
 - [ ] `scripts/format.sh --check --all` passes
 - [ ] <item-specific command> → <expected result>
 - [ ] Accepted behavior is merged into `docs/specs/<capability>.md`
-- [ ] Roadmap row is `DONE`, and this brief is in `docs/archive/plans/`
+- [ ] Roadmap row is `DONE`, and this brief is removed from git
 
 ## STOP conditions
 

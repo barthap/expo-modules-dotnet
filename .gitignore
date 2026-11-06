@@ -32,3 +32,6 @@ compile_commands.json
 
 # Profile data dropped by instrumented NativeAOT binaries run from the repo root.
 *.profraw
+
+# Local copies of closed briefs, change specs, and plans. Git history keeps them.
+docs/archive/

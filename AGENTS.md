@@ -32,7 +32,8 @@ Read:
    task
 
 Use `docs/references/previous-windows-prototype.md` only for historical context.
-Use `docs/archive/` only for provenance or old proof evidence; it is not
+`docs/archive/` is git-ignored. It holds only local copies of closed briefs,
+change specs, and plans; git history keeps the committed versions. It is not
 authoritative over current code, tests, or `docs/specs/`.
 
 For non-trivial behavior changes, use the repo-local living spec workflow:

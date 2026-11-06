@@ -3,7 +3,7 @@
 > **Deliver with `living-spec-workflow`**: brainstorm, delta spec, plan,
 > implement, verify, merge into `docs/specs/`. Set this item's row in
 > `docs/roadmap.md` to `IN PROGRESS` when you start and `DONE` when the
-> slice closes, then move this brief to `docs/archive/plans/`.
+> slice closes, then remove this brief from git.
 >
 > **Drift check (run first)**: `git diff --stat c7dccbe..HEAD -- packages/expo-modules-dotnet packages/expo-modules-dotnet-autolinking packages/expo-asset-dotnet packages/expo-constants-dotnet packages/expo-file-system-dotnet apps/desktop-app docs/specs/`
 > If an in-scope file changed, compare "Current state" with the live code.
@@ -164,7 +164,7 @@ user-visible value the authored modules exist for.
 - [ ] `scripts/format.sh --check --all` passes
 - [ ] The substitution contract is in the living spec chosen in open
       question 4
-- [ ] Roadmap row is `DONE`, and this brief is in `docs/archive/plans/`
+- [ ] Roadmap row is `DONE`, and this brief is removed from git
 
 ## STOP conditions
 
