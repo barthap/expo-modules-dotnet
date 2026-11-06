@@ -110,28 +110,39 @@ public sealed partial class ExpoModulesGenerator
 
   private static bool IsSharedObjectRelatedType(ITypeSymbol typeSymbol) => IsPolymorphicSharedObjectBase(typeSymbol) || (typeSymbol is INamedTypeSymbol namedType && DerivesFromSharedObject(namedType));
 
-  private static string? GetDirectSharedObjectBoundaryIssue(ITypeSymbol typeSymbol)
+  private static string? GetDirectSharedObjectBoundaryIssue(ITypeSymbol typeSymbol, bool isParameter)
   {
     if (IsPolymorphicSharedObjectBase(typeSymbol)) return "which is the polymorphic SharedObject base";
     if (typeSymbol is INamedTypeSymbol namedType && namedType.OriginalDefinition.ToDisplayString() is SharedRefMetadataName) return "which is the SharedRef<T> managed carrier base";
-    if (!HasExpoSharedObjectAttribute(typeSymbol)) return "which is not marked [ExpoSharedObject]";
+    if (!HasExpoSharedObjectAttribute(typeSymbol))
+    {
+      if (!typeSymbol.IsAbstract) return "which is not marked [ExpoSharedObject]";
+      // An authored abstract base: accepted only as a parameter, as a top-level, non-generic, non-nullable class.
+      if (!isParameter) return "which is an abstract shared-object base and is supported only as a parameter";
+      if (typeSymbol.NullableAnnotation == NullableAnnotation.Annotated) return "which is an abstract shared-object base and must be used without a nullable annotation";
+      if (typeSymbol.ContainingType is not null || typeSymbol is INamedTypeSymbol { IsGenericType: true }) return "which is an abstract shared-object base and must be a top-level, non-generic class";
+      return null;
+    }
     if (typeSymbol.ContainingType is not null || typeSymbol is INamedTypeSymbol { IsGenericType: true } || !typeSymbol.IsSealed) return "which must be a top-level, non-generic, sealed [ExpoSharedObject] class";
     return null;
   }
 
   private static bool HasExpoSharedObjectAttribute(ITypeSymbol typeSymbol) => typeSymbol.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString() == ExpoSharedObjectAttributeMetadataName);
 
-  private static bool TryAnalyzeSharedObjectBoundaryType(ITypeSymbol typeSymbol, string memberName, string positionDescription, Location? location, List<ExpoDiagnosticModel> diagnostics, out ExpoCodecDescriptor? codec)
+  private static bool TryAnalyzeSharedObjectBoundaryType(ITypeSymbol typeSymbol, string memberName, string positionDescription, bool isParameter, Location? location, List<ExpoDiagnosticModel> diagnostics, out ExpoCodecDescriptor? codec)
   {
     codec = null;
     if (IsSharedObjectRelatedType(typeSymbol))
     {
-      var issue = GetDirectSharedObjectBoundaryIssue(typeSymbol);
+      var issue = GetDirectSharedObjectBoundaryIssue(typeSymbol, isParameter);
       if (issue is null)
       {
-        // The annotation selects the nullable codec; the type argument is the exact class without `?`.
+        // An unattributed (authored abstract) base selects the decode-only base codec; otherwise the annotation
+        // selects the nullable or exact codec. The type argument is the exact class without `?`.
         var exact = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-        codec = SharedObjectCodec(typeSymbol.NullableAnnotation == NullableAnnotation.Annotated ? $"NullableSharedObjectCodec<{exact}>" : $"SharedObjectCodec<{exact}>");
+        codec = !HasExpoSharedObjectAttribute(typeSymbol)
+            ? SharedObjectBaseCodec($"SharedObjectBaseCodec<{exact}>")
+            : SharedObjectCodec(typeSymbol.NullableAnnotation == NullableAnnotation.Annotated ? $"NullableSharedObjectCodec<{exact}>" : $"SharedObjectCodec<{exact}>");
         return true;
       }
       diagnostics.Add(CreateUnsupportedSharedObjectUsage(memberName, $"{positionDescription} uses shared-object type '{GetDiagnosticTypeName(typeSymbol)}', {issue}", location));
@@ -143,6 +154,9 @@ public sealed partial class ExpoModulesGenerator
   }
 
   private static ExpoCodecDescriptor SharedObjectCodec(string expression) => new(expression, ExpoCodecShape.StaticHelper, ExpoCodecCapabilities.DecodeAndEncode, ExpoDecodeOperation.Decode, ExpoContextRequirement.DotnetRuntimeContext, ExpoResourceOwnership.Borrowed);
+
+  // An authored abstract base is decode-only and accepted only at parameters.
+  private static ExpoCodecDescriptor SharedObjectBaseCodec(string expression) => new(expression, ExpoCodecShape.StaticHelper, ExpoCodecCapabilities.DecodeOnly, ExpoDecodeOperation.Decode, ExpoContextRequirement.DotnetRuntimeContext, ExpoResourceOwnership.Borrowed);
 
   private static bool TryFindNestedSharedObjectType(ITypeSymbol typeSymbol, out ITypeSymbol sharedObjectType) => TryFindNestedSharedObjectType(typeSymbol, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default), out sharedObjectType);
 

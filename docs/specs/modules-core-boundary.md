@@ -1506,7 +1506,7 @@ position:
 
 | Position | Accepts |
 | --- | --- |
-| Top-level boundary (parameter, return, async result, property, shared-object constructor or member, span-function return) | Any shape with `DecodeAndEncode`. `ScopedResource` uses the scoped path. |
+| Top-level boundary (parameter, return, async result, property, shared-object constructor or member, span-function return) | Any shape with `DecodeAndEncode`. `ScopedResource` uses the scoped path. An authored abstract shared-object base resolves to the decode-only `SharedObjectBaseCodec<TBase>` and is accepted only as a module method, shared-object method, or shared-object constructor parameter. |
 | List element, dictionary value | `JavaScriptCodec` or `ScopedOnly`. A `ScopedResource` child selects the scoped composite. |
 | `Nullable<T>` inner, nullable-reference inner | `JavaScriptCodec` or `ScopedOnly`. `JavaScriptValue?` stays excluded before resolution. `ArrayBuffer?` resolves to `GeneratedScopedNullableReferenceCodec<ArrayBuffer, ArrayBufferCodec>`. `IReadOnlyList<ArrayBuffer>?` is accepted, because the nullable-list branch resolves the element under the list-element rule. A direct `JavaScriptCallback<...>?` resolves to the callback descriptor with `NullableJavaScriptCallbackCodec` before this rule. A direct nullable concrete `[ExpoSharedObject]` class never reaches this rule: shared-object boundary analysis selects `NullableSharedObjectCodec<T>` first. |
 | Record field | `DecodeAndEncode` and no context requirement. |
@@ -1531,6 +1531,7 @@ cache hit rebuilds the same descriptor.
 | Record with any `ScopedResource` field | `ScopedOnly` | `ScopedResource` |
 | `JavaScriptCallback<...>` and `JavaScriptCallback<...>?` | `StaticHelper` | `ContextRetained` |
 | Direct `[ExpoSharedObject]` class `T` and `T?` | `StaticHelper` | `Borrowed` |
+| Authored abstract base `TBase` (parameter only; decode-only `SharedObjectBaseCodec<TBase>`) | `StaticHelper` | `Borrowed` |
 
 #### Scenario: Later field decode fails
 - **GIVEN** a record parameter whose first field is an `ArrayBuffer` and whose
@@ -2600,14 +2601,19 @@ The generator SHALL provide compile-time codecs for each valid, owned, sealed
 authored shared-object type used directly as a method parameter, method return,
 constructor parameter, or property type, with or without a nullable annotation.
 The codec SHALL be bound to the current `DotnetRuntimeContext` and exact managed
-class. `SharedObject`, `SharedRef<T>`, an unannotated shared-object base, and
-other polymorphic base types SHALL NOT be generated-boundary codec types.
+class. `SharedObject`, `SharedRef<T>`, and other polymorphic base types SHALL
+NOT be generated-boundary codec types; an authored abstract base is the one
+decode-only exception (see "Authored Abstract Bases Decode As Parameters") and
+SHALL NOT be an encode-side codec type.
 
 Decoding SHALL read the private NativeState token through the existing
 registry, require an active entry owned by the current context, validate the
 exact expected managed runtime type, and return the original managed instance.
-Assignable base/derived compatibility SHALL NOT select a codec or prototype.
-Decoding SHALL NOT construct, clone, or substitute a managed object.
+Assignable base/derived compatibility SHALL NOT select an exact codec or a
+prototype. An authored abstract base is decoded only through
+`SharedObjectBaseCodec<TBase>` (see "Authored Abstract Bases Decode As
+Parameters"). Decoding SHALL NOT construct, clone, or substitute a managed
+object.
 
 Encoding SHALL ask the existing registry for the live JavaScript counterpart.
 For an unpaired, unreleased managed instance, it SHALL create one JavaScript
@@ -2688,6 +2694,59 @@ and scoped wrapper before returning.
 - **WHEN** the method is generated
 - **THEN** the return encode SHALL receive the current `DotnetRuntimeContext`
 - **AND** the generated source SHALL compile
+
+### Requirement: Authored Abstract Bases Decode As Parameters
+
+A top-level, non-generic, abstract class whose base chain reaches
+`SharedObject`, that is not `SharedObject` or `SharedRef<T>` itself, and that
+carries no `[ExpoSharedObject]` attribute, SHALL be accepted as a parameter type
+of generated module methods and of supported shared-object constructors and
+methods. It SHALL select `SharedObjectBaseCodec<TBase>` with the descriptor
+`StaticHelper`, `DecodeOnly`, requiring `DotnetRuntimeContext`, and `Borrowed`.
+Decoding SHALL resolve the registry entry exactly as the exact codec does and
+SHALL accept the managed instance when it is an instance of `TBase`; it SHALL
+NOT construct, clone, or substitute an instance, and SHALL NOT register with
+`GeneratedConversionScope`. The same type as a return, async result, or
+property, with a nullable annotation, nested, generic, or inside a composed
+codec SHALL report `EXPOJSI023` with a reason that names the rule. A concrete
+non-sealed class SHALL keep its existing diagnostic.
+
+#### Scenario: Base parameter receives any generated subclass
+- **GIVEN** an abstract `PathBase : SharedObject` with generated sealed
+  subclasses `FileEntry` and `DirEntry`, a module method
+  `string Describe(PathBase path)`, an async method
+  `Task<string> DescribeLater(PathBase path)`, and a shared-object method
+  `string Compare(PathBase other)` and constructor
+  `DirEntry(string name, PathBase parent)`
+- **WHEN** JavaScript passes a `FileEntry`, a `DirEntry`, and a JavaScript
+  subclass instance of `FileEntry`
+- **THEN** authored code SHALL receive the original managed instance each
+  time, typed as `PathBase`
+- **AND** no pairing step SHALL be observed during decode
+
+#### Scenario: Existing failures stay
+- **GIVEN** the `PathBase` parameter
+- **WHEN** JavaScript passes a plain object, a primitive, `null`,
+  `undefined`, a released instance, an instance from another context, or an
+  instance of a shared class that does not derive from `PathBase`
+- **THEN** the call SHALL fail before authored code runs
+- **AND** the message for the unrelated class SHALL be the base codec's
+  `is not a '...PathBase' instance` text
+
+#### Scenario: Non-parameter positions and the nullable form stay rejected
+- **GIVEN** `PathBase` as a return type, a `Task<PathBase>` result, a
+  property type, a `PathBase?` parameter, a nested `PathBase` inside a
+  list, dictionary, record, callback, or typed event payload, a generic or
+  nested abstract base, and `SharedObject` and `SharedRef<X>` parameters
+- **WHEN** the generator runs
+- **THEN** it SHALL report `EXPOJSI023` (or the event code) with the reason
+  the design names, and SHALL NOT emit the member
+
+#### Scenario: Concrete non-sealed classes keep their diagnostic
+- **GIVEN** a non-abstract, non-sealed class deriving from `SharedObject`
+  used as a parameter, with and without `[ExpoSharedObject]`
+- **WHEN** the generator runs
+- **THEN** it SHALL report the existing `EXPOJSI023` reasons
 
 ### Requirement: Public SharedObject Release Is Exactly Once
 

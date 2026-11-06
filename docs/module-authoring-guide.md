@@ -517,9 +517,15 @@ module's functions, properties, observing hooks, or event-runtime members.
 Shared-object parameters, returns, and properties must use the exact sealed
 authored type directly at the boundary, optionally annotated as nullable
 (`ExampleCounter?`). JavaScript `null` and `undefined` arrive as C# `null`, and
-C# `null` returns JavaScript `null`. The `SharedObject`/`SharedRef<T>` bases,
-with or without `?`, and nested composition (records, lists, dictionaries,
-callbacks) are rejected.
+C# `null` returns JavaScript `null`. A parameter may instead use an authored
+abstract base of several shared classes: a top-level, non-generic
+`abstract class` that derives from `SharedObject` and has no
+`[ExpoSharedObject]` attribute. Authored code receives the concrete instance
+JavaScript passed. A base parameter cannot be nullable, and returns and
+properties still use the exact sealed class. The `SharedObject`/`SharedRef<T>`
+bases, with or without `?`, and nested composition (records, lists,
+dictionaries, callbacks) are rejected. `[JS]` members must be declared on the
+sealed class; a `[JS]` member inherited from the abstract base is not exported.
 
 ### Lifetime and release
 
