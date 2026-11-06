@@ -149,6 +149,19 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
   typed-event payload. See the
   "Module-facing ArrayBuffer And Binary Codecs" requirement in
   `docs/specs/modules-core-boundary.md`.
+- `Either<TFirst, TSecond>` for an argument that JavaScript passes as one of
+  two kinds, such as `string | ArrayBuffer`. Each member is `string`, `bool`,
+  a numeric type, or a binary type (`ArrayBuffer`, `byte[]`, `Memory<byte>`,
+  `ReadOnlyMemory<byte>`), and the two members must have different JavaScript
+  kinds: `Either<double, bool>` works, `Either<double, int>` does not. Read
+  `IsFirst`, then `First` or `Second`, or call `Match`. A union is a parameter
+  type only (module methods, shared-object methods and constructors, and
+  inside a list or dictionary parameter); it cannot be a return, property,
+  record field, callback type argument, or event payload. JavaScript `null`,
+  `undefined`, and any other kind fail before your code runs;
+  `Either<TFirst, TSecond>?` turns `null` and `undefined` into C# `null`. An
+  `ArrayBuffer` member is released at the end of the call, like a direct
+  `ArrayBuffer` parameter.
 - Shared objects, declared as described in section 8.
 - C# `enum` values — encoded as JavaScript strings by default; annotate with
   `[JSEnum(EnumRepresentation.Number)]` for integer-backed representation.
