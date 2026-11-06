@@ -2,8 +2,11 @@ using Expo.JSI;
 
 namespace Expo.ModulesCore.Codecs;
 
-public readonly struct ByteArrayCodec : IJavaScriptCodec<byte[]>
+public readonly struct ByteArrayCodec : IJavaScriptCodec<byte[]>, IJavaScriptValueKindCodec
 {
+  /// <summary>Gets the JavaScript value kind that this codec decodes.</summary>
+  public static JavaScriptValueKind Kind => JavaScriptValueKind.ArrayBuffer;
+
   public static byte[] Decode(JavaScriptValueRef value, JavaScriptRuntime runtime)
   {
     using var buffer = ArrayBufferCodec.Decode(value, runtime);
