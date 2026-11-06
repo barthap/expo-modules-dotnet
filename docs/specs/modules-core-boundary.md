@@ -915,14 +915,21 @@ caller-owned, and the caller MAY dispose it after invocation returns. The lease
 SHALL remain alive until dispatch reaches a terminal state and release exactly
 once on success, failure, or cancellation.
 
+For a direct `ArrayBuffer?`, a null payload SHALL dispatch one explicit
+JavaScript `null` argument through the same payload path, SHALL retain no
+lease, and SHALL NOT use the payload-less dispatch. A non-null payload SHALL
+follow the direct `ArrayBuffer` rule unchanged.
+
 For a direct `JavaScriptValue`, generated glue SHALL retain and encode an
 invocation copy only while executing on the owning runtime. The caller SHALL
 keep the original wrapper alive until the returned task completes. Generated
 glue SHALL dispose only its invocation copy and SHALL NOT consume the original.
 
-Records, lists, and dictionaries that hold a `JavaScriptValue` or an
-`ArrayBuffer` SHALL be valid typed event payloads. Generated glue SHALL encode
-them on the owning runtime and SHALL dispose only the encoded value. The
+Records, lists, and dictionaries that hold a `JavaScriptValue`, an
+`ArrayBuffer`, or an `ArrayBuffer?` SHALL be valid typed event payloads.
+Generated glue SHALL encode them on the owning runtime and SHALL dispose only
+the encoded value. A nested null `ArrayBuffer?` SHALL encode as JavaScript
+`null`. The
 author keeps every nested leaf and SHALL keep it alive until the returned task
 completes. A payload containing `JavaScriptCallback` SHALL stay rejected.
 Event-safety classification SHALL run before general codec resolution can
@@ -949,6 +956,18 @@ is not a current generated module codec.
 - **AND** the caller MAY dispose the original after invocation returns
 - **AND** terminal cleanup SHALL release the retained lease exactly once
 
+#### Scenario: Direct nullable ArrayBuffer event delivers null without a lease
+- **GIVEN** a module or shared-object typed event declares
+  `Func<ArrayBuffer?, Task>`
+- **WHEN** authored code invokes it with `null`
+- **THEN** the listener SHALL receive exactly one argument that is
+  JavaScript `null`
+- **AND** `LongLivedArrayBuffersReleased` SHALL NOT change
+- **WHEN** authored code invokes it with a buffer and disposes the buffer
+  after the call returns
+- **THEN** dispatch SHALL still deliver the bytes through its retained lease
+- **AND** the lease SHALL release exactly once
+
 #### Scenario: Nested leaf payload stays with the author
 - **GIVEN** a module or shared-object event payload is a record holding a
   `JavaScriptValue` and an `ArrayBuffer`
@@ -966,8 +985,7 @@ or blank explicit names; unsupported static, indexed, non-partial, implemented,
 setter, explicit-interface, ref-return, `[JS]`, or modifier shapes; unsupported
 delegate types; and file-local, nested, generic, or non-partial containers.
 `EXPOJSI019` covers payloads with no encode-capable event codec, a callback
-codec, or a nullable annotation on a `JavaScriptValue` or `ArrayBuffer` at any
-depth. Legacy-only invalid or duplicate
+codec, or a nullable annotation on a `JavaScriptValue` at any depth. Legacy-only invalid or duplicate
 `[Events]` declarations SHALL continue to use `EXPOJSI009`.
 
 When a rejected member's partial-property declaration can be reproduced safely,
@@ -984,7 +1002,7 @@ safely.
 
 #### Scenario: Typed event payload is unsupported
 - **GIVEN** a valid-shaped typed event has an unsupported payload, a callback,
-  or a nullable `JavaScriptValue` or `ArrayBuffer` at any depth
+  or a nullable `JavaScriptValue` at any depth
 - **WHEN** the generator analyzes the event
 - **THEN** it SHALL report `EXPOJSI019`
 - **AND** it SHALL not emit reflection, dynamic conversion, callback `Encode`
@@ -1222,7 +1240,7 @@ covers duplicate method names.
 - **GIVEN** a list element, dictionary value, `Nullable<T>` inner type,
   nullable-reference inner type, callback result, or callback-argument tuple
   element is a `JavaScriptCallback` or a type that holds one, or the annotated
-  type is `ArrayBuffer?` or `JavaScriptValue?`
+  type is `JavaScriptValue?`
 - **WHEN** the project is compiled
 - **THEN** the generator SHALL report the using member's unsupported-type
   diagnostic: `EXPOJSI001`, `EXPOJSI002`, `EXPOJSI008`, `EXPOJSI015`, or
@@ -1587,7 +1605,7 @@ additional backing kinds.
 
 | CLR type | Boundary behavior | Generated-binding constraints |
 | --- | --- | --- |
-| `ArrayBuffer` | Preserves wrapper ownership semantics | Every codec position, including list elements, dictionary values, callback types, and nested typed-event payloads; not a nullable inner type |
+| `ArrayBuffer` | Preserves wrapper ownership semantics | Every codec position, including list elements, dictionary values, callback types, and nested typed-event payloads, each also as `ArrayBuffer?` |
 | `byte[]` | Copies in both directions | Rank-one arrays only |
 | `Memory<byte>` / `ReadOnlyMemory<byte>` | Copies in both directions, encoding exactly the current logical slice | Ordinary codecs |
 | `Span<byte>` / `ReadOnlySpan<byte>` | Borrows an input slice or copies a return value | One synchronous parameter only |
@@ -1818,16 +1836,17 @@ and leaf-bearing contents. A null container releases nothing.
 ### Requirement: Ownership-Bearing Nullable References Are Build Diagnostics
 
 The generator SHALL reject a nullable annotation on `JavaScriptValue`,
-`ArrayBuffer`, `JavaScriptCallback<TResult>`,
-`JavaScriptCallback<TArgs, TResult>`, `SharedObject`, `SharedRef<T>`, and a
-concrete `[ExpoSharedObject]` class. Their conversion carries JSI ownership,
-retained callback state, shared-object identity, or runtime-context state, and a
-null axis multiplies those states. The generator SHALL report an existing
+`JavaScriptCallback<TResult>`, `JavaScriptCallback<TArgs, TResult>`,
+`SharedObject`, `SharedRef<T>`, and a concrete `[ExpoSharedObject]` class.
+`JavaScriptValue` already represents JavaScript `null` and `undefined`. The
+others carry retained callback state, shared-object identity, or
+runtime-context state, and a null axis multiplies those states. The generator SHALL report an existing
 context-specific diagnostic at error severity. It SHALL NOT add a new diagnostic
 code, SHALL NOT raise a context-free diagnostic from codec resolution, SHALL NOT
 emit a binding for the rejected member, and SHALL NOT fall through to that
 type's non-nullable codec. The same non-nullable types SHALL keep their current
-supported or diagnostic behavior.
+supported or diagnostic behavior. `ArrayBuffer?` is supported through
+`NullableReferenceCodec` (see "Nullable ArrayBuffer Is A Nullable Reference").
 
 Codec resolution does not know the member context, so the codes come from the
 callers: `EXPOJSI001` for a parameter, `EXPOJSI002` for a return, `EXPOJSI007`
@@ -1840,9 +1859,10 @@ shared-object class reports its `EXPOJSI001`, `EXPOJSI002`, `EXPOJSI008`, and
 `EXPOJSI015` results as `EXPOJSI023`.
 
 Typed event payload analysis SHALL check the exclusion itself. A
-`Func<JavaScriptValue?, Task>` or `Func<ArrayBuffer?, Task>` payload bypasses
-codec resolution, so only the event payload check can report `EXPOJSI019` or
-`EXPOJSI027` for it.
+`Func<JavaScriptValue?, Task>` payload bypasses codec resolution, so only the
+event payload check can report `EXPOJSI019` or `EXPOJSI027` for it. A
+`Func<ArrayBuffer?, Task>` payload is the direct `ArrayBuffer` payload kind plus
+nullability.
 
 A nullable annotation SHALL NOT change shared-object type identity.
 `SharedObject?`, `SharedRef<T>?`, and a nullable concrete `[ExpoSharedObject]`
@@ -1853,13 +1873,12 @@ used without a nullable annotation. The member is rejected at error severity, no
 binding is emitted, and no shared-object codec is selected.
 
 #### Scenario: Excluded nullable parameter or return reports the method codes
-- **GIVEN** a generated method declares `JavaScriptValue?` or `ArrayBuffer?` as
-  a parameter or as its return type
+- **GIVEN** a generated method declares `JavaScriptValue?` as a parameter or as
+  its return type
 - **WHEN** the generator analyzes the method
 - **THEN** it SHALL report `EXPOJSI001` for the parameter position and
   `EXPOJSI002` for the return position
-- **AND** it SHALL NOT emit a binding or select `JavaScriptValueCodec` or
-  `ArrayBufferCodec`
+- **AND** it SHALL NOT emit a binding or select `JavaScriptValueCodec`
 
 #### Scenario: Excluded nullable record field reports the record code
 - **GIVEN** a generated positional record declares a field whose type is an
@@ -1931,6 +1950,81 @@ binding is emitted, and no shared-object codec is selected.
   non-nullable codec branch
 - **AND** the generator SHALL report only the existing context-specific
   diagnostics and SHALL NOT emit a binding
+
+### Requirement: Nullable ArrayBuffer Is A Nullable Reference
+
+`ArrayBuffer?` SHALL resolve to
+`NullableReferenceCodec<ArrayBuffer, ArrayBufferCodec>` on every position
+where `ArrayBuffer` is accepted. JavaScript `null` and `undefined` SHALL
+decode to C# `null` without a lease. C# `null` SHALL encode as JavaScript
+`null`. A non-null value SHALL follow the `ArrayBuffer` rules unchanged:
+decode gives the leaf to generated glue, which releases it once through
+`Release`, and `Encode` leaves the source usable. The generator SHALL NOT add
+a nullable-specific cleanup path.
+
+#### Scenario: Nullish parameter holds no leaf
+- **GIVEN** a generated method declares an `ArrayBuffer?` parameter
+- **WHEN** JavaScript passes `null` or `undefined`
+- **THEN** authored code SHALL receive C# `null`
+- **AND** `LongLivedArrayBuffersReleased` SHALL NOT change
+
+#### Scenario: Non-null parameter releases once
+- **GIVEN** the same method
+- **WHEN** JavaScript passes a JavaScript-created buffer to a sync method,
+  and to an async method that awaits before reading it
+- **THEN** authored code SHALL read the buffer, after the await on the async
+  path
+- **AND** each call SHALL release the lease exactly once
+
+#### Scenario: Optional nullable buffer uses the authored default
+- **GIVEN** a generated method declares `ArrayBuffer? value = null`
+- **WHEN** JavaScript omits the argument, passes `undefined`, or passes
+  `null`
+- **THEN** authored code SHALL receive C# `null` in all three cases
+- **AND** no lease SHALL be retained
+
+#### Scenario: Nullable return and property encode null or the buffer
+- **GIVEN** a sync method, a `Task<ArrayBuffer?>` method, and a readable and
+  writable `ArrayBuffer?` property
+- **WHEN** authored code returns or stores `null`
+- **THEN** JavaScript SHALL receive `null`
+- **WHEN** authored code returns a buffer
+- **THEN** JavaScript SHALL read its bytes
+- **AND** the returned leaf SHALL release exactly once after encode
+- **WHEN** JavaScript assigns a buffer to the property and authored code
+  stores a `Retain()` copy
+- **THEN** the setter's decoded leaf SHALL release once and the stored copy
+  SHALL stay readable until the module releases it
+
+#### Scenario: Nullable buffer inside a record and a collection
+- **GIVEN** a record with an `ArrayBuffer?` field and an
+  `IReadOnlyList<ArrayBuffer?>` parameter
+- **WHEN** JavaScript passes `null` leaves next to buffer leaves
+- **THEN** null leaves SHALL release nothing and buffer leaves SHALL
+  release exactly once each
+- **WHEN** a later field decode fails after a non-null buffer field decoded
+- **THEN** the earlier lease SHALL release exactly once
+
+#### Scenario: Shared-object members accept nullable buffers
+- **GIVEN** a shared-object `[JS]` constructor parameter, method parameter,
+  and property of type `ArrayBuffer?`
+- **WHEN** JavaScript passes `null` and a buffer
+- **THEN** they SHALL behave as the module positions above
+
+#### Scenario: Nullable buffer in a callback and a nested event payload
+- **GIVEN** a callback whose argument and result are `ArrayBuffer?`, and a
+  typed event whose payload is a list of `ArrayBuffer?`
+- **WHEN** authored code passes `null` and a buffer
+- **THEN** JavaScript SHALL receive `null` and the buffer
+- **AND** the author's buffer SHALL stay usable, and the author SHALL own a
+  non-null callback result
+
+#### Scenario: JavaScriptValue stays excluded
+- **GIVEN** a generated member declares `JavaScriptValue?` next to an
+  `ArrayBuffer?` member
+- **WHEN** the generator runs
+- **THEN** it SHALL report the member's existing diagnostic for
+  `JavaScriptValue?` and no diagnostic for `ArrayBuffer?`
 
 ### Requirement: Optional Nullable Reference Arguments Preserve Authored Defaults
 

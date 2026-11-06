@@ -158,7 +158,8 @@ A leaf is a `JavaScriptValue` or an `ArrayBuffer` wrapper. Every
 `IJavaScriptCodec<T>` SHALL follow this contract: `Decode` SHALL give the
 caller every leaf in the result. `Encode` SHALL return a new owned JavaScript
 value and SHALL NOT dispose `value` or any leaf in it. `Release` SHALL dispose
-every leaf in `value`, and SHALL do nothing for null or default.
+every leaf in `value`, and SHALL do nothing for null or default. A decoded
+`ArrayBuffer?` that is `null` holds no leaf.
 
 Authored code SHALL follow four rules:
 
