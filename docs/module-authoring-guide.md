@@ -137,16 +137,22 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
 - `IReadOnlyList<T>` where `T` has a generated codec, mapped to/from a
   JavaScript array. `List<T>` is not supported. Lists and dictionaries nest in
   each other, in records, in callback types, and in typed event payloads, as
-  long as they hold no `JavaScriptValue` or `ArrayBuffer`. One that does works
-  as a parameter, return, property, or record field, on module and
-  shared-object members, and inside another list or dictionary.
+  long as they hold no `JavaScriptValue`, `ArrayBuffer`, or `Uint8Array`. One
+  that does works as a parameter, return, property, or record field, on module
+  and shared-object members, and inside another list or dictionary.
 - Binary data: `ArrayBuffer`, plus `byte[]`, `Memory<byte>` and
   `ReadOnlyMemory<byte>` as convenience types. These copy in both directions.
   `Span<byte>` and `ReadOnlySpan<byte>` borrow one synchronous input parameter,
   and a returned span is copied. `ArrayBuffer` and `ArrayBuffer?` work
   directly, as a record field, a list element, a dictionary value, and a direct
   typed-event payload; neither works as a callback type argument or a nested
-  typed-event payload. See the
+  typed-event payload. `Uint8Array` is a view over a JavaScript buffer with its
+  offset and length, and nothing is copied: your writes are visible to
+  JavaScript after the call. It works where `ArrayBuffer` does, also as
+  `Uint8Array?`, except as a direct typed-event payload or a union member, and
+  any `Uint8Array` instance, including a subclass such as a `Buffer` polyfill,
+  is accepted. `byte[]` and `ArrayBuffer` parameters do not accept a
+  `Uint8Array`; declare `Uint8Array` when JavaScript sends one. See the
   "Module-facing ArrayBuffer And Binary Codecs" requirement in
   `docs/specs/modules-core-boundary.md`.
 - `Either<TFirst, TSecond>` for an argument that JavaScript passes as one of
@@ -170,9 +176,9 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
   `docs/specs/ownership-and-scoped-refs.md` for the ownership rules — argument
   wrappers are owned by generated glue for the call's duration, so store and
   expose only `Retain()` copies; a returned value transfers all its
-  `JavaScriptValue` and `ArrayBuffer` leaves to generated glue, including
-  leaves inside records, lists, and dictionaries, so keep a retained copy if
-  you need to hold onto or dispose your own reference afterward).
+  `JavaScriptValue`, `ArrayBuffer`, and `Uint8Array` leaves to generated glue,
+  including leaves inside records, lists, and dictionaries, so keep a retained
+  copy if you need to hold onto or dispose your own reference afterward).
 - `JavaScriptCallback<TResult>` / `JavaScriptCallback<TArgs, TResult>` for
   JS function arguments (see Callbacks below). A callback is a parameter type
   only: it cannot be a return value, a collection element, or a record field.
@@ -181,12 +187,12 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
   `undefined` arrive as C# `null`, and a function is retained like a non-null
   callback.
   A callback result or argument type can be a direct `JavaScriptValue`, but a
-  type that holds a `JavaScriptValue` or `ArrayBuffer` inside a record, list,
-  or dictionary is a build diagnostic there.
+  type that holds a `JavaScriptValue`, `ArrayBuffer`, or `Uint8Array` inside a
+  record, list, or dictionary is a build diagnostic there.
 
-Nullable reference types work for `ArrayBuffer?` and for the codecs that carry
-no JSI ownership: `string?`, `Uri?`, `byte[]?`, positional reference records,
-and the `IReadOnlyList<T>?`, `Dictionary<string, T>?`, and
+Nullable reference types work for `ArrayBuffer?`, `Uint8Array?`, and for the
+codecs that carry no JSI ownership: `string?`, `Uri?`, `byte[]?`, positional
+reference records, and the `IReadOnlyList<T>?`, `Dictionary<string, T>?`, and
 `IReadOnlyDictionary<string, T>?` containers. Nullable elements and dictionary
 values work wherever the nested type is supported, so `IReadOnlyList<string?>?`
 composes. `List<T>` stays unsupported in both forms, because its non-nullable
@@ -328,10 +334,10 @@ lifetime rules:
   argument and retains no lease. A non-null buffer follows the `ArrayBuffer`
   rule.
 
-Nested owned wrappers, including `JavaScriptValue` and `ArrayBuffer`, and
-callback payloads are rejected for typed events. `JavaScriptObject` is not
-currently a generated module codec, but remains a possible future advanced
-convertible.
+Nested owned wrappers, including `JavaScriptValue`, `ArrayBuffer`, and
+`Uint8Array`, and callback payloads are rejected for typed events.
+`JavaScriptObject` is not currently a generated module codec, but remains a
+possible future advanced convertible.
 
 To react when JavaScript adds or removes listeners, declare hook methods with
 `[OnStartObserving]` / `[OnStopObserving]` (optionally naming a specific event,
