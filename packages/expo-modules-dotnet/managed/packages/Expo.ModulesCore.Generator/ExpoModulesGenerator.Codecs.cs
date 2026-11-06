@@ -174,16 +174,11 @@ public sealed partial class ExpoModulesGenerator
         : OrdinaryCodec($"NullableCodec<{valueTypeName}, {valueCodec.Expression}>");
   }
 
-  // JavaScriptValue and the callback types keep their non-nullable conversion rules. Their
-  // retain, transfer, and release-exactly-once states are not widened with a null axis, so an
-  // annotated use is rejected instead of silently converted.
+  // JavaScriptValue keeps its non-nullable conversion rules. Its retain, transfer, and
+  // release-exactly-once states are not widened with a null axis, so an annotated use is rejected
+  // instead of silently converted.
   private static bool IsExcludedFromNullableReference(ITypeSymbol typeSymbol)
   {
-    if (IsJavaScriptCallbackType(typeSymbol))
-    {
-      return true;
-    }
-
     return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == JavaScriptValueMetadataName;
   }
 
@@ -219,6 +214,14 @@ public sealed partial class ExpoModulesGenerator
     var valueType = typeSymbol.WithNullableAnnotation(NullableAnnotation.NotAnnotated);
     if (IsExcludedFromNullableReference(valueType))
     {
+      return true;
+    }
+
+    // The callback descriptor keeps every position except a parameter rejected, so an annotated
+    // callback is always handled here.
+    if (IsJavaScriptCallbackType(valueType))
+    {
+      codec = TryGetJavaScriptCallbackCodec(valueType, diagnostics, recordCodecs, "NullableJavaScriptCallbackCodec");
       return true;
     }
 
@@ -509,7 +512,7 @@ public sealed partial class ExpoModulesGenerator
       return nullableReferenceCodec;
     }
 
-    if (TryGetJavaScriptCallbackCodec(typeSymbol, diagnostics, recordCodecs) is { } callbackCodec)
+    if (TryGetJavaScriptCallbackCodec(typeSymbol, diagnostics, recordCodecs, "JavaScriptCallbackCodec") is { } callbackCodec)
     {
       return callbackCodec;
     }
@@ -698,7 +701,8 @@ public sealed partial class ExpoModulesGenerator
   private static ExpoCodecDescriptor? TryGetJavaScriptCallbackCodec(
       ITypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs)
+      List<ExpoGeneratedRecordCodecModel> recordCodecs,
+      string codecClassName)
   {
     if (typeSymbol is not INamedTypeSymbol namedType || !IsJavaScriptCallbackType(namedType))
     {
@@ -715,7 +719,7 @@ public sealed partial class ExpoModulesGenerator
       }
 
       return CallbackCodec(
-          $"JavaScriptCallbackCodec<{GetCodecTypeArgumentName(zeroArgResultType)}, {zeroArgResultCodec.Expression}>"
+          $"{codecClassName}<{GetCodecTypeArgumentName(zeroArgResultType)}, {zeroArgResultCodec.Expression}>"
       );
     }
 
@@ -729,7 +733,7 @@ public sealed partial class ExpoModulesGenerator
     }
 
     return CallbackCodec(
-        $"JavaScriptCallbackCodec<{GetCodecTypeArgumentName(argsType)}, {argsCodec}, {GetCodecTypeArgumentName(resultType)}, {resultCodec.Expression}>"
+        $"{codecClassName}<{GetCodecTypeArgumentName(argsType)}, {argsCodec}, {GetCodecTypeArgumentName(resultType)}, {resultCodec.Expression}>"
     );
   }
 

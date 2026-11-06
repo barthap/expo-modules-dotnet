@@ -54,7 +54,7 @@ Open briefs live in `docs/plans/`. Briefs for DONE items move to
 | 029 | Typed codec conversion descriptors                  | P1    | M      | 028          | DONE    | [029](archive/plans/029-typed-codec-conversion-descriptors.md)              |
 | 030 | Compositional codec resource scope                  | P1    | L      | 029          | DONE    | [030](archive/plans/030-compositional-codec-resource-scope.md)              |
 | 031 | Nullable ArrayBuffer codecs                         | P1    | M      | 030          | DONE    | [031](archive/plans/031-nullable-arraybuffer-codecs.md)                     |
-| 032 | Nullable JavaScript callback parameters             | P2    | M      | 031          | TODO    | [032](plans/032-nullable-javascript-callback-parameters.md)                 |
+| 032 | Nullable JavaScript callback parameters             | P2    | M      | 031          | DONE    | [032](archive/plans/032-nullable-javascript-callback-parameters.md)         |
 | 033 | Nullable concrete SharedObject classes              | P2    | M      | 032          | TODO    | [033](plans/033-nullable-concrete-shared-object-codecs.md)                  |
 | 034 | Base-class shared-object arguments                  | P1    | M      | 030          | TODO    | —                                                                           |
 | 035 | Union arguments (`string \| ArrayBuffer`)           | P1    | M      | 030          | TODO    | —                                                                           |
@@ -134,8 +134,13 @@ The next free ID is 041.
   it landed on 2026-11-05 with a local `scripts/test-managed.sh` run (1120
   passed, 0 failed, 0 skipped). `ArrayBuffer?` now works wherever
   `ArrayBuffer` does, through the existing scoped nullable-reference codec, and
-  as a direct typed-event payload. 032 and 033 then apply their own null
-  policies.
+  as a direct typed-event payload. 032 is done
+  ([change](archive/changes/2026-11-05-nullable-javascript-callback-parameters/spec.md)):
+  it landed on 2026-11-05 with a local `scripts/test-managed.sh` run (1164
+  passed, 0 failed, 0 skipped). `JavaScriptCallback<...>?` now works as a
+  module or shared-object method or constructor parameter; `null` and
+  `undefined` decode to C# `null` and register nothing. 033 then applies its own
+  null policy.
   `JavaScriptValue?` and direct `SharedObject?` / `SharedRef<T>?` bases stay
   unsupported by design.
 - **018**: direct MSBuild, RNW CLI build/deploy/launch, and live-app rebuild
