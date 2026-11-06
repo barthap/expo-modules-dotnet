@@ -1239,9 +1239,10 @@ covers duplicate method names.
 
 #### Scenario: Static helper codec is used as a generic codec argument
 - **GIVEN** a list element, dictionary value, `Nullable<T>` inner type,
-  nullable-reference inner type, callback result, or callback-argument tuple
-  element is a `JavaScriptCallback` or a type that holds one, or the annotated
-  type is `JavaScriptValue?`
+  callback result, or callback-argument tuple element is a
+  `JavaScriptCallback` or a type that holds one, a nullable-reference inner
+  type holds a `JavaScriptCallback` inside a list, dictionary, or record, or
+  the annotated type is `JavaScriptValue?`
 - **WHEN** the project is compiled
 - **THEN** the generator SHALL report the using member's unsupported-type
   diagnostic: `EXPOJSI001`, `EXPOJSI002`, `EXPOJSI008`, `EXPOJSI015`, or
@@ -1398,9 +1399,10 @@ No codec SHALL use finalizers, reflection, or ambient state to release.
 
 Every generated record codec SHALL use one `Encode` text with no null guard.
 Encoding a null class record SHALL fail with a catchable JavaScript error.
-`Release` SHALL skip a null record. `JavaScriptCallbackCodec` and
-`SharedObjectCodec<T>` are static classes with no `Release`: the runtime
-context retains callbacks and the registry owns shared objects.
+`Release` SHALL skip a null record. `JavaScriptCallbackCodec`,
+`NullableJavaScriptCallbackCodec`, and `SharedObjectCodec<T>` are static
+classes with no `Release`: the runtime context retains callbacks and the
+registry owns shared objects.
 
 #### Scenario: A missing override leaks
 - **GIVEN** a composite codec over `ArrayBufferCodec`, holding JS-created
@@ -1470,7 +1472,7 @@ local declarations and helper type arguments.
 | `JavaScriptValue`, `ArrayBuffer` | `JavaScriptCodec` | `HoldsLeaves` |
 | List, dictionary, or nullable over a `HoldsLeaves` child | `JavaScriptCodec` | `HoldsLeaves` |
 | Record with any `HoldsLeaves` field | `JavaScriptCodec` | `HoldsLeaves` |
-| `JavaScriptCallback<...>` | `StaticHelper` | `ContextRetained` |
+| `JavaScriptCallback<...>` and `JavaScriptCallback<...>?` | `StaticHelper` | `ContextRetained` |
 | Direct `[ExpoSharedObject]` class | `StaticHelper` | `Borrowed` |
 
 A record codec model SHALL store whether the record holds leaves and whether it
@@ -1837,18 +1839,19 @@ and leaf-bearing contents. A null container releases nothing.
 ### Requirement: Ownership-Bearing Nullable References Are Build Diagnostics
 
 The generator SHALL reject a nullable annotation on `JavaScriptValue`,
-`JavaScriptCallback<TResult>`, `JavaScriptCallback<TArgs, TResult>`,
 `SharedObject`, `SharedRef<T>`, and a concrete `[ExpoSharedObject]` class.
 `JavaScriptValue` already represents JavaScript `null` and `undefined`. The
-others carry retained callback state, shared-object identity, or
-runtime-context state, and a null axis multiplies those states. The generator
+others carry shared-object identity, and a null axis multiplies those states.
+The generator
 SHALL report an existing context-specific diagnostic at error severity. It SHALL
 NOT add a new diagnostic code, SHALL NOT raise a context-free diagnostic from
 codec resolution, SHALL NOT emit a binding for the rejected member, and SHALL
 NOT fall through to that type's non-nullable codec. The same non-nullable types
 SHALL keep their current supported or diagnostic behavior. `ArrayBuffer?` is
 supported through `NullableReferenceCodec` (see "Nullable ArrayBuffer Is A
-Nullable Reference").
+Nullable Reference"). A nullable callback is supported as a method or
+constructor parameter (see "Nullish Callback Parameters Decode To Null Without
+Retention") and keeps the non-null rejection on every other position.
 
 Codec resolution does not know the member context, so the codes come from the
 callers: `EXPOJSI001` for a parameter, `EXPOJSI002` for a return, `EXPOJSI007`
@@ -1890,12 +1893,13 @@ binding is emitted, and no shared-object codec is selected.
 - **AND** it SHALL NOT emit a record codec that treats the field as
   non-nullable
 
-#### Scenario: Nullable callback reports the callback code
-- **GIVEN** a generated method declares an annotated `JavaScriptCallback<...>?`
-  parameter
-- **WHEN** the generator analyzes the parameter
-- **THEN** it SHALL report `EXPOJSI008`
-- **AND** it SHALL NOT generate retained callback conversion
+#### Scenario: Nullable callback outside a parameter keeps its diagnostic
+- **GIVEN** a generated return, async result, `[JS]` property, record
+  field, list element, dictionary value, or typed event payload uses an
+  annotated `JavaScriptCallback<...>?`
+- **WHEN** the generator analyzes the member
+- **THEN** it SHALL report the same diagnostic as the non-null form
+- **AND** it SHALL NOT emit the member
 
 #### Scenario: Excluded nullable property reports the property code
 - **GIVEN** a `[JS]` property declares an excluded nullable reference type
@@ -2027,6 +2031,59 @@ a nullable-specific cleanup path.
 - **WHEN** the generator runs
 - **THEN** it SHALL report the member's existing diagnostic for
   `JavaScriptValue?` and no diagnostic for `ArrayBuffer?`
+
+### Requirement: Nullish Callback Parameters Decode To Null Without Retention
+
+`JavaScriptCallback<TResult>?` and `JavaScriptCallback<TArgs, TResult>?`
+SHALL be accepted as parameters of generated module methods, sync and async,
+and of supported shared-object constructors and methods, including with an
+authored `= null` default. They SHALL resolve to
+`NullableJavaScriptCallbackCodec<...>` with the same type arguments as the
+non-null codec, `DecodeOnly`, requiring `DotnetRuntimeContext`, and
+`ContextRetained`. JavaScript `null` and `undefined` SHALL decode to C#
+`null` without calling `AsFunction` and without registering a callback with
+the context. A non-null function SHALL decode through the non-null codec
+unchanged. A nullable callback is never a leaf holder: generated glue SHALL
+NOT release or dispose it at invocation end. Its argument and result types
+follow the non-null rule, so they can hold leaves at any depth.
+
+#### Scenario: Nullish callback reaches authored code as null
+- **GIVEN** a method with a required `JavaScriptCallback<int>?` parameter
+  and a method with an optional
+  `JavaScriptCallback<ValueTuple<string>, string>? cb = null` parameter
+- **WHEN** JavaScript passes `null`, passes `undefined`, or omits the
+  optional argument
+- **THEN** authored code SHALL receive C# `null`
+- **AND** the context's retained callback count SHALL NOT change
+
+#### Scenario: Non-function non-null value is rejected
+- **GIVEN** the required nullable callback parameter
+- **WHEN** JavaScript passes a number
+- **THEN** the call SHALL throw a JavaScript error from the function check
+- **AND** the retained callback count SHALL NOT change
+
+#### Scenario: Non-null callback keeps context-retained lifetime
+- **GIVEN** the same parameters
+- **WHEN** JavaScript passes a function
+- **THEN** authored code SHALL invoke it synchronously and after the method
+  returns, including after an `await` on an async method
+- **AND** the retained callback count SHALL increase by one per decode
+- **AND** explicit `Dispose` SHALL release once, and context teardown SHALL
+  release an undisposed callback once
+
+#### Scenario: Leaf-bearing nullable callback follows the leaf rules
+- **GIVEN** a `JavaScriptCallback<ValueTuple<ArrayBuffer>, ArrayBuffer>?`
+  parameter
+- **WHEN** JavaScript passes `null`, or a function that returns a new buffer
+- **THEN** authored code SHALL receive C# `null` for `null`
+- **AND** for a function, the buffer the author passes SHALL stay the
+  author's, and the returned buffer SHALL be the author's to dispose
+
+#### Scenario: Shared-object parameters accept nullable callbacks
+- **GIVEN** a shared-object `[JS]` constructor and method with a nullable
+  callback parameter
+- **WHEN** JavaScript passes `null` and a function
+- **THEN** they SHALL behave as the module positions
 
 ### Requirement: Optional Nullable Reference Arguments Preserve Authored Defaults
 
