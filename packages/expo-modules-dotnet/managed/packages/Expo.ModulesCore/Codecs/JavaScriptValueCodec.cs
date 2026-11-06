@@ -21,8 +21,11 @@ public readonly struct JavaScriptValueCodec : IJavaScriptCodec<JavaScriptValue>,
   {
     ArgumentNullException.ThrowIfNull(value);
     ArgumentNullException.ThrowIfNull(runtime);
-    return value;
+    return value.Retain();
   }
+
+  /// <summary>Disposes <paramref name="value"/>. A null value does nothing.</summary>
+  public static void Release(JavaScriptValue value) => value?.Dispose();
 
   /// <summary>Retains a scoped value and registers the retained wrapper in <paramref name="scope"/>.</summary>
   /// <remarks>This helper is for generated bindings, not ordinary module author code.</remarks>
