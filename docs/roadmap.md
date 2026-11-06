@@ -112,7 +112,7 @@ The next free ID is 041.
   `Base?`, and nested shapes stay rejected, so 038 can port `copy` and `move`
   but not a base-typed return.
 - **035**: done: it landed on 2026-11-06 with a local
-  `scripts/test-managed.sh` run (1365 passed, 0 failed, 0 skipped).
+  `scripts/test-managed.sh` run (1368 passed, 0 failed, 0 skipped).
   `Either<TFirst, TSecond>` now works in every codec position when its two
   members have different JavaScript kinds among string, bool, number, and
   binary, so 038 can port `write(content: string | ArrayBuffer)`. One

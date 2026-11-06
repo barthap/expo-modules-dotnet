@@ -1485,6 +1485,46 @@ public sealed class LeafReleaseModuleTests
   }
 
   [Fact]
+  public void UnionListLaterElementFailureReleasesEarlierLeases()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(UnionSetup);
+    UnionThingsModule.Calls = 0;
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "globalThis.b2 = new ArrayBuffer(2); " +
+        "try { u.writeAll([b, b2, 5]); 'no error'; } " +
+        "catch (error) { error instanceof Error ? error.message : 'not an Error'; }"
+    );
+    leaf.Fixture.WaitUntilIdle();
+
+    // The list decode releases the two buffers it already decoded, and authored code never runs.
+    Assert.Contains(StringOrBufferKind("Number"), result);
+    Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+    Assert.Equal(0, UnionThingsModule.Calls);
+  }
+
+  [Fact]
+  public void UnionListReturnReleasesEachBufferOnce()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(UnionSetup);
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "globalThis.b2 = new ArrayBuffer(2); const r = u.echoAll(['a', b, b2]); " +
+        "[r[0], r[1] === b, r[2] === b2].join(':')"
+    );
+    leaf.Fixture.WaitUntilIdle();
+
+    // Each returned Retain() copy shares its parameter's entry, so each entry releases only when
+    // glue releases both the parameter list and the result list.
+    Assert.Equal("a:true:true", result);
+    Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
   public async Task UnionReturnKeepsIdentityAndReleasesOnceSyncAndAsync()
   {
     using var leaf = LeafReleaseFixture.Create();
@@ -1493,7 +1533,8 @@ public sealed class LeafReleaseModuleTests
     leaf.Fixture.ResetCounters();
     Assert.Equal("true:x", leaf.ReadString("`${u.echo(b) === b}:${u.echo('x')}`"));
     leaf.Fixture.WaitUntilIdle();
-    // The returned input buffer releases once; the string call holds no lease.
+    // The parameter and the returned Retain() copy share one entry, which releases only when glue
+    // releases both; the string call holds no lease.
     Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
 
     leaf.Fixture.ResetCounters();
@@ -1526,6 +1567,8 @@ public sealed class LeafReleaseModuleTests
     leaf.Fixture.WaitUntilIdle();
 
     Assert.Equal("true:1:x:2", result);
+    // The returned record holds a Retain() copy, so the entry releases only when glue releases both
+    // the parameter record and the returned record.
     Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 

@@ -152,9 +152,10 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
   kinds: `Either<double, bool>` works, `Either<double, int>` does not. Read
   `IsFirst`, then `First` or `Second`, or call `Match`. Create one with
   `Either<TFirst, TSecond>.FromFirst` or `FromSecond`. A union works in every
-  position. JavaScript `null`, `undefined`, and any other kind fail before
-  your code runs; `Either<TFirst, TSecond>?` turns `null` and `undefined` into
-  C# `null`. An `ArrayBuffer` member is a leaf and follows the leaf rules
+  position. JavaScript `null`, `undefined`, and any other kind fail with a
+  JavaScript error: a parameter fails before your code runs, and a callback
+  result fails inside `Invoke()`. `Either<TFirst, TSecond>?` turns `null` and
+  `undefined` into C# `null`. An `ArrayBuffer` member is a leaf and follows the leaf rules
   below.
 - Shared objects, declared as described in section 8.
 - C# `enum` values — encoded as JavaScript strings by default; annotate with

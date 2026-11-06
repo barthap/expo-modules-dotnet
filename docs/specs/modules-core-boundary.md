@@ -1715,10 +1715,10 @@ full union type.
   the second member, and `''` SHALL throw
 
 #### Scenario: Union in encode positions
-- **GIVEN** a sync or async method that returns its
-  `Either<string, ArrayBuffer>` input, a record field, a property that stores
-  `Retain()` copies, an event payload, a callback argument, and a callback
-  result of that type
+- **GIVEN** a sync or async method that returns a `Retain()` copy of its
+  `Either<string, ArrayBuffer>` input, the same in a record field and a list, a
+  property that stores `Retain()` copies, an event payload, a callback
+  argument, and a callback result of that type
 - **WHEN** JavaScript passes an `ArrayBuffer`
 - **THEN** a returned buffer SHALL keep its JavaScript identity and release
   exactly once

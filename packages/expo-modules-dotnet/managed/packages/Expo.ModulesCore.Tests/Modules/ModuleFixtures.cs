@@ -958,20 +958,27 @@ public sealed partial class UnionThingsModule
   [JS]
   public int Pick(Either<double, bool> value) => Score(value);
 
-  // Encode positions. A returned union belongs to generated glue, so returning the input releases
-  // its buffer once.
+  // Encode positions. A returned union belongs to generated glue. Each method returns a Retain()
+  // copy that shares the parameter's native entry, so the entry releases only when glue releases
+  // both the parameter and the result.
   [JS]
-  public Either<string, ArrayBuffer> Echo(Either<string, ArrayBuffer> content) => content;
+  public Either<string, ArrayBuffer> Echo(Either<string, ArrayBuffer> content) => Copy(content);
 
+  // Retain() is a runtime call, so it runs before the await, on the runtime thread.
   [JS]
   public async Task<Either<string, ArrayBuffer>> EchoLater(Either<string, ArrayBuffer> content)
   {
+    var copy = Copy(content);
     await Task.Yield();
-    return content;
+    return copy;
   }
 
   [JS]
-  public UnionHolder Wrap(UnionHolder holder) => holder;
+  public UnionHolder Wrap(UnionHolder holder) => holder with { Content = Copy(holder.Content) };
+
+  [JS]
+  public IReadOnlyList<Either<string, ArrayBuffer>> EchoAll(IReadOnlyList<Either<string, ArrayBuffer>> parts) =>
+      parts.Select(Copy).ToArray();
 
   // Stores and returns only Retain() copies; the module owns the stored copy until it is replaced.
   [JS]
