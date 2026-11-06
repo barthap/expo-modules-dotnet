@@ -5223,6 +5223,132 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Contains(expectedFragment, text, StringComparison.Ordinal);
   }
 
+  // Uint8Array resolves to the scoped Uint8ArrayCodec at the positions ArrayBuffer does: the 031 ArrayBuffer
+  // fragments with the type name substituted. Codec names are unqualified.
+  private const string U8 = "global::Expo.ModulesCore.Uint8Array";
+  private const string Nu8c = "GeneratedScopedNullableReferenceCodec<global::Expo.ModulesCore.Uint8Array, Uint8ArrayCodec>";
+
+  [Theory]
+  [InlineData("", "[JS] public int M(Uint8Array value) => 0;", "var __expoArg0 = Uint8ArrayCodec.Decode(arguments.GetValue(0), runtime, __expoScope);")]
+  [InlineData("", "[JS] public Task<int> M(Uint8Array value) => Task.FromResult(0);", "var __expoArg0 = Uint8ArrayCodec.Decode(arguments.GetValue(0), jsRuntime, __expoScope);")]
+  [InlineData("", "[JS] public Uint8Array M() => Uint8Array.Allocate(1);", "Uint8ArrayCodec.Transfer(__expoResult, __expoScope);")]
+  [InlineData("", "[JS] public Uint8Array M(Uint8Array value) => value;", "return Uint8ArrayCodec.EncodeBorrowed(__expoResult, runtime);")]
+  [InlineData("", "[JS] public Task<Uint8Array> M(Uint8Array value) => Task.FromResult(value);", "return GeneratedTransferredResult<" + U8 + ", Uint8ArrayCodec>.Resolve(__expoResult, __expoScope);")]
+  [InlineData("", "[JS] public Uint8Array Bytes { get; set; } = null!;", "var __expoValue = Uint8ArrayCodec.Decode(arguments.GetValue(0), runtime, __expoScope);")]
+  [InlineData("", "[JS] public Uint8Array Bytes { get; set; } = null!;", "Uint8ArrayCodec.Transfer(__expoResult, __expoScope);")]
+  [InlineData("", "[JS] public int M(IReadOnlyList<Uint8Array> values) => 0;", "GeneratedScopedListCodec<" + U8 + ", Uint8ArrayCodec>.Decode(arguments.GetValue(0), runtime, __expoScope)")]
+  [InlineData("", "[JS] public int M(Dictionary<string, Uint8Array> values) => 0;", "GeneratedScopedDictionaryCodec<" + U8 + ", Uint8ArrayCodec>.Decode(")]
+  [InlineData("", "[JS] public IReadOnlyDictionary<string, Uint8Array> M() => new Dictionary<string, Uint8Array>();", "GeneratedScopedDictionaryCodec<" + U8 + ", Uint8ArrayCodec>.Transfer(__expoResult, __expoScope);")]
+  [InlineData("public sealed record Holder(Uint8Array Bytes, string Label);", "[JS] public Holder M(Holder holder) => holder;", "Uint8ArrayCodec.Decode(obj.GetProperty(\"bytes\"), runtime, __expoScope)")]
+  [InlineData("public sealed record Holder(Uint8Array Bytes, string Label);", "[JS] public Holder M(Holder holder) => holder;", "Uint8ArrayCodec.Transfer(value.Bytes, __expoScope);")]
+  [InlineData("public sealed record Holder(Uint8Array Bytes, string Label);", "[JS] public Holder M(Holder holder) => holder;", "using var bytes = Uint8ArrayCodec.EncodeBorrowed(value.Bytes, runtime);")]
+  public void GeneratorAcceptsUint8ArrayAtArrayBufferPositions(
+      string declarations,
+      string member,
+      string expectedFragment)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(declarations, member));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var text = GeneratedText(result);
+    Assert.Contains("new GeneratedConversionScope()", text, StringComparison.Ordinal);
+    Assert.Contains(expectedFragment, text, StringComparison.Ordinal);
+  }
+
+  [Theory]
+  [InlineData("", "[JS] public int M(Uint8Array? value) => 0;", "var __expoArg0 = " + Nu8c + ".Decode(arguments.GetValue(0), runtime, __expoScope);")]
+  [InlineData("", "[JS] public int M(Uint8Array? value = null) => 0;", "arguments.Count <= 0 || arguments.GetValue(0).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? null : " + Nu8c + ".Decode(arguments.GetValue(0), runtime, __expoScope)")]
+  [InlineData("", "[JS] public Uint8Array? M() => null;", Nu8c + ".Transfer(__expoResult, __expoScope);")]
+  [InlineData("", "[JS] public Uint8Array? M(Uint8Array? value) => value;", "return " + Nu8c + ".EncodeBorrowed(__expoResult, runtime);")]
+  [InlineData("", "[JS] public Task<Uint8Array?> M() => Task.FromResult<Uint8Array?>(null);", "GeneratedTransferredResult<global::Expo.ModulesCore.Uint8Array?, " + Nu8c + ">.Resolve(__expoResult, __expoScope);")]
+  [InlineData("", "[JS] public Uint8Array? Bytes { get; set; }", "var __expoValue = " + Nu8c + ".Decode(arguments.GetValue(0), runtime, __expoScope);")]
+  [InlineData("", "[JS] public int M(IReadOnlyList<Uint8Array?> values) => 0;", "GeneratedScopedListCodec<global::Expo.ModulesCore.Uint8Array?, " + Nu8c + ">.Decode(arguments.GetValue(0), runtime, __expoScope)")]
+  [InlineData("public sealed record Holder(Uint8Array? Bytes);", "[JS] public Holder M(Holder holder) => holder;", Nu8c + ".Decode(obj.GetProperty(\"bytes\"), runtime, __expoScope)")]
+  public void GeneratorAcceptsNullableUint8Array(
+      string declarations,
+      string member,
+      string expectedFragment)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(declarations, member));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var text = GeneratedText(result);
+    Assert.Contains(Nu8c, text, StringComparison.Ordinal);
+    Assert.Contains(expectedFragment, text, StringComparison.Ordinal);
+  }
+
+  [Theory]
+  [InlineData("[JS] public Entry(Uint8Array seed) { }", "var __expoArg0 = Uint8ArrayCodec.Decode(arguments.GetValue(0), runtime, __expoScope);")]
+  [InlineData("[JS] public int Measure(Uint8Array value) => 0;", "var __expoArg0 = Uint8ArrayCodec.Decode(arguments.GetValue(0), runtime, __expoScope);")]
+  [InlineData("[JS] public Task<int> MeasureLater(Uint8Array value) => Task.FromResult(0);", "var __expoArg0 = Uint8ArrayCodec.Decode(arguments.GetValue(0), jsRuntime, __expoScope);")]
+  [InlineData("[JS] public Uint8Array? Bytes { get; set; }", Nu8c + ".Transfer(__expoResult, __expoScope);")]
+  public void GeneratorAcceptsUint8ArrayOnSharedObjectMembers(string member, string expectedFragment)
+  {
+    var result = GeneratorTestHost.Run(SharedObjectMemberSource(member));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerErrors(result);
+    Assert.DoesNotContain(result.Diagnostics, item => item.Id is "CS8604" or "CS8625");
+    Assert.Contains(expectedFragment, GeneratedText(result), StringComparison.Ordinal);
+  }
+
+  // A callback type argument needs a JavaScriptCodec-shaped codec, and Uint8ArrayCodec is ScopedOnly. A union
+  // member needs a kind-table entry, and a Uint8Array is kind Object (spec decision 6).
+  [Theory]
+  [InlineData(false, "[JS] public int M(JavaScriptCallback<Uint8Array> callback) => 0;", "EXPOJSI008", "m", null)]
+  [InlineData(false, "[JS] public int M(JavaScriptCallback<ValueTuple<Uint8Array>, int> callback) => 0;", "EXPOJSI008", "m", null)]
+  [InlineData(true, "[JS] public void Store(JavaScriptCallback<Uint8Array> callback) { }", "EXPOJSI023", "store", null)]
+  [InlineData(false, "[JS] public int M(Either<string, Uint8Array> value) => 0;", "EXPOJSI001", "m", "'global::Expo.ModulesCore.Either<string, global::Expo.ModulesCore.Uint8Array>'")]
+  [InlineData(true, "[JS] public int Pick(Either<string, Uint8Array> value) => 0;", "EXPOJSI023", "pick", "parameter 'value' uses unsupported type 'global::Expo.ModulesCore.Either<string, global::Expo.ModulesCore.Uint8Array>'")]
+  public void GeneratorRejectsUint8ArrayInCallbacksAndUnions(
+      bool onSharedObject,
+      string member,
+      string expectedId,
+      string jsName,
+      string? messageFragment)
+  {
+    var result = GeneratorTestHost.Run(
+        onSharedObject ? SharedObjectMemberSource(member) : ModuleSource(string.Empty, member)
+    );
+
+    AssertNoCompilerErrors(result);
+    Assert.Equal(new[] { expectedId }, GeneratorDiagnosticIds(result));
+    if (messageFragment is not null)
+    {
+      Assert.Contains(messageFragment, result.GeneratorDiagnostics!.Single().GetMessage(), StringComparison.Ordinal);
+    }
+
+    var text = GeneratedText(result);
+    Assert.DoesNotContain($"\"{jsName}\"", text, StringComparison.Ordinal);
+    Assert.DoesNotContain("EitherCodec", text, StringComparison.Ordinal);
+    Assert.DoesNotContain("Uint8ArrayCodec", text, StringComparison.Ordinal);
+  }
+
+  // The event path classifies ArrayBuffer by type name, so a typed array payload has no encode-capable codec there.
+  [Theory]
+  [InlineData("Uint8Array", false, "EXPOJSI019")]
+  [InlineData("Uint8Array", true, "EXPOJSI027")]
+  [InlineData("Uint8Array?", false, "EXPOJSI019")]
+  [InlineData("IReadOnlyList<Uint8Array>", false, "EXPOJSI019")]
+  public void GeneratorKeepsUint8ArrayOutOfTypedEvents(string payload, bool onSharedObject, string expectedId)
+  {
+    var member = $"[Event] public partial Func<{payload}, Task> OnBytes {{ get; }}";
+    var result = GeneratorTestHost.Run(
+        onSharedObject ? SharedObjectMemberSource(member) : ModuleSource(string.Empty, member)
+    );
+
+    AssertNoCompilerErrors(result);
+    Assert.Equal(new[] { expectedId }, GeneratorDiagnosticIds(result));
+    Assert.Contains(
+        "no encode-capable codec is available",
+        result.GeneratorDiagnostics!.Single().GetMessage(),
+        StringComparison.Ordinal
+    );
+    Assert.DoesNotContain("\"onBytes\"", GeneratedText(result), StringComparison.Ordinal);
+  }
+
   // Codec expressions and type argument of a two-member union: a scoped union holds an ArrayBuffer,
   // and its ordinary member is lifted by GeneratedScopedOrdinaryCodec. Codec names are unqualified.
   private const string UnionScopedCodec = "GeneratedScopedEitherCodec<string, GeneratedScopedOrdinaryCodec<string, StringCodec>, global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>";
