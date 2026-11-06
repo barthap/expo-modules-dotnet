@@ -3,14 +3,14 @@ namespace Expo.ModulesCore.Codecs;
 /// <summary>Releases the JavaScript leaves that one generated binding invocation decodes.</summary>
 /// <remarks>
 /// This helper is for generated bindings, not ordinary module author code. A leaf is a
-/// <see cref="Expo.JSI.JavaScriptValue"/> or <see cref="ArrayBuffer"/> a scoped codec hands
-/// to the module. The scope disposes each registration when it disposes, in registration order.
-/// Register accepts only leaves whose Dispose is idempotent, as those two types are, so a leaf
-/// registered more than once is disposed once per registration and releases its native handle
-/// once. The scope has one owner at a time and takes no lock: generated code hands it from the
-/// host frame to the Promise continuation when <c>CreatePromise</c> returns, so two threads never
-/// use it together. Registration is by reference, so two distinct leaves that compare equal both
-/// release.
+/// <see cref="Expo.JSI.JavaScriptValue"/>, <see cref="ArrayBuffer"/>, or <see cref="Uint8Array"/>
+/// a scoped codec hands to the module. The scope disposes each registration when it disposes, in
+/// registration order. Register accepts only leaves whose Dispose is idempotent, as those three
+/// types are, so a leaf registered more than once is disposed once per registration and releases
+/// its native handle once. The scope has one owner at a time and takes no lock: generated code
+/// hands it from the host frame to the Promise continuation when <c>CreatePromise</c> returns, so
+/// two threads never use it together. Registration is by reference, so two distinct leaves that
+/// compare equal both release.
 /// </remarks>
 public sealed class GeneratedConversionScope : IDisposable
 {
