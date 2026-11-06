@@ -658,8 +658,8 @@ public sealed class LeafReleaseModuleTests
     leaf.Fixture.WaitUntilIdle();
     var leafReleases = leaf.Fixture.Counters.ReleasedValues;
 
-    // The decoded value, which the returned slot holds again and Release disposes once.
-    Assert.Equal(twinReleases + 1, leafReleases);
+    // The decoded value and the returned slot's Retain() copy, which only the result release disposes.
+    Assert.Equal(twinReleases + 2, leafReleases);
   }
 
   [Fact]
@@ -704,8 +704,8 @@ public sealed class LeafReleaseModuleTests
     leaf.Fixture.WaitUntilIdle();
     var leafReleases = leaf.Fixture.Counters.ReleasedValues;
 
-    // Each decoded element releases once.
-    Assert.Equal(twinReleases + 2, leafReleases);
+    // Each decoded element and its returned Retain() copy, which only the result release disposes.
+    Assert.Equal(twinReleases + 4, leafReleases);
   }
 
   [Fact]

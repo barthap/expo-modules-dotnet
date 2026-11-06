@@ -207,7 +207,7 @@ public sealed partial class LeafReleaseModule : Module, IDisposable
   public string? SlotKind(Slot? slot) => slot?.Value.Kind.ToString();
 
   [JS]
-  public Slot? EchoSlot(Slot? slot) => slot;
+  public Slot? EchoSlot(Slot? slot) => slot is { } value ? new Slot(value.Value.Retain()) : null;
 
   [JS]
   public int CountOptional(IReadOnlyList<ArrayBuffer>? buffers = null) => buffers?.Count ?? -1;
@@ -225,7 +225,8 @@ public sealed partial class LeafReleaseModule : Module, IDisposable
   public TextMixed EchoTextMixed(TextMixed value) => value;
 
   [JS]
-  public IReadOnlyList<JavaScriptValue> EchoValueList(IReadOnlyList<JavaScriptValue> values) => values;
+  public IReadOnlyList<JavaScriptValue> EchoValueList(IReadOnlyList<JavaScriptValue> values) =>
+      values.Select(value => value.Retain()).ToArray();
 
   [JS]
   public IReadOnlyList<string> EchoTextList(IReadOnlyList<string> values) => values;
