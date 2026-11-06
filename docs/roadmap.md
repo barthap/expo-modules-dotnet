@@ -47,48 +47,48 @@ in the notes below the table.
 Open briefs live in `docs/plans/`. A DONE item's brief leaves the repo; git
 history keeps it.
 
-| ID  | Title                                               | Pri   | Effort | Depends on   | Status      | Brief                                                                       |
-| --- | --------------------------------------------------- | ----- | ------ | ------------ | ----------- | --------------------------------------------------------------------------- |
-| 025 | `expo-crypto-dotnet`                                | P1    | M      | 024, 036     | TODO        | [025](plans/025-expo-crypto-dotnet.md)                                      |
-| 028 | Annotation-insensitive shared-object boundaries     | P2    | S      | —            | DONE        | —                                                                           |
-| 029 | Typed codec conversion descriptors                  | P1    | M      | 028          | DONE        | —                                                                           |
-| 030 | Composable codec leaf release                       | P1    | L      | 029          | DONE        | —                                                                           |
-| 031 | Nullable ArrayBuffer codecs                         | P1    | M      | 030          | DONE        | —                                                                           |
-| 032 | Nullable JavaScript callback parameters             | P2    | M      | 031          | DONE        | —                                                                           |
-| 033 | Nullable concrete SharedObject classes              | P2    | M      | 032          | DONE        | —                                                                           |
-| 034 | Base-class shared-object arguments                  | P1    | M      | 030          | DONE        | —                                                                           |
-| 035 | Union arguments (`string \| ArrayBuffer`)           | P1    | M      | 030          | DONE        | —                                                                           |
-| 036 | Typed-array codecs (`Uint8Array`)                   | P1    | M      | 030          | IN PROGRESS | [036](plans/036-typed-array-codecs.md)                                      |
-| 037 | Coded JavaScript errors                             | P2    | M      | —            | TODO        | —                                                                           |
-| 038 | `expo-file-system-dotnet` write, bytes, copy, move  | P1    | M      | 024, 034–036 | TODO        | —                                                                           |
-| 040 | Windows opt-in `*-dotnet` substitution              | P1    | L      | 039          | TODO        | [040](plans/040-windows-dotnet-module-substitution.md)                      |
-| 011 | Hermes prebuilts as downloadable artifacts          | P3    | M      | 008          | BACKLOG     | —                                                                           |
-| 001 | Fast CI checks workflow                             | P1    | S      | —            | DONE        | —                                                                           |
-| 002 | Autolinking CLI command tests                       | P1    | M      | —            | DONE        | —                                                                           |
-| 003 | Bridge edge-case tests                              | P2    | M      | —            | DONE        | —                                                                           |
-| 004 | Bridge string hygiene                               | P2    | S      | 003          | DONE        | —                                                                           |
-| 005 | Docs refresh and module authoring guide             | P3    | M      | —            | DONE        | —                                                                           |
-| 006 | ArrayBuffer and binary codecs                       | P2    | L      | 003          | DONE        | —                                                                           |
-| 007 | SharedObject design spike                           | P3    | M      | —            | DONE        | —                                                                           |
-| 008 | Linux testhost + native tests workflow              | P1    | M–L    | 001          | DONE        | —                                                                           |
-| 009 | Windows testhost teardown crash                     | P1    | M      | 008          | DONE        | —                                                                           |
-| 010 | Darwin installer lifecycle locking                  | P1    | M      | —            | DONE        | —                                                                           |
-| 012 | Typed JS facade base classes                        | P2    | M      | 005          | DONE        | —                                                                           |
-| 013 | camelCase JS naming + `[JS]` properties             | P2    | M      | —            | DONE        | —                                                                           |
-| 014 | Typed `[Event]` members                             | P2    | M      | 013          | DONE        | —                                                                           |
-| 015 | Promise state on runtime-owned collection           | P2    | M      | —            | DONE        | —                                                                           |
-| 016 | NativeAOT publish check in CI                       | P1    | S      | —            | DONE        | —                                                                           |
-| 017 | SharedObject authoring surface                      | P2    | L      | 015          | DONE        | —                                                                           |
-| 018 | Windows build/deploy reliability + `ReactNativeDir` | P1/P2 | L      | 039          | DONE        | —                                                                           |
-| 019 | Typed events on shared objects                      | P2    | M      | 017, 021     | DONE        | —                                                                           |
-| 020 | Console app Linux port + loader CI lane             | P1    | M      | 016          | DONE        | —                                                                           |
-| 021 | Owned host-function callback-state disposal         | P2    | S–M    | —            | DONE        | —                                                                           |
-| 022 | `expo-asset-dotnet`                                 | P1    | M      | 027          | DONE        | —                                                                           |
-| 023 | `expo-constants-dotnet`                             | P1    | M      | —            | DONE        | —                                                                           |
-| 024 | `expo-file-system-dotnet` local files core          | P1    | L      | —            | DONE        | —                                                                           |
-| 026 | Nullable reference-type codecs                      | P1    | M      | —            | DONE        | —                                                                           |
-| 027 | Host-supplied app directories                       | P1    | L      | —            | DONE        | —                                                                           |
-| 039 | expo-desktop 1.0 prebuild for `desktop-app`         | P1    | L      | —            | DONE        | —                                                                           |
+| ID  | Title                                               | Pri   | Effort | Depends on   | Status  | Brief                                                                       |
+| --- | --------------------------------------------------- | ----- | ------ | ------------ | ------- | --------------------------------------------------------------------------- |
+| 025 | `expo-crypto-dotnet`                                | P1    | M      | 024, 036     | TODO    | [025](plans/025-expo-crypto-dotnet.md)                                      |
+| 028 | Annotation-insensitive shared-object boundaries     | P2    | S      | —            | DONE    | —                                                                           |
+| 029 | Typed codec conversion descriptors                  | P1    | M      | 028          | DONE    | —                                                                           |
+| 030 | Composable codec leaf release                       | P1    | L      | 029          | DONE    | —                                                                           |
+| 031 | Nullable ArrayBuffer codecs                         | P1    | M      | 030          | DONE    | —                                                                           |
+| 032 | Nullable JavaScript callback parameters             | P2    | M      | 031          | DONE    | —                                                                           |
+| 033 | Nullable concrete SharedObject classes              | P2    | M      | 032          | DONE    | —                                                                           |
+| 034 | Base-class shared-object arguments                  | P1    | M      | 030          | DONE    | —                                                                           |
+| 035 | Union arguments (`string \| ArrayBuffer`)           | P1    | M      | 030          | DONE    | —                                                                           |
+| 036 | Typed-array codecs (`Uint8Array`)                   | P1    | M      | 030          | DONE    | —                                                                           |
+| 037 | Coded JavaScript errors                             | P2    | M      | —            | TODO    | —                                                                           |
+| 038 | `expo-file-system-dotnet` write, bytes, copy, move  | P1    | M      | 024, 034–036 | TODO    | —                                                                           |
+| 040 | Windows opt-in `*-dotnet` substitution              | P1    | L      | 039          | TODO    | [040](plans/040-windows-dotnet-module-substitution.md)                      |
+| 011 | Hermes prebuilts as downloadable artifacts          | P3    | M      | 008          | BACKLOG | —                                                                           |
+| 001 | Fast CI checks workflow                             | P1    | S      | —            | DONE    | —                                                                           |
+| 002 | Autolinking CLI command tests                       | P1    | M      | —            | DONE    | —                                                                           |
+| 003 | Bridge edge-case tests                              | P2    | M      | —            | DONE    | —                                                                           |
+| 004 | Bridge string hygiene                               | P2    | S      | 003          | DONE    | —                                                                           |
+| 005 | Docs refresh and module authoring guide             | P3    | M      | —            | DONE    | —                                                                           |
+| 006 | ArrayBuffer and binary codecs                       | P2    | L      | 003          | DONE    | —                                                                           |
+| 007 | SharedObject design spike                           | P3    | M      | —            | DONE    | —                                                                           |
+| 008 | Linux testhost + native tests workflow              | P1    | M–L    | 001          | DONE    | —                                                                           |
+| 009 | Windows testhost teardown crash                     | P1    | M      | 008          | DONE    | —                                                                           |
+| 010 | Darwin installer lifecycle locking                  | P1    | M      | —            | DONE    | —                                                                           |
+| 012 | Typed JS facade base classes                        | P2    | M      | 005          | DONE    | —                                                                           |
+| 013 | camelCase JS naming + `[JS]` properties             | P2    | M      | —            | DONE    | —                                                                           |
+| 014 | Typed `[Event]` members                             | P2    | M      | 013          | DONE    | —                                                                           |
+| 015 | Promise state on runtime-owned collection           | P2    | M      | —            | DONE    | —                                                                           |
+| 016 | NativeAOT publish check in CI                       | P1    | S      | —            | DONE    | —                                                                           |
+| 017 | SharedObject authoring surface                      | P2    | L      | 015          | DONE    | —                                                                           |
+| 018 | Windows build/deploy reliability + `ReactNativeDir` | P1/P2 | L      | 039          | DONE    | —                                                                           |
+| 019 | Typed events on shared objects                      | P2    | M      | 017, 021     | DONE    | —                                                                           |
+| 020 | Console app Linux port + loader CI lane             | P1    | M      | 016          | DONE    | —                                                                           |
+| 021 | Owned host-function callback-state disposal         | P2    | S–M    | —            | DONE    | —                                                                           |
+| 022 | `expo-asset-dotnet`                                 | P1    | M      | 027          | DONE    | —                                                                           |
+| 023 | `expo-constants-dotnet`                             | P1    | M      | —            | DONE    | —                                                                           |
+| 024 | `expo-file-system-dotnet` local files core          | P1    | L      | —            | DONE    | —                                                                           |
+| 026 | Nullable reference-type codecs                      | P1    | M      | —            | DONE    | —                                                                           |
+| 027 | Host-supplied app directories                       | P1    | L      | —            | DONE    | —                                                                           |
+| 039 | expo-desktop 1.0 prebuild for `desktop-app`         | P1    | L      | —            | DONE    | —                                                                           |
 
 The next free ID is 041.
 
@@ -117,6 +117,15 @@ The next free ID is 041.
   members have different JavaScript kinds among string, bool, number, and
   binary, so 038 can port `write(content: string | ArrayBuffer)`. One
   `EitherCodec` decodes by kind and releases only the member it holds.
+- **036**: done: it landed on 2026-11-06 with a local
+  `scripts/test-managed.sh` run (1451 passed, 0 failed, 0 skipped).
+  `Uint8Array` now crosses the boundary as a view over one buffer lease with no
+  byte copy, in every codec position where `ArrayBuffer` does and as a union
+  member of kind `Object`, so 038 can port `bytes()` and 025 can fill a
+  caller's array. `Uint8ArrayCodec` is one ordinary leaf codec whose `Release`
+  disposes the view. Typed arrays needed no ABI entry: the kind proof, the
+  buffer, the offset and length, and the construction are property reads and
+  one constructor call that `Expo.JSI` already had.
 - **037**: upstream Expo errors carry a `code`. Generated glue rejects with a
   plain `Error` today. Not a blocker for 038.
 - **025**: crypto follows file system and needs typed arrays (036). Plan 027
@@ -244,6 +253,14 @@ and a status row.
   without the parameter name. Carrying it at the generated-glue wrap site (one
   place, not per codec) would make `Value kind ... is not one of ...` and
   `Value is not an object.` messages self-locating.
+- **P3 — Native-backed buffers round-trip as JavaScript-backed leases**: a
+  native-backed `ArrayBuffer` or `Uint8Array` that returns from JavaScript
+  decodes as a JavaScript-backed, runtime-affine lease on the Hermes testhost,
+  because the pinned Hermes's `jsi::Runtime::tryGetMutableBuffer` is the base
+  implementation and returns null. Bytes still alias and nothing leaks, but
+  authored code loses synchronous off-thread access and the lease counters
+  count an entry. The fix is to re-pin Hermes to a `static_h` commit that has
+  upstream `8e45e2f` ("Implement tryGetMutableBuffer"), not a local fallback.
 
 ### Runtime, performance, and tooling
 

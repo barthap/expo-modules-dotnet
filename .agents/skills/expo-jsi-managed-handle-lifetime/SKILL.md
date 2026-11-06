@@ -149,7 +149,8 @@ code takes that handle. Do not dispose it after returning it.
 ## Generated Module Ownership
 
 Every `IJavaScriptCodec<T>` follows one contract. A leaf is a
-`JavaScriptValue` or an `ArrayBuffer` wrapper.
+`JavaScriptValue`, an `ArrayBuffer`, or a `Uint8Array` wrapper. A `Uint8Array`
+owns one `ArrayBuffer` lease.
 
 - `Decode` gives the caller every leaf in the result.
 - `Encode` returns a new JavaScript value. It never disposes `value` or a leaf
