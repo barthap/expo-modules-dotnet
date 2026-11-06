@@ -247,7 +247,7 @@ public sealed class CodecReleaseTests
     fixture.ResetCounters();
     fixture.Runtime.Execute(runtime =>
     {
-      Assert.ThrowsAny<Exception>(() =>
+      Assert.Throws<InvalidOperationException>(() =>
           JavaScriptArrayCodec<ArrayBuffer, ArrayBufferCodec>.DecodeToArray(source.Ref, runtime));
       return 0;
     });
@@ -257,7 +257,7 @@ public sealed class CodecReleaseTests
     fixture.ResetCounters();
     fixture.Runtime.Execute(runtime =>
     {
-      Assert.ThrowsAny<Exception>(() =>
+      Assert.Throws<InvalidOperationException>(() =>
           JavaScriptArrayCodec<ArrayBuffer, ArrayBufferCodec>.DecodeToArray(source, runtime));
       return 0;
     });
@@ -275,7 +275,7 @@ public sealed class CodecReleaseTests
     fixture.ResetCounters();
     fixture.Runtime.Execute(runtime =>
     {
-      Assert.ThrowsAny<Exception>(() =>
+      Assert.Throws<InvalidOperationException>(() =>
           JavaScriptDictionaryCodec<ArrayBuffer, ArrayBufferCodec>.DecodeToDictionary(source.Ref, runtime));
       return 0;
     });
@@ -285,7 +285,7 @@ public sealed class CodecReleaseTests
     fixture.ResetCounters();
     fixture.Runtime.Execute(runtime =>
     {
-      Assert.ThrowsAny<Exception>(() =>
+      Assert.Throws<InvalidOperationException>(() =>
           JavaScriptDictionaryCodec<ArrayBuffer, ArrayBufferCodec>.DecodeToDictionary(source, runtime));
       return 0;
     });

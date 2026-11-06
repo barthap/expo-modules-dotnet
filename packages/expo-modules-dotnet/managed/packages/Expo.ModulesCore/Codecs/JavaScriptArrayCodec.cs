@@ -32,7 +32,7 @@ public readonly struct JavaScriptArrayCodec<T, TCodec> : IJavaScriptCodec<IReadO
     }
     catch
     {
-      ReleaseDecoded(result, index);
+      Release(new ArraySegment<T>(result, 0, index));
       throw;
     }
 
@@ -60,7 +60,7 @@ public readonly struct JavaScriptArrayCodec<T, TCodec> : IJavaScriptCodec<IReadO
     }
     catch
     {
-      ReleaseDecoded(result, index);
+      Release(new ArraySegment<T>(result, 0, index));
       throw;
     }
 
@@ -108,18 +108,5 @@ public readonly struct JavaScriptArrayCodec<T, TCodec> : IJavaScriptCodec<IReadO
       array.SetValue((uint)index, element);
     }
     return array.AsValue();
-  }
-
-  // Runs inside a catch block: the caller rethrows the decode failure, or this throws the
-  // aggregate of release failures instead.
-  private static void ReleaseDecoded(T[] decoded, int count)
-  {
-    List<Exception>? failures = null;
-    for (var index = 0; index < count; index++)
-    {
-      CodecRelease.Release<T, TCodec>(decoded[index], ref failures);
-    }
-
-    CodecRelease.ThrowIfFailed(failures);
   }
 }
