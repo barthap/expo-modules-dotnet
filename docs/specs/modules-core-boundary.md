@@ -1508,7 +1508,7 @@ position:
 | --- | --- |
 | Top-level boundary (parameter, return, async result, property, shared-object constructor or member, span-function return) | Any shape with `DecodeAndEncode`. `ScopedResource` uses the scoped path. |
 | List element, dictionary value | `JavaScriptCodec` or `ScopedOnly`. A `ScopedResource` child selects the scoped composite. |
-| `Nullable<T>` inner, nullable-reference inner | `JavaScriptCodec` or `ScopedOnly`. `JavaScriptValue?` stays excluded before resolution. `ArrayBuffer?` resolves to `GeneratedScopedNullableReferenceCodec<ArrayBuffer, ArrayBufferCodec>`. `IReadOnlyList<ArrayBuffer>?` is accepted, because the nullable-list branch resolves the element under the list-element rule. A direct `JavaScriptCallback<...>?` resolves to the callback descriptor with `NullableJavaScriptCallbackCodec` before this rule. |
+| `Nullable<T>` inner, nullable-reference inner | `JavaScriptCodec` or `ScopedOnly`. `JavaScriptValue?` stays excluded before resolution. `ArrayBuffer?` resolves to `GeneratedScopedNullableReferenceCodec<ArrayBuffer, ArrayBufferCodec>`. `IReadOnlyList<ArrayBuffer>?` is accepted, because the nullable-list branch resolves the element under the list-element rule. A direct `JavaScriptCallback<...>?` resolves to the callback descriptor with `NullableJavaScriptCallbackCodec` before this rule. A direct nullable concrete `[ExpoSharedObject]` class never reaches this rule: shared-object boundary analysis selects `NullableSharedObjectCodec<T>` first. |
 | Record field | `DecodeAndEncode` and no context requirement. |
 | Callback result, callback-argument tuple element | `JavaScriptCodec` only, so a direct `JavaScriptValue` keeps working. `ScopedOnly` and `StaticHelper` report `EXPOJSI008` (`EXPOJSI023` on a shared object). |
 | Typed event payload | The nested-resource check reports `EXPOJSI019` (module) or `EXPOJSI027` (shared object) before codec resolution. |
@@ -1530,7 +1530,7 @@ cache hit rebuilds the same descriptor.
 | List, dictionary, or nullable over a `ScopedResource` child | `ScopedOnly` | `ScopedResource` |
 | Record with any `ScopedResource` field | `ScopedOnly` | `ScopedResource` |
 | `JavaScriptCallback<...>` and `JavaScriptCallback<...>?` | `StaticHelper` | `ContextRetained` |
-| Direct `[ExpoSharedObject]` class | `StaticHelper` | `Borrowed` |
+| Direct `[ExpoSharedObject]` class `T` and `T?` | `StaticHelper` | `Borrowed` |
 
 #### Scenario: Later field decode fails
 - **GIVEN** a record parameter whose first field is an `ArrayBuffer` and whose
@@ -1885,18 +1885,17 @@ dictionary codec, and a null container registers nothing.
 ### Requirement: Ownership-Bearing Nullable References Are Build Diagnostics
 
 The generator SHALL reject a nullable annotation on `JavaScriptValue`,
-`SharedObject`, `SharedRef<T>`, and a concrete `[ExpoSharedObject]` class. Their
-conversion carries JSI ownership or shared-object identity, and a null axis
-multiplies those states. The generator SHALL report an existing
-context-specific diagnostic at error severity. It SHALL NOT add a new diagnostic
-code, SHALL NOT raise a context-free diagnostic from codec resolution, SHALL NOT
-emit a binding for the rejected member, and SHALL NOT fall through to that
-type's non-nullable codec. The same non-nullable types SHALL keep their current
-supported or diagnostic behavior. `ArrayBuffer?` is supported through the
-scoped nullable-reference codec (see "Nullable ArrayBuffer Is A Scoped Nullable
-Reference"). A nullable callback is supported as a method or constructor
-parameter (see "Nullish Callback Parameters Decode To Null Without Retention")
-and keeps the non-null rejection on every other position.
+`SharedObject`, and `SharedRef<T>`. Their conversion carries JSI ownership or
+shared-object identity, and a null axis multiplies those states. The generator
+SHALL report an existing context-specific diagnostic at error severity. It SHALL
+NOT add a new diagnostic code, SHALL NOT raise a context-free diagnostic from
+codec resolution, SHALL NOT emit a binding for the rejected member, and SHALL
+NOT fall through to that type's non-nullable codec. The same non-nullable types
+SHALL keep their current supported or diagnostic behavior. `ArrayBuffer?` is
+supported through the scoped nullable-reference codec (see "Nullable ArrayBuffer
+Is A Scoped Nullable Reference"). A nullable callback is supported as a method
+or constructor parameter (see "Nullish Callback Parameters Decode To Null
+Without Retention") and keeps the non-null rejection on every other position.
 
 Codec resolution does not know the member context, so the codes come from the
 callers: `EXPOJSI001` for a parameter, `EXPOJSI002` for a return, `EXPOJSI007`
@@ -1915,12 +1914,11 @@ event payload check can report `EXPOJSI019` or `EXPOJSI027` for it. A
 nullability.
 
 A nullable annotation SHALL NOT change shared-object type identity.
-`SharedObject?`, `SharedRef<T>?`, and a nullable concrete `[ExpoSharedObject]`
-class SHALL report `EXPOJSI023` on every generated boundary that runs
-shared-object boundary analysis, with the same reason as the non-null form,
-except that a valid concrete class annotated as nullable reports that it must be
-used without a nullable annotation. The member is rejected at error severity, no
-binding is emitted, and no shared-object codec is selected.
+`SharedObject?` and `SharedRef<T>?` SHALL report `EXPOJSI023` with the same
+reason as the non-null form. A valid concrete class annotated as nullable SHALL
+select `NullableSharedObjectCodec<T>` (see "Nullable Concrete Shared Objects
+Bypass The Registry On Null"). A rejected member is rejected at error severity,
+no binding is emitted, and no shared-object codec is selected.
 
 #### Scenario: Excluded nullable parameter or return reports the method codes
 - **GIVEN** a generated method declares `JavaScriptValue?` as a parameter or as
@@ -1960,9 +1958,8 @@ binding is emitted, and no shared-object codec is selected.
   event and `EXPOJSI027` for a shared-object event
 - **AND** it SHALL NOT emit event glue for that property
 
-#### Scenario: Nullable SharedRef or concrete class reports the shared-object code
-- **GIVEN** a generated boundary declares an annotated `SharedRef<T>` or an
-  annotated concrete `[ExpoSharedObject]` class
+#### Scenario: Nullable SharedRef reports the shared-object code
+- **GIVEN** a generated boundary declares an annotated `SharedRef<T>`
 - **WHEN** shared-object boundary analysis reaches the annotated type
 - **THEN** it SHALL report `EXPOJSI023`
 - **AND** it SHALL NOT select a shared-object codec or emit the member
@@ -1993,6 +1990,8 @@ binding is emitted, and no shared-object codec is selected.
 - **WHEN** the generator analyzes the parameter
 - **THEN** it SHALL select `SharedObjectCodec<T>` and emit the binding with no
   diagnostic
+- **AND** the same class annotated as nullable SHALL select
+  `NullableSharedObjectCodec<T>`
 
 #### Scenario: Rejected nullable type does not fall back
 - **GIVEN** codec resolution has handled an annotated excluded reference
@@ -2122,6 +2121,53 @@ unchanged. Generated glue SHALL NOT register a callback in
 - **WHEN** JavaScript passes `null` and a function
 - **THEN** they SHALL behave as the module positions
 
+### Requirement: Nullable Concrete Shared Objects Bypass The Registry On Null
+
+A top-level, non-generic, sealed `[ExpoSharedObject]` class annotated as
+nullable, including a concrete subclass of `SharedRef<T>`, SHALL be accepted
+on every boundary that accepts the non-null class and SHALL select
+`NullableSharedObjectCodec<T>` with the non-annotated exact type. JavaScript
+`null` and `undefined` SHALL decode to C# `null` without resolving registry
+identity. C# `null` SHALL encode as JavaScript `null` without class
+registration or pairing. A non-null value SHALL use `SharedObjectCodec<T>`
+unchanged. Shared objects SHALL NOT register with `GeneratedConversionScope`.
+
+#### Scenario: Null parameter, return, and property
+- **GIVEN** a module with a `T?` parameter, a `T?` return, a `Task<T?>`
+  method, and a readable and writable `T?` property
+- **WHEN** JavaScript passes `null` or `undefined`, and authored code
+  returns or stores `null`
+- **THEN** authored code SHALL receive `null`, and JavaScript SHALL receive
+  `null`
+- **AND** no pairing step SHALL be observed
+
+#### Scenario: Non-null keeps identity
+- **GIVEN** the same members
+- **WHEN** JavaScript passes a live instance and authored code returns the
+  same instance twice
+- **THEN** authored code SHALL receive the original managed instance
+- **AND** both JavaScript results SHALL be strictly equal to the input
+
+#### Scenario: Existing failures stay
+- **GIVEN** the `T?` parameter
+- **WHEN** JavaScript passes a plain object, an instance of another shared
+  class, an instance from another context, or a released instance
+- **THEN** the call SHALL fail as it does for `T`
+
+#### Scenario: Concrete SharedRef subclass
+- **GIVEN** a sealed `[ExpoSharedObject]` class that derives from
+  `SharedRef<X>` used as `T?`
+- **WHEN** it crosses the boundary as `null` and as an instance
+- **THEN** it SHALL behave as the scenarios above and SHALL NOT dispose its
+  carried value
+
+#### Scenario: Bases and nested shapes stay rejected
+- **GIVEN** `SharedObject?`, `SharedRef<X>?`, `IReadOnlyList<T?>`, a record
+  with a `T?` field, and `Func<T?, Task>`
+- **WHEN** the generator runs
+- **THEN** it SHALL report `EXPOJSI023` (or the event code) with the
+  existing reasons
+
 ### Requirement: Optional Nullable Reference Arguments Preserve Authored Defaults
 
 A generated optional nullable reference parameter SHALL use the authored C#
@@ -2160,7 +2206,9 @@ reflection, dynamic invocation, JSON conversion, a new C ABI entry, or a
 platform-specific dependency.
 
 This requirement covers safe nullable reference values used by a shared-object
-member. It does not make a shared-object instance type nullable.
+member. A nullable shared-object instance type follows "Nullable Concrete Shared
+Objects Bypass The Registry On Null" instead and stays rejected in records,
+collections, callbacks, and typed event payloads.
 
 #### Scenario: Generated return paths encode null
 - **GIVEN** a synchronous generated method or a `Task<T?>` result returns C#
@@ -2550,10 +2598,10 @@ JavaScript error before authored code runs.
 
 The generator SHALL provide compile-time codecs for each valid, owned, sealed
 authored shared-object type used directly as a method parameter, method return,
-constructor parameter, or property type. The codec SHALL be bound to the
-current `DotnetRuntimeContext` and exact managed class. `SharedObject`,
-`SharedRef<T>`, an unannotated shared-object base, and other polymorphic base
-types SHALL NOT be generated-boundary codec types.
+constructor parameter, or property type, with or without a nullable annotation.
+The codec SHALL be bound to the current `DotnetRuntimeContext` and exact managed
+class. `SharedObject`, `SharedRef<T>`, an unannotated shared-object base, and
+other polymorphic base types SHALL NOT be generated-boundary codec types.
 
 Decoding SHALL read the private NativeState token through the existing
 registry, require an active entry owned by the current context, validate the

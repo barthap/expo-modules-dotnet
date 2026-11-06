@@ -208,7 +208,9 @@ code SHALL store only `Retain()` copies of leaves beyond an invocation. A
 returned value SHALL transfer all its leaves to generated glue. A decoded
 `ArrayBuffer?` that is `null` holds no leaf and registers nothing. A nullable
 callback parameter that decodes to `null` holds nothing. A non-null one is
-context-retained by `DotnetRuntimeContext`, not scope-owned.
+context-retained by `DotnetRuntimeContext`, not scope-owned. A nullable concrete
+`[ExpoSharedObject]` value that is `null` holds nothing and is not scope-owned;
+a non-null one stays a borrowed shared object owned by the registry.
 
 #### Scenario: Stored state is returned
 - **GIVEN** a getter exposes a stored record with a `JavaScriptValue` field
