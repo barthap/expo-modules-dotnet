@@ -73,8 +73,8 @@ descriptor with:
 - no encode capability;
 - callback/context retention distinct from invocation-owned wrapper cleanup.
 
-Plan 030 must not register callbacks in `GeneratedConversionScope`. Keep that
-separation here.
+Plan 030 gives callbacks no `Release`: generated glue never releases a
+callback. Keep that separation here.
 
 ### Plan 026 rejects nullable callbacks on every shape
 
@@ -125,14 +125,14 @@ Semantics:
 | Runtime tests | `scripts/test-managed.sh --project packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests/Expo.ModulesCore.Tests.csproj` | all ModulesCore tests pass |
 | Full regression | `scripts/test-managed.sh` | all managed tests pass, none skipped |
 | Format | `scripts/format.sh --check --all` | exit 0 |
-| Callback scope scan | `rg -n 'GeneratedConversionScope.*Callback|\\.Register\\([^\\n]*JavaScriptCallback|Own[^\\n]*JavaScriptCallback' packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator` | no callback registered with the invocation conversion scope |
+| Callback release scan | `rg -n 'CodecRelease\\.Release<[^\\n]*JavaScriptCallback|Own[^\\n]*JavaScriptCallback' packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator` | generated glue releases no callback |
 
 ## Suggested executor toolkit
 
 - Read `.agents/skills/living-spec-workflow/SKILL.md`.
 - Use `.agents/skills/expo-jsi-managed-handle-lifetime/SKILL.md` to verify the
-  context-retained callback owner. Do not generalize callback ownership into the
-  invocation scope.
+  context-retained callback owner. Do not generalize callback ownership into
+  codec `Release`.
 
 ## Scope
 
@@ -162,7 +162,7 @@ Semantics:
   condition for this plan
 - Callback encoding or any callback return/property/event support
 - Nested callback records or collections
-- Registering callbacks in `GeneratedConversionScope`
+- Releasing callbacks through codec `Release`
 - ArrayBuffer, JavaScriptValue, or shared-object nullable behavior
 - Native code, ABI, scheduler, or platform adapters
 
@@ -182,7 +182,7 @@ Semantics:
 Create the delta spec with the exact supported and unsupported positions above.
 Replace the callback part of plan 026's blanket exclusion with a parameter-only
 requirement. State that callback ownership is `DotnetRuntimeContext`, not
-`GeneratedConversionScope`.
+codec `Release`.
 
 Get approval and commit the delta, then approve and commit the change-local
 plan.
@@ -310,6 +310,6 @@ Stop and report if:
 ## Maintenance notes
 
 Callbacks have one owner: `DotnetRuntimeContext`, until explicit disposal or
-context teardown. The conversion scope owns invocation-scoped wrapper values,
-not retained callbacks. Keep that division even if both types implement
+context teardown. Codec `Release` frees invocation-scoped wrapper values, not
+retained callbacks. Keep that division even if both types implement
 `IDisposable`.

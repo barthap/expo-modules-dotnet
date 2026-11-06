@@ -136,35 +136,39 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
   generated codec, mapped to/from a plain JavaScript object.
 - `IReadOnlyList<T>` where `T` has a generated codec, mapped to/from a
   JavaScript array. `List<T>` is not supported. Lists and dictionaries nest in
-  each other, in records, in callback types, and in typed event payloads, as
-  long as they hold no `JavaScriptValue` or `ArrayBuffer`. One that does works
-  as a parameter, return, property, or record field, on module and
-  shared-object members, and inside another list or dictionary.
+  each other, in records, in callback types, and in typed event payloads. They
+  can hold `JavaScriptValue` and `ArrayBuffer`.
 - Binary data: `ArrayBuffer`, plus `byte[]`, `Memory<byte>` and
   `ReadOnlyMemory<byte>` as convenience types. These copy in both directions.
   `Span<byte>` and `ReadOnlySpan<byte>` borrow one synchronous input parameter,
-  and a returned span is copied. `ArrayBuffer` works directly, as a record
-  field, a list element, and a dictionary value, but not as a nullable inner
-  type, a callback type argument, or a nested typed-event payload. See the
+  and a returned span is copied. `ArrayBuffer` works in every position except
+  as a nullable inner type. See the
   "Module-facing ArrayBuffer And Binary Codecs" requirement in
   `docs/specs/modules-core-boundary.md`.
 - Shared objects, declared as described in section 8.
 - C# `enum` values — encoded as JavaScript strings by default; annotate with
   `[JSEnum(EnumRepresentation.Number)]` for integer-backed representation.
-- `JavaScriptValue` directly, for cases the typed codecs don't cover (see
-  `docs/specs/managed-jsi-wrappers.md` and
-  `docs/specs/ownership-and-scoped-refs.md` for the ownership rules — argument
-  wrappers are owned by generated glue for the call's duration, so store and
-  expose only `Retain()` copies; a returned value transfers all its
-  `JavaScriptValue` and `ArrayBuffer` leaves to generated glue, including
-  leaves inside records, lists, and dictionaries, so keep a retained copy if
-  you need to hold onto or dispose your own reference afterward).
+- `JavaScriptValue` directly, for cases the typed codecs don't cover. See
+  "Leaf ownership" below and `docs/specs/managed-jsi-wrappers.md`.
 - `JavaScriptCallback<TResult>` / `JavaScriptCallback<TArgs, TResult>` for
   JS function arguments (see Callbacks below). A callback is a parameter type
   only: it cannot be a return value, a collection element, or a record field.
-  A callback result or argument type can be a direct `JavaScriptValue`, but a
-  type that holds a `JavaScriptValue` or `ArrayBuffer` inside a record, list,
-  or dictionary is a build diagnostic there.
+  Its result and argument types can hold `JavaScriptValue` and `ArrayBuffer`
+  at any depth.
+
+**Leaf ownership.** A `JavaScriptValue` or `ArrayBuffer` is a leaf. These
+rules apply at any depth, also inside records, lists, and dictionaries:
+
+1. A leaf parameter is valid until the call ends (async: until the Promise
+   settles). To keep it, call `Retain()`.
+2. A leaf you return is no longer yours.
+3. A leaf you pass to a callback or an event stays yours. Keep it alive until
+   the call or the returned `Task` completes.
+4. A leaf you get back from a callback is yours. Dispose it.
+
+Call `JavaScriptValue.Retain()` on the JavaScript runtime thread. In an async
+method, call it before the first `await`. See
+`docs/specs/ownership-and-scoped-refs.md`.
 
 Nullable reference types work for the codecs that carry no JSI ownership:
 `string?`, `Uri?`, `byte[]?`, positional reference records, and the
@@ -307,9 +311,11 @@ lifetime rules:
   invocation copy can only be retained while running on the owning JavaScript
   runtime.
 
-Nested owned wrappers, including `JavaScriptValue` and `ArrayBuffer`, and
-callback payloads are rejected for typed events. `JavaScriptObject` is not
-currently a generated module codec, but remains a possible future advanced
+Records, lists, and dictionaries that hold `JavaScriptValue` or `ArrayBuffer`
+are valid payloads. The nested leaves stay yours (rule 3 in section 3): keep
+them alive until the event task completes. Callback payloads and a nullable
+`JavaScriptValue` or `ArrayBuffer` are build diagnostics. `JavaScriptObject` is
+not currently a generated module codec, but remains a possible future advanced
 convertible.
 
 To react when JavaScript adds or removes listeners, declare hook methods with
@@ -408,6 +414,10 @@ synchronously; `InvokeAsync` schedules the call through the runtime for later,
 event-style use. Invoking a callback after its runtime context has torn down
 fails loudly instead of touching released native state — don't cache a
 callback past the lifetime of the module/runtime that received it.
+
+Leaves follow rules 3 and 4 in section 3. A leaf you pass as an argument stays
+yours. With `InvokeAsync`, keep it alive until the returned task completes. A
+leaf in the callback result is yours, so dispose it.
 
 ## 8. Shared objects
 

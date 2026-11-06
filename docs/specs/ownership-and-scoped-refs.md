@@ -152,60 +152,23 @@ whose caller must dispose or transfer it independently.
 - **THEN** native SHALL abandon the payload without JSI access
 - **AND** both terminal paths SHALL erase the long-lived collection entry
 
-### Requirement: Conversion Scope Owns Boundary Wrapper Leaves
-
-`GeneratedConversionScope` SHALL own every `JavaScriptValue` and `ArrayBuffer`
-leaf that generated decode creates or that a returned value transfers.
-Registration SHALL append and SHALL NOT scan for duplicates. A leaf registered
-more than once SHALL be disposed once per registration. Only leaves whose
-`Dispose` is idempotent SHALL register, which `JavaScriptValue` and
-`ArrayBuffer` are, so the native handle of a repeated leaf releases exactly
-once. The scope's own `Dispose` SHALL be idempotent. It SHALL dispose the
-registrations in registration order and SHALL attempt every registration even
-when one fails. Only `JavaScriptValueCodec` and `ArrayBufferCodec` SHALL
-register leaves. When a scoped `Decode` cannot register the leaf it created,
-it SHALL dispose that leaf and rethrow. The scope SHALL NOT own the JavaScript
-value returned to the host. It SHALL have one owner at a time and SHALL NOT be
-thread-safe. It SHALL NOT use ambient, thread-static, async-local,
-reflection, or finalizer ownership, and SHALL NOT register a value because it
-implements `IDisposable`.
-
-#### Scenario: Repeated registration releases the native handle once
-- **GIVEN** a scope where the same wrapper is registered twice
-- **WHEN** the scope is disposed twice
-- **THEN** the scope SHALL dispose the wrapper once per registration, in
-  registration order, during the first disposal only
-- **AND** the wrapper's native handle SHALL release exactly once
-
-#### Scenario: Decode into a disposed scope releases the new leaf
-- **GIVEN** a scope that is already disposed
-- **WHEN** a scoped `Decode` retains a value and the scope refuses it
-- **THEN** `Decode` SHALL throw `ObjectDisposedException`
-- **AND** the retained wrapper SHALL release exactly once
-
-#### Scenario: Equal but distinct leaves both release
-- **GIVEN** two distinct wrappers that compare equal
-- **WHEN** both are registered and the scope is disposed
-- **THEN** both SHALL release
-
-#### Scenario: Registration after disposal
-- **GIVEN** a disposed scope
-- **WHEN** a codec registers a leaf
-- **THEN** the scope SHALL throw `ObjectDisposedException`
-
-#### Scenario: Cleanup failure is aggregated
-- **GIVEN** a scope where one registered `IDisposable` throws from `Dispose`
-- **WHEN** the scope is disposed
-- **THEN** every other registration SHALL still be disposed
-- **AND** the scope SHALL throw `AggregateException` with the failure
-
 ### Requirement: Boundary Leaf Ownership Is Explicit
 
-Generated bindings SHALL follow the ownership matrix in `### Requirement:
-Generated Bindings Compose Leaves Through One Scope` in
-`modules-core-boundary.md`, with at most one scope per invocation. Authored
-code SHALL store only `Retain()` copies of leaves beyond an invocation. A
-returned value SHALL transfer all its leaves to generated glue.
+A leaf is a `JavaScriptValue` or an `ArrayBuffer` wrapper. Every
+`IJavaScriptCodec<T>` SHALL follow this contract: `Decode` SHALL give the
+caller every leaf in the result. `Encode` SHALL return a new owned JavaScript
+value and SHALL NOT dispose `value` or any leaf in it. `Release` SHALL dispose
+every leaf in `value`, and SHALL do nothing for null or default.
+
+Authored code SHALL follow four rules:
+
+1. A leaf received as a parameter is valid until the call ends, or until the
+   Promise settles for an async method. Authored code SHALL call `Retain()` to
+   keep it.
+2. A returned leaf belongs to generated glue.
+3. A leaf passed to a callback or an event stays with the author, who SHALL
+   keep it alive until the call or the returned `Task` completes.
+4. A leaf returned by a callback belongs to the author, who SHALL dispose it.
 
 #### Scenario: Stored state is returned
 - **GIVEN** a getter exposes a stored record with a `JavaScriptValue` field
@@ -227,3 +190,15 @@ returned value SHALL transfer all its leaves to generated glue.
 - **THEN** the input leaf SHALL stay alive until the factory has encoded the
   result or the result is abandoned
 - **AND** it SHALL release exactly once
+
+#### Scenario: Callback argument stays with the author
+- **GIVEN** authored code invokes a callback with a `JavaScriptValue` or a
+  record holding an `ArrayBuffer`
+- **WHEN** the invocation returns
+- **THEN** the author's leaves SHALL stay usable
+- **AND** each encoded copy SHALL release exactly once
+
+#### Scenario: Callback result belongs to the author
+- **GIVEN** a callback result type holds an `ArrayBuffer`
+- **WHEN** the author disposes the decoded leaves
+- **THEN** each SHALL release exactly once

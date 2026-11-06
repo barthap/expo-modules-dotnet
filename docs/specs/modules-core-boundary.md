@@ -394,19 +394,16 @@ directly, and encode return values through typed helpers.
 - **WHEN** JavaScript calls that function
 - **THEN** generated dispatch SHALL retain the scoped argument into an owned
   wrapper for the invocation
-- **AND** generated dispatch SHALL register the wrapper in the invocation's
-  conversion scope, which disposes it after the result is encoded or after a
-  failure
+- **AND** generated dispatch SHALL release it in `finally`, after the result is
+  encoded or after a failure
 - **AND** authored module code SHALL NOT dispose or store the argument wrapper
 
 #### Scenario: Generated sync function returns JavaScriptValue
 - **GIVEN** a generated sync function returns `JavaScriptValue`
 - **WHEN** JavaScript calls that function
-- **THEN** ownership of the returned wrapper SHALL transfer to generated glue
-- **AND** generated glue SHALL register the returned wrapper in the
-  invocation's conversion scope and return an independent retained wrapper to
-  the host-function bridge
-- **AND** the scope SHALL release the source wrapper once
+- **THEN** ownership of the returned wrapper SHALL pass to generated glue
+- **AND** generated glue SHALL return a retained copy to the host-function
+  bridge and release the returned wrapper once
 
 #### Scenario: Module author returns a retained JavaScriptValue copy
 - **GIVEN** authored module code owns a `JavaScriptValue`
@@ -437,7 +434,7 @@ directly, and encode return values through typed helpers.
   parameter or a return
 - **WHEN** JavaScript calls the method
 - **THEN** each decoded or returned leaf SHALL release exactly once
-- **AND** the returned source leaves SHALL NOT be disposed before encoding
+- **AND** no returned leaf SHALL be disposed before it is encoded
 
 #### Scenario: JavaScript callbacks use generated codecs
 - **GIVEN** a generated sync or async function accepts
@@ -450,9 +447,7 @@ directly, and encode return values through typed helpers.
   codecs for one through eight callback arguments
 - **AND** callback argument and result values SHALL use generated
   `Expo.ModulesCore` codecs without runtime reflection or dynamic invocation
-- **AND** a callback result or argument type that holds a leaf inside a
-  record, list, or dictionary SHALL be rejected; a direct `JavaScriptValue`
-  stays supported
+- **AND** a callback argument or result type MAY hold leaves at any depth
 
 #### Scenario: Retained callback is invoked from C#
 - **GIVEN** managed module code holds a retained `JavaScriptCallback`
@@ -539,16 +534,16 @@ construct JSI descriptors or host functions.
 - **GIVEN** a generated property getter returns a type with a supported codec
 - **WHEN** JavaScript reads the accessor
 - **THEN** generated glue SHALL encode the result through that codec
-- **AND** a returned value that holds a leaf SHALL follow the property rows of
-  the ownership matrix and the same rule as a synchronous `[JS]` method return
+- **AND** a returned value that holds a leaf SHALL follow the same rule as a
+  synchronous `[JS]` method return
 
 #### Scenario: Setter receives JavaScriptValue
 - **GIVEN** a generated property setter accepts `JavaScriptValue`
 - **WHEN** JavaScript assigns the property
 - **THEN** generated glue SHALL retain and own the decoded wrapper for the
   synchronous setter invocation
-- **AND** the conversion scope SHALL dispose that invocation-owned wrapper
-  after the authored setter returns or throws
+- **AND** it SHALL release that wrapper after the authored setter returns or
+  throws
 - **AND** authored code SHALL NOT dispose or store the invocation-owned wrapper
 - **AND** authored code that needs the value later SHALL store and eventually
   dispose an explicit retained copy
@@ -557,9 +552,9 @@ construct JSI descriptors or host functions.
 - **GIVEN** authored module state owns a stored `JavaScriptValue`
 - **WHEN** a generated property getter exposes that value
 - **THEN** the getter SHALL return an explicit retained copy whose ownership
-  transfers to generated glue
-- **AND** generated glue SHALL transfer the copy into the conversion scope and
-  return an independent retained wrapper
+  passes to generated glue
+- **AND** generated glue SHALL return its own retained copy and release the
+  getter's copy once
 - **AND** the module SHALL keep ownership of its original stored wrapper
 
 `JavaScriptValue` is the existing advanced module convertible.
@@ -925,11 +920,13 @@ invocation copy only while executing on the owning runtime. The caller SHALL
 keep the original wrapper alive until the returned task completes. Generated
 glue SHALL dispose only its invocation copy and SHALL NOT consume the original.
 
-Records, lists, and dictionaries containing nested `JavaScriptValue` or
-`ArrayBuffer`, and any payload containing `JavaScriptCallback`, SHALL be
-rejected in this slice. Event-safety classification SHALL run before general
-codec resolution can mutate generated-record-codec state, and SHALL inspect
-only encoded inputs such as selected record-constructor parameters, list
+Records, lists, and dictionaries that hold a `JavaScriptValue` or an
+`ArrayBuffer` SHALL be valid typed event payloads. Generated glue SHALL encode
+them on the owning runtime and SHALL dispose only the encoded value. The
+author keeps every nested leaf and SHALL keep it alive until the returned task
+completes. A payload containing `JavaScriptCallback` SHALL stay rejected.
+Event-safety classification SHALL run before general codec resolution can
+mutate generated-record-codec state, and SHALL inspect only encoded inputs such as selected record-constructor parameters, list
 elements, dictionary values, and nullable-value inner types. A rejected payload
 SHALL not leave callback `Encode` source or secondary compiler errors behind.
 `JavaScriptObject` remains a possible future optional advanced convertible; it
@@ -951,6 +948,14 @@ is not a current generated module codec.
 - **AND** the caller MAY dispose the original after invocation returns
 - **AND** terminal cleanup SHALL release the retained lease exactly once
 
+#### Scenario: Nested leaf payload stays with the author
+- **GIVEN** a module or shared-object event payload is a record holding a
+  `JavaScriptValue` and an `ArrayBuffer`
+- **WHEN** authored code awaits the event
+- **THEN** listeners SHALL receive both values
+- **AND** the author's leaves SHALL stay usable after the task completes
+- **AND** each encoded copy SHALL release exactly once
+
 ### Requirement: Invalid Typed Events Are Build Diagnostics
 
 Typed-event validation SHALL use `EXPOJSI018` for invalid event-property
@@ -960,7 +965,8 @@ or blank explicit names; unsupported static, indexed, non-partial, implemented,
 setter, explicit-interface, ref-return, `[JS]`, or modifier shapes; unsupported
 delegate types; and file-local, nested, generic, or non-partial containers.
 `EXPOJSI019` covers payloads with no encode-capable event codec, a callback
-codec, or a nested transfer-sensitive wrapper. Legacy-only invalid or duplicate
+codec, or a nullable annotation on a `JavaScriptValue` or `ArrayBuffer` at any
+depth. Legacy-only invalid or duplicate
 `[Events]` declarations SHALL continue to use `EXPOJSI009`.
 
 When a rejected member's partial-property declaration can be reproduced safely,
@@ -977,20 +983,11 @@ safely.
 
 #### Scenario: Typed event payload is unsupported
 - **GIVEN** a valid-shaped typed event has an unsupported payload, a callback,
-  or a nested direct wrapper
+  or a nullable `JavaScriptValue` or `ArrayBuffer` at any depth
 - **WHEN** the generator analyzes the event
 - **THEN** it SHALL report `EXPOJSI019`
 - **AND** it SHALL not emit reflection, dynamic conversion, callback `Encode`
   source, or a secondary compiler error
-
-#### Scenario: Nested leaf in a typed event payload stays rejected
-- **GIVEN** a module or shared-object `[Event]` payload is a record, list, or
-  dictionary that holds a `JavaScriptValue` or `ArrayBuffer`, including
-  `IReadOnlyList<ArrayBuffer>`
-- **WHEN** the generator analyzes the event
-- **THEN** it SHALL report `EXPOJSI019` on a module or `EXPOJSI027` on a
-  shared object
-- **AND** event emission SHALL NOT use a conversion scope
 
 #### Scenario: Typed and legacy event names collide
 - **GIVEN** `[Events("onStatus")]` and `[Event] ... OnStatus` occur on one
@@ -1068,12 +1065,10 @@ synchronous return values.
 - **GIVEN** a generated provider registers a module with an authored `[JS]`
   method returning `Task<JavaScriptValue>`
 - **WHEN** the task completes with a JavaScript value wrapper
-- **THEN** ownership of the returned wrapper SHALL transfer to generated glue
-- **AND** generated glue SHALL transfer the wrapper into the invocation's
-  conversion scope through `GeneratedTransferredResult<T, TCodec>`
-- **AND** the runtime factory SHALL encode an independent retained wrapper and
-  then dispose the scope
-- **AND** abandoning the result SHALL dispose the scope
+- **THEN** ownership of the returned wrapper SHALL pass to generated glue
+- **AND** the runtime factory SHALL encode a retained copy and then release
+  the returned wrapper and the leaf-bearing arguments
+- **AND** abandoning the result SHALL release them without encoding
 
 #### Scenario: Unsupported Task of T result type is reported
 - **GIVEN** an authored `[JS]` method returns `Task<T>`
@@ -1223,22 +1218,18 @@ covers duplicate method names.
 - **AND** generated source SHALL NOT call a missing `Encode` method
 
 #### Scenario: Static helper codec is used as a generic codec argument
-- **GIVEN** a `Nullable<T>` or nullable-reference inner type is a
-  `JavaScriptCallback` or a type that holds one, or the annotated type is
-  `ArrayBuffer?` or `JavaScriptValue?`, or a callback result or
-  callback-argument tuple element is `ArrayBuffer`, a `JavaScriptCallback`, or
-  a type that holds one
+- **GIVEN** a list element, dictionary value, `Nullable<T>` inner type,
+  nullable-reference inner type, callback result, or callback-argument tuple
+  element is a `JavaScriptCallback` or a type that holds one, or the annotated
+  type is `ArrayBuffer?` or `JavaScriptValue?`
 - **WHEN** the project is compiled
 - **THEN** the generator SHALL report the using member's unsupported-type
   diagnostic: `EXPOJSI001`, `EXPOJSI002`, `EXPOJSI008`, `EXPOJSI015`, or
   `EXPOJSI023`
 - **AND** generated source SHALL NOT pass a static codec class as a type
   argument
-- **AND** a list element or dictionary value of `ArrayBuffer` is not in this
-  scenario; it uses the scoped list or dictionary codec
-- **AND** a `Nullable<T>` or nullable-reference inner type that holds a leaf,
-  such as `IReadOnlyList<ArrayBuffer>?` or a nullable record struct with a
-  leaf, is not in this scenario; it uses a scoped nullable codec
+- **AND** a type that holds a leaf is not in this scenario in any of these
+  positions
 
 #### Scenario: Record field needs a runtime context
 - **GIVEN** a generated record has a `JavaScriptCallback` field, or a field
@@ -1249,19 +1240,6 @@ covers duplicate method names.
 - **AND** the using member SHALL report its unsupported-type diagnostic
 - **AND** a `[JS]` property whose type contains a callback SHALL keep
   reporting only `EXPOJSI015`
-- **AND** a field whose codec implements only the scoped protocol is valid:
-  only a field whose type has no codec, whose codec lacks `DecodeAndEncode`, or
-  whose codec has a context requirement reports `EXPOJSI007`
-
-#### Scenario: Leaf-bearing composite is a callback type argument
-- **GIVEN** a `JavaScriptCallback` result or argument tuple element is a
-  record that holds a leaf, `IReadOnlyList<JavaScriptValue>`, or a
-  `JavaScriptValue` dictionary, or a nullable form of these
-- **WHEN** the project is compiled
-- **THEN** the generator SHALL report `EXPOJSI008`, or `EXPOJSI023` on a
-  shared-object class
-- **AND** a direct `JavaScriptValue` callback result or argument SHALL stay
-  supported
 
 #### Scenario: Async method returns a byte span
 - **GIVEN** an async `[JS]` method returns `Task<Span<byte>>` or
@@ -1375,145 +1353,107 @@ conversion decision.
   `rg -n '\.\w*CodecExpression\b|\.Expression *(==|!=| is )|Expression\.(StartsWith|EndsWith|Contains)|StartsWith\("(JavaScriptArrayCodec|JavaScriptDictionaryCodec|SharedObjectCodec)|is "(JavaScriptValueCodec|ArrayBufferCodec)"' packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator`
 - **THEN** it SHALL print no matches
 
-### Requirement: Generated Bindings Compose Leaves Through One Scope
+### Requirement: Codecs Release Leaves Through One Protocol
 
-A leaf is a `JavaScriptValue` or an `ArrayBuffer` wrapper. Every generated
-binding with a `ScopedResource` parameter or result SHALL use one
-`GeneratedConversionScope` per invocation, the `IGeneratedScopedCodec<T>`
-protocol, and the ownership matrix and execution order below. Bindings with no
-leaf SHALL keep their generated text and SHALL NOT allocate a scope.
-`IJavaScriptCodec<T>` SHALL stay unchanged. Callback and shared-object
-descriptors SHALL never be `ScopedResource`.
+A leaf is a `JavaScriptValue` or an `ArrayBuffer` wrapper.
+`IJavaScriptCodec<T>` SHALL declare `static virtual void Release(T value)`
+with an empty default body. There SHALL be no second codec protocol.
+`JavaScriptValueCodec` and `ArrayBufferCodec` (a `readonly struct`
+implementing `IJavaScriptCodec<ArrayBuffer>`) SHALL dispose the leaf.
+`JavaScriptArrayCodec<T, TCodec>`, `JavaScriptDictionaryCodec<T, TCodec>`
+(through both dictionary interfaces), `NullableCodec<T, TCodec>`,
+`NullableReferenceCodec<T, TCodec>`, `NullableReadOnlyListCodec<T, TCodec>`,
+`NullableDictionaryCodec<T, TCodec>`, `NullableReadOnlyDictionaryCodec<T,
+TCodec>`, and every generated record codec whose record holds a leaf SHALL
+release each child through the child codec. A composite with more than one
+child SHALL attempt every child and SHALL throw one `AggregateException` with
+every failure, through the public `CodecRelease` helper. A list, dictionary,
+or record decode that fails at a child SHALL release the children it already
+decoded and rethrow. If that cleanup throws, its `AggregateException` SHALL
+replace the decode error. `JavaScriptValueCodec.Encode` SHALL return
+`value.Retain()`. No codec SHALL use finalizers, reflection, or ambient state
+to release.
 
-**Ownership matrix.** A scope exists only when a parameter or the result holds
-a leaf.
+Every generated record codec SHALL use one `Encode` text with no null guard.
+Encoding a null class record SHALL fail with a catchable JavaScript error.
+`Release` SHALL skip a null record. `JavaScriptCallbackCodec` and
+`SharedObjectCodec<T>` are static classes with no `Release`: the runtime
+context retains callbacks and the registry owns shared objects.
 
-| Boundary operation | Who creates each leaf, who releases it | Scope ends |
-| --- | --- | --- |
-| Sync function parameters | Scoped decode creates it; the scope releases it. | At the end of the `using` block, after the result is encoded or after any failure. |
-| Sync function return | The author creates it and transfers it; the scope releases it. `EncodeBorrowed` creates the JavaScript result; the host bridge releases it. | Same `using` block. |
-| Async function parameters | Scoped decode creates it; the scope releases it. | Leaf-free result: in the Promise lambda's `finally`. Leaf-bearing result: at settlement or abandon (async result row), or in the lambda's `catch` on fault, cancel, or `Transfer` failure. Failure before `CreatePromise` returns: in the outer `catch`. After `CreatePromise` returns, the lambda owns the scope and the host frame never disposes it; `AsValue()` runs outside the outer `catch`. |
-| Async result | The author creates it and transfers it into the same scope; `GeneratedTransferredResult<T, TCodec>` holds the scope. The runtime factory creates the JavaScript result; the Promise scheduler releases it. | In the factory's `finally` after `EncodeBorrowed`, or on abandon. |
-| Property setter | Scoped decode creates it; the scope releases it. | After the setter returns or throws. |
-| Property getter | The author creates it and transfers it; the scope releases it. `EncodeBorrowed` creates the JavaScript result; the host bridge releases it. | After the encode or a failure. |
-| Shared-object member | Same as the module function and property rows. | Same. |
-| Shared-object constructor | Scoped decode creates argument leaves; the factory's scope releases them. The instance is not a leaf; the registry owns it. | When the generated factory returns the instance or throws. Pairing runs later and is unchanged. |
-| Span host function | Scoped decode creates non-span argument leaves and the author transfers returned leaves; one scope around `WithBytes` releases both. Glue creates the span lease and releases it with its own `using`. | After the lambda result is encoded or a failure. |
-| Direct typed event payload | Unchanged: the dispatcher retains its own copy or lease; the caller keeps the original. | Unchanged. |
+#### Scenario: A missing override leaks
+- **GIVEN** a composite codec over `ArrayBufferCodec`, holding JS-created
+  buffers
+- **WHEN** a test calls `Release` through the generic `TCodec.Release`
+- **THEN** each buffer entry SHALL release exactly once
+- **AND** the test SHALL fail if that composite used the empty default
 
-The span lease keeps its own `using`. Glue decodes it with the ordinary
-`ArrayBufferCodec.Decode`, authored code never receives it as a leaf, and it
-stays alive for the whole `WithBytes` call that the lambda runs in. A returned
-value transfers every leaf it contains. A returned input leaf registers a
-second time, and its idempotent `Dispose` releases the native handle once, in
-sync and async.
+#### Scenario: Release failure is aggregated
+- **GIVEN** a list whose second element's release throws
+- **WHEN** the list codec releases it
+- **THEN** the first and third elements SHALL still release
+- **AND** the codec SHALL throw `AggregateException` with that failure
 
-**Scoped codec protocol.** `IGeneratedScopedCodec<T>` declares three static
-abstract members. `Decode(JavaScriptValueRef, JavaScriptRuntime,
-GeneratedConversionScope)` decodes and registers each leaf it creates.
-`Transfer(T, GeneratedConversionScope)` registers every leaf of a value and
-does no runtime work. `EncodeBorrowed(T, JavaScriptRuntime)` returns an
-independent owned JavaScript value and never consumes or disposes a source
-leaf. `Transfer` of a null value SHALL register nothing and SHALL NOT throw, in
-every scoped codec, including generated class-record codecs, so that a null
-element in a list cannot stop the leaves after it from registering. The two
-nullable codecs encode null as JavaScript `null`. The leaf, list, dictionary,
-and class-record codecs throw `ArgumentNullException` from `EncodeBorrowed`, as
-the ordinary codecs do.
+#### Scenario: Later element decode fails
+- **GIVEN** a JavaScript array whose first element is an `ArrayBuffer` and
+  whose second element is not
+- **WHEN** `JavaScriptArrayCodec<ArrayBuffer, ArrayBufferCodec>` decodes it
+- **THEN** the first lease SHALL release exactly once
+- **AND** the decode error SHALL propagate
 
-The scoped runtime types are `GeneratedConversionScope`,
-`IGeneratedScopedCodec<T>`, `GeneratedTransferredResult<T, TCodec>`,
-`GeneratedScopedListCodec<T, TCodec>`, `GeneratedScopedDictionaryCodec<T,
-TCodec>` (for both `Dictionary<string, T>` and `IReadOnlyDictionary<string,
-T>`), `GeneratedScopedNullableCodec<T, TCodec>` (for `T?` over a value type),
-and `GeneratedScopedNullableReferenceCodec<T, TCodec>` (for `T?` over a
-reference type). All live in `Expo.ModulesCore/Codecs/` and carry the remark
-"This helper is for generated bindings, not ordinary module author code."
+#### Scenario: Encode leaves the source usable
+- **GIVEN** an author-owned `JavaScriptValue` inside a list
+- **WHEN** `JavaScriptArrayCodec<JavaScriptValue, JavaScriptValueCodec>`
+  encodes the list
+- **THEN** the author's wrapper SHALL stay usable
+- **AND** the encoder SHALL release only its own copy
 
-- `JavaScriptValueCodec` implements both `IJavaScriptCodec<JavaScriptValue>`
-  and `IGeneratedScopedCodec<JavaScriptValue>`. Scoped `Decode` retains and
-  registers, and disposes the retained wrapper if registration throws.
-  `Transfer` registers the source. `EncodeBorrowed` returns `value.Retain()`.
-  Its ordinary members stay unchanged.
-- `ArrayBufferCodec` is a `readonly struct` that implements only
-  `IGeneratedScopedCodec<ArrayBuffer>`. Its existing static members stay
-  unchanged. Scoped `Decode` decodes and registers, and disposes the lease if
-  registration throws. `Transfer` registers the source. `EncodeBorrowed` calls
-  `Encode`, which creates a new JavaScript value with no byte copy.
-- A generated record codec whose record holds a leaf implements only
-  `IGeneratedScopedCodec<TRecord>`. It passes the scope to each leaf-bearing
-  field, calls the ordinary codec for other fields, and disposes every encoded
-  field temporary. For a class record, `Transfer` returns on null and
-  `EncodeBorrowed` starts with `ArgumentNullException.ThrowIfNull(value)`. A
-  record struct gets neither line. Leaf-free records keep their ordinary codec
-  text.
+#### Scenario: Null record in a returned list
+- **GIVEN** a returned list holds a null class record and records with leaves
+- **WHEN** generated glue encodes and releases it
+- **THEN** the call SHALL fail with a catchable JavaScript error
+- **AND** the leaves of the other records SHALL release exactly once
 
-**Execution order.** Sync functions, properties, shared-object members, the
-shared-object constructor factory, and span host functions run in this order:
+### Requirement: Generated Bindings Release Leaves After Each Call
 
-1. `using var` scope, before the first leaf-bearing decode.
-2. Decode leaf-bearing arguments with the scoped `Decode`; decode others as
-   before.
-3. Call the authored member.
-4. For a leaf-bearing result: `Transfer`, then `EncodeBorrowed`.
-5. The `using` block disposes the scope.
+Generated bindings with no `HoldsLeaves` argument or result SHALL keep their
+generated text. A leaf-bearing sync function, property getter or setter,
+shared-object member, shared-object constructor factory, or span function SHALL
+declare its leaf-bearing arguments and result before one `try`, and its
+`finally` SHALL release the result first and then the arguments in declaration
+order. An argument that never decoded is still default and releases nothing.
+An async function SHALL release leaf-bearing arguments in the outer `catch`
+until `CreatePromise` returns, and only in the Promise lambda after that. A
+leaf-bearing async result SHALL travel to the factory in a `StrongBox` with
+the leaf-bearing arguments. The factory SHALL release them after it encodes,
+and abandon SHALL release them without encoding. A fault or cancel SHALL
+release them in the lambda's `catch`. The generator SHALL emit `Release` only
+for a `HoldsLeaves` descriptor. The span lease SHALL keep its own `using`.
 
-Async functions run steps 1 and 2 in the host-function frame, where the scope
-is a plain local instead of a `using`, and capture the scope in the Promise
-lambda. The outer `catch` covers only the code that runs before `CreatePromise`
-returns, and it disposes the scope on a failure there. Ownership passes to the
-lambda when `CreatePromise` returns. From then on the lambda is the sole owner,
-and the host frame never touches the scope again. `AsValue()` on the Promise
-runs after the outer `catch`, so its failure throws from the host function and
-the bridge turns it into a JavaScript error, while the lambda's own paths still
-dispose the scope. Inside the lambda, a leaf-free result uses
-`try { ... } finally { scope.Dispose(); }`. A leaf-bearing result awaits the
-task, calls `GeneratedTransferredResult<T, TCodec>.Resolve(result, scope)`,
-and disposes the scope in a `catch` that rethrows.
+A `Release` failure SHALL replace the original outcome. In a sync `finally` it
+replaces the result or the authored exception. In the async outer `catch` the
+host function throws it instead of returning a rejected Promise.
 
-`Resolve` calls `TCodec.Transfer(value, scope)` and returns
-`JavaScriptPromiseResult.ResolveOwned(state, factory, abandon)`. If `Transfer`
-throws, the lambda's `catch` disposes the scope and the Promise rejects. The
-factory runs `try { return TCodec.EncodeBorrowed(value, runtime); } finally {
-scope.Dispose(); }`. `ResolveOwned` claims its state before it calls the
-factory, so abandon never runs after a factory failure and the factory's
-`finally` is the only cleanup on that path. Abandon disposes the scope.
-
-Cleanup uses only the existing wrapper `Dispose` operations. The success path
-of a leaf-bearing async result releases its input leaves in the factory, on the
-JavaScript thread. The other async paths release them on the Promise lambda's
-continuation or the abandon path.
-
-**Position rules.** Resolution applies these rules to the codec shape of each
-position:
-
-| Position | Accepts |
-| --- | --- |
-| Top-level boundary (parameter, return, async result, property, shared-object constructor or member, span-function return) | Any shape with `DecodeAndEncode`. `ScopedResource` uses the scoped path. |
-| List element, dictionary value | `JavaScriptCodec` or `ScopedOnly`. A `ScopedResource` child selects the scoped composite. |
-| `Nullable<T>` inner, nullable-reference inner | `JavaScriptCodec` or `ScopedOnly`. `ArrayBuffer?` and `JavaScriptValue?` stay excluded before resolution. `IReadOnlyList<ArrayBuffer>?` is accepted, because the nullable-list branch resolves the element under the list-element rule. |
-| Record field | `DecodeAndEncode` and no context requirement. |
-| Callback result, callback-argument tuple element | `JavaScriptCodec` only, so a direct `JavaScriptValue` keeps working. `ScopedOnly` and `StaticHelper` report `EXPOJSI008` (`EXPOJSI023` on a shared object). |
-| Typed event payload | The nested-resource check reports `EXPOJSI019` (module) or `EXPOJSI027` (shared object) before codec resolution. |
-
-**Descriptor.** `ExpoCodecDescriptor.ResourceOwnership` is one of `Borrowed`
-(no leaf), `ScopedResource` (holds at least one leaf at any depth), or
-`ContextRetained` (callbacks). Every resolver branch sets it explicitly.
-`ExpoCodecShape.ScopedOnly` marks a type that implements only
-`IGeneratedScopedCodec<T>`. `StaticHelper` covers only callbacks and shared
-objects. A record codec is `ScopedResource` when any field is, and the record
-codec model stores that fact and whether the record is a value type, so a
-cache hit rebuilds the same descriptor.
+`ExpoResourceOwnership` is `Borrowed`, `HoldsLeaves`, or `ContextRetained`.
+`ExpoCodecShape` is `JavaScriptCodec` or `StaticHelper`. `ExpoCodecDescriptor`
+SHALL carry `ValueTypeName`, the codec's `T` with its nullable annotation, for
+local declarations and helper type arguments.
 
 | Branch | Shape | ResourceOwnership |
 | --- | --- | --- |
 | Leaf-free types | as before | `Borrowed` |
-| `JavaScriptValue` | `JavaScriptCodec` | `ScopedResource` |
-| `ArrayBuffer` | `ScopedOnly` | `ScopedResource` |
-| List, dictionary, or nullable over a `ScopedResource` child | `ScopedOnly` | `ScopedResource` |
-| Record with any `ScopedResource` field | `ScopedOnly` | `ScopedResource` |
+| `JavaScriptValue`, `ArrayBuffer` | `JavaScriptCodec` | `HoldsLeaves` |
+| List, dictionary, or nullable over a `HoldsLeaves` child | `JavaScriptCodec` | `HoldsLeaves` |
+| Record with any `HoldsLeaves` field | `JavaScriptCodec` | `HoldsLeaves` |
 | `JavaScriptCallback<...>` | `StaticHelper` | `ContextRetained` |
 | Direct `[ExpoSharedObject]` class | `StaticHelper` | `Borrowed` |
+
+A record codec model SHALL store whether the record holds leaves and whether it
+is a value type, so a cache hit rebuilds the same descriptor.
+
+#### Scenario: Leaf-free member text is unchanged
+- **GIVEN** the leaf-free output contract sources
+- **WHEN** the generator runs
+- **THEN** the output hashes SHALL equal the hashes from before leaf release
 
 #### Scenario: Later field decode fails
 - **GIVEN** a record parameter whose first field is an `ArrayBuffer` and whose
@@ -1529,16 +1469,23 @@ cache hit rebuilds the same descriptor.
 - **THEN** both JavaScript properties SHALL hold the value
 - **AND** the source's native handle SHALL release exactly once
 
-#### Scenario: Encode failure cleans transferred leaves
-- **GIVEN** a returned value whose encode throws after `Transfer`
+#### Scenario: Encode failure releases returned leaves
+- **GIVEN** a returned value whose encode throws
 - **WHEN** generated glue handles the failure
-- **THEN** every transferred leaf SHALL release exactly once
+- **THEN** every leaf of the returned value SHALL release exactly once
 
 #### Scenario: Abandoned async result
 - **GIVEN** an async result with leaves whose settlement never reaches the
   runtime
 - **WHEN** the scheduler abandons it
 - **THEN** every input and result leaf SHALL release exactly once
+
+#### Scenario: Async method throws before returning its task
+- **GIVEN** an async method with leaf-bearing arguments throws before it
+  returns its `Task`
+- **WHEN** JavaScript calls it
+- **THEN** the outer `catch` SHALL release each argument exactly once
+- **AND** the Promise SHALL reject
 
 ### Requirement: Generator Authoring Documentation Is Durable
 
@@ -1633,7 +1580,7 @@ additional backing kinds.
 
 | CLR type | Boundary behavior | Generated-binding constraints |
 | --- | --- | --- |
-| `ArrayBuffer` | Preserves wrapper ownership semantics | Direct parameters, returns, properties, record fields, list elements, and dictionary values; not a nullable inner type, callback type argument, or nested typed-event payload |
+| `ArrayBuffer` | Preserves wrapper ownership semantics | Every codec position, including list elements, dictionary values, callback types, and nested typed-event payloads; not a nullable inner type |
 | `byte[]` | Copies in both directions | Rank-one arrays only |
 | `Memory<byte>` / `ReadOnlyMemory<byte>` | Copies in both directions, encoding exactly the current logical slice | Ordinary codecs |
 | `Span<byte>` / `ReadOnlySpan<byte>` | Borrows an input slice or copies a return value | One synchronous parameter only |
@@ -1777,12 +1724,9 @@ signatures and behavior. Generated bindings SHALL support a non-null
 T>` wherever a codec of `T` is supported: as a list element, a dictionary
 value, a nullable container's content, a callback result or argument, a
 generated record field, and a typed event payload. A list element or
-dictionary value MAY be `ArrayBuffer`, or any type that holds a leaf. Such a
-collection SHALL use `GeneratedScopedListCodec<T, TCodec>` or
-`GeneratedScopedDictionaryCodec<T, TCodec>`. `JavaScriptValue` elements SHALL
-NOT leak on decode or dispose the author's wrapper on encode. A collection that
-holds a leaf SHALL NOT be a callback result or callback argument, and SHALL
-stay rejected as a typed event payload.
+dictionary value MAY be `ArrayBuffer`, `JavaScriptValue`, or any type that
+holds a leaf. The same `JavaScriptArrayCodec<T, TCodec>` and
+`JavaScriptDictionaryCodec<T, TCodec>` SHALL serve it.
 
 #### Scenario: Nested non-null collections round-trip
 - **GIVEN** a generated method accepts and returns
@@ -1800,7 +1744,8 @@ stay rejected as a typed event payload.
 - **WHEN** JavaScript passes JS-created buffers
 - **THEN** each decoded lease and each returned source SHALL release exactly
   once
-- **AND** the JavaScript result SHALL stay usable after the scope ends
+- **AND** the JavaScript result SHALL stay usable after the call releases its
+  leaves
 
 #### Scenario: Record collection field round-trips
 - **GIVEN** a positional record has an `IReadOnlyList<T>` or
@@ -1830,10 +1775,8 @@ JavaScript `null`, and SHALL delegate non-null conversion to the existing
 collection helper. Element and value codecs SHALL resolve recursively, and
 dictionary keys SHALL remain exactly `string`. `List<T>` SHALL remain
 unsupported with and without a nullable annotation, because its non-nullable
-form has no generated codec. These three adapters SHALL serve only leaf-free
-contents. A nullable container whose content holds a leaf SHALL use
-`GeneratedScopedNullableReferenceCodec<T, TCodec>` over the scoped list or
-dictionary codec, and a null container registers nothing.
+form has no generated codec. These three adapters SHALL serve both leaf-free
+and leaf-bearing contents. A null container releases nothing.
 
 #### Scenario: Nullable collection container round-trips null
 - **GIVEN** a generated boundary declares one of the supported nullable
@@ -2257,9 +2200,9 @@ particular helper being callback-capable. Construction SHALL finish with one
 managed instance paired to the returned JavaScript object, carrying the
 registry's private NativeState token.
 
-Constructor arguments with leaves SHALL decode into one conversion scope in
-the generated factory. The scope SHALL dispose when the factory returns the
-instance or throws. Registry pairing is unchanged.
+The generated factory SHALL release leaf-bearing constructor arguments in a
+`finally`, after the factory returns the instance or throws. Registry pairing
+is unchanged.
 
 Registry entry creation, prototype selection, and rollback SHALL NOT execute
 user-controlled JavaScript or other re-entrant work while the registry gate is
@@ -2797,8 +2740,8 @@ source order SHALL NOT select one declaration for dispatch glue.
 
 #### Scenario: Unsupported payload is diagnosed
 
-- **GIVEN** a valid-shaped shared-object event uses a callback or nested
-  transfer-sensitive wrapper payload
+- **GIVEN** a valid-shaped shared-object event uses a callback payload or a
+  nullable `JavaScriptValue` or `ArrayBuffer` at any depth
 - **WHEN** the generator analyzes it
 - **THEN** it SHALL report `EXPOJSI027`
 - **AND** it SHALL not emit reflection, dynamic conversion, or callback encode

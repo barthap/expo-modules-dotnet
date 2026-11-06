@@ -114,9 +114,8 @@ public sealed class GeneratedAttributeModuleTests
       );
       Assert.Equal("stored:stored", result.AsString());
 
-      // Assignment releases its scoped decode wrapper. Each getter read transfers the authored
-      // Retain() copy into the conversion scope and returns an independent retained wrapper, so
-      // each of the two reads adds one release.
+      // Assignment releases its decoded wrapper. Each getter read encodes a new retained wrapper
+      // and then releases the authored Retain() copy, so each of the two reads adds one release.
       Assert.Equal(3u, fixture.Counters.ReleasedValues);
 
       propertyModule.Dispose();

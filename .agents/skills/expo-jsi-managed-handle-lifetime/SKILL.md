@@ -148,26 +148,23 @@ code takes that handle. Do not dispose it after returning it.
 
 ## Generated Module Ownership
 
-For `JavaScriptValueCodec` and generated `[JS]` functions:
+Every `IJavaScriptCodec<T>` follows one contract. A leaf is a
+`JavaScriptValue` or an `ArrayBuffer` wrapper.
 
-- `Decode(JavaScriptValueRef, runtime)` retains the scoped ref into an owned
-  wrapper.
-- `Decode(JavaScriptValue, runtime)` retains the input into a new owned wrapper.
-- `Encode(JavaScriptValue, runtime)` returns the same wrapper. Generated glue
-  no longer uses it for boundary returns: it transfers the wrapper into the
-  invocation's `GeneratedConversionScope` and returns an independent retained
-  wrapper from `EncodeBorrowed`.
-- `JavaScriptValue` and `ArrayBuffer` parameters, at any depth inside records,
-  lists, and dictionaries, are registered in the invocation's
-  `GeneratedConversionScope`, which releases them. Authored code must not
-  dispose or store them.
-- A returned `JavaScriptValue`, `ArrayBuffer`, or value that holds either
-  transfers every leaf into the scope. Authored code must not dispose a
-  returned leaf. It stores and exposes only `Retain()` copies.
-- `Task<JavaScriptValue>` results transfer into the same scope through
-  `GeneratedTransferredResult<T, TCodec>`; the scope releases input and result
-  leaves after the Promise factory encodes the value, or when the result is
-  abandoned.
+- `Decode` gives the caller every leaf in the result.
+- `Encode` returns a new JavaScript value. It never disposes `value` or a leaf
+  in it.
+- `Release` disposes every leaf in `value`. Null or default releases nothing.
+
+Generated glue calls `Release` in a `finally` for leaf-bearing arguments and
+results. Authored code follows four rules, at any depth:
+
+1. A leaf parameter is valid until the call ends (async: until the Promise
+   settles). To keep it, call `Retain()`.
+2. A leaf you return is no longer yours.
+3. A leaf you pass to a callback or an event stays yours. Keep it alive until
+   the call or the returned `Task` completes.
+4. A leaf you get back from a callback is yours. Dispose it.
 
 Only mention `_expoDotnet`, `EventEmitter`, `NativeModule`, or class/prototype
 ABI when they affect ownership of retained handles or callback/listener state.
@@ -182,5 +179,6 @@ Before accepting a change in this area, verify:
 - Fluent chains do not hide undisposed owned wrappers.
 - Scoped refs do not escape the runtime frame, host-function callback, or
   generated async pre-await decode phase.
-- `JavaScriptValueCodec` transfer semantics match generated glue behavior.
+- Codecs follow the `Decode` / `Encode` / `Release` contract, and every
+  leaf-bearing codec overrides `Release`.
 - Callback/listener state has a clear owner and exactly one release path.
