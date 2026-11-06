@@ -120,6 +120,7 @@ public sealed class CodecReleaseTests
     const string source = "({ a: new ArrayBuffer(1), b: new ArrayBuffer(2) })";
 
     var concrete = DecodeFromScript<Dictionary<string, ArrayBuffer>, JavaScriptDictionaryCodec<ArrayBuffer, ArrayBufferCodec>>(fixture, source);
+    Assert.Same(StringComparer.Ordinal, concrete.Comparer);
     Assert.Equal(2u, ReleaseAndCountBuffers<Dictionary<string, ArrayBuffer>, JavaScriptDictionaryCodec<ArrayBuffer, ArrayBufferCodec>>(fixture, concrete));
 
     var readOnly = DecodeFromScript<IReadOnlyDictionary<string, ArrayBuffer>, JavaScriptDictionaryCodec<ArrayBuffer, ArrayBufferCodec>>(fixture, source);
