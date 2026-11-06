@@ -86,14 +86,6 @@ public sealed partial class LeafReleaseModule : Module, IDisposable
     return value;
   }
 
-  // Retain() is a runtime call, so it runs before the await, on the runtime thread.
-  [JS]
-  public async Task<JavaScriptValue> RetainedValueAsync(JavaScriptValue value)
-  {
-    var copy = value.Retain();
-    await Task.Yield();
-    return copy;
-  }
 
   [JS]
   public async Task<int> LengthAfterAwaitAsync(ArrayBuffer value)
@@ -124,6 +116,15 @@ public sealed partial class LeafReleaseModule : Module, IDisposable
   {
     await Gate.Task;
     return value;
+  }
+
+  // Retain() is a runtime call, so it runs before the await, on the runtime thread.
+  [JS]
+  public async Task<JavaScriptValue> HoldRetainedValueAsync(JavaScriptValue value)
+  {
+    var copy = value.Retain();
+    await Gate.Task;
+    return copy;
   }
 
   // Leaf-free twin of HoldValueAsync for ReleasedValues calibration.

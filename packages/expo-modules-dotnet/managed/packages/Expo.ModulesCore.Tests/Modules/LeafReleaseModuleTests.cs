@@ -170,30 +170,38 @@ public sealed class LeafReleaseModuleTests
   }
 
   [Fact]
-  public async Task AsyncReturnedRetainedValueCopyReleasesOnce()
+  public void AsyncReturnedRetainedValueCopyReleasesOnce()
   {
     using var leaf = LeafReleaseFixture.Create();
     leaf.Run("globalThis.o = {}; true");
 
+    // Each call is measured over one paused settlement, so no outcome polling lands in the count.
     // Calibration: the same call shape where the returned wrapper is the argument itself.
-    leaf.Fixture.WaitUntilIdle();
-    leaf.Fixture.ResetCounters();
-    leaf.StartOutcome("m.sameValueAsync(o)");
-    await leaf.WaitForOutcomeAsync();
-    leaf.Fixture.WaitUntilIdle();
-    var aliasReleases = leaf.Fixture.Counters.ReleasedValues;
+    var aliasReleases = CountSettlementReleases(leaf, "m.holdValueAsync(o)");
     Assert.Equal("fulfilled:true", leaf.ReadString("`${__outcome.status}:${__outcome.value === o}`"));
 
-    leaf.Fixture.WaitUntilIdle();
-    leaf.Fixture.ResetCounters();
-    leaf.StartOutcome("m.retainedValueAsync(o)");
-    await leaf.WaitForOutcomeAsync();
-    leaf.Fixture.WaitUntilIdle();
-    var copyReleases = leaf.Fixture.Counters.ReleasedValues;
+    var copyReleases = CountSettlementReleases(leaf, "m.holdRetainedValueAsync(o)");
     Assert.Equal("fulfilled:true", leaf.ReadString("`${__outcome.status}:${__outcome.value === o}`"));
 
     // The returned Retain() copy is one more wrapper, and the factory releases it after the encode.
     Assert.Equal(aliasReleases + 1, copyReleases);
+  }
+
+  // Starts a gated async call, releases the gate while the runtime executor is paused, and counts
+  // the values released from the gate to the end of the settlement turn.
+  private static uint CountSettlementReleases(LeafReleaseFixture leaf, string expression)
+  {
+    leaf.Module.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    leaf.StartOutcome(expression);
+    leaf.Fixture.DisableSyncExecutionForTesting();
+    leaf.Fixture.PauseRuntimeExecutor();
+    leaf.Fixture.ResetCounters();
+    leaf.Module.Gate.SetResult();
+    leaf.Fixture.WaitUntilRuntimeTaskQueued(JavaScriptTaskPriority.Immediate);
+    leaf.Fixture.ResumeRuntimeExecutor();
+    leaf.Fixture.WaitUntilIdle();
+    leaf.Fixture.SetSyncExecutionSupportedForTesting(true);
+    return leaf.Fixture.Counters.ReleasedValues;
   }
 
   [Fact]
