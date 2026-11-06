@@ -1438,13 +1438,19 @@ nullable codecs encode null as JavaScript `null`. The leaf, list, dictionary,
 and class-record codecs throw `ArgumentNullException` from `EncodeBorrowed`, as
 the ordinary codecs do.
 
+`IJavaScriptValueKindCodec` declares a static abstract `Kind`; the seven leaf
+codecs implement it, and the union codecs compare it with the value's kind.
+
 The scoped runtime types are `GeneratedConversionScope`,
 `IGeneratedScopedCodec<T>`, `GeneratedTransferredResult<T, TCodec>`,
 `GeneratedScopedListCodec<T, TCodec>`, `GeneratedScopedDictionaryCodec<T,
 TCodec>` (for both `Dictionary<string, T>` and `IReadOnlyDictionary<string,
 T>`), `GeneratedScopedNullableCodec<T, TCodec>` (for `T?` over a value type),
-and `GeneratedScopedNullableReferenceCodec<T, TCodec>` (for `T?` over a
-reference type). All live in `Expo.ModulesCore/Codecs/` and carry the remark
+`GeneratedScopedNullableReferenceCodec<T, TCodec>` (for `T?` over a reference
+type), `GeneratedScopedEitherCodec<TFirst, TFirstCodec, TSecond, TSecondCodec>`
+(for a two-member union with an `ArrayBuffer` member), and
+`GeneratedScopedOrdinaryCodec<T, TCodec>` (which lifts an ordinary member into
+that union). All live in `Expo.ModulesCore/Codecs/` and carry the remark
 "This helper is for generated bindings, not ordinary module author code."
 
 - `JavaScriptValueCodec` implements both `IJavaScriptCodec<JavaScriptValue>`
@@ -1506,12 +1512,12 @@ position:
 
 | Position | Accepts |
 | --- | --- |
-| Top-level boundary (parameter, return, async result, property, shared-object constructor or member, span-function return) | Any shape with `DecodeAndEncode`. `ScopedResource` uses the scoped path. An authored abstract shared-object base resolves to the decode-only `SharedObjectBaseCodec<TBase>` and is accepted only as a module method, shared-object method, or shared-object constructor parameter. |
-| List element, dictionary value | `JavaScriptCodec` or `ScopedOnly`. A `ScopedResource` child selects the scoped composite. |
-| `Nullable<T>` inner, nullable-reference inner | `JavaScriptCodec` or `ScopedOnly`. `JavaScriptValue?` stays excluded before resolution. `ArrayBuffer?` resolves to `GeneratedScopedNullableReferenceCodec<ArrayBuffer, ArrayBufferCodec>`. `IReadOnlyList<ArrayBuffer>?` is accepted, because the nullable-list branch resolves the element under the list-element rule. A direct `JavaScriptCallback<...>?` resolves to the callback descriptor with `NullableJavaScriptCallbackCodec` before this rule. A direct nullable concrete `[ExpoSharedObject]` class never reaches this rule: shared-object boundary analysis selects `NullableSharedObjectCodec<T>` first. |
+| Top-level boundary (parameter, return, async result, property, shared-object constructor or member, span-function return) | Any shape with `DecodeAndEncode`. `ScopedResource` uses the scoped path. An authored abstract shared-object base resolves to the decode-only `SharedObjectBaseCodec<TBase>` and is accepted only as a module method, shared-object method, or shared-object constructor parameter. A two-member union `Either<TFirst, TSecond>` resolves to the decode-only `EitherCodec` or `GeneratedScopedEitherCodec` and is accepted only as a module method, shared-object method, or shared-object constructor parameter. |
+| List element, dictionary value | `JavaScriptCodec` or `ScopedOnly`. A `ScopedResource` child selects the scoped composite. The composite has its child's capabilities, so it is decode-only over a decode-only child. |
+| `Nullable<T>` inner, nullable-reference inner | `JavaScriptCodec` or `ScopedOnly`. `JavaScriptValue?` stays excluded before resolution. `ArrayBuffer?` resolves to `GeneratedScopedNullableReferenceCodec<ArrayBuffer, ArrayBufferCodec>`. `IReadOnlyList<ArrayBuffer>?` is accepted, because the nullable-list branch resolves the element under the list-element rule. A direct `JavaScriptCallback<...>?` resolves to the callback descriptor with `NullableJavaScriptCallbackCodec` before this rule. A direct nullable concrete `[ExpoSharedObject]` class never reaches this rule: shared-object boundary analysis selects `NullableSharedObjectCodec<T>` first. The composite has its child's capabilities, so it is decode-only over a decode-only child. |
 | Record field | `DecodeAndEncode` and no context requirement. |
-| Callback result, callback-argument tuple element | `JavaScriptCodec` only, so a direct `JavaScriptValue` keeps working. `ScopedOnly` and `StaticHelper` report `EXPOJSI008` (`EXPOJSI023` on a shared object). |
-| Typed event payload | The nested-resource check reports `EXPOJSI019` (module) or `EXPOJSI027` (shared object) before codec resolution. |
+| Callback result, callback-argument tuple element | `JavaScriptCodec` with `DecodeAndEncode` only, so a direct `JavaScriptValue` keeps working. `ScopedOnly` and `StaticHelper` report `EXPOJSI008` (`EXPOJSI023` on a shared object). |
+| Typed event payload | The nested-resource check reports `EXPOJSI019` (module) or `EXPOJSI027` (shared object) before codec resolution. The payload codec must then be a `JavaScriptCodec` with `DecodeAndEncode`. |
 
 **Descriptor.** `ExpoCodecDescriptor.ResourceOwnership` is one of `Borrowed`
 (no leaf), `ScopedResource` (holds at least one leaf at any depth), or
@@ -1532,6 +1538,8 @@ cache hit rebuilds the same descriptor.
 | `JavaScriptCallback<...>` and `JavaScriptCallback<...>?` | `StaticHelper` | `ContextRetained` |
 | Direct `[ExpoSharedObject]` class `T` and `T?` | `StaticHelper` | `Borrowed` |
 | Authored abstract base `TBase` (parameter only; decode-only `SharedObjectBaseCodec<TBase>`) | `StaticHelper` | `Borrowed` |
+| Two-member union `Either<TFirst, TSecond>` with two ordinary members (parameter only; decode-only `EitherCodec`) | `JavaScriptCodec` | `Borrowed` |
+| Two-member union with an `ArrayBuffer` member (parameter only; decode-only `GeneratedScopedEitherCodec`, the ordinary member lifted by `GeneratedScopedOrdinaryCodec`) | `ScopedOnly` | `ScopedResource` |
 
 #### Scenario: Later field decode fails
 - **GIVEN** a record parameter whose first field is an `ArrayBuffer` and whose
@@ -1697,6 +1705,52 @@ additional backing kinds.
   SHALL produce unsupported-type diagnostics
 - **AND** the one-span limit SHALL not restrict `ArrayBuffer`, `byte[]`,
   `Memory<byte>`, or `ReadOnlyMemory<byte>` arity
+
+### Requirement: Two-Member Unions Decode By Value Kind
+
+`Either<TFirst, TSecond>` SHALL be accepted as a parameter type of
+generated module methods and of supported shared-object constructors and
+methods when each member type maps to one of the JavaScript value kinds
+`String`, `Bool`, `Number`, or `ArrayBuffer`, and the two kinds differ. The
+codec SHALL read the value kind once and decode through that member's
+codec; it SHALL NOT try one member and fall back to the other. A member of
+any other kind, or two members of the same kind, SHALL report the
+position's existing diagnostic. A scoped member SHALL keep the 030
+ownership rules; an ordinary union SHALL NOT allocate a scope. Unions
+SHALL be decode-only.
+
+#### Scenario: String or ArrayBuffer parameter
+- **GIVEN** a method `string Write(Either<string, ArrayBuffer> content)`
+  on a module and on a shared object
+- **WHEN** JavaScript passes a string and then an `ArrayBuffer`
+- **THEN** authored code SHALL receive `IsFirst` with the string, then
+  `IsSecond` with a buffer whose bytes match
+- **AND** the buffer lease SHALL be released once at invocation end, and no
+  lease SHALL be held after the string call
+
+#### Scenario: Third kind and nullish are rejected
+- **GIVEN** the same parameter and an `Either<string, ArrayBuffer>?` parameter
+- **WHEN** JavaScript passes `5`, `{}`, `null`, or `undefined`
+- **THEN** the non-nullable parameter SHALL throw the union codec's kind
+  message for every input
+- **AND** the nullable parameter SHALL pass C# `null` for `null` and
+  `undefined` and SHALL throw for `5` and `{}`
+
+#### Scenario: Ordinary union keeps the binding scope-free
+- **GIVEN** `int Pick(Either<double, bool> value)`
+- **WHEN** the generator runs and JavaScript passes `0`, `1.5`, `false`,
+  `true`, `''`
+- **THEN** the generated text SHALL NOT contain `GeneratedConversionScope`
+- **AND** `0` and `1.5` SHALL arrive as `IsFirst`, `false` and `true` as
+  `IsSecond`, and `''` SHALL throw
+
+#### Scenario: Unsupported members report a diagnostic
+- **GIVEN** `Either<string, Uri>`, `Either<string, SharedObjectClass>`,
+  `Either<Holder, int>`, `Either<double, int>`, and `Either<,>` as a return,
+  async result, property, or record field
+- **WHEN** the generator runs
+- **THEN** it SHALL report the position's existing diagnostic, naming the
+  member and the union type, and SHALL NOT emit the member
 
 ### Requirement: Nullable Reference Codecs Are Annotation-Driven
 

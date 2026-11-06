@@ -7,8 +7,11 @@ namespace Expo.ModulesCore.Codecs;
 /// Decoding creates independently owned managed storage. Encoding copies exactly the bytes in the
 /// supplied memory slice.
 /// </remarks>
-public readonly struct ReadOnlyMemoryByteCodec : IJavaScriptCodec<ReadOnlyMemory<byte>>
+public readonly struct ReadOnlyMemoryByteCodec : IJavaScriptCodec<ReadOnlyMemory<byte>>, IJavaScriptValueKindCodec
 {
+  /// <summary>Gets the JavaScript value kind that this codec decodes.</summary>
+  public static JavaScriptValueKind Kind => JavaScriptValueKind.ArrayBuffer;
+
   /// <summary>Decodes a JavaScript binary value into independently owned managed storage.</summary>
   public static ReadOnlyMemory<byte> Decode(JavaScriptValueRef value, JavaScriptRuntime runtime) =>
       ByteArrayCodec.Decode(value, runtime);

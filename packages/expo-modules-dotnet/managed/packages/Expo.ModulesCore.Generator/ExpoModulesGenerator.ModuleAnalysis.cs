@@ -806,6 +806,12 @@ public sealed partial class ExpoModulesGenerator
       {
         codec = GetCodec(member.Type, diagnostics, recordCodecs, member.GetAttributes());
       }
+      // Encode position: a property getter is encoded, so a decode-only codec has no valid output.
+      if (codec is { Capabilities: ExpoCodecCapabilities.DecodeOnly })
+      {
+        codec = null;
+      }
+
       if (codec is null)
       {
         diagnostics.Add(new ExpoDiagnosticModel(

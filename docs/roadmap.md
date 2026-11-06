@@ -57,7 +57,7 @@ Open briefs live in `docs/plans/`. Briefs for DONE items move to
 | 032 | Nullable JavaScript callback parameters             | P2    | M      | 031          | DONE    | [032](archive/plans/032-nullable-javascript-callback-parameters.md)         |
 | 033 | Nullable concrete SharedObject classes              | P2    | M      | 032          | DONE    | [033](archive/plans/033-nullable-concrete-shared-object-codecs.md)          |
 | 034 | Base-class shared-object arguments                  | P1    | M      | 030          | DONE    | [034](archive/plans/034-base-class-shared-object-arguments.md)              |
-| 035 | Union arguments (`string \| ArrayBuffer`)           | P1    | M      | 030          | TODO    | —                                                                           |
+| 035 | Union arguments (`string \| ArrayBuffer`)           | P1    | M      | 030          | DONE    | [035](archive/plans/035-union-arguments.md)                                 |
 | 036 | Typed-array codecs (`Uint8Array`)                   | P1    | M      | 030          | TODO    | —                                                                           |
 | 037 | Coded JavaScript errors                             | P2    | M      | —            | TODO    | —                                                                           |
 | 038 | `expo-file-system-dotnet` write, bytes, copy, move  | P1    | M      | 024, 034–036 | TODO    | —                                                                           |
@@ -114,6 +114,14 @@ The next free ID is 041.
   `SharedObjectBaseCodec<TBase>`. Returns, properties, `Base?`, and nested
   shapes stay rejected, so 038 can port `copy` and `move` but not a base-typed
   return.
+- **035**: done ([change](archive/changes/2026-11-06-union-arguments/spec.md)):
+  it landed on 2026-11-06 with a local `scripts/test-managed.sh` run (1349
+  passed, 0 failed, 0 skipped). `Either<TFirst, TSecond>` now works as a
+  parameter of module methods and shared-object constructors and methods when
+  its two members have different JavaScript kinds among string, bool, number,
+  and binary, so 038 can port `write(content: string | ArrayBuffer)`. Unions
+  stay decode-only, and a decode-only child now makes its list, dictionary, or
+  nullable composite decode-only too.
 - **037**: upstream Expo errors carry a `code`. Generated glue rejects with a
   plain `Error` today. Not a blocker for 038.
 - **025**: crypto follows file system and needs typed arrays (036). Plan 027
@@ -234,6 +242,16 @@ and a status row.
   codec; only an explicit JavaScript `null` is rejected.
 - **P3 — Diagnostic for `[JS]` on an abstract shared-object base**: today the
   member is silently not exported (034 documents the rule in the guide).
+- **P3 — Keep reference annotations in diagnostic type names**:
+  `GetDiagnosticTypeName` drops reference annotations, so
+  `Either<string?, double>` is reported as unsupported type
+  `Either<string, double>`, a type the generator accepts. Keep the annotation
+  in diagnostic type names or give `EXPOJSI001` a reason slot. Either change
+  moves existing digests, so it needs its own item.
+- **P3 — Parameter name in codec failures**: codec failures reach JavaScript
+  without the parameter name. Carrying it at the generated-glue wrap site (one
+  place, not per codec) would make `Value kind ... is not one of ...` and
+  `Value is not an object.` messages self-locating.
 
 ### Runtime, performance, and tooling
 
