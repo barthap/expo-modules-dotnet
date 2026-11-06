@@ -917,6 +917,211 @@ public sealed class ResourceScopeModuleTests
     Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
+  private const string UnionSetup =
+      "globalThis.u = globalThis._expoDotnet.modules.UnionThings; " +
+      "globalThis.b = new Uint8Array([1, 2, 3]).buffer; true";
+
+  private static string StringOrBufferKind(string kind) =>
+      $"Value kind '{kind}' is not one of 'String' or 'ArrayBuffer'.";
+
+  private static string NumberOrBoolKind(string kind) =>
+      $"Value kind '{kind}' is not one of 'Number' or 'Bool'.";
+
+  [Fact]
+  public void UnionParameterDecodesEachMemberAndReleasesTheBufferOnce()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(UnionSetup);
+    UnionThingsModule.Calls = 0;
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("first:hello", scope.ReadString("u.write('hello')"));
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal(0u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("second:1,2,3", scope.ReadString("u.write(b)"));
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("first:", scope.ReadString("u.write('')"));
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal(0u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    Assert.Equal(3, UnionThingsModule.Calls);
+  }
+
+  [Fact]
+  public void SharedObjectUnionMembersDecodeEachMemberAndReleaseOnce()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(UnionSetup);
+    UnionThingsModule.Calls = 0;
+
+    scope.Fixture.ResetCounters();
+    var strings = scope.ReadString(
+        "globalThis.w = new u.UnionWriter('seed'); [w.readSeed(), w.write('x')].join('|')"
+    );
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("first:seed|first:x", strings);
+    Assert.Equal(0u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    scope.Fixture.ResetCounters();
+    var buffers = scope.ReadString(
+        "globalThis.w2 = new u.UnionWriter(b); [w2.readSeed(), w2.write(b)].join('|')"
+    );
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("second:1,2,3|second:1,2,3", buffers);
+    // The constructor decode and the method decode are two entries.
+    Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+    // One authored read in the constructor and one in the method, for each of the two passes.
+    Assert.Equal(4, UnionThingsModule.Calls);
+  }
+
+  [Fact]
+  public async Task UnionParameterReleasesTheBufferAfterAsyncSettlement()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(UnionSetup);
+    UnionThingsModule.Calls = 0;
+
+    scope.Fixture.ResetCounters();
+    scope.StartOutcome("u.writeLater(b)");
+    await scope.WaitForOutcomeAsync();
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("fulfilled:second:1,2,3", scope.ReadString("`${__outcome.status}:${__outcome.value}`"));
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    scope.Fixture.ResetCounters();
+    scope.StartOutcome("u.writeLater('x')");
+    await scope.WaitForOutcomeAsync();
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("fulfilled:first:x", scope.ReadString("`${__outcome.status}:${__outcome.value}`"));
+    Assert.Equal(0u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+    // One authored read per call.
+    Assert.Equal(2, UnionThingsModule.Calls);
+  }
+
+  [Theory]
+  [InlineData("5", "Number")]
+  [InlineData("true", "Bool")]
+  [InlineData("({})", "Object")]
+  [InlineData("null", "Null")]
+  [InlineData("undefined", "Undefined")]
+  [InlineData("new Uint8Array([1, 2, 3])", "Object")]
+  public void UnionParameterRejectsOtherKindsBeforeAuthoredCode(string input, string kind)
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(UnionSetup);
+    scope.Run("globalThis.w = new u.UnionWriter('seed'); true");
+    UnionThingsModule.Calls = 0;
+    var before = scope.Fixture.Runtime.Execute(_ => scope.Context.SharedObjects.Count);
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString(
+        "const v = () => (" + input + "); " +
+        "const err = f => { try { f(); return 'no error'; } " +
+        "catch (error) { return error instanceof Error ? error.message : 'not an Error'; } }; " +
+        "[err(() => u.write(v())), err(() => w.write(v())), err(() => new u.UnionWriter(v()))].join('|')"
+    );
+    scope.Fixture.WaitUntilIdle();
+
+    var messages = result.Split('|');
+    Assert.Equal(3, messages.Length);
+    Assert.All(messages, message => Assert.Contains(StringOrBufferKind(kind), message));
+    Assert.Equal(0, UnionThingsModule.Calls);
+    Assert.Equal(before, scope.Fixture.Runtime.Execute(_ => scope.Context.SharedObjects.Count));
+    Assert.Equal(0u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void NullableUnionParameterPassesNullAndRejectsOtherKinds()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(UnionSetup);
+    UnionThingsModule.Calls = 0;
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString(
+        "[u.writeOptional(null), u.writeOptional(undefined), u.writeOptional('x'), u.writeOptional(b)].join('|')"
+    );
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("null|null|first:x|second:1,2,3", result);
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    var callsBefore = UnionThingsModule.Calls;
+    var number = scope.ReadString(
+        "try { u.writeOptional(5); 'no error'; } catch (error) { error.message; }"
+    );
+    var obj = scope.ReadString(
+        "try { u.writeOptional({}); 'no error'; } catch (error) { error.message; }"
+    );
+    Assert.Contains(StringOrBufferKind("Number"), number);
+    Assert.Contains(StringOrBufferKind("Object"), obj);
+    Assert.Equal(callsBefore, UnionThingsModule.Calls);
+  }
+
+  [Fact]
+  public void OrdinaryUnionDecodesByKindNotTruthiness()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(UnionSetup);
+    UnionThingsModule.Calls = 0;
+
+    var result = scope.ReadString(
+        "globalThis.w = new u.UnionWriter('seed'); " +
+        "[u.pick(0), u.pick(1.5), u.pick(false), u.pick(true), w.pick(0), w.pick(true)].join(':')"
+    );
+    Assert.Equal("100:115:0:1:100:1", result);
+
+    string CatchMessage(string call) => scope.ReadString(
+        $"try {{ {call}; 'no error'; }} catch (error) {{ error instanceof Error ? error.message : 'not an Error'; }}"
+    );
+
+    Assert.Contains(NumberOrBoolKind("String"), CatchMessage("u.pick('')"));
+    Assert.Contains(NumberOrBoolKind("String"), CatchMessage("w.pick('')"));
+    Assert.Contains(NumberOrBoolKind("Null"), CatchMessage("u.pick(null)"));
+  }
+
+  [Fact]
+  public void LaterParameterFailureReleasesTheEarlierUnionLease()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(UnionSetup);
+    UnionThingsModule.Calls = 0;
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString(
+        "let failed; try { u.writeWithCount(b, 'x'); failed = 'no error'; } " +
+        "catch (error) { failed = error.message; } String(failed)"
+    );
+    scope.Fixture.WaitUntilIdle();
+    // The int codec rejects the string; the same native text as JavaScriptValueTests.
+    Assert.Contains("Value is not a number.", result);
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+    Assert.Equal(0, UnionThingsModule.Calls);
+
+    scope.Fixture.ResetCounters();
+    Assert.Equal("second:1,2,3:2", scope.ReadString("u.writeWithCount(b, 2)"));
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void UnionListReleasesOneLeasePerBuffer()
+  {
+    using var scope = ResourceScopeFixture.Create();
+    scope.Run(UnionSetup);
+    UnionThingsModule.Calls = 0;
+
+    scope.Fixture.ResetCounters();
+    var result = scope.ReadString("globalThis.b2 = new ArrayBuffer(2); u.writeAll(['a', b, b2])");
+    scope.Fixture.WaitUntilIdle();
+    Assert.Equal("first:a|second:1,2,3|second:0,0", result);
+    Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
   private sealed class ResourceScopeFixture : IDisposable
   {
     private ResourceScopeFixture(
