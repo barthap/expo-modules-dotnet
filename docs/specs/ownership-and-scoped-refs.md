@@ -163,8 +163,8 @@ every leaf in `value`, and SHALL do nothing for null or default.
 Authored code SHALL follow four rules:
 
 1. A leaf received as a parameter is valid until the call ends, or until the
-   Promise settles for an async method. Authored code SHALL call `Retain()` to
-   keep it.
+   returned `Task` completes for an async method. Authored code SHALL call
+   `Retain()` to keep it.
 2. A returned leaf belongs to generated glue.
 3. A leaf passed to a callback or an event stays with the author, who SHALL
    keep it alive until the call or the returned `Task` completes.

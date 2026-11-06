@@ -122,12 +122,13 @@ The next free ID is 041.
   compose in nested, record-field, callback, and event positions, so 030
   builds on them, and it rejects uncompilable codec compositions with build
   diagnostics. 030 is done:
-  it landed on 2026-11-06 with a local `scripts/test-managed.sh` run (1069
+  it landed on 2026-11-06 with a local `scripts/test-managed.sh` run (1070
   passed, 0 failed, 0 skipped). It replaced the first scoped-codec design with
   `Release` on the one codec protocol, so `JavaScriptValue` and `ArrayBuffer`
-  leaves now compose in every codec position. 031–033 then apply their own null policies.
-  `JavaScriptValue?` and direct `SharedObject?` / `SharedRef<T>?` bases stay
-  unsupported by design.
+  leaves now compose in every position except a nullable inner type. 031–033
+  then apply their own null policies; each brief needs a rebase on this
+  design first. `JavaScriptValue?` and direct `SharedObject?` /
+  `SharedRef<T>?` bases stay unsupported by design.
 - **018**: direct MSBuild, RNW CLI build/deploy/launch, and live-app rebuild
   did not reproduce a PDB lock on the RNW 0.81 / VS 2026 lane (2026-07-23).
   Closed with 039, which runs the `ReactNativeDir` resolver from the

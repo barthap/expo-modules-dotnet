@@ -273,6 +273,15 @@ public sealed partial class LeafReleaseModule : Module, IDisposable
     }
   }
 
+  // The callback result decodes through the owned Decode overload of the record codec.
+  [JS]
+  public int TakeCounted(JavaScriptCallback<CountedBuffer> callback)
+  {
+    var counted = callback.Invoke();
+    counted.Buffer.Dispose();
+    return counted.Count;
+  }
+
   [Event]
   public partial Func<BufferPair, Task> OnPair { get; }
 

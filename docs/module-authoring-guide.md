@@ -159,8 +159,8 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
 **Leaf ownership.** A `JavaScriptValue` or `ArrayBuffer` is a leaf. These
 rules apply at any depth, also inside records, lists, and dictionaries:
 
-1. A leaf parameter is valid until the call ends (async: until the Promise
-   settles). To keep it, call `Retain()`.
+1. A leaf parameter is valid until the call ends (async: until the returned
+   `Task` completes). To keep it, call `Retain()`.
 2. A leaf you return is no longer yours.
 3. A leaf you pass to a callback or an event stays yours. Keep it alive until
    the call or the returned `Task` completes.

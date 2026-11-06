@@ -926,8 +926,9 @@ them on the owning runtime and SHALL dispose only the encoded value. The
 author keeps every nested leaf and SHALL keep it alive until the returned task
 completes. A payload containing `JavaScriptCallback` SHALL stay rejected.
 Event-safety classification SHALL run before general codec resolution can
-mutate generated-record-codec state, and SHALL inspect only encoded inputs such as selected record-constructor parameters, list
-elements, dictionary values, and nullable-value inner types. A rejected payload
+mutate generated-record-codec state, and SHALL inspect only encoded inputs
+such as selected record-constructor parameters, list elements, dictionary
+values, and nullable-value inner types. A rejected payload
 SHALL not leave callback `Encode` source or secondary compiler errors behind.
 `JavaScriptObject` remains a possible future optional advanced convertible; it
 is not a current generated module codec.
@@ -1355,24 +1356,26 @@ conversion decision.
 
 ### Requirement: Codecs Release Leaves Through One Protocol
 
-A leaf is a `JavaScriptValue` or an `ArrayBuffer` wrapper.
+The leaf and the codec contract are defined in `### Requirement: Boundary Leaf
+Ownership Is Explicit` in `ownership-and-scoped-refs.md`.
+
 `IJavaScriptCodec<T>` SHALL declare `static virtual void Release(T value)`
 with an empty default body. There SHALL be no second codec protocol.
-`JavaScriptValueCodec` and `ArrayBufferCodec` (a `readonly struct`
-implementing `IJavaScriptCodec<ArrayBuffer>`) SHALL dispose the leaf.
-`JavaScriptArrayCodec<T, TCodec>`, `JavaScriptDictionaryCodec<T, TCodec>`
-(through both dictionary interfaces), `NullableCodec<T, TCodec>`,
-`NullableReferenceCodec<T, TCodec>`, `NullableReadOnlyListCodec<T, TCodec>`,
-`NullableDictionaryCodec<T, TCodec>`, `NullableReadOnlyDictionaryCodec<T,
-TCodec>`, and every generated record codec whose record holds a leaf SHALL
-release each child through the child codec. A composite with more than one
-child SHALL attempt every child and SHALL throw one `AggregateException` with
-every failure, through the public `CodecRelease` helper. A list, dictionary,
-or record decode that fails at a child SHALL release the children it already
-decoded and rethrow. If that cleanup throws, its `AggregateException` SHALL
-replace the decode error. `JavaScriptValueCodec.Encode` SHALL return
-`value.Retain()`. No codec SHALL use finalizers, reflection, or ambient state
-to release.
+`JavaScriptValueCodec` and `ArrayBufferCodec` SHALL dispose the leaf.
+`JavaScriptValueCodec.Encode` SHALL return `value.Retain()`.
+
+Every list, dictionary, nullable, and generated record codec whose content
+holds a leaf SHALL release each child through the child codec. A dictionary
+codec SHALL do this through both dictionary interfaces. A composite with more
+than one child SHALL attempt every child. It SHALL throw one
+`AggregateException` with every failure, through the public `CodecRelease`
+helper.
+
+A list, dictionary, or record decode that fails at a child SHALL release the
+children it already decoded and rethrow. If that cleanup throws, its
+`AggregateException` SHALL replace the decode error.
+
+No codec SHALL use finalizers, reflection, or ambient state to release.
 
 Every generated record codec SHALL use one `Encode` text with no null guard.
 Encoding a null class record SHALL fail with a catchable JavaScript error.
@@ -1416,18 +1419,22 @@ context retains callbacks and the registry owns shared objects.
 ### Requirement: Generated Bindings Release Leaves After Each Call
 
 Generated bindings with no `HoldsLeaves` argument or result SHALL keep their
-generated text. A leaf-bearing sync function, property getter or setter,
-shared-object member, shared-object constructor factory, or span function SHALL
-declare its leaf-bearing arguments and result before one `try`, and its
-`finally` SHALL release the result first and then the arguments in declaration
-order. An argument that never decoded is still default and releases nothing.
-An async function SHALL release leaf-bearing arguments in the outer `catch`
-until `CreatePromise` returns, and only in the Promise lambda after that. A
-leaf-bearing async result SHALL travel to the factory in a `StrongBox` with
-the leaf-bearing arguments. The factory SHALL release them after it encodes,
-and abandon SHALL release them without encoding. A fault or cancel SHALL
-release them in the lambda's `catch`. The generator SHALL emit `Release` only
-for a `HoldsLeaves` descriptor. The span lease SHALL keep its own `using`.
+generated text. The generator SHALL emit `Release` only for a `HoldsLeaves`
+descriptor.
+
+Sync: a leaf-bearing sync function, property getter or setter, shared-object
+member, shared-object constructor factory, or span function SHALL declare its
+leaf-bearing arguments and result before one `try`. Its `finally` SHALL release
+each of them once. An argument that never decoded is still default and
+releases nothing. The span lease SHALL keep its own `using`.
+
+Async: the outer `catch` SHALL release leaf-bearing arguments until
+`CreatePromise` returns. After that, only the Promise lambda SHALL release
+them. With a leaf-free result, the lambda SHALL release them when the `Task`
+completes. A leaf-bearing result SHALL travel to the factory in a `StrongBox`
+with the leaf-bearing arguments. The factory SHALL release them after it
+encodes, and abandon SHALL release them without encoding. A fault or cancel
+SHALL release them in the lambda's `catch`.
 
 A `Release` failure SHALL replace the original outcome. In a sync `finally` it
 replaces the result or the authored exception. In the async outer `catch` the

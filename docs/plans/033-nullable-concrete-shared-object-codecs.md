@@ -262,7 +262,7 @@ Update descriptor resolution and shared-object validation:
   decode/encode capabilities;
 - bases and nested shapes remain handled diagnostics, never codec fallback.
 
-**Verify**: generator tests pass; scope and polymorphic-codec scans have no
+**Verify**: generator tests pass; release and polymorphic-codec scans have no
 matches.
 
 ### Step 4: Prove null bypass and non-null identity

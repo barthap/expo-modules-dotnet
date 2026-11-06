@@ -733,7 +733,7 @@ public sealed class LeafReleaseModuleTests
     );
     leaf.Fixture.WaitUntilIdle();
 
-    // Encoding the null element throws ArgumentNullException. Release skips the null element and
+    // Encoding the null record throws NullReferenceException. Release skips the null element and
     // still releases the later pair of retained copies. Each entry releases once its decoded lease
     // and its retained copy drop.
     Assert.Equal("true", result);
@@ -837,6 +837,25 @@ public sealed class LeafReleaseModuleTests
 
     Assert.Equal("6", result);
     Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void CallbackResultLaterFieldDecodeFailureReleasesEarlierLease()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "let failed; try { m.takeCounted(() => ({ buffer: b, count: 'x' })); failed = 'no error'; } " +
+        "catch (error) { failed = error instanceof Error; } String(failed)"
+    );
+    leaf.Fixture.WaitUntilIdle();
+
+    // The author never receives the record, so the record decode must release the buffer it
+    // already decoded before the count field failed.
+    Assert.Equal("true", result);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
   [Fact]

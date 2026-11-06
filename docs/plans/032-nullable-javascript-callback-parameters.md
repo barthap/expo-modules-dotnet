@@ -36,10 +36,10 @@ rejected nullable callback types because callback conversion retains a JS
 function in `DotnetRuntimeContext`.
 
 The correct nullable rule is small once conversion policy is typed: test
-nullish first, return C# null without calling `AsFunction` or registering
+nullish first, return C# null without calling `AsFunction` or retaining
 anything, and delegate every non-null value to the existing callback codec.
-Callbacks remain decode-only and context-retained. They do not belong to the
-plan-030 invocation resource scope.
+Callbacks remain decode-only and context-retained. Plan-030 codec `Release`
+never frees them.
 
 ## Current state
 
@@ -205,7 +205,7 @@ For each, assert generated code:
 - checks nullish before callback decode;
 - passes the exact runtime context only for non-null decode;
 - invokes authored code with a nullable C# local;
-- emits no conversion-scope registration or callback disposal.
+- emits no `Release` call or disposal for the callback.
 
 Keep rejection tests for return, property, record, collection, module event, and
 shared-object event positions. Assert their existing context-specific diagnostic
@@ -234,7 +234,7 @@ Do not place a generic nullable-reference `IJavaScriptCodec<T>` wrapper around
 the callback helper; the callback helper does not implement that interface and
 requires context.
 
-**Verify**: generator tests pass and the callback scope scan has no match.
+**Verify**: generator tests pass and the callback release scan has no match.
 
 ### Step 4: Prove no registration on null
 
@@ -258,7 +258,7 @@ solely for a counter.
 
 ### Step 5: Regress and merge
 
-Run full managed tests, format, `git diff --check`, and the scope scan. Merge the
+Run full managed tests, format, `git diff --check`, and the release scan. Merge the
 delta into the living specs and authoring guide, archive it, and mark plan 032
 DONE with commits/test count.
 
@@ -288,8 +288,7 @@ Expected: clean tree; the privacy scan prints nothing and exits 1.
 - [ ] Optional omission, null, and undefined reach authored code as null.
 - [ ] Nullish decode performs no `AsFunction` or context registration.
 - [ ] Non-null callbacks keep context-retained behavior.
-- [ ] Generated glue never registers/disposes callbacks through the conversion
-  scope.
+- [ ] Generated glue never releases callbacks through codec `Release`.
 - [ ] Returns, properties, records, collections, and events remain unsupported.
 - [ ] Generator, runtime, full managed tests, and format pass without skips.
 - [ ] Specs/guide are merged, package archived, and plan 032 marked DONE.
