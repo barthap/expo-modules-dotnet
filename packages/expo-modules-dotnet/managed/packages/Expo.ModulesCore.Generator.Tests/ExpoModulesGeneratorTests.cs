@@ -434,7 +434,6 @@ public sealed class ExpoModulesGeneratorTests
         "new global::System.Runtime.CompilerServices.StrongBox<(global::Expo.ModulesCore.ArrayBuffer, global::Expo.ModulesCore.ArrayBuffer)>((__expoResult, __expoArg0))",
         source
     );
-    Assert.DoesNotContain("GeneratedTransferredResult", source);
     Assert.DoesNotContain("static value => value.Dispose()", source);
   }
 
@@ -4970,7 +4969,6 @@ public sealed class ExpoModulesGeneratorTests
     var body = HostFunctionBody(GeneratedText(result), "Rejects_m_HostFunction");
     Assert.Contains(expectedFragment, body, StringComparison.Ordinal);
     Assert.Contains(expectedEncode, body, StringComparison.Ordinal);
-    Assert.DoesNotContain("GeneratedTransferredResult", body, StringComparison.Ordinal);
     // A leaf-free result releases the arguments when the lambda finishes. A leaf-bearing result
     // carries them in a StrongBox to the factory or the abandon callback.
     Assert.Equal(resultHoldsLeaves, body.Contains("StrongBox", StringComparison.Ordinal));
@@ -5243,7 +5241,6 @@ public sealed class ExpoModulesGeneratorTests
 
     AssertNoCompilerErrors(result);
     Assert.Equal(new[] { expectedId }, GeneratorDiagnosticIds(result));
-    Assert.DoesNotContain("GeneratedConversionScope", GeneratedText(result), StringComparison.Ordinal);
   }
 
   private static string SharedObjectMemberSource(string member) =>

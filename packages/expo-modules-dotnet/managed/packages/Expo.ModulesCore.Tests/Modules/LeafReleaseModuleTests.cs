@@ -10,15 +10,15 @@ using Xunit;
 namespace Expo.ModulesCore.Tests.Modules;
 
 // Generated bindings release every direct JavaScriptValue and ArrayBuffer leaf exactly once through
-// one conversion scope per invocation. Lease counts use JS-created buffers, whose release reaches
+// the codec Release member, for the result first and then the arguments. Lease counts use JS-created buffers, whose release reaches
 // LongLivedArrayBuffersReleased after the runtime goes idle. ReleasedValues also counts traversal
 // temporaries, so JavaScriptValue assertions compare against a leaf-free twin call.
-public sealed class ResourceScopeModuleTests
+public sealed class LeafReleaseModuleTests
 {
   [Fact]
   public void SyncLeafParameterReleasesOnceOnSuccessAndThrow()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); true");
 
     scope.Fixture.ResetCounters();
@@ -37,10 +37,10 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public async Task LaterDecodeFailureReleasesEarlierLeafSyncAndAsync()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(4); true");
 
-    // The buffer decodes into the scope before the count decode throws; the scope still releases it.
+    // The buffer decodes before the count decode throws; the catch still releases it.
     scope.Fixture.ResetCounters();
     var result = scope.ReadString(
         "let failed; try { m.measureWithCount(b1, 'x'); failed = 'no error'; } " +
@@ -50,7 +50,7 @@ public sealed class ResourceScopeModuleTests
     Assert.Equal("true", result);
     Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
 
-    // Async: the outer catch releases the scope before it returns the rejected Promise.
+    // Async: the outer catch releases the argument before it returns the rejected Promise.
     scope.Fixture.ResetCounters();
     scope.StartOutcome("m.measureWithCountAsync(b2, 'x')");
     await scope.WaitForOutcomeAsync();
@@ -62,7 +62,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void SyncMethodReturningItsInputBufferKeepsIdentityAndReleasesOnce()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); true");
 
     scope.Fixture.ResetCounters();
@@ -70,14 +70,14 @@ public sealed class ResourceScopeModuleTests
     scope.Fixture.WaitUntilIdle();
 
     Assert.Equal("true", result);
-    // The decoded lease and the returned lease are one object: the scope registers it once.
+    // The decoded lease and the returned lease are one object: Release disposes it once.
     Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
   [Fact]
   public void SyncMethodReturningItsInputValueResolvesIt()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.o = {}; true");
 
     scope.Fixture.ResetCounters();
@@ -88,14 +88,14 @@ public sealed class ResourceScopeModuleTests
     Assert.Equal("true", scope.ReadString("String(m.sameValue(o) === o)"));
     var leafReleases = scope.Fixture.Counters.ReleasedValues;
 
-    // The returned input is one wrapper registered once; the bridge receives an independent copy.
+    // The returned input is one wrapper that Release disposes once; the bridge receives an independent copy.
     Assert.Equal(twinReleases + 1, leafReleases);
   }
 
   [Fact]
   public void SyncReturnedRetainedValueCopyReleasesOnce()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.o = {}; true");
 
     // Calibration: the same call shape where the returned wrapper is the argument itself.
@@ -114,7 +114,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void ReturnedRetainedCopyOfInputReleasesBothLeases()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); true");
 
     scope.Fixture.ResetCounters();
@@ -129,7 +129,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void SameBufferInTwoParametersReleasesBothLeases()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); true");
 
     scope.Fixture.ResetCounters();
@@ -144,7 +144,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void ReturnedDisposedValueFailsThroughCatchableError()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); true");
 
     var result = scope.ReadString(
@@ -159,7 +159,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public async Task AsyncMethodReturningItsInputValueResolvesWithIt()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.o = {}; true");
 
     scope.StartOutcome("m.sameValueAsync(o)");
@@ -171,7 +171,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public async Task AsyncReturnedRetainedValueCopyReleasesOnce()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.o = {}; true");
 
     // Calibration: the same call shape where the returned wrapper is the argument itself.
@@ -198,7 +198,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public async Task AsyncLeafBufferIsReadableAfterAwait()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); true");
 
     scope.Fixture.ResetCounters();
@@ -213,7 +213,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public async Task AsyncLeafFaultRejectsAndReleasesInputOnce()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); true");
 
     scope.Fixture.ResetCounters();
@@ -231,7 +231,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public async Task AsyncLeafMethodThrowingBeforeTaskReleasesOnce()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); true");
 
     scope.Fixture.WaitUntilIdle();
@@ -251,7 +251,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public async Task AsyncRetainedResultReleasesInputAndResultOnce()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); true");
 
     scope.Fixture.WaitUntilIdle();
@@ -270,7 +270,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public async Task AsyncResultEncodeFailureRejectsAndReleasesOnce()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); true");
 
     scope.Fixture.WaitUntilIdle();
@@ -289,7 +289,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void AsyncInputLeafLivesUntilSettlement()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.o = {}; true");
 
     // Leaf-free twin: the same paused sequence with a string result.
@@ -327,7 +327,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void AbandonedAsyncLeafResultReleasesInputAndResultOnce()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); true");
 
     scope.StartOutcome("m.holdRetainedAsync(b)");
@@ -353,7 +353,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public async Task AsyncLeafMemberArgumentCountFailureRejects()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
 
     scope.Fixture.ResetCounters();
     scope.StartOutcome("m.holdAsync()");
@@ -370,7 +370,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void PropertyBufferLeasesReleaseWhenStoredCopyDrops()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); globalThis.props = globalThis._expoDotnet.modules.GeneratedProperties; true");
 
     scope.Fixture.ResetCounters();
@@ -399,14 +399,14 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void SharedObjectConstructorAndMemberReleaseLeaves()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); true");
 
     scope.Fixture.ResetCounters();
     var result = scope.ReadString(
-        "const entry = new m.ResourceScopeEntry(b, false); " +
+        "const entry = new m.LeafReleaseEntry(b, false); " +
         "const measured = entry.measure(b); " +
-        "let failed; try { new m.ResourceScopeEntry(b, true); failed = 'no error'; } " +
+        "let failed; try { new m.LeafReleaseEntry(b, true); failed = 'no error'; } " +
         "catch (error) { failed = error instanceof Error && error.message.includes('entry failed'); } " +
         "`${measured}:${failed}`"
     );
@@ -419,7 +419,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void SpanFunctionReleasesSpanLeaseAndLeafArgumentOnce()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true");
 
     scope.Fixture.ResetCounters();
@@ -427,14 +427,14 @@ public sealed class ResourceScopeModuleTests
     scope.Fixture.WaitUntilIdle();
 
     Assert.Equal("true", result);
-    // The span lease and the scoped argument; the returned argument is the same registered leaf.
+    // The span lease and the argument; the returned argument is the same leaf, which Release disposes once.
     Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
   [Fact]
   public void SpanFunctionReleasesReturnedRetainedCopy()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true");
 
     scope.Fixture.WaitUntilIdle();
@@ -451,7 +451,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void RecordWithBufferFieldsReleasesEachLeaseOnce()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true");
 
     scope.Fixture.ResetCounters();
@@ -463,9 +463,9 @@ public sealed class ResourceScopeModuleTests
   }
 
   [Fact]
-  public void RecordReturnTransfersEveryLeaf()
+  public void RecordReturnReleasesEveryLeafOnce()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run(
         "globalThis.b1 = new ArrayBuffer(4); new Uint8Array(b1)[0] = 7; " +
         "globalThis.b2 = new ArrayBuffer(2); true"
@@ -478,7 +478,7 @@ public sealed class ResourceScopeModuleTests
     scope.Fixture.WaitUntilIdle();
 
     Assert.Equal("true:true", result);
-    // The returned leaves are the decoded ones: each is registered once and released once.
+    // The returned leaves are the decoded ones: Release disposes each once.
     Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
     Assert.Equal("7", scope.ReadString("String(new Uint8Array(r.first)[0])"));
   }
@@ -486,7 +486,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void LaterFieldDecodeFailureReleasesEarlierLease()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); true");
 
     scope.Fixture.ResetCounters();
@@ -503,7 +503,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void AliasInTwoReturnedLeavesReleasesSourceOnce()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.o = {}; true");
 
     scope.Fixture.ResetCounters();
@@ -516,14 +516,14 @@ public sealed class ResourceScopeModuleTests
     scope.Fixture.WaitUntilIdle();
     var leafReleases = scope.Fixture.Counters.ReleasedValues;
 
-    // The decoded input and the one retained copy, which both fields alias and the scope registers once.
+    // The decoded input and the one retained copy, which both fields alias and Release disposes once.
     Assert.Equal(twinReleases + 2, leafReleases);
   }
 
   [Fact]
   public async Task SyncAndAsyncRecordReturningInputLeavesReleaseOnce()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run(
         "globalThis.o1 = {}; globalThis.o2 = {}; " +
         "globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true"
@@ -547,9 +547,9 @@ public sealed class ResourceScopeModuleTests
   }
 
   [Fact]
-  public void EncodeFailureReleasesTransferredLeaves()
+  public void EncodeFailureReleasesReturnedLeaves()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); true");
 
     scope.Fixture.ResetCounters();
@@ -560,7 +560,7 @@ public sealed class ResourceScopeModuleTests
     scope.Fixture.WaitUntilIdle();
 
     Assert.Equal("true", result);
-    // The decoded lease and the transferred Retain() copy share one entry, which releases only when
+    // The decoded lease and the returned Retain() copy share one entry, which releases only when
     // both leases drop.
     Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
@@ -568,7 +568,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void ListAndDictionaryOfBuffersRoundTrip()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run(
         "globalThis.b1 = new ArrayBuffer(4); new Uint8Array(b1)[0] = 1; " +
         "globalThis.b2 = new ArrayBuffer(2); true"
@@ -583,14 +583,14 @@ public sealed class ResourceScopeModuleTests
 
     Assert.Equal("true:true:true:true:true", result);
     Assert.Equal(3u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
-    // The JavaScript results stay usable after the scope released the leases.
+    // The JavaScript results stay usable after Release disposed the leases.
     Assert.Equal("1:2:1", scope.ReadString("`${new Uint8Array(l[0])[0]}:${l[1].byteLength}:${new Uint8Array(d.a)[0]}`"));
   }
 
   [Fact]
   public void NestedRecordListDictionaryBufferRoundTrips()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); true");
 
     scope.Fixture.ResetCounters();
@@ -604,7 +604,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void AbandonedAsyncRecordResultReleasesLeavesOnce()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true");
 
     scope.StartOutcome("m.holdPairAsync({ first: b1, second: b2 })");
@@ -629,7 +629,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void NullableRecordStructWithLeafRoundTrips()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.o = {}; true");
 
     Assert.Equal("null:String", scope.ReadString("`${m.slotKind(null)}:${m.slotKind({ value: 'a' })}`"));
@@ -645,14 +645,14 @@ public sealed class ResourceScopeModuleTests
     scope.Fixture.WaitUntilIdle();
     var leafReleases = scope.Fixture.Counters.ReleasedValues;
 
-    // The decoded value, which the returned slot holds again and the scope registers once.
+    // The decoded value, which the returned slot holds again and Release disposes once.
     Assert.Equal(twinReleases + 1, leafReleases);
   }
 
   [Fact]
   public void MixedRecordRoundTripsBothLeafKinds()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); globalThis.o = {}; true");
 
     scope.Fixture.ResetCounters();
@@ -677,7 +677,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void ValueListRoundTripsWithoutLeakOrConsumption()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.o1 = {}; globalThis.o2 = {}; true");
 
     scope.Fixture.ResetCounters();
@@ -697,7 +697,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void NullRecordInListDecodeFailureReleasesEarlierLeases()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true");
 
     scope.Fixture.ResetCounters();
@@ -712,9 +712,9 @@ public sealed class ResourceScopeModuleTests
   }
 
   [Fact]
-  public void NullRecordInReturnedListKeepsTransferTotal()
+  public void NullRecordInReturnedListReleasesOtherLeaves()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true");
 
     scope.Fixture.ResetCounters();
@@ -724,9 +724,9 @@ public sealed class ResourceScopeModuleTests
     );
     scope.Fixture.WaitUntilIdle();
 
-    // The null element registers nothing, the later pair of retained copies still registers, and
-    // the record EncodeBorrowed throws ArgumentNullException for the null element. Each entry
-    // releases once its decoded lease and its retained copy drop.
+    // Encoding the null element throws ArgumentNullException. Release skips the null element and
+    // still releases the later pair of retained copies. Each entry releases once its decoded lease
+    // and its retained copy drop.
     Assert.Equal("true", result);
     Assert.Equal(2u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
@@ -734,7 +734,7 @@ public sealed class ResourceScopeModuleTests
   [Fact]
   public void StoredRecordPropertyReturnsRetainedCopies()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b1 = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true");
 
     scope.Fixture.ResetCounters();
@@ -762,9 +762,9 @@ public sealed class ResourceScopeModuleTests
   }
 
   [Fact]
-  public void OmittedOptionalBufferListRegistersNothing()
+  public void OmittedOptionalBufferListReleasesNothing()
   {
-    using var scope = ResourceScopeFixture.Create();
+    using var scope = LeafReleaseFixture.Create();
     scope.Run("globalThis.b = new ArrayBuffer(4); true");
 
     scope.Fixture.ResetCounters();
@@ -778,12 +778,12 @@ public sealed class ResourceScopeModuleTests
     Assert.Equal(1u, scope.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
-  private sealed class ResourceScopeFixture : IDisposable
+  private sealed class LeafReleaseFixture : IDisposable
   {
-    private ResourceScopeFixture(
+    private LeafReleaseFixture(
         HermesRuntimeFixture fixture,
         DotnetRuntimeContext context,
-        ResourceScopeModule module)
+        LeafReleaseModule module)
     {
       Fixture = fixture;
       Context = context;
@@ -794,31 +794,31 @@ public sealed class ResourceScopeModuleTests
 
     public DotnetRuntimeContext Context { get; }
 
-    public ResourceScopeModule Module { get; }
+    public LeafReleaseModule Module { get; }
 
-    public static ResourceScopeFixture Create()
+    public static LeafReleaseFixture Create()
     {
       var fixture = HermesRuntimeFixture.Create();
       try
       {
         DotnetRuntimeContext? context = null;
-        ResourceScopeModule? module = null;
+        LeafReleaseModule? module = null;
         fixture.Runtime.Execute(runtime =>
         {
           context = new DotnetRuntimeContext(runtime);
           using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
           ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
-          module = context.ModuleRegistry.GetOrCreateModule<ResourceScopeModule>(
-              "ResourceScope",
+          module = context.ModuleRegistry.GetOrCreateModule<LeafReleaseModule>(
+              "LeafRelease",
               static () => throw new InvalidOperationException("The generated module must already exist.")
           );
           using var setup = fixture.Evaluate(
-              "globalThis.m = globalThis._expoDotnet.modules.ResourceScope; true",
-              "resource-scope-setup.js"
+              "globalThis.m = globalThis._expoDotnet.modules.LeafRelease; true",
+              "leaf-release-setup.js"
           );
           return true;
         });
-        return new ResourceScopeFixture(fixture, context!, module!);
+        return new LeafReleaseFixture(fixture, context!, module!);
       }
       catch
       {
@@ -831,7 +831,7 @@ public sealed class ResourceScopeModuleTests
     {
       Fixture.Runtime.Execute(_ =>
       {
-        using var result = Fixture.Evaluate(source, "resource-scope-run.js");
+        using var result = Fixture.Evaluate(source, "leaf-release-run.js");
         return true;
       });
     }
@@ -840,7 +840,7 @@ public sealed class ResourceScopeModuleTests
     {
       return Fixture.Runtime.Execute(_ =>
       {
-        using var result = Fixture.Evaluate(expression, "resource-scope-read.js");
+        using var result = Fixture.Evaluate(expression, "leaf-release-read.js");
         return result.AsString();
       });
     }

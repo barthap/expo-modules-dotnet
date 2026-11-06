@@ -24,12 +24,12 @@ public readonly record struct TextSlot(string Value);
 
 public sealed record TextMixed(string Buffer, string Value);
 
-[ExpoModule("ResourceScope", Classes = new[] { typeof(ResourceScopeEntry) })]
-public sealed partial class ResourceScopeModule : Module, IDisposable
+[ExpoModule("LeafRelease", Classes = new[] { typeof(LeafReleaseEntry) })]
+public sealed partial class LeafReleaseModule : Module, IDisposable
 {
   private BufferPair? stored;
 
-  public ResourceScopeModule(DotnetRuntimeContext context)
+  public LeafReleaseModule(DotnetRuntimeContext context)
       : base(context)
   {
   }
@@ -229,8 +229,8 @@ public sealed partial class ResourceScopeModule : Module, IDisposable
   [JS]
   public int MeasurePairs(IReadOnlyList<BufferPair> pairs) => pairs.Count;
 
-  // Retained copies register only through Transfer, so a Transfer that stopped at the null element
-  // would leak them and keep both entries pinned.
+  // Release must skip the null element and still release the retained copies after it. A Release
+  // that stopped at the null element would leak them and keep both entries pinned.
   [JS]
   public IReadOnlyList<BufferPair> PairsWithNull(BufferPair pair) =>
       new[] { null!, new BufferPair(pair.First.Retain(), pair.Second.Retain()) };
@@ -261,11 +261,11 @@ public sealed partial class ResourceScopeModule : Module, IDisposable
   }
 }
 
-[ExpoSharedObject("ResourceScopeEntry")]
-public sealed partial class ResourceScopeEntry : SharedObject
+[ExpoSharedObject("LeafReleaseEntry")]
+public sealed partial class LeafReleaseEntry : SharedObject
 {
   [JS]
-  public ResourceScopeEntry(ArrayBuffer seed, bool fail)
+  public LeafReleaseEntry(ArrayBuffer seed, bool fail)
   {
     if (fail)
     {
