@@ -181,10 +181,11 @@ values work wherever the nested type is supported, so `IReadOnlyList<string?>?`
 composes. `List<T>` stays unsupported in both forms, because its non-nullable
 form has no codec either.
 
-`JavaScriptValue?`, `SharedObject?`, `SharedRef<T>?`, and a nullable concrete
-`[ExpoSharedObject]` class are build diagnostics. `JavaScriptValue` already
-represents JavaScript `null` and `undefined`. The others carry shared-object
-identity, and a null axis multiplies those states.
+`JavaScriptValue?`, `SharedObject?`, and `SharedRef<T>?` are build
+diagnostics. `JavaScriptValue` already represents JavaScript `null` and
+`undefined`. The others carry shared-object identity, and a null axis
+multiplies those states. A nullable concrete `[ExpoSharedObject]` class is
+supported; see [Shared objects](#8-shared-objects).
 
 Decoding treats JavaScript `null` and `undefined` alike as C# `null`, and C#
 `null` encodes as JavaScript `null`, never `undefined`. A non-nullable reference
@@ -523,9 +524,11 @@ The owning module exposes each constructible class as a class-name property
 (`module.ExampleCounter`). Exposed class names must not collide with the
 module's functions, properties, observing hooks, or event-runtime members.
 Shared-object parameters, returns, and properties must use the exact sealed
-authored type directly at the boundary — the `SharedObject`/`SharedRef<T>`
-bases and nested composition (records, lists, dictionaries, callbacks,
-nullable annotations) are rejected.
+authored type directly at the boundary, optionally annotated as nullable
+(`ExampleCounter?`). JavaScript `null` and `undefined` arrive as C# `null`, and
+C# `null` returns JavaScript `null`. The `SharedObject`/`SharedRef<T>` bases,
+with or without `?`, and nested composition (records, lists, dictionaries,
+callbacks) are rejected.
 
 ### Lifetime and release
 
