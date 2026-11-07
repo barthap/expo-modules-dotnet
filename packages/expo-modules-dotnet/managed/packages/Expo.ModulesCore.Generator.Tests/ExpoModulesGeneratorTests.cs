@@ -4391,6 +4391,8 @@ public sealed class ExpoModulesGeneratorTests
   [InlineData("OpenEntry", "which must be a top-level, non-generic, sealed [ExpoSharedObject] class")]
   [InlineData("Outer.Inner", "which must be a top-level, non-generic, sealed [ExpoSharedObject] class")]
   [InlineData("Box<int>", "which must be a top-level, non-generic, sealed [ExpoSharedObject] class")]
+  [InlineData("OpenUnattributed", "which is not marked [ExpoSharedObject]")]
+  [InlineData("AbstractEntry", "which must be a top-level, non-generic, sealed [ExpoSharedObject] class")]
   public void GeneratorKeepsTheInvalidConcreteClassReasonForNullableParameters(string typeName, string expectedReason)
   {
     foreach (var annotation in new[] { "", "?" })
@@ -4408,6 +4410,15 @@ public sealed class ExpoModulesGeneratorTests
 
           [ExpoSharedObject("OpenEntry")]
           public partial class OpenEntry : SharedObject
+          {
+          }
+
+          public class OpenUnattributed : SharedObject
+          {
+          }
+
+          [ExpoSharedObject("AbstractEntry")]
+          public abstract partial class AbstractEntry : SharedObject
           {
           }
 
@@ -4439,6 +4450,7 @@ public sealed class ExpoModulesGeneratorTests
       var source = GeneratedText(result);
       Assert.DoesNotContain("\"takeIt\"", source);
       Assert.DoesNotContain("SharedObjectCodec<", source);
+      Assert.DoesNotContain("SharedObjectBaseCodec", source);
       AssertNoCompilerErrors(result);
     }
   }
@@ -5463,6 +5475,139 @@ public sealed class ExpoModulesGeneratorTests
   }
 
   [Theory]
+  [InlineData("[JS] public int M(PathBase path) => 0;", "", new[] { "var __expoArg0 = $B.Decode(arguments.GetValue(0), runtime, GeneratedFunction.CurrentRuntimeContext);" })]
+  [InlineData("[JS] public string M(string name, PathBase path) => name;", "", new[] { "var __expoArg1 = $B.Decode(arguments.GetValue(1), runtime, GeneratedFunction.CurrentRuntimeContext);" })]
+  [InlineData("[JS] public Task<int> M(PathBase path) => Task.FromResult(0);", "", new[] { "var __expoArg0 = $B.Decode(arguments.GetValue(0), jsRuntime, GeneratedFunction.CurrentRuntimeContext);" })]
+  [InlineData("", "[JS] public DirEntry(string name, PathBase parent) { }", new[] { "var __expoArg1 = $B.Decode(arguments.GetValue(1), runtime, GeneratedFunction.CurrentRuntimeContext);", "ConstructSharedObject_" })]
+  [InlineData("", "[JS] public int Compare(PathBase other) => 0;", new[] { "var module = SharedObjectCodec<global::Expo.TestModules.DirEntry>.Decode(thisValue, runtime, GeneratedFunction.CurrentRuntimeContext);", "var __expoArg0 = $B.Decode(arguments.GetValue(0), runtime, GeneratedFunction.CurrentRuntimeContext);" })]
+  [InlineData("", "[JS] public Task<int> CompareLater(PathBase other) => Task.FromResult(0);", new[] { "var module = SharedObjectCodec<global::Expo.TestModules.DirEntry>.Decode(thisValue, jsRuntime, GeneratedFunction.CurrentRuntimeContext);", "var __expoArg0 = $B.Decode(arguments.GetValue(0), jsRuntime, GeneratedFunction.CurrentRuntimeContext);" })]
+  public void GeneratorAcceptsSharedObjectBaseParameters(string moduleMembers, string dirMembers, string[] fragments)
+  {
+    var result = GeneratorTestHost.Run(SharedObjectBaseSource(moduleMembers, dirMembers));
+
+    AssertSharedObjectBaseGlue(result, "global::Expo.TestModules.PathBase");
+    var text = GeneratedText(result);
+    foreach (var fragment in fragments)
+    {
+      Assert.Contains(fragment.Replace("$B", "SharedObjectBaseCodec<global::Expo.TestModules.PathBase>", StringComparison.Ordinal), text, StringComparison.Ordinal);
+    }
+  }
+
+  // An abstract base of a SharedRef<T> subclass is still an authored abstract base: the SharedRef<T>
+  // rule applies to the generic carrier itself, not to its derived classes.
+  [Fact]
+  public void GeneratorAcceptsAbstractBaseOfSharedRefSubclasses()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        #nullable enable
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public sealed class Resource {}
+
+        public abstract class HandleBase : SharedRef<Resource>
+        {
+          protected HandleBase(Resource resource) : base(resource) { }
+        }
+
+        [ExpoSharedObject("Handle")]
+        public sealed partial class Handle : HandleBase
+        {
+          public Handle(Resource resource) : base(resource) { }
+        }
+
+        [ExpoModule("Handles", Classes = new[] { typeof(Handle) })]
+        public sealed partial class HandlesModule
+        {
+          [JS] public int M(HandleBase handle) => 0;
+        }
+        """
+    );
+
+    AssertSharedObjectBaseGlue(result, "global::Expo.TestModules.HandleBase");
+    Assert.Contains(
+        "var __expoArg0 = SharedObjectBaseCodec<global::Expo.TestModules.HandleBase>.Decode(arguments.GetValue(0), runtime, GeneratedFunction.CurrentRuntimeContext);",
+        GeneratedText(result),
+        StringComparison.Ordinal
+    );
+  }
+
+  // An abstract base is accepted only as a parameter. The run without the annotation is the oracle;
+  // the run with it stops at the nullable reason first, except where a later rule already applies.
+  [Theory]
+  [InlineData("", "[JS] public PathBase$N M() => null!;", "", "EXPOJSI023", "M", AbstractBaseParameterOnlyReason, AbstractBaseParameterOnlyReason, "\"m\"")]
+  [InlineData("", "[JS] public Task<PathBase$N> M() => null!;", "", "EXPOJSI023", "M", AbstractBaseParameterOnlyReason, AbstractBaseParameterOnlyReason, "\"m\"")]
+  [InlineData("", "[JS] public PathBase$N Stored { get; set; } = null!;", "", "EXPOJSI023", "Stored", AbstractBaseParameterOnlyReason, AbstractBaseParameterOnlyReason, "\"stored\"")]
+  [InlineData("", "", "[JS] public PathBase$N Give() => null!;", "EXPOJSI023", "Give", AbstractBaseParameterOnlyReason, AbstractBaseParameterOnlyReason, "\"give\"")]
+  [InlineData("", "", "[JS] public PathBase$N Link { get; set; } = null!;", "EXPOJSI023", "Link", AbstractBaseParameterOnlyReason, AbstractBaseParameterOnlyReason, "\"link\"")]
+  [InlineData("", "[JS] public int M(IReadOnlyList<PathBase$N> paths) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "inside a composed codec", "\"m\"")]
+  [InlineData("", "[JS] public int M(Dictionary<string, PathBase$N> paths) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "inside a composed codec", "\"m\"")]
+  [InlineData("public sealed record Holder(PathBase$N Field);", "[JS] public int M(Holder holder) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "inside a composed codec", "\"m\"")]
+  [InlineData("", "[JS] public int M(JavaScriptCallback<PathBase$N> callback) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "inside a composed codec", "\"m\"")]
+  [InlineData("", "[JS] public int M(JavaScriptCallback<ValueTuple<PathBase$N>, int> callback) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "inside a composed codec", "\"m\"")]
+  [InlineData("", "[Event] public partial Func<PathBase$N, Task> OnPath { get; }", "", "EXPOJSI019", "OnPath", "no encode-capable codec is available", "no encode-capable codec is available", "\"onPath\"")]
+  [InlineData("", "", "[Event] public partial Func<PathBase$N, Task> OnPath { get; }", "EXPOJSI027", "OnPath", "no encode-capable codec is available", "no encode-capable codec is available", "\"onPath\"")]
+  [InlineData("public abstract class GenericBase<T> : SharedObject { }", "[JS] public int M(GenericBase<int>$N path) => 0;", "", "EXPOJSI023", "M", AbstractBaseShapeReason, AbstractBaseNullableReason, "\"m\"")]
+  [InlineData("public static class Outer { public abstract class NestedBase : SharedObject { } }", "[JS] public int M(Outer.NestedBase$N path) => 0;", "", "EXPOJSI023", "M", AbstractBaseShapeReason, AbstractBaseNullableReason, "\"m\"")]
+  [InlineData("", "[JS] public int M(SharedObject$N value) => 0;", "", "EXPOJSI023", "M", "which is the polymorphic SharedObject base", "which is the polymorphic SharedObject base", "\"m\"")]
+  [InlineData("", "[JS] public int M(SharedRef<string>$N value) => 0;", "", "EXPOJSI023", "M", "which is the SharedRef<T> managed carrier base", "which is the SharedRef<T> managed carrier base", "\"m\"")]
+  public void GeneratorKeepsSharedObjectDiagnosticsForBasesOutsideParameters(
+      string declarations,
+      string moduleMembers,
+      string dirMembers,
+      string expectedId,
+      string memberName,
+      string reason,
+      string annotatedReason,
+      string absentFragment)
+  {
+    foreach (var annotation in new[] { string.Empty, "?" })
+    {
+      var result = GeneratorTestHost.Run(
+          SharedObjectBaseSource(
+              moduleMembers.Replace("$N", annotation, StringComparison.Ordinal),
+              dirMembers.Replace("$N", annotation, StringComparison.Ordinal),
+              declarations.Replace("$N", annotation, StringComparison.Ordinal)
+          )
+      );
+
+      AssertNoCompilerErrors(result);
+      Assert.Equal(new[] { expectedId }, GeneratorDiagnosticIds(result));
+      var diagnostic = Assert.Single(result.GeneratorDiagnostics ?? Array.Empty<Diagnostic>());
+      Assert.Contains($"'{memberName}'", diagnostic.GetMessage(), StringComparison.Ordinal);
+      Assert.Contains(annotation.Length == 0 ? reason : annotatedReason, diagnostic.GetMessage(), StringComparison.Ordinal);
+      Assert.DoesNotContain(result.Diagnostics, item => item.Id is "EXPOJSI001" or "EXPOJSI002" or "EXPOJSI015");
+      var text = GeneratedText(result);
+      Assert.DoesNotContain(absentFragment, text, StringComparison.Ordinal);
+      Assert.DoesNotContain("SharedObjectBaseCodec", text, StringComparison.Ordinal);
+    }
+  }
+
+  // The nullable form of an abstract base at a parameter. Its non-null form is accepted, so this
+  // theory cannot share the $N token of the theory above.
+  [Theory]
+  [InlineData("[JS] public int M(PathBase? path) => 0;", "", "M", "\"m\"")]
+  [InlineData("[JS] public Task<int> M(PathBase? path) => Task.FromResult(0);", "", "M", "\"m\"")]
+  [InlineData("", "[JS] public DirEntry(PathBase? parent) { }", "DirEntry", "ConstructSharedObject_")]
+  [InlineData("", "[JS] public int Compare(PathBase? other) => 0;", "Compare", "\"compare\"")]
+  public void GeneratorRejectsNullableSharedObjectBaseParameters(string moduleMembers, string dirMembers, string memberName, string absentFragment)
+  {
+    var result = GeneratorTestHost.Run(SharedObjectBaseSource(moduleMembers, dirMembers));
+
+    AssertNoCompilerErrors(result);
+    Assert.Equal(new[] { "EXPOJSI023" }, GeneratorDiagnosticIds(result));
+    var diagnostic = Assert.Single(result.GeneratorDiagnostics ?? Array.Empty<Diagnostic>());
+    Assert.Contains($"'{memberName}'", diagnostic.GetMessage(), StringComparison.Ordinal);
+    Assert.Contains(AbstractBaseNullableReason, diagnostic.GetMessage(), StringComparison.Ordinal);
+    var text = GeneratedText(result);
+    Assert.DoesNotContain(absentFragment, text, StringComparison.Ordinal);
+    Assert.DoesNotContain("SharedObjectBaseCodec", text, StringComparison.Ordinal);
+    Assert.DoesNotContain("NullableSharedObjectCodec", text, StringComparison.Ordinal);
+  }
+
+  [Theory]
   [InlineData(false, "Func<ArrayBuffer?, Task> OnBuffer", "onBufferValue => emitter.EmitAsync(module, \"onBuffer\", onBufferValue)")]
   [InlineData(true, "Func<ArrayBuffer?, Task> OnBuffer", "onBufferValue => global::Expo.ModulesCore.GeneratedSharedObjectEvents.EmitAsync(context, sharedObject, \"onBuffer\", onBufferValue)")]
   [InlineData(false, "Func<IReadOnlyList<ArrayBuffer?>, Task> OnBuffers", "emitter.EmitAsync<JavaScriptArrayCodec<global::Expo.ModulesCore.ArrayBuffer?, " + Nabc + ">, global::System.Collections.Generic.IReadOnlyList<global::Expo.ModulesCore.ArrayBuffer?>>(module, \"onBuffers\", onBuffersValue)")]
@@ -5606,8 +5751,65 @@ public sealed class ExpoModulesGeneratorTests
     Assert.DoesNotContain("CodecRelease", text, StringComparison.Ordinal);
     Assert.DoesNotContain($"Codec<{typeName}?>", text, StringComparison.Ordinal);
     var escapedTypeName = Regex.Escape(typeName);
-    Assert.Equal(0, Regex.Matches(text, $@"(?<!Nullable)SharedObjectCodec<{escapedTypeName}>\.Decode\(arguments").Count);
-    Assert.Equal(0, Regex.Matches(text, $@"(?<!Nullable)SharedObjectCodec<{escapedTypeName}>\.Encode\(").Count);
+    Assert.DoesNotMatch($@"(?<!Nullable)SharedObjectCodec<{escapedTypeName}>\.Decode\(arguments", text);
+    Assert.DoesNotMatch($@"(?<!Nullable)SharedObjectCodec<{escapedTypeName}>\.Encode\(", text);
+  }
+
+  // PathBase is an authored abstract base with no attribute. FileEntry and DirEntry are its
+  // generated sealed subclasses, and one module owns both, so neither reports EXPOJSI024.
+  // Neither class has a [JS] constructor unless dirMembers adds one.
+  private static string SharedObjectBaseSource(string moduleMembers, string dirMembers = "", string declarations = "") =>
+      $$"""
+      #nullable enable
+      using System;
+      using System.Collections.Generic;
+      using System.Threading.Tasks;
+      using Expo.JSI;
+      using Expo.ModulesCore;
+
+      namespace Expo.TestModules;
+
+      {{declarations}}
+
+      public abstract class PathBase : SharedObject
+      {
+      }
+
+      [ExpoSharedObject("FileEntry")]
+      public sealed partial class FileEntry : PathBase
+      {
+      }
+
+      [ExpoSharedObject("DirEntry")]
+      public sealed partial class DirEntry : PathBase
+      {
+        {{dirMembers}}
+      }
+
+      [ExpoModule("Paths", Classes = new[] { typeof(FileEntry), typeof(DirEntry) })]
+      public sealed partial class PathsModule : Module
+      {
+        public PathsModule(DotnetRuntimeContext context) : base(context) {}
+
+        {{moduleMembers}}
+      }
+      """;
+
+  private const string AbstractBaseParameterOnlyReason = "which is an abstract shared-object base and is supported only as a parameter";
+  private const string AbstractBaseNullableReason = "which is an abstract shared-object base and must be used without a nullable annotation";
+  private const string AbstractBaseShapeReason = "which is an abstract shared-object base and must be a top-level, non-generic class";
+
+  // The generated glue of an abstract shared-object base compiles clean, decodes through the
+  // decode-only base codec, and never encodes or uses the concrete or nullable shared-object codecs.
+  // A shared object is registry-owned, so the glue emits no release.
+  private static void AssertSharedObjectBaseGlue(GeneratorRunResult result, string baseTypeName)
+  {
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerErrors(result);
+    var text = GeneratedText(result);
+    Assert.DoesNotContain("CodecRelease", text, StringComparison.Ordinal);
+    Assert.DoesNotContain($"SharedObjectCodec<{baseTypeName}>", text, StringComparison.Ordinal);
+    Assert.DoesNotContain($"SharedObjectBaseCodec<{baseTypeName}>.Encode", text, StringComparison.Ordinal);
   }
 
   // The generated text of one host function, from its declaration to the next member, with

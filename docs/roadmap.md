@@ -56,7 +56,7 @@ history keeps it.
 | 031 | Nullable ArrayBuffer codecs                         | P1    | M      | 030          | DONE    | —                                                                           |
 | 032 | Nullable JavaScript callback parameters             | P2    | M      | 031          | DONE    | —                                                                           |
 | 033 | Nullable concrete SharedObject classes              | P2    | M      | 032          | DONE    | —                                                                           |
-| 034 | Base-class shared-object arguments                  | P1    | M      | 030          | TODO    | —                                                                           |
+| 034 | Base-class shared-object arguments                  | P1    | M      | 030          | DONE    | —                                                                           |
 | 035 | Union arguments (`string \| ArrayBuffer`)           | P1    | M      | 030          | TODO    | —                                                                           |
 | 036 | Typed-array codecs (`Uint8Array`)                   | P1    | M      | 030          | TODO    | —                                                                           |
 | 037 | Coded JavaScript errors                             | P2    | M      | —            | TODO    | —                                                                           |
@@ -104,9 +104,13 @@ The next free ID is 041.
 - **028–030 before 034–036**: new codecs build on typed conversion
   descriptors (029) and codec leaf release (030), so they add no
   codec-string policy checks.
-- **034**: an authored abstract shared-object base with a closed set of
-  owned sealed subclasses (`FileSystemPath`) as an argument type. This changes
-  the current rule that base/derived compatibility never selects a codec.
+- **034**: done: it landed on 2026-11-06 with a local
+  `scripts/test-managed.sh` run (1275 passed, 0 failed, 0 skipped). An
+  authored abstract shared-object base such as `FileSystemPath` now works as a
+  parameter of module methods and shared-object constructors and methods,
+  through the decode-only `SharedObjectBaseCodec<TBase>`. Returns, properties,
+  `Base?`, and nested shapes stay rejected, so 038 can port `copy` and `move`
+  but not a base-typed return.
 - **037**: upstream Expo errors carry a `code`. Generated glue rejects with a
   plain `Error` today. Not a blocker for 038.
 - **025**: crypto follows file system and needs typed arrays (036). Plan 027
@@ -218,6 +222,12 @@ and a status row.
 - **P2/P3 — Record shape extensions**: explicit per-field naming,
   non-positional constructors, unknown-field validation, cyclic graphs.
 - **P3 — Script evaluation**: `evaluate_javascript` for dev tooling.
+- **P3 — Reject `= null` on non-nullable shared-object parameters**: applies to
+  the exact class and the abstract base. The emitted default branch passes
+  managed `null` for an omitted or `undefined` argument without running the
+  codec; only an explicit JavaScript `null` is rejected.
+- **P3 — Diagnostic for `[JS]` on an abstract shared-object base**: today the
+  member is silently not exported (034 documents the rule in the guide).
 
 ### Runtime, performance, and tooling
 

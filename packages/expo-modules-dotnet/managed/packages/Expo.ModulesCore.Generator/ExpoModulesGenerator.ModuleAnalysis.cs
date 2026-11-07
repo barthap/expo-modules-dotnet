@@ -483,6 +483,7 @@ public sealed partial class ExpoModulesGenerator
               asyncResultType,
               member.Name,
               "async result type",
+              isParameter: false,
               member.Locations.FirstOrDefault(),
               diagnostics,
               out var sharedAsyncResultCodec))
@@ -541,6 +542,7 @@ public sealed partial class ExpoModulesGenerator
               member.ReturnType,
               member.Name,
               "return type",
+              isParameter: false,
               member.Locations.FirstOrDefault(),
               diagnostics,
               out var sharedReturnCodec))
@@ -634,6 +636,7 @@ public sealed partial class ExpoModulesGenerator
                 parameter.Type,
                 member.Name,
                 $"parameter '{parameter.Name}'",
+                isParameter: true,
                 parameter.Locations.FirstOrDefault(),
                 diagnostics,
                 out var sharedParameterCodec))
@@ -788,6 +791,7 @@ public sealed partial class ExpoModulesGenerator
           member.Type,
           member.Name,
           "property type",
+          isParameter: false,
           member.Locations.FirstOrDefault(),
           diagnostics,
           out var sharedPropertyCodec))

@@ -1400,9 +1400,10 @@ No codec SHALL use finalizers, reflection, or ambient state to release.
 Every generated record codec SHALL use one `Encode` text with no null guard.
 Encoding a null class record SHALL fail with a catchable JavaScript error.
 `Release` SHALL skip a null record. `JavaScriptCallbackCodec`,
-`NullableJavaScriptCallbackCodec`, `SharedObjectCodec<T>`, and
-`NullableSharedObjectCodec<T>` are static classes with no `Release`: the
-runtime context retains callbacks and the registry owns shared objects.
+`NullableJavaScriptCallbackCodec`, `SharedObjectCodec<T>`,
+`NullableSharedObjectCodec<T>`, and `SharedObjectBaseCodec<TBase>` are static
+classes with no `Release`: the runtime context retains callbacks and the
+registry owns shared objects.
 
 #### Scenario: A missing override leaks
 - **GIVEN** a composite codec over `ArrayBufferCodec`, holding JS-created
@@ -1474,6 +1475,7 @@ local declarations and helper type arguments.
 | Record with any `HoldsLeaves` field | `JavaScriptCodec` | `HoldsLeaves` |
 | `JavaScriptCallback<...>` and `JavaScriptCallback<...>?` | `StaticHelper` | `ContextRetained` |
 | Direct `[ExpoSharedObject]` class `T` and `T?` | `StaticHelper` | `Borrowed` |
+| Authored abstract base `TBase` (parameter only; decode-only `SharedObjectBaseCodec<TBase>`) | `StaticHelper` | `Borrowed` |
 
 A record codec model SHALL store whether the record holds leaves and whether it
 is a value type, so a cache hit rebuilds the same descriptor.
@@ -2565,14 +2567,19 @@ The generator SHALL provide compile-time codecs for each valid, owned, sealed
 authored shared-object type used directly as a method parameter, method return,
 constructor parameter, or property type, with or without a nullable annotation.
 The codec SHALL be bound to the current `DotnetRuntimeContext` and exact managed
-class. `SharedObject`, `SharedRef<T>`, an unannotated shared-object base, and
-other polymorphic base types SHALL NOT be generated-boundary codec types.
+class. `SharedObject`, `SharedRef<T>`, and other polymorphic base types SHALL
+NOT be generated-boundary codec types; an authored abstract base is the one
+decode-only exception (see "Authored Abstract Bases Decode As Parameters") and
+SHALL NOT be an encode-side codec type.
 
 Decoding SHALL read the private NativeState token through the existing
 registry, require an active entry owned by the current context, validate the
 exact expected managed runtime type, and return the original managed instance.
-Assignable base/derived compatibility SHALL NOT select a codec or prototype.
-Decoding SHALL NOT construct, clone, or substitute a managed object.
+Assignable base/derived compatibility SHALL NOT select an exact codec or a
+prototype. An authored abstract base is decoded only through
+`SharedObjectBaseCodec<TBase>` (see "Authored Abstract Bases Decode As
+Parameters"). Decoding SHALL NOT construct, clone, or substitute a managed
+object.
 
 Encoding SHALL ask the existing registry for the live JavaScript counterpart.
 For an unpaired, unreleased managed instance, it SHALL create one JavaScript
@@ -2653,6 +2660,60 @@ and scoped wrapper before returning.
 - **WHEN** the method is generated
 - **THEN** the return encode SHALL receive the current `DotnetRuntimeContext`
 - **AND** the generated source SHALL compile
+
+### Requirement: Authored Abstract Bases Decode As Parameters
+
+A top-level, non-generic, abstract class whose base chain reaches
+`SharedObject`, that is not `SharedObject` or `SharedRef<T>` itself, and that
+carries no `[ExpoSharedObject]` attribute, SHALL be accepted as a parameter type
+of generated module methods and of supported shared-object constructors and
+methods. It SHALL select `SharedObjectBaseCodec<TBase>` with the descriptor
+`StaticHelper`, `DecodeOnly`, requiring `DotnetRuntimeContext`, and `Borrowed`.
+Decoding SHALL resolve the registry entry exactly as the exact codec does and
+SHALL accept the managed instance when it is an instance of `TBase`; it SHALL
+NOT construct, clone, or substitute an instance. The codec has no `Release`: a
+shared object is registry-owned, never a leaf holder. The same type as a
+return, async result, or property, with a nullable annotation, nested,
+generic, or inside a composed codec SHALL report `EXPOJSI023` with a reason
+that names the rule. A concrete non-sealed class SHALL keep its existing
+diagnostic.
+
+#### Scenario: Base parameter receives any generated subclass
+- **GIVEN** an abstract `PathBase : SharedObject` with generated sealed
+  subclasses `FileEntry` and `DirEntry`, a module method
+  `string Describe(PathBase path)`, an async method
+  `Task<string> DescribeLater(PathBase path)`, and a shared-object method
+  `string Compare(PathBase other)` and constructor
+  `DirEntry(string name, PathBase parent)`
+- **WHEN** JavaScript passes a `FileEntry`, a `DirEntry`, and a JavaScript
+  subclass instance of `FileEntry`
+- **THEN** authored code SHALL receive the original managed instance each
+  time, typed as `PathBase`
+- **AND** no pairing step SHALL be observed during decode
+
+#### Scenario: Existing failures stay
+- **GIVEN** the `PathBase` parameter
+- **WHEN** JavaScript passes a plain object, a primitive, `null`,
+  `undefined`, a released instance, an instance from another context, or an
+  instance of a shared class that does not derive from `PathBase`
+- **THEN** the call SHALL fail before authored code runs
+- **AND** the message for the unrelated class SHALL be the base codec's
+  `is not a '...PathBase' instance` text
+
+#### Scenario: Non-parameter positions and the nullable form stay rejected
+- **GIVEN** `PathBase` as a return type, a `Task<PathBase>` result, a
+  property type, a `PathBase?` parameter, a nested `PathBase` inside a
+  list, dictionary, record, callback, or typed event payload, a generic or
+  nested abstract base, and `SharedObject` and `SharedRef<X>` parameters
+- **WHEN** the generator runs
+- **THEN** it SHALL report `EXPOJSI023` (or the event code) with the reason
+  the design names, and SHALL NOT emit the member
+
+#### Scenario: Concrete non-sealed classes keep their diagnostic
+- **GIVEN** a non-abstract, non-sealed class deriving from `SharedObject`
+  used as a parameter, with and without `[ExpoSharedObject]`
+- **WHEN** the generator runs
+- **THEN** it SHALL report the existing `EXPOJSI023` reasons
 
 ### Requirement: Public SharedObject Release Is Exactly Once
 
