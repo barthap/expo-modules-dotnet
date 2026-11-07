@@ -1384,8 +1384,9 @@ with an empty default body. There SHALL be no second codec protocol.
 `JavaScriptValueCodec` and `ArrayBufferCodec` SHALL dispose the leaf.
 `JavaScriptValueCodec.Encode` SHALL return `value.Retain()`.
 
-Every list, dictionary, nullable, and generated record codec whose content
-holds a leaf SHALL release each child through the child codec. A dictionary
+Every list, dictionary, nullable, union, and generated record codec whose
+content holds a leaf SHALL release each child through the child codec. A union
+codec SHALL release only the member that the union holds. A dictionary
 codec SHALL do this through both dictionary interfaces. A composite with more
 than one child SHALL attempt every child. It SHALL throw one
 `AggregateException` with every failure, through the public `CodecRelease`
@@ -1404,6 +1405,12 @@ Encoding a null class record SHALL fail with a catchable JavaScript error.
 `NullableSharedObjectCodec<T>`, and `SharedObjectBaseCodec<TBase>` are static
 classes with no `Release`: the runtime context retains callbacks and the
 registry owns shared objects.
+
+`IJavaScriptValueKindCodec` declares a static abstract `Kind`. `StringCodec`,
+`BoolCodec`, `NumberCodec<T>`, `ArrayBufferCodec`, `ByteArrayCodec`,
+`MemoryByteCodec`, and `ReadOnlyMemoryByteCodec` implement it, and
+`EitherCodec<TFirst, TFirstCodec, TSecond, TSecondCodec>` compares it with the
+value's kind.
 
 #### Scenario: A missing override leaks
 - **GIVEN** a composite codec over `ArrayBufferCodec`, holding JS-created
@@ -1471,7 +1478,7 @@ local declarations and helper type arguments.
 | --- | --- | --- |
 | Leaf-free types | as before | `Borrowed` |
 | `JavaScriptValue`, `ArrayBuffer` | `JavaScriptCodec` | `HoldsLeaves` |
-| List, dictionary, or nullable over a `HoldsLeaves` child | `JavaScriptCodec` | `HoldsLeaves` |
+| List, dictionary, nullable, or `Either<TFirst, TSecond>` over a `HoldsLeaves` child | `JavaScriptCodec` | `HoldsLeaves` |
 | Record with any `HoldsLeaves` field | `JavaScriptCodec` | `HoldsLeaves` |
 | `JavaScriptCallback<...>` and `JavaScriptCallback<...>?` | `StaticHelper` | `ContextRetained` |
 | Direct `[ExpoSharedObject]` class `T` and `T?` | `StaticHelper` | `Borrowed` |
@@ -1656,6 +1663,75 @@ additional backing kinds.
   SHALL produce unsupported-type diagnostics
 - **AND** the one-span limit SHALL not restrict `ArrayBuffer`, `byte[]`,
   `Memory<byte>`, or `ReadOnlyMemory<byte>` arity
+
+### Requirement: Two-Member Unions Decode By Value Kind
+
+`Either<TFirst, TSecond>` SHALL be accepted in every codec position when each
+member type maps to one of the JavaScript value kinds `String`, `Bool`,
+`Number`, or `ArrayBuffer`, and the two kinds differ. `string` maps to
+`String`, `bool` to `Bool`, the types of `NumberCodec<T>` to `Number`, and
+`ArrayBuffer`, `byte[]`, `Memory<byte>`, and `ReadOnlyMemory<byte>` to
+`ArrayBuffer`. The positions are parameters, returns, async results,
+properties, record fields, list elements, dictionary values, the `Nullable<T>`
+inner type, callback type arguments, typed event payloads, and shared-object
+constructors and members.
+
+`EitherCodec<TFirst, TFirstCodec, TSecond, TSecondCodec>` SHALL read the value
+kind once and decode through that member's codec. It SHALL NOT try one member
+and fall back to the other. A value of any other kind, `null` and `undefined`
+included, SHALL throw `InvalidOperationException` with the message
+`Value kind '<kind>' is not one of '<first>' or '<second>'.` `Encode` and
+`Release` SHALL use the member that the union holds. The union holds leaves
+when a member does: `Either<string, ArrayBuffer>` follows the `ArrayBuffer`
+leaf rules, and `Either<double, bool>` keeps leaf-free generated text.
+
+A member type outside the table, an annotated member, or two members of the
+same kind SHALL report the position's existing diagnostic, which names the
+full union type.
+
+#### Scenario: String or ArrayBuffer parameter
+- **GIVEN** a method `string Write(Either<string, ArrayBuffer> content)`
+  on a module and on a shared object
+- **WHEN** JavaScript passes a string and then an `ArrayBuffer`
+- **THEN** authored code SHALL receive `IsFirst` with the string, then
+  `IsFirst == false` with a buffer whose bytes match
+- **AND** the buffer lease SHALL release once at invocation end, and the
+  string call SHALL hold no lease
+
+#### Scenario: Third kind and nullish are rejected
+- **GIVEN** the same parameter and an `Either<string, ArrayBuffer>?` parameter
+- **WHEN** JavaScript passes `5`, `{}`, `null`, or `undefined`
+- **THEN** the non-nullable parameter SHALL throw the union codec's kind
+  message for every input before authored code runs
+- **AND** the nullable parameter SHALL pass C# `null` for `null` and
+  `undefined` and SHALL throw for `5` and `{}`
+
+#### Scenario: Leaf-free union keeps leaf-free glue
+- **GIVEN** `int Pick(Either<double, bool> value)`
+- **WHEN** the generator runs and JavaScript passes `0`, `1.5`, `false`,
+  `true`, `''`
+- **THEN** the generated text SHALL NOT contain `CodecRelease`
+- **AND** `0` and `1.5` SHALL arrive as `IsFirst`, `false` and `true` as
+  the second member, and `''` SHALL throw
+
+#### Scenario: Union in encode positions
+- **GIVEN** a sync or async method that returns a `Retain()` copy of its
+  `Either<string, ArrayBuffer>` input, the same in a record field and a list, a
+  property that stores `Retain()` copies, an event payload, a callback
+  argument, and a callback result of that type
+- **WHEN** JavaScript passes an `ArrayBuffer`
+- **THEN** a returned buffer SHALL keep its JavaScript identity and release
+  exactly once
+- **AND** an event payload or callback argument SHALL stay with the author,
+  and a callback result SHALL belong to the author
+
+#### Scenario: Unsupported members report a diagnostic
+- **GIVEN** `Either<string, Uri>`, `Either<string, Holder>` for a record
+  `Holder`, `Either<string, Entry>` for a shared-object class `Entry`,
+  `Either<string?, double>`, and `Either<double, int>`
+- **WHEN** the generator runs
+- **THEN** it SHALL report the position's existing diagnostic, naming the
+  union type, and SHALL NOT emit the member
 
 ### Requirement: Nullable Reference Codecs Are Annotation-Driven
 

@@ -63,7 +63,7 @@ public sealed partial class ExpoModulesGenerator
   private static bool HoldsLeaves(ExpoCodecDescriptor? codec) =>
       codec?.ResourceOwnership == ExpoResourceOwnership.HoldsLeaves;
 
-  // A list, dictionary, or nullable codec holds leaves when its child does, and releases them
+  // A list, dictionary, nullable, or union codec holds leaves when a child does, and releases them
   // through the child codec.
   private static ExpoCodecDescriptor CompositeCodec(ExpoCodecDescriptor codec, ExpoCodecDescriptor child) =>
       HoldsLeaves(child) ? codec with { ResourceOwnership = ExpoResourceOwnership.HoldsLeaves } : codec;
@@ -264,6 +264,88 @@ public sealed partial class ExpoModulesGenerator
     }
 
     return true;
+  }
+
+  private const string EitherMetadataName = "global::Expo.ModulesCore.Either<TFirst, TSecond>";
+
+  // The ten numeric special types that NumberCodec<T> decodes.
+  private static bool IsNumberSpecialType(SpecialType specialType) =>
+      specialType is
+          SpecialType.System_SByte or
+          SpecialType.System_Byte or
+          SpecialType.System_Int16 or
+          SpecialType.System_UInt16 or
+          SpecialType.System_Int32 or
+          SpecialType.System_UInt32 or
+          SpecialType.System_Int64 or
+          SpecialType.System_UInt64 or
+          SpecialType.System_Single or
+          SpecialType.System_Double;
+
+  // The JavaScript kind a union member decodes from. The names mirror JavaScriptValueKind and the
+  // Kind of the leaf codecs, which the managed union codec compares at runtime. A type outside the
+  // table, or an annotated one (null is not a kind), is not a union member.
+  private static string? GetUnionMemberKind(ITypeSymbol typeSymbol)
+  {
+    if (typeSymbol.NullableAnnotation == NullableAnnotation.Annotated)
+    {
+      return null;
+    }
+
+    switch (typeSymbol.SpecialType)
+    {
+      case SpecialType.System_String:
+        return "String";
+      case SpecialType.System_Boolean:
+        return "Bool";
+      case var specialType when IsNumberSpecialType(specialType):
+        return "Number";
+    }
+
+    if (typeSymbol is IArrayTypeSymbol { Rank: 1, ElementType.SpecialType: SpecialType.System_Byte })
+    {
+      return "ArrayBuffer";
+    }
+
+    return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) is
+        ArrayBufferMetadataName or
+        "global::System.Memory<byte>" or
+        "global::System.ReadOnlyMemory<byte>"
+        ? "ArrayBuffer"
+        : null;
+  }
+
+  // A union is one ordinary codec. Its members must be of different JavaScript kinds, and it holds
+  // leaves when a member does.
+  private static ExpoCodecDescriptor? GetEitherCodec(
+      INamedTypeSymbol typeSymbol,
+      List<ExpoDiagnosticModel> diagnostics,
+      List<ExpoGeneratedRecordCodecModel> recordCodecs)
+  {
+    var firstType = typeSymbol.TypeArguments[0];
+    var secondType = typeSymbol.TypeArguments[1];
+
+    // The kinds are checked before any member codec resolves, so a rejected union adds no record
+    // codec and no diagnostic as a side effect.
+    var firstKind = GetUnionMemberKind(firstType);
+    var secondKind = GetUnionMemberKind(secondType);
+    if (firstKind is null || secondKind is null || firstKind == secondKind)
+    {
+      return null;
+    }
+
+    var firstCodec = AsCompositeChildCodec(GetCodec(firstType, diagnostics, recordCodecs));
+    var secondCodec = AsCompositeChildCodec(GetCodec(secondType, diagnostics, recordCodecs));
+    if (firstCodec is null || secondCodec is null)
+    {
+      return null;
+    }
+
+    var codec = OrdinaryCodec(
+        $"EitherCodec<{GetCodecTypeArgumentName(firstType)}, {firstCodec.Expression}, " +
+        $"{GetCodecTypeArgumentName(secondType)}, {secondCodec.Expression}>"
+    );
+    return CompositeCodec(CompositeCodec(codec, firstCodec), secondCodec);
   }
 
   private static ExpoCodecDescriptor? TryGetReadOnlyListCodec(
@@ -516,6 +598,14 @@ public sealed partial class ExpoModulesGenerator
       };
     }
 
+    // A union never reaches the later branches, even when it is rejected. Either<,>? reaches this
+    // branch through TryGetNullableCodec.
+    if (typeSymbol is INamedTypeSymbol eitherType &&
+        eitherType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == EitherMetadataName)
+    {
+      return GetEitherCodec(eitherType, diagnostics, recordCodecs);
+    }
+
     if (TryGetNullableCodec(typeSymbol, diagnostics, recordCodecs) is { } nullableCodec)
     {
       return nullableCodec;
@@ -544,16 +634,8 @@ public sealed partial class ExpoModulesGenerator
     {
       SpecialType.System_Boolean => OrdinaryCodec("BoolCodec"),
       SpecialType.System_String => OrdinaryCodec("StringCodec"),
-      SpecialType.System_SByte or
-      SpecialType.System_Byte or
-      SpecialType.System_Int16 or
-      SpecialType.System_UInt16 or
-      SpecialType.System_Int32 or
-      SpecialType.System_UInt32 or
-      SpecialType.System_Int64 or
-      SpecialType.System_UInt64 or
-      SpecialType.System_Single or
-      SpecialType.System_Double => OrdinaryCodec(GetNumberCodecExpression(typeSymbol)),
+      var specialType when IsNumberSpecialType(specialType) =>
+          OrdinaryCodec(GetNumberCodecExpression(typeSymbol)),
       _ => TryGetReadOnlyListCodec(typeSymbol, diagnostics, recordCodecs) ??
           TryGetDictionaryCodec(typeSymbol, diagnostics, recordCodecs),
     };

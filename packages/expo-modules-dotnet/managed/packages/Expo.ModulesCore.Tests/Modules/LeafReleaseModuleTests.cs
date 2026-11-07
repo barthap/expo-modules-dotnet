@@ -1279,6 +1279,359 @@ public sealed class LeafReleaseModuleTests
     Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
+  private const string UnionSetup =
+      "globalThis.u = globalThis._expoDotnet.modules.UnionThings; " +
+      "globalThis.b = new Uint8Array([1, 2, 3]).buffer; true";
+
+  private static string StringOrBufferKind(string kind) =>
+      $"Value kind '{kind}' is not one of 'String' or 'ArrayBuffer'.";
+
+  private static string NumberOrBoolKind(string kind) =>
+      $"Value kind '{kind}' is not one of 'Number' or 'Bool'.";
+
+  [Fact]
+  public void UnionParameterDecodesEachMemberAndReleasesTheBufferOnce()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(UnionSetup);
+    UnionThingsModule.Calls = 0;
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("first:hello", leaf.ReadString("u.write('hello')"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("second:1,2,3", leaf.ReadString("u.write(b)"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("first:", leaf.ReadString("u.write('')"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    Assert.Equal(3, UnionThingsModule.Calls);
+  }
+
+  [Fact]
+  public void SharedObjectUnionMembersDecodeEachMemberAndReleaseOnce()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(UnionSetup);
+    UnionThingsModule.Calls = 0;
+
+    leaf.Fixture.ResetCounters();
+    var strings = leaf.ReadString(
+        "globalThis.w = new u.UnionWriter('seed'); [w.readSeed(), w.write('x')].join('|')"
+    );
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("first:seed|first:x", strings);
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    var buffers = leaf.ReadString(
+        "globalThis.w2 = new u.UnionWriter(b); [w2.readSeed(), w2.write(b)].join('|')"
+    );
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("second:1,2,3|second:1,2,3", buffers);
+    // The constructor decode and the method decode are two entries.
+    Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+    // One authored read in the constructor and one in the method, for each of the two passes.
+    Assert.Equal(4, UnionThingsModule.Calls);
+  }
+
+  [Fact]
+  public async Task UnionParameterReleasesTheBufferAfterAsyncSettlement()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(UnionSetup);
+    UnionThingsModule.Calls = 0;
+
+    leaf.Fixture.ResetCounters();
+    leaf.StartOutcome("u.writeLater(b)");
+    await leaf.WaitForOutcomeAsync();
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("fulfilled:second:1,2,3", leaf.ReadString("`${__outcome.status}:${__outcome.value}`"));
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    leaf.StartOutcome("u.writeLater('x')");
+    await leaf.WaitForOutcomeAsync();
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("fulfilled:first:x", leaf.ReadString("`${__outcome.status}:${__outcome.value}`"));
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+    // One authored read per call.
+    Assert.Equal(2, UnionThingsModule.Calls);
+  }
+
+  [Theory]
+  [InlineData("5", "Number")]
+  [InlineData("true", "Bool")]
+  [InlineData("({})", "Object")]
+  [InlineData("null", "Null")]
+  [InlineData("undefined", "Undefined")]
+  [InlineData("new Uint8Array([1, 2, 3])", "Object")]
+  public void UnionParameterRejectsOtherKindsBeforeAuthoredCode(string input, string kind)
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(UnionSetup);
+    leaf.Run("globalThis.w = new u.UnionWriter('seed'); true");
+    UnionThingsModule.Calls = 0;
+    var before = leaf.Fixture.Runtime.Execute(_ => leaf.Context.SharedObjects.Count);
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "const v = () => (" + input + "); " +
+        "const err = f => { try { f(); return 'no error'; } " +
+        "catch (error) { return error instanceof Error ? error.message : 'not an Error'; } }; " +
+        "[err(() => u.write(v())), err(() => w.write(v())), err(() => new u.UnionWriter(v()))].join('|')"
+    );
+    leaf.Fixture.WaitUntilIdle();
+
+    var messages = result.Split('|');
+    Assert.Equal(3, messages.Length);
+    Assert.All(messages, message => Assert.Contains(StringOrBufferKind(kind), message));
+    Assert.Equal(0, UnionThingsModule.Calls);
+    Assert.Equal(before, leaf.Fixture.Runtime.Execute(_ => leaf.Context.SharedObjects.Count));
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void NullableUnionParameterPassesNullAndRejectsOtherKinds()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(UnionSetup);
+    UnionThingsModule.Calls = 0;
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "[u.writeOptional(null), u.writeOptional(undefined), u.writeOptional('x'), u.writeOptional(b)].join('|')"
+    );
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("null|null|first:x|second:1,2,3", result);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    var callsBefore = UnionThingsModule.Calls;
+    var number = leaf.ReadString(
+        "try { u.writeOptional(5); 'no error'; } catch (error) { error.message; }"
+    );
+    var obj = leaf.ReadString(
+        "try { u.writeOptional({}); 'no error'; } catch (error) { error.message; }"
+    );
+    Assert.Contains(StringOrBufferKind("Number"), number);
+    Assert.Contains(StringOrBufferKind("Object"), obj);
+    Assert.Equal(callsBefore, UnionThingsModule.Calls);
+  }
+
+  [Fact]
+  public void OrdinaryUnionDecodesByKindNotTruthiness()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(UnionSetup);
+    UnionThingsModule.Calls = 0;
+
+    var result = leaf.ReadString(
+        "globalThis.w = new u.UnionWriter('seed'); " +
+        "[u.pick(0), u.pick(1.5), u.pick(false), u.pick(true), w.pick(0), w.pick(true)].join(':')"
+    );
+    Assert.Equal("100:115:0:1:100:1", result);
+
+    string CatchMessage(string call) => leaf.ReadString(
+        $"try {{ {call}; 'no error'; }} catch (error) {{ error instanceof Error ? error.message : 'not an Error'; }}"
+    );
+
+    Assert.Contains(NumberOrBoolKind("String"), CatchMessage("u.pick('')"));
+    Assert.Contains(NumberOrBoolKind("String"), CatchMessage("w.pick('')"));
+    Assert.Contains(NumberOrBoolKind("Null"), CatchMessage("u.pick(null)"));
+  }
+
+  [Fact]
+  public void LaterParameterFailureReleasesTheEarlierUnionLease()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(UnionSetup);
+    UnionThingsModule.Calls = 0;
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "let failed; try { u.writeWithCount(b, 'x'); failed = 'no error'; } " +
+        "catch (error) { failed = error.message; } String(failed)"
+    );
+    leaf.Fixture.WaitUntilIdle();
+    // The int codec rejects the string; the same native text as JavaScriptValueTests.
+    Assert.Contains("Value is not a number.", result);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+    Assert.Equal(0, UnionThingsModule.Calls);
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("second:1,2,3:2", leaf.ReadString("u.writeWithCount(b, 2)"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void UnionListReleasesOneLeasePerBuffer()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(UnionSetup);
+    UnionThingsModule.Calls = 0;
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString("globalThis.b2 = new ArrayBuffer(2); u.writeAll(['a', b, b2])");
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("first:a|second:1,2,3|second:0,0", result);
+    Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void UnionListLaterElementFailureReleasesEarlierLeases()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(UnionSetup);
+    UnionThingsModule.Calls = 0;
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "globalThis.b2 = new ArrayBuffer(2); " +
+        "try { u.writeAll([b, b2, 5]); 'no error'; } " +
+        "catch (error) { error instanceof Error ? error.message : 'not an Error'; }"
+    );
+    leaf.Fixture.WaitUntilIdle();
+
+    // The list decode releases the two buffers it already decoded, and authored code never runs.
+    Assert.Contains(StringOrBufferKind("Number"), result);
+    Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+    Assert.Equal(0, UnionThingsModule.Calls);
+  }
+
+  [Fact]
+  public void UnionListReturnReleasesEachBufferOnce()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(UnionSetup);
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "globalThis.b2 = new ArrayBuffer(2); const r = u.echoAll(['a', b, b2]); " +
+        "[r[0], r[1] === b, r[2] === b2].join(':')"
+    );
+    leaf.Fixture.WaitUntilIdle();
+
+    // Each returned Retain() copy shares its parameter's entry, so each entry releases only when
+    // glue releases both the parameter list and the result list.
+    Assert.Equal("a:true:true", result);
+    Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public async Task UnionReturnKeepsIdentityAndReleasesOnceSyncAndAsync()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(UnionSetup);
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("true:x", leaf.ReadString("`${u.echo(b) === b}:${u.echo('x')}`"));
+    leaf.Fixture.WaitUntilIdle();
+    // The parameter and the returned Retain() copy share one entry, which releases only when glue
+    // releases both; the string call holds no lease.
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    leaf.StartOutcome("u.echoLater(b)");
+    await leaf.WaitForOutcomeAsync();
+    leaf.WaitForArrayBufferReleases(1u);
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("fulfilled:true", leaf.ReadString("`${__outcome.status}:${__outcome.value === b}`"));
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    leaf.StartOutcome("u.echoLater('x')");
+    await leaf.WaitForOutcomeAsync();
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("fulfilled:x", leaf.ReadString("`${__outcome.status}:${__outcome.value}`"));
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void UnionRecordFieldRoundTripsAndReleasesOnce()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(UnionSetup);
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "const a = u.wrap({ content: b, count: 1 }); const t = u.wrap({ content: 'x', count: 2 }); " +
+        "`${a.content === b}:${a.count}:${t.content}:${t.count}`"
+    );
+    leaf.Fixture.WaitUntilIdle();
+
+    Assert.Equal("true:1:x:2", result);
+    // The returned record holds a Retain() copy, so the entry releases only when glue releases both
+    // the parameter record and the returned record.
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void UnionPropertyStoresRetainedCopies()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(UnionSetup);
+
+    leaf.Fixture.ResetCounters();
+    var stored = leaf.ReadString("u.stored = b; [u.stored === b, u.stored === b].join(':')");
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("true:true", stored);
+    // The stored copy pins the entry; a leaked setter or getter lease would keep it pinned after
+    // the module drops that copy.
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    var text = leaf.ReadString("u.stored = 'x'; u.stored");
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("x", text);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void UnionEventPayloadAndCallbackArgumentStayWithTheAuthor()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(UnionSetup);
+    leaf.Run("globalThis.events = []; u.addListener('onContent', c => { events.push(c === b || c === 'x'); }); true");
+    UnionThingsModule.Calls = 0;
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString(
+        "[u.forward(b, c => c === b), u.forward('x', c => c === 'x'), events.join(',')].join('|')"
+    );
+    leaf.Fixture.WaitUntilIdle();
+
+    // The author reads each union after the emit and the callback, and only the parameter decode
+    // releases a lease.
+    Assert.Equal("true:second:1,2,3|true:first:x|true,true", result);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+    Assert.Equal(2, UnionThingsModule.Calls);
+  }
+
+  [Fact]
+  public void UnionCallbackResultBelongsToTheAuthor()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(UnionSetup);
+
+    leaf.Fixture.ResetCounters();
+    var result = leaf.ReadString("[u.take(() => b), u.take(() => 'x')].join('|')");
+    leaf.Fixture.WaitUntilIdle();
+
+    Assert.Equal("second:1,2,3|first:x", result);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    var error = leaf.ReadString(
+        "try { u.take(() => 5); 'no error'; } catch (error) { error instanceof Error ? error.message : 'not an Error'; }"
+    );
+    Assert.Contains(StringOrBufferKind("Number"), error);
+  }
+
   private sealed class LeafReleaseFixture : IDisposable
   {
     private LeafReleaseFixture(
