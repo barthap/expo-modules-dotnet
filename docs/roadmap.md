@@ -55,7 +55,7 @@ history keeps it.
 | 030 | Composable codec leaf release                       | P1    | L      | 029          | DONE    | —                                                                           |
 | 031 | Nullable ArrayBuffer codecs                         | P1    | M      | 030          | DONE    | —                                                                           |
 | 032 | Nullable JavaScript callback parameters             | P2    | M      | 031          | DONE    | —                                                                           |
-| 033 | Nullable concrete SharedObject classes              | P2    | M      | 032          | TODO    | [033](plans/033-nullable-concrete-shared-object-codecs.md)                  |
+| 033 | Nullable concrete SharedObject classes              | P2    | M      | 032          | DONE    | —                                                                           |
 | 034 | Base-class shared-object arguments                  | P1    | M      | 030          | TODO    | —                                                                           |
 | 035 | Union arguments (`string \| ArrayBuffer`)           | P1    | M      | 030          | TODO    | —                                                                           |
 | 036 | Typed-array codecs (`Uint8Array`)                   | P1    | M      | 030          | TODO    | —                                                                           |
@@ -134,9 +134,13 @@ The next free ID is 041.
   `scripts/test-managed.sh` run (1177 passed, 0 failed, 0 skipped).
   `JavaScriptCallback<...>?` now works as a module or shared-object method or
   constructor parameter; `null` and `undefined` decode to C# `null` and
-  register nothing. 033 then applies its own null policy; its brief needs a
-  rebase on this design first. `JavaScriptValue?` and direct `SharedObject?` /
-  `SharedRef<T>?` bases stay unsupported by design.
+  register nothing. 033 is done: it landed on 2026-11-06 with a local
+  `scripts/test-managed.sh` run (1225 passed, 0 failed, 0 skipped). A valid
+  concrete `[ExpoSharedObject]` class, including a sealed `SharedRef<T>`
+  subclass, now works as `T?` on every boundary that accepts `T`; `null` and
+  `undefined` decode to C# `null` with no registry work. `JavaScriptValue?`
+  and direct `SharedObject?` / `SharedRef<T>?` bases stay unsupported by
+  design.
 - **018**: direct MSBuild, RNW CLI build/deploy/launch, and live-app rebuild
   did not reproduce a PDB lock on the RNW 0.81 / VS 2026 lane (2026-07-23).
   Closed with 039, which runs the `ReactNativeDir` resolver from the

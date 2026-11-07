@@ -710,3 +710,98 @@ public sealed partial class SiblingEntry : SharedObject
   [JS]
   public string? EchoLabel(string? value) => value;
 }
+
+[ExpoModule("NullableSharedThings", Classes = new[]
+{
+  typeof(OptionalEntry),
+  typeof(OptionalTrackedRef),
+})]
+public sealed partial class NullableSharedThingsModule
+{
+  // The last value Echo or Describe received, so tests can check identity and null from C#.
+  public static OptionalEntry? LastEntry;
+
+  [JS]
+  public OptionalEntry MakeEntry(string label) => new(label);
+
+  [JS]
+  public OptionalEntry? Echo(OptionalEntry? entry)
+  {
+    LastEntry = entry;
+    return entry;
+  }
+
+  [JS]
+  public OptionalEntry EchoExact(OptionalEntry entry) => entry;
+
+  [JS]
+  public string Describe(OptionalEntry? entry = null)
+  {
+    LastEntry = entry;
+    return entry?.Label ?? "null";
+  }
+
+  [JS]
+  public async Task<OptionalEntry?> EchoLater(OptionalEntry? entry)
+  {
+    await Task.Yield();
+    return entry;
+  }
+
+  [JS]
+  public OptionalEntry? Stored { get; set; }
+
+  [JS]
+  public OptionalTrackedRef MakeRef() => new(new TrackedResource());
+
+  [JS]
+  public OptionalTrackedRef? EchoRef(OptionalTrackedRef? value) => value;
+
+  [JS]
+  public async Task<OptionalTrackedRef?> EchoRefLater(OptionalTrackedRef? value)
+  {
+    await Task.Yield();
+    return value;
+  }
+
+  [JS]
+  public OptionalTrackedRef? StoredRef { get; set; }
+}
+
+[ExpoSharedObject]
+public sealed partial class OptionalEntry : SharedObject
+{
+  [JS]
+  public OptionalEntry(string label, OptionalEntry? parent = null)
+  {
+    Label = label;
+    Parent = parent;
+  }
+
+  [JS]
+  public string Label { get; }
+
+  [JS]
+  public OptionalEntry? Parent { get; set; }
+
+  [JS]
+  public OptionalEntry? EchoParent(OptionalEntry? value) => value;
+
+  [JS]
+  public OptionalTrackedRef? Tracked { get; set; }
+}
+
+[ExpoSharedObject]
+public sealed partial class OptionalTrackedRef : SharedRef<TrackedResource>
+{
+  public static OptionalTrackedRef? LastCreated;
+
+  public OptionalTrackedRef(TrackedResource reference)
+      : base(reference)
+  {
+    LastCreated = this;
+  }
+
+  [JS]
+  public bool IsDisposed => Ref.Disposed;
+}
