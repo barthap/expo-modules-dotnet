@@ -418,9 +418,12 @@ public sealed class GeneratedAttributeModuleTests
   public async Task GeneratedProviderKeepsJavaScriptValueArgumentUntilAsyncSettles()
   {
     using var fixture = HermesRuntimeFixture.Create();
+    // readKindAsync reads RuntimeContext after its first await, so the context must stay
+    // alive until the promise settles, not only until the setup block returns.
+    DotnetRuntimeContext? context = null;
     fixture.Runtime.Execute(runtime =>
     {
-      using var context = new DotnetRuntimeContext(runtime);
+      context = new DotnetRuntimeContext(runtime);
       using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
@@ -448,6 +451,7 @@ public sealed class GeneratedAttributeModuleTests
       );
       Assert.Equal(JavaScriptValueKind.String, result.Kind);
       Assert.Equal("String", result.AsString());
+      context!.Dispose();
       return true;
     });
   }

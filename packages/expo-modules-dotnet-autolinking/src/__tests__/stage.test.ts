@@ -348,6 +348,8 @@ describe('locateNethostLibraryAsync', () => {
       expect(path.basename(nethostPath)).toBe(
         rid.startsWith('win-') ? 'nethost.dll' : 'libnethost.dylib'
       );
-    }
+    },
+    // Runs the real `dotnet --info`. On Windows CI it usually takes 0.6-2.1 s, but it went past 5 s once.
+    30_000
   );
 });

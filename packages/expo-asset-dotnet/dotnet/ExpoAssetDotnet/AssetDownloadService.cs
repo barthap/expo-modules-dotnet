@@ -7,6 +7,9 @@ internal sealed class AssetDownloadService : IDisposable
 {
   private const string CacheSubdirectory = "ExponentAsset";
 
+  // Static: each runtime context owns its own service, and contexts can share one cache root.
+  private static readonly object finalPathMoveGate = new();
+
   private readonly Func<string> cacheRootProvider;
   private readonly HttpClient httpClient;
 
@@ -70,7 +73,12 @@ internal sealed class AssetDownloadService : IDisposable
         await output.FlushAsync(cancellationToken);
       }
 
-      File.Move(tempPath, paths.FinalPath, overwrite: true);
+      // On Windows, two concurrent replacing moves onto one path can fail with
+      // UnauthorizedAccessException, so concurrent downloads of one asset take turns here.
+      lock (finalPathMoveGate)
+      {
+        File.Move(tempPath, paths.FinalPath, overwrite: true);
+      }
       return new Uri(paths.FinalPath).AbsoluteUri;
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
