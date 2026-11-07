@@ -137,26 +137,32 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
 - `IReadOnlyList<T>` where `T` has a generated codec, mapped to/from a
   JavaScript array. `List<T>` is not supported. Lists and dictionaries nest in
   each other, in records, in callback types, and in typed event payloads. They
-  can hold `JavaScriptValue` and `ArrayBuffer`.
+  can hold `JavaScriptValue`, `ArrayBuffer`, and `Uint8Array`.
 - Binary data: `ArrayBuffer`, plus `byte[]`, `Memory<byte>` and
   `ReadOnlyMemory<byte>` as convenience types. These copy in both directions.
   `Span<byte>` and `ReadOnlySpan<byte>` borrow one synchronous input parameter,
   and a returned span is copied. `ArrayBuffer` and `ArrayBuffer?` work in every
-  position. See the
+  position. `Uint8Array` is a view over a JavaScript buffer with its offset and
+  length, and nothing is copied: your writes are visible to JavaScript after
+  the call. `Uint8Array` and `Uint8Array?` work in every position too, and any
+  `Uint8Array` instance, including a subclass such as a `Buffer` polyfill, is
+  accepted. `byte[]` and `ArrayBuffer` parameters do not accept a
+  `Uint8Array`; declare `Uint8Array` when JavaScript sends one. See the
   "Module-facing ArrayBuffer And Binary Codecs" requirement in
   `docs/specs/modules-core-boundary.md`.
 - `Either<TFirst, TSecond>` for a value that JavaScript passes as one of
   two kinds, such as `string | ArrayBuffer`. Each member is `string`, `bool`,
-  a numeric type, or a binary type (`ArrayBuffer`, `byte[]`, `Memory<byte>`,
-  `ReadOnlyMemory<byte>`), and the two members must have different JavaScript
-  kinds: `Either<double, bool>` works, `Either<double, int>` does not. Read
+  a numeric type, a binary type (`ArrayBuffer`, `byte[]`, `Memory<byte>`,
+  `ReadOnlyMemory<byte>`), or `Uint8Array` (an object), and the two members
+  must have different JavaScript kinds: `Either<double, bool>` works,
+  `Either<double, int>` does not. Read
   `IsFirst`, then `First` or `Second`, or call `Match`. Create one with
   `Either<TFirst, TSecond>.FromFirst` or `FromSecond`. A union works in every
   position. JavaScript `null`, `undefined`, and any other kind fail with a
   JavaScript error: a parameter fails before your code runs, and a callback
   result fails inside `Invoke()`. `Either<TFirst, TSecond>?` turns `null` and
-  `undefined` into C# `null`. An `ArrayBuffer` member is a leaf and follows the leaf rules
-  below.
+  `undefined` into C# `null`. An `ArrayBuffer` or `Uint8Array` member is a leaf
+  and follows the leaf rules below.
 - Shared objects, declared as described in section 8.
 - C# `enum` values — encoded as JavaScript strings by default; annotate with
   `[JSEnum(EnumRepresentation.Number)]` for integer-backed representation.
@@ -168,11 +174,12 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
   `JavaScriptCallback<...>?` is accepted as a method or shared-object
   constructor parameter, including with `= null`. JavaScript `null` and
   `undefined` arrive as C# `null`, and a function is retained like a non-null
-  callback. Its result and argument types can hold `JavaScriptValue` and
-  `ArrayBuffer` at any depth.
+  callback. Its result and argument types can hold `JavaScriptValue`,
+  `ArrayBuffer`, and `Uint8Array` at any depth.
 
-**Leaf ownership.** A `JavaScriptValue` or `ArrayBuffer` is a leaf. These
-rules apply at any depth, also inside records, lists, and dictionaries:
+**Leaf ownership.** A `JavaScriptValue`, `ArrayBuffer`, or `Uint8Array` is a
+leaf. These rules apply at any depth, also inside records, lists, and
+dictionaries:
 
 1. A leaf parameter is valid until the call ends (async: until the returned
    `Task` completes). To keep it, call `Retain()`.
@@ -185,9 +192,9 @@ Call `JavaScriptValue.Retain()` on the JavaScript runtime thread. In an async
 method, call it before the first `await`. See
 `docs/specs/ownership-and-scoped-refs.md`.
 
-Nullable reference types work for `ArrayBuffer?` and for the codecs that carry
-no JSI ownership: `string?`, `Uri?`, `byte[]?`, positional reference records,
-and the `IReadOnlyList<T>?`, `Dictionary<string, T>?`, and
+Nullable reference types work for `ArrayBuffer?`, `Uint8Array?`, and for the
+codecs that carry no JSI ownership: `string?`, `Uri?`, `byte[]?`, positional
+reference records, and the `IReadOnlyList<T>?`, `Dictionary<string, T>?`, and
 `IReadOnlyDictionary<string, T>?` containers. Nullable elements and dictionary
 values work wherever the nested type is supported, so `IReadOnlyList<string?>?`
 composes. `List<T>` stays unsupported in both forms, because its non-nullable
@@ -329,10 +336,13 @@ lifetime rules:
 - A `Func<ArrayBuffer?, Task>` event delivers C# `null` as one JavaScript `null`
   argument and retains no lease. A non-null buffer follows the `ArrayBuffer`
   rule.
+- A direct `Uint8Array` or `Uint8Array?` gets no lease; keep it alive until the
+  task completes.
 
-Records, lists, and dictionaries that hold `JavaScriptValue`, `ArrayBuffer`, or
-`ArrayBuffer?` are valid payloads. The nested leaves stay yours (rule 3 in
-section 3): keep them alive until the event task completes. Callback payloads
+Records, lists, and dictionaries that hold `JavaScriptValue`, `ArrayBuffer`,
+`ArrayBuffer?`, or `Uint8Array` are valid payloads, and so is a direct
+`Uint8Array` or `Uint8Array?`. These leaves stay yours (rule 3 in section 3):
+keep them alive until the event task completes. Callback payloads
 and a nullable `JavaScriptValue` are build diagnostics. `JavaScriptObject` is
 not currently a generated module codec, but remains a possible future advanced
 convertible.

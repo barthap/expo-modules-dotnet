@@ -268,6 +268,8 @@ public sealed partial class ExpoModulesGenerator
 
   private const string EitherMetadataName = "global::Expo.ModulesCore.Either<TFirst, TSecond>";
 
+  private const string Uint8ArrayMetadataName = "global::Expo.ModulesCore.Uint8Array";
+
   // The ten numeric special types that NumberCodec<T> decodes.
   private static bool IsNumberSpecialType(SpecialType specialType) =>
       specialType is
@@ -284,7 +286,8 @@ public sealed partial class ExpoModulesGenerator
 
   // The JavaScript kind a union member decodes from. The names mirror JavaScriptValueKind and the
   // Kind of the leaf codecs, which the managed union codec compares at runtime. A type outside the
-  // table, or an annotated one (null is not a kind), is not a union member.
+  // table, or an annotated one (null is not a kind), is not a union member. A Uint8Array is an
+  // Object, and its codec then proves that the object is a Uint8Array.
   private static string? GetUnionMemberKind(ITypeSymbol typeSymbol)
   {
     if (typeSymbol.NullableAnnotation == NullableAnnotation.Annotated)
@@ -307,12 +310,14 @@ public sealed partial class ExpoModulesGenerator
       return "ArrayBuffer";
     }
 
-    return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) is
-        ArrayBufferMetadataName or
-        "global::System.Memory<byte>" or
-        "global::System.ReadOnlyMemory<byte>"
-        ? "ArrayBuffer"
-        : null;
+    return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) switch
+    {
+      ArrayBufferMetadataName or
+      "global::System.Memory<byte>" or
+      "global::System.ReadOnlyMemory<byte>" => "ArrayBuffer",
+      Uint8ArrayMetadataName => "Object",
+      _ => null,
+    };
   }
 
   // A union is one ordinary codec. Its members must be of different JavaScript kinds, and it holds
@@ -571,6 +576,11 @@ public sealed partial class ExpoModulesGenerator
     if (typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == ArrayBufferMetadataName)
     {
       return OrdinaryCodec("ArrayBufferCodec") with { ResourceOwnership = ExpoResourceOwnership.HoldsLeaves };
+    }
+
+    if (typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == Uint8ArrayMetadataName)
+    {
+      return OrdinaryCodec("Uint8ArrayCodec") with { ResourceOwnership = ExpoResourceOwnership.HoldsLeaves };
     }
 
     if (typeSymbol is IArrayTypeSymbol { Rank: 1, ElementType.SpecialType: SpecialType.System_Byte })

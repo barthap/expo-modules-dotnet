@@ -58,7 +58,7 @@ history keeps it.
 | 033 | Nullable concrete SharedObject classes              | P2    | M      | 032          | DONE    | —                                                                           |
 | 034 | Base-class shared-object arguments                  | P1    | M      | 030          | DONE    | —                                                                           |
 | 035 | Union arguments (`string \| ArrayBuffer`)           | P1    | M      | 030          | DONE    | —                                                                           |
-| 036 | Typed-array codecs (`Uint8Array`)                   | P1    | M      | 030          | TODO    | —                                                                           |
+| 036 | Typed-array codecs (`Uint8Array`)                   | P1    | M      | 030          | DONE    | —                                                                           |
 | 037 | Coded JavaScript errors                             | P2    | M      | —            | TODO    | —                                                                           |
 | 038 | `expo-file-system-dotnet` write, bytes, copy, move  | P1    | M      | 024, 034–036 | TODO    | —                                                                           |
 | 040 | Windows opt-in `*-dotnet` substitution              | P1    | L      | 039          | TODO    | [040](plans/040-windows-dotnet-module-substitution.md)                      |
@@ -117,6 +117,15 @@ The next free ID is 041.
   members have different JavaScript kinds among string, bool, number, and
   binary, so 038 can port `write(content: string | ArrayBuffer)`. One
   `EitherCodec` decodes by kind and releases only the member it holds.
+- **036**: done: it landed on 2026-11-06 with a local
+  `scripts/test-managed.sh` run (1455 passed, 0 failed, 0 skipped).
+  `Uint8Array` now crosses the boundary as a view over one buffer lease with no
+  byte copy, in every codec position where `ArrayBuffer` does and as a union
+  member of kind `Object`, so 038 can port `bytes()` and 025 can fill a
+  caller's array. `Uint8ArrayCodec` is one ordinary leaf codec whose `Release`
+  disposes the view. Typed arrays needed no ABI entry: the kind proof, the
+  buffer, the offset and length, and the construction are property reads and
+  one constructor call that `Expo.JSI` already had.
 - **037**: upstream Expo errors carry a `code`. Generated glue rejects with a
   plain `Error` today. Not a blocker for 038.
 - **025**: crypto follows file system and needs typed arrays (036). Plan 027
@@ -244,6 +253,14 @@ and a status row.
   without the parameter name. Carrying it at the generated-glue wrap site (one
   place, not per codec) would make `Value kind ... is not one of ...` and
   `Value is not an object.` messages self-locating.
+- **P3 — Native-backed buffers round-trip as JavaScript-backed leases**: a
+  native-backed `ArrayBuffer` or `Uint8Array` that returns from JavaScript
+  decodes as a JavaScript-backed, runtime-affine lease on the Hermes testhost,
+  because the pinned Hermes's `jsi::Runtime::tryGetMutableBuffer` is the base
+  implementation and returns null. Bytes still alias and nothing leaks, but
+  authored code loses synchronous off-thread access and the lease counters
+  count an entry. The fix is to re-pin Hermes to a `static_h` commit that has
+  upstream `8e45e2f` ("Implement tryGetMutableBuffer"), not a local fallback.
 
 ### Runtime, performance, and tooling
 

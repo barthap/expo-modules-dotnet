@@ -104,14 +104,17 @@ not raw managed object pointers.
 
 ### Requirement: Binary Borrowing And Ownership
 
-ArrayBuffer byte callbacks SHALL borrow native storage only for the duration
-of the synchronous callback. Managed `byte[]`, `Memory<byte>`, and
-`ReadOnlyMemory<byte>` values SHALL be copied at codec boundaries. Memory
-decoding SHALL produce independent managed storage, and memory encoding SHALL
-copy exactly the current logical slice into JavaScript storage. Span return
-values SHALL be copied immediately because a span has no owner that JavaScript
-can retain. No managed array or memory storage SHALL be pinned, retained, or
-aliased as JavaScript storage for a long-lived or asynchronous operation.
+ArrayBuffer byte callbacks SHALL borrow native storage only for the duration of
+the synchronous callback. A `Uint8Array` decoded from JavaScript SHALL hold one
+retained lease on the JavaScript buffer, with no byte copy, and its byte
+callbacks SHALL borrow only its slice for the duration of the synchronous
+callback. Managed `byte[]`, `Memory<byte>`, and `ReadOnlyMemory<byte>` values
+SHALL be copied at codec boundaries. Memory decoding SHALL produce independent
+managed storage, and memory encoding SHALL copy exactly the current logical
+slice into JavaScript storage. Span return values SHALL be copied immediately
+because a span has no owner that JavaScript can retain. No managed array or
+memory storage SHALL be pinned, retained, or aliased as JavaScript storage for
+a long-lived or asynchronous operation.
 
 #### Scenario: A span is projected into a module call
 - **GIVEN** a generated synchronous method has one `Span<byte>` or
@@ -154,14 +157,16 @@ whose caller must dispose or transfer it independently.
 
 ### Requirement: Boundary Leaf Ownership Is Explicit
 
-A leaf is a `JavaScriptValue` or an `ArrayBuffer` wrapper. Every
-`IJavaScriptCodec<T>` SHALL follow this contract: `Decode` SHALL give the
-caller every leaf in the result. `Encode` SHALL return a new owned JavaScript
-value and SHALL NOT dispose `value` or any leaf in it. `Release` SHALL dispose
-every leaf in `value`, and SHALL do nothing for null or default. A decoded
-`ArrayBuffer?` that is `null` holds no leaf. A union holds only the leaves of
-the member it holds: an `ArrayBuffer` member is a leaf, and a string, bool,
-number, `byte[]`, `Memory<byte>`, or `ReadOnlyMemory<byte>` member holds none. A nullable callback parameter that
+A leaf is a `JavaScriptValue`, an `ArrayBuffer`, or a `Uint8Array` wrapper. A
+`Uint8Array` owns one `ArrayBuffer` lease, and disposing it releases that
+lease. Every `IJavaScriptCodec<T>` SHALL follow this contract: `Decode` SHALL
+give the caller every leaf in the result. `Encode` SHALL return a new owned
+JavaScript value and SHALL NOT dispose `value` or any leaf in it. `Release`
+SHALL dispose every leaf in `value`, and SHALL do nothing for null or default.
+A decoded `ArrayBuffer?` or `Uint8Array?` that is `null` holds no leaf. A union
+holds only the leaves of the member it holds: an `ArrayBuffer` or `Uint8Array`
+member is a leaf, and a string, bool, number, `byte[]`, `Memory<byte>`, or
+`ReadOnlyMemory<byte>` member holds none. A nullable callback parameter that
 decodes to `null` holds nothing. A non-null one is context-retained by
 `DotnetRuntimeContext`, never a leaf holder. A nullable concrete
 `[ExpoSharedObject]` value that is `null` holds nothing; a non-null one stays a

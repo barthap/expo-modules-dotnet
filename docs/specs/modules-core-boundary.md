@@ -926,12 +926,13 @@ keep the original wrapper alive until the returned task completes. Generated
 glue SHALL dispose only its invocation copy and SHALL NOT consume the original.
 
 Records, lists, and dictionaries that hold a `JavaScriptValue`, an
-`ArrayBuffer`, or an `ArrayBuffer?` SHALL be valid typed event payloads.
-Generated glue SHALL encode them on the owning runtime and SHALL dispose only
-the encoded value. A nested null `ArrayBuffer?` SHALL encode as JavaScript
-`null`. The author keeps every nested leaf and SHALL keep it alive until the
-returned task completes. A payload containing `JavaScriptCallback` SHALL stay
-rejected.
+`ArrayBuffer`, an `ArrayBuffer?`, or a `Uint8Array`, and a direct `Uint8Array`
+or `Uint8Array?`, SHALL be valid typed event payloads. Generated glue SHALL
+encode them on the owning runtime and SHALL dispose only the encoded value. A
+null `ArrayBuffer?` or `Uint8Array?` inside such a payload, and a direct null
+`Uint8Array?`, SHALL encode as JavaScript `null`. The author keeps every leaf
+and SHALL keep it alive until the returned task completes. A payload
+containing `JavaScriptCallback` SHALL stay rejected.
 Event-safety classification SHALL run before general codec resolution can
 mutate generated-record-codec state, and SHALL inspect only encoded inputs
 such as selected record-constructor parameters, list elements, dictionary
@@ -1381,7 +1382,8 @@ Ownership Is Explicit` in `ownership-and-scoped-refs.md`.
 
 `IJavaScriptCodec<T>` SHALL declare `static virtual void Release(T value)`
 with an empty default body. There SHALL be no second codec protocol.
-`JavaScriptValueCodec` and `ArrayBufferCodec` SHALL dispose the leaf.
+`JavaScriptValueCodec`, `ArrayBufferCodec`, and `Uint8ArrayCodec` SHALL
+dispose the leaf.
 `JavaScriptValueCodec.Encode` SHALL return `value.Retain()`.
 
 Every list, dictionary, nullable, union, and generated record codec whose
@@ -1408,7 +1410,8 @@ registry owns shared objects.
 
 `IJavaScriptValueKindCodec` declares a static abstract `Kind`. `StringCodec`,
 `BoolCodec`, `NumberCodec<T>`, `ArrayBufferCodec`, `ByteArrayCodec`,
-`MemoryByteCodec`, and `ReadOnlyMemoryByteCodec` implement it, and
+`MemoryByteCodec`, `ReadOnlyMemoryByteCodec`, and `Uint8ArrayCodec` (kind
+`Object`) implement it, and
 `EitherCodec<TFirst, TFirstCodec, TSecond, TSecondCodec>` compares it with the
 value's kind.
 
@@ -1477,7 +1480,7 @@ local declarations and helper type arguments.
 | Branch | Shape | ResourceOwnership |
 | --- | --- | --- |
 | Leaf-free types | as before | `Borrowed` |
-| `JavaScriptValue`, `ArrayBuffer` | `JavaScriptCodec` | `HoldsLeaves` |
+| `JavaScriptValue`, `ArrayBuffer`, `Uint8Array` | `JavaScriptCodec` | `HoldsLeaves` |
 | List, dictionary, nullable, or `Either<TFirst, TSecond>` over a `HoldsLeaves` child | `JavaScriptCodec` | `HoldsLeaves` |
 | Record with any `HoldsLeaves` field | `JavaScriptCodec` | `HoldsLeaves` |
 | `JavaScriptCallback<...>` and `JavaScriptCallback<...>?` | `StaticHelper` | `ContextRetained` |
@@ -1618,6 +1621,7 @@ additional backing kinds.
 | CLR type | Boundary behavior | Generated-binding constraints |
 | --- | --- | --- |
 | `ArrayBuffer` | Preserves wrapper ownership semantics | Every codec position, including list elements, dictionary values, callback types, and nested typed-event payloads, each also as `ArrayBuffer?` |
+| `Uint8Array` | A view over one retained buffer lease with its offset and length; no byte copy in either direction | Every `ArrayBuffer` position, each also as `Uint8Array?`, and a union member of kind `Object` |
 | `byte[]` | Copies in both directions | Rank-one arrays only |
 | `Memory<byte>` / `ReadOnlyMemory<byte>` | Copies in both directions, encoding exactly the current logical slice | Ordinary codecs |
 | `Span<byte>` / `ReadOnlySpan<byte>` | Borrows an input slice or copies a return value | One synchronous parameter only |
@@ -1668,13 +1672,13 @@ additional backing kinds.
 
 `Either<TFirst, TSecond>` SHALL be accepted in every codec position when each
 member type maps to one of the JavaScript value kinds `String`, `Bool`,
-`Number`, or `ArrayBuffer`, and the two kinds differ. `string` maps to
-`String`, `bool` to `Bool`, the types of `NumberCodec<T>` to `Number`, and
+`Number`, `ArrayBuffer`, or `Object`, and the two kinds differ. `string` maps
+to `String`, `bool` to `Bool`, the types of `NumberCodec<T>` to `Number`,
 `ArrayBuffer`, `byte[]`, `Memory<byte>`, and `ReadOnlyMemory<byte>` to
-`ArrayBuffer`. The positions are parameters, returns, async results,
-properties, record fields, list elements, dictionary values, the `Nullable<T>`
-inner type, callback type arguments, typed event payloads, and shared-object
-constructors and members.
+`ArrayBuffer`, and `Uint8Array` to `Object`. The positions are parameters,
+returns, async results, properties, record fields, list elements, dictionary
+values, the `Nullable<T>` inner type, callback type arguments, typed event
+payloads, and shared-object constructors and members.
 
 `EitherCodec<TFirst, TFirstCodec, TSecond, TSecondCodec>` SHALL read the value
 kind once and decode through that member's codec. It SHALL NOT try one member
@@ -1732,6 +1736,73 @@ full union type.
 - **WHEN** the generator runs
 - **THEN** it SHALL report the position's existing diagnostic, naming the
   union type, and SHALL NOT emit the member
+
+### Requirement: Uint8Array Is A Byte View
+
+`Uint8Array` SHALL be accepted in every codec position where `ArrayBuffer` is,
+each also as `Uint8Array?`, and as a union member of kind `Object`, through
+`Uint8ArrayCodec`, an ordinary `IJavaScriptCodec<Uint8Array>` that holds a
+leaf. A `Uint8Array` owns one `ArrayBuffer` lease plus an offset and a length.
+Decoding SHALL prove the value is a `Uint8Array` by prototype-chain membership
+(`Uint8Array.prototype.isPrototypeOf`), accepting a subclass instance and
+rejecting every other shape with `InvalidOperationException` and the message
+`Value is not a Uint8Array.`. It SHALL retain the backing buffer without
+copying bytes, and SHALL keep the offset and length. Encoding SHALL produce a
+JavaScript `Uint8Array` over the encoded buffer with the same offset and
+length through the global constructor, and SHALL leave the view usable.
+`Release` SHALL dispose the view, which releases its lease once; `Dispose` is
+idempotent. The view SHALL fail loudly when the buffer no longer covers it.
+`byte[]`, `ArrayBuffer`, `Memory<byte>`, and `ReadOnlyMemory<byte>` SHALL NOT
+accept a `Uint8Array`. No native or ABI surface SHALL be added for typed
+arrays.
+
+#### Scenario: In-place write
+- **GIVEN** a method `void Fill(Uint8Array bytes)` that writes `0x42` to every
+  byte
+- **WHEN** JavaScript passes `new Uint8Array(4)`, and then an instance of a
+  `Uint8Array` subclass, and reads each after its call
+- **THEN** every element SHALL be `0x42`
+- **AND** the lease SHALL be released once at invocation end
+
+#### Scenario: Sub-view
+- **GIVEN** a method `string Hex(Uint8Array bytes)`
+- **WHEN** JavaScript passes `new Uint8Array(buffer, 4, 8)` over a 16-byte
+  buffer
+- **THEN** authored code SHALL see `ByteOffset 4`, `Length 8`, and exactly
+  those bytes
+
+#### Scenario: Return and property
+- **GIVEN** a method `Uint8Array Make()`, a `Task<Uint8Array>` method, and a
+  `Uint8Array?` property
+- **WHEN** JavaScript reads them
+- **THEN** each SHALL be a `Uint8Array` with matching bytes, `byteOffset`, and
+  `length`, and `null` for a null property
+
+#### Scenario: Wrong shapes are rejected
+- **GIVEN** the `Fill` parameter and a `Uint8Array?` parameter
+- **WHEN** JavaScript passes an `ArrayBuffer`, an `Int32Array`, a `DataView`, a
+  plain object, `5`, `null`, or `undefined`
+- **THEN** `Fill` SHALL throw `Value is not a Uint8Array.` for every input
+- **AND** the nullable parameter SHALL pass `null` for `null` and `undefined`
+  and throw for the rest
+
+#### Scenario: Composition follows ArrayBuffer
+- **GIVEN** `IReadOnlyList<Uint8Array>` and `Dictionary<string, Uint8Array>`
+  parameters and returns, and a record with a `Uint8Array` field
+- **WHEN** JavaScript passes and receives them
+- **THEN** each view SHALL release its lease exactly once through `Release`,
+  as for `ArrayBuffer`
+
+#### Scenario: Callback, event, and union
+- **GIVEN** a callback whose argument and result are `Uint8Array?`, a
+  `Func<Uint8Array?, Task>` event, and an `Either<string, Uint8Array>`
+  parameter
+- **WHEN** JavaScript passes a view or `null`
+- **THEN** a view or `null` passed to the callback or the event SHALL stay with
+  the author, and a view returned by the callback SHALL belong to the author
+- **AND** the union SHALL decode a string as its first member and a view as its
+  second, SHALL throw the kind message for an `ArrayBuffer`, and SHALL throw
+  `Value is not a Uint8Array.` for another object
 
 ### Requirement: Nullable Reference Codecs Are Annotation-Driven
 
@@ -1924,11 +1995,12 @@ SHALL report an existing context-specific diagnostic at error severity. It SHALL
 NOT add a new diagnostic code, SHALL NOT raise a context-free diagnostic from
 codec resolution, SHALL NOT emit a binding for the rejected member, and SHALL
 NOT fall through to that type's non-nullable codec. The same non-nullable types
-SHALL keep their current supported or diagnostic behavior. `ArrayBuffer?` is
-supported through `NullableReferenceCodec` (see "Nullable ArrayBuffer Is A
-Nullable Reference"). A nullable callback is supported as a method or
-constructor parameter (see "Nullish Callback Parameters Decode To Null Without
-Retention") and keeps the non-null rejection on every other position.
+SHALL keep their current supported or diagnostic behavior. `ArrayBuffer?` and
+`Uint8Array?` are supported through `NullableReferenceCodec` (see "Nullable
+ArrayBuffer Is A Nullable Reference" and "Uint8Array Is A Byte View"). A
+nullable callback is supported as a method or constructor parameter (see
+"Nullish Callback Parameters Decode To Null Without Retention") and keeps the
+non-null rejection on every other position.
 
 Codec resolution does not know the member context, so the codes come from the
 callers: `EXPOJSI001` for a parameter, `EXPOJSI002` for a return, `EXPOJSI007`
