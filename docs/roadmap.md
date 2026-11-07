@@ -51,7 +51,7 @@ history keeps it.
 | --- | --------------------------------------------------- | ----- | ------ | ------------ | ------- | --------------------------------------------------------------------------- |
 | 025 | `expo-crypto-dotnet`                                | P1    | M      | 024, 036     | TODO    | [025](plans/025-expo-crypto-dotnet.md)                                      |
 | 028 | Annotation-insensitive shared-object boundaries     | P2    | S      | —            | DONE    | —                                                                           |
-| 029 | Typed codec conversion descriptors                  | P1    | M      | 028          | TODO    | [029](plans/029-typed-codec-conversion-descriptors.md)                      |
+| 029 | Typed codec conversion descriptors                  | P1    | M      | 028          | DONE    | —                                                                           |
 | 030 | Compositional codec resource scope                  | P1    | L      | 029          | TODO    | [030](plans/030-compositional-codec-resource-scope.md)                      |
 | 031 | Nullable ArrayBuffer codecs                         | P1    | M      | 030          | TODO    | [031](plans/031-nullable-arraybuffer-codecs.md)                             |
 | 032 | Nullable JavaScript callback parameters             | P2    | M      | 031          | TODO    | [032](plans/032-nullable-javascript-callback-parameters.md)                 |
@@ -116,7 +116,12 @@ The next free ID is 041.
   2026-10-30, with a local `scripts/test-managed.sh` run (920 passed,
   0 failed, 0 skipped). 029 replaces codec-name parsing with typed
   descriptors; no later plan may add another codec-string or `StartsWith`
-  policy check. 030 adds one explicit conversion scope with
+  policy check. 029 is done:
+  it landed on 2026-10-30 with a local `scripts/test-managed.sh` run (966
+  passed, 0 failed, 0 skipped). It also made non-null lists and dictionaries
+  compose in nested, record-field, callback, and event positions, so 030
+  builds on them, and it rejects uncompilable codec compositions with build
+  diagnostics. 030 adds one explicit conversion scope with
   identity-deduplicated reverse cleanup. 031–033 then apply their own null
   policies. `JavaScriptValue?` and direct `SharedObject?` / `SharedRef<T>?`
   bases stay unsupported by design.

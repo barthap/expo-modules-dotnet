@@ -296,18 +296,13 @@ public sealed partial class ExpoModulesGenerator
     for (var index = 0; index < parameters.Count; index++)
     {
       var parameter = parameters[index];
-      var decodeExpression = GetDecodeExpression(
-          parameter.CodecExpression,
-          index,
-          "runtime",
-          parameter.RequiresRuntimeContext
-      );
+      var decodeExpression = GetDecodeExpression(parameter.Codec!, index, "runtime");
       if (parameter.HasDefaultValue)
       {
         decodeExpression =
             $"arguments.Length <= {index} || arguments.GetValue({index}).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? {parameter.DefaultValueExpression} : {decodeExpression}";
       }
-      var declaration = parameter.OwnsDecodedValue ? "using var" : "var";
+      var declaration = IsInvocationOwned(parameter) ? "using var" : "var";
       builder.AppendLine($"    {declaration} {GetParameterLocalName(index)} = {decodeExpression};");
     }
 
@@ -341,7 +336,7 @@ public sealed partial class ExpoModulesGenerator
         ExpoEventPayloadKind.None =>
             $"() => global::Expo.ModulesCore.GeneratedSharedObjectEvents.EmitAsync(context, sharedObject, \"{EscapeString(@event.JavaScriptName)}\")",
         ExpoEventPayloadKind.Codec =>
-            $"{valueParameter} => global::Expo.ModulesCore.GeneratedSharedObjectEvents.EmitAsync<{@event.CodecExpression}, {@event.PayloadTypeName}>(context, sharedObject, \"{EscapeString(@event.JavaScriptName)}\", {valueParameter})",
+            $"{valueParameter} => global::Expo.ModulesCore.GeneratedSharedObjectEvents.EmitAsync<{@event.Codec!.Expression}, {@event.PayloadTypeName}>(context, sharedObject, \"{EscapeString(@event.JavaScriptName)}\", {valueParameter})",
         ExpoEventPayloadKind.JavaScriptValue or ExpoEventPayloadKind.ArrayBuffer =>
             $"{valueParameter} => global::Expo.ModulesCore.GeneratedSharedObjectEvents.EmitAsync(context, sharedObject, \"{EscapeString(@event.JavaScriptName)}\", {valueParameter})",
         _ => throw new InvalidOperationException($"Unknown event payload kind: {@event.PayloadKind}"),
@@ -694,7 +689,7 @@ public sealed partial class ExpoModulesGenerator
   private static string GetEventDelegateExpression(ExpoEventModel @event) => @event.PayloadKind switch
   {
     ExpoEventPayloadKind.None => $"() => emitter.EmitAsync(module, \"{EscapeString(@event.JavaScriptName)}\")",
-    ExpoEventPayloadKind.Codec => $"{GetEventValueParameterName(@event)} => emitter.EmitAsync<{@event.CodecExpression}, {@event.PayloadTypeName}>(module, \"{EscapeString(@event.JavaScriptName)}\", {GetEventValueParameterName(@event)})",
+    ExpoEventPayloadKind.Codec => $"{GetEventValueParameterName(@event)} => emitter.EmitAsync<{@event.Codec!.Expression}, {@event.PayloadTypeName}>(module, \"{EscapeString(@event.JavaScriptName)}\", {GetEventValueParameterName(@event)})",
     ExpoEventPayloadKind.JavaScriptValue or ExpoEventPayloadKind.ArrayBuffer =>
         $"{GetEventValueParameterName(@event)} => emitter.EmitAsync(module, \"{EscapeString(@event.JavaScriptName)}\", {GetEventValueParameterName(@event)})",
     _ => throw new InvalidOperationException($"Unknown event payload kind: {@event.PayloadKind}"),
@@ -822,7 +817,7 @@ public sealed partial class ExpoModulesGenerator
     {
       for (var index = 0; index < function.Parameters.Values.Count; index++)
       {
-        if (function.Parameters.Values[index].OwnsDecodedValue)
+        if (IsInvocationOwned(function.Parameters.Values[index]))
         {
           builder.AppendLine($"    {function.Parameters.Values[index].TypeName}? {GetParameterLocalName(index)} = null;");
         }
@@ -835,7 +830,7 @@ public sealed partial class ExpoModulesGenerator
       builder.AppendLine("    {");
       builder.AppendLine($"      GeneratedFunction.RequireArgumentCount(\"{EscapeString(label)}.{EscapeString(function.JavaScriptName)}\", arguments, {GetRequiredParameterCount(function)}, {function.Parameters.Values.Count});");
       builder.AppendLine($"      {targetDeclaration}");
-      if (function.AsyncResultRequiresRuntimeContext)
+      if (function.AsyncResultCodec?.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext)
       {
         // Capture the exact runtime context while the host-function frame is active; Promise
         // settlement runs after the frame exits and must never read the thread-static accessor.
@@ -853,13 +848,13 @@ public sealed partial class ExpoModulesGenerator
     {
       var parameter = function.Parameters.Values[index];
       var parameterLocalName = GetParameterLocalName(index);
-      if (function.IsAsync && parameter.OwnsDecodedValue)
+      if (function.IsAsync && IsInvocationOwned(parameter))
       {
         builder.AppendLine($"      {parameterLocalName} = {GetParameterExpression(parameter, index, runtimeParameterName)};");
       }
       else
       {
-        var declaration = parameter.OwnsDecodedValue ? "using var" : "var";
+        var declaration = IsInvocationOwned(parameter) ? "using var" : "var";
         builder.AppendLine(function.IsAsync
             ? $"      {declaration} {parameterLocalName} = {GetParameterExpression(parameter, index, runtimeParameterName)};"
             : $"    {declaration} {parameterLocalName} = {GetParameterExpression(parameter, index, runtimeParameterName)};");
@@ -869,11 +864,11 @@ public sealed partial class ExpoModulesGenerator
     var argumentList = string.Join(
         ", ",
         function.Parameters.Values.Select((parameter, index) =>
-            function.IsAsync && parameter.OwnsDecodedValue
+            function.IsAsync && IsInvocationOwned(parameter)
                 ? $"{GetParameterLocalName(index)}!"
                 : GetParameterLocalName(index))
     );
-    var disposeAsyncDecodedValues = function.Parameters.Values.Any(parameter => parameter.OwnsDecodedValue);
+    var disposeAsyncDecodedValues = function.Parameters.Values.Any(IsInvocationOwned);
     if (function.IsAsync)
     {
       builder.AppendLine($"      var __expoTask = module.{function.MethodName}({argumentList});");
@@ -892,7 +887,7 @@ public sealed partial class ExpoModulesGenerator
         builder.AppendLine($"{asyncIndent}await __expoTask.ConfigureAwait(false);");
         builder.AppendLine($"{asyncIndent}return global::Expo.JSI.JavaScriptPromiseResult.Resolve(static runtime => runtime.CreateUndefined());");
       }
-      else if (function.AsyncResultCodecExpression == "JavaScriptValueCodec")
+      else if (function.AsyncResultCodec!.EncodeOperation == ExpoEncodeOperation.TransferJavaScriptValue)
       {
         builder.AppendLine($"{asyncIndent}var __expoResult = await __expoTask.ConfigureAwait(false);");
         builder.AppendLine($"{asyncIndent}return global::Expo.JSI.JavaScriptPromiseResult.ResolveOwned(");
@@ -901,14 +896,14 @@ public sealed partial class ExpoModulesGenerator
         builder.AppendLine($"{asyncIndent}    static value => value.Dispose()");
         builder.AppendLine($"{asyncIndent});");
       }
-      else if (function.AsyncResultCodecExpression == "ArrayBufferCodec")
+      else if (function.AsyncResultCodec!.EncodeOperation == ExpoEncodeOperation.EncodeThenDisposeArrayBuffer)
       {
         builder.AppendLine($"{asyncIndent}var __expoResult = await __expoTask.ConfigureAwait(false);");
         builder.AppendLine($"{asyncIndent}return global::Expo.JSI.JavaScriptPromiseResult.ResolveOwned(");
         builder.AppendLine($"{asyncIndent}    __expoResult,");
         builder.AppendLine($"{asyncIndent}    static (runtime, value) =>");
         builder.AppendLine($"{asyncIndent}    {{");
-        builder.AppendLine($"{asyncIndent}      try {{ return ArrayBufferCodec.Encode(value, runtime); }}");
+        builder.AppendLine($"{asyncIndent}      try {{ return {function.AsyncResultCodec.Expression}.Encode(value, runtime); }}");
         builder.AppendLine($"{asyncIndent}      finally {{ value.Dispose(); }}");
         builder.AppendLine($"{asyncIndent}    }},");
         builder.AppendLine($"{asyncIndent}    static value => value.Dispose()");
@@ -916,11 +911,11 @@ public sealed partial class ExpoModulesGenerator
       }
       else
       {
-        var asyncEncodeContextArgument = function.AsyncResultRequiresRuntimeContext
+        var asyncEncodeContextArgument = function.AsyncResultCodec.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext
             ? ", __expoRuntimeContext"
             : string.Empty;
         builder.AppendLine($"{asyncIndent}var __expoResult = await __expoTask.ConfigureAwait(false);");
-        builder.AppendLine($"{asyncIndent}return global::Expo.JSI.JavaScriptPromiseResult.Resolve(runtime => {function.AsyncResultCodecExpression}.Encode(__expoResult, runtime{asyncEncodeContextArgument}));");
+        builder.AppendLine($"{asyncIndent}return global::Expo.JSI.JavaScriptPromiseResult.Resolve(runtime => {function.AsyncResultCodec.Expression}.Encode(__expoResult, runtime{asyncEncodeContextArgument}));");
       }
 
       if (disposeAsyncDecodedValues)
@@ -955,21 +950,17 @@ public sealed partial class ExpoModulesGenerator
       {
         builder.AppendLine($"    return ArrayBufferCodec.EncodeCopy(module.{function.MethodName}({argumentList}), runtime);");
       }
-      else if (function.ReturnCodecExpression == "ArrayBufferCodec")
+      else if (function.ReturnCodec!.EncodeOperation == ExpoEncodeOperation.EncodeThenDisposeArrayBuffer)
       {
         builder.AppendLine($"    using var __expoResult = module.{function.MethodName}({argumentList});");
-        builder.AppendLine("    return ArrayBufferCodec.Encode(__expoResult, runtime);");
-      }
-      else if (function.ReturnCodecExpression == "JavaScriptValueCodec")
-      {
-        builder.AppendLine($"    return JavaScriptValueCodec.Encode(module.{function.MethodName}({argumentList}), runtime);");
+        builder.AppendLine($"    return {function.ReturnCodec.Expression}.Encode(__expoResult, runtime);");
       }
       else
       {
-        var returnEncodeContextArgument = function.ReturnRequiresRuntimeContext
+        var returnEncodeContextArgument = function.ReturnCodec.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext
             ? ", GeneratedFunction.CurrentRuntimeContext"
             : string.Empty;
-        builder.AppendLine($"    return {function.ReturnCodecExpression}.Encode(module.{function.MethodName}({argumentList}), runtime{returnEncodeContextArgument});");
+        builder.AppendLine($"    return {function.ReturnCodec.Expression}.Encode(module.{function.MethodName}({argumentList}), runtime{returnEncodeContextArgument});");
       }
     }
     builder.AppendLine("  }");
@@ -986,7 +977,7 @@ public sealed partial class ExpoModulesGenerator
     var targetDeclaration = shared is null
         ? $"var module = ({module.FullyQualifiedTypeName})context;"
         : $"var module = SharedObjectCodec<{shared.ReceiverTypeName}>.Decode(thisValue, runtime, GeneratedFunction.CurrentRuntimeContext);";
-    var encodeContextArgument = property.RequiresRuntimeContext
+    var encodeContextArgument = property.Codec.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext
         ? ", GeneratedFunction.CurrentRuntimeContext"
         : string.Empty;
 
@@ -999,18 +990,14 @@ public sealed partial class ExpoModulesGenerator
     builder.AppendLine("  {");
     builder.AppendLine($"    GeneratedFunction.RequireArgumentCount(\"{EscapeString(label)}.{EscapeString(property.JavaScriptName)}\", arguments, 0);");
     builder.AppendLine($"    {targetDeclaration}");
-    if (property.CodecExpression == "ArrayBufferCodec")
+    if (property.Codec.EncodeOperation == ExpoEncodeOperation.EncodeThenDisposeArrayBuffer)
     {
       builder.AppendLine($"    using var __expoResult = module.{property.PropertyName};");
-      builder.AppendLine("    return ArrayBufferCodec.Encode(__expoResult, runtime);");
-    }
-    else if (property.CodecExpression == "JavaScriptValueCodec")
-    {
-      builder.AppendLine($"    return JavaScriptValueCodec.Encode(module.{property.PropertyName}, runtime);");
+      builder.AppendLine($"    return {property.Codec.Expression}.Encode(__expoResult, runtime);");
     }
     else
     {
-      builder.AppendLine($"    return {property.CodecExpression}.Encode(module.{property.PropertyName}, runtime{encodeContextArgument});");
+      builder.AppendLine($"    return {property.Codec.Expression}.Encode(module.{property.PropertyName}, runtime{encodeContextArgument});");
     }
     builder.AppendLine("  }");
   }
@@ -1036,13 +1023,8 @@ public sealed partial class ExpoModulesGenerator
     builder.AppendLine("  {");
     builder.AppendLine($"    GeneratedFunction.RequireArgumentCount(\"{EscapeString(label)}.{EscapeString(property.JavaScriptName)}\", arguments, 1);");
     builder.AppendLine($"    {targetDeclaration}");
-    var decode = GetDecodeExpression(
-        property.CodecExpression,
-        0,
-        "runtime",
-        property.RequiresRuntimeContext
-    );
-    builder.AppendLine(property.OwnsDecodedValue
+    var decode = GetDecodeExpression(property.Codec, 0, "runtime");
+    builder.AppendLine(property.Codec.DecodedOwnership == ExpoDecodedOwnership.InvocationOwned
         ? $"    using var __expoValue = {decode};"
         : $"    var __expoValue = {decode};");
     builder.AppendLine($"    module.{property.PropertyName} = __expoValue;");
@@ -1086,7 +1068,7 @@ public sealed partial class ExpoModulesGenerator
       {
         continue;
       }
-      var declaration = parameter.OwnsDecodedValue ? "using var" : "var";
+      var declaration = IsInvocationOwned(parameter) ? "using var" : "var";
       builder.AppendLine($"    {declaration} {GetParameterLocalName(index)} = {GetParameterExpression(parameter, index, "runtime")};");
     }
     builder.AppendLine($"    using var {spanBuffer} = ArrayBufferCodec.Decode(arguments.GetValue({spanIndex}), runtime);");
@@ -1103,18 +1085,19 @@ public sealed partial class ExpoModulesGenerator
     {
       builder.AppendLine($"      return ArrayBufferCodec.EncodeCopy({invocation}, runtime);");
     }
-    else if (function.ReturnCodecExpression == "ArrayBufferCodec")
+    else if (function.ReturnCodec!.EncodeOperation == ExpoEncodeOperation.EncodeThenDisposeArrayBuffer)
     {
       builder.AppendLine($"      using var __expoResult = {invocation};");
-      builder.AppendLine("      return ArrayBufferCodec.Encode(__expoResult, runtime);");
-    }
-    else if (function.ReturnCodecExpression == "JavaScriptValueCodec")
-    {
-      builder.AppendLine($"      return JavaScriptValueCodec.Encode({invocation}, runtime);");
+      builder.AppendLine($"      return {function.ReturnCodec.Expression}.Encode(__expoResult, runtime);");
     }
     else
     {
-      builder.AppendLine($"      return {function.ReturnCodecExpression}.Encode({invocation}, runtime);");
+      // The lambda runs synchronously inside the host-function frame, so the thread-static runtime
+      // context is the current one.
+      var spanEncodeContextArgument = function.ReturnCodec.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext
+          ? ", GeneratedFunction.CurrentRuntimeContext"
+          : string.Empty;
+      builder.AppendLine($"      return {function.ReturnCodec.Expression}.Encode({invocation}, runtime{spanEncodeContextArgument});");
     }
     builder.AppendLine("    });");
     builder.AppendLine("  }");
@@ -1162,7 +1145,7 @@ public sealed partial class ExpoModulesGenerator
   {
     for (var index = 0; index < function.Parameters.Values.Count; index++)
     {
-      if (function.Parameters.Values[index].OwnsDecodedValue)
+      if (IsInvocationOwned(function.Parameters.Values[index]))
       {
         builder.AppendLine($"{indent}{GetParameterLocalName(index)}?.Dispose();");
       }
@@ -1178,7 +1161,7 @@ public sealed partial class ExpoModulesGenerator
     builder.AppendLine("      var obj = value.AsObject();");
     foreach (var field in codec.Fields.Values)
     {
-      builder.AppendLine($"      var {GetRecordFieldLocalName(field)} = {field.CodecExpression}.Decode(obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\"), runtime);");
+      builder.AppendLine($"      var {GetRecordFieldLocalName(field)} = {field.Codec.Expression}.Decode(obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\"), runtime);");
     }
     builder.AppendLine($"      return new {codec.RecordTypeName}({string.Join(", ", codec.Fields.Values.Select(GetRecordFieldLocalName))});");
     builder.AppendLine("    }");
@@ -1189,7 +1172,7 @@ public sealed partial class ExpoModulesGenerator
     foreach (var field in codec.Fields.Values)
     {
       builder.AppendLine($"      using var {field.ParameterName}Value = obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\");");
-      builder.AppendLine($"      var {GetRecordFieldLocalName(field)} = {field.CodecExpression}.Decode({field.ParameterName}Value, runtime);");
+      builder.AppendLine($"      var {GetRecordFieldLocalName(field)} = {field.Codec.Expression}.Decode({field.ParameterName}Value, runtime);");
     }
     builder.AppendLine($"      return new {codec.RecordTypeName}({string.Join(", ", codec.Fields.Values.Select(GetRecordFieldLocalName))});");
     builder.AppendLine("    }");
@@ -1199,7 +1182,7 @@ public sealed partial class ExpoModulesGenerator
     builder.AppendLine("      using var obj = runtime.CreateObject();");
     foreach (var field in codec.Fields.Values)
     {
-      builder.AppendLine($"      using var {GetRecordFieldLocalName(field)} = {field.CodecExpression}.Encode(value.{field.CSharpPropertyName}, runtime);");
+      builder.AppendLine($"      using var {GetRecordFieldLocalName(field)} = {field.Codec.Expression}.Encode(value.{field.CSharpPropertyName}, runtime);");
       builder.AppendLine($"      obj.SetProperty(\"{EscapeString(field.JavaScriptName)}\", {GetRecordFieldLocalName(field)});");
     }
     builder.AppendLine("      return obj.AsValue();");

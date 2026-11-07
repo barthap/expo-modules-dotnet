@@ -1191,6 +1191,43 @@ covers duplicate method names.
 - **THEN** the generator SHALL report a diagnostic naming the duplicate export
 - **AND** duplicate names SHALL NOT be resolved by source order
 
+#### Scenario: Decode-only codec is used where a value is encoded
+- **GIVEN** a `[JS]` method returns `JavaScriptCallback<...>` directly, as a
+  `Task` result, or from a span function
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report `EXPOJSI002` naming the method and type,
+  or `EXPOJSI023` on a shared-object class
+- **AND** generated source SHALL NOT call a missing `Encode` method
+
+#### Scenario: Static helper codec is used as a generic codec argument
+- **GIVEN** a list element, dictionary value, nullable inner type, callback
+  result, or callback-argument tuple element is `ArrayBuffer`, a
+  `JavaScriptCallback`, or a collection, nullable, or callback type that
+  contains one
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report the using member's unsupported-type
+  diagnostic: `EXPOJSI001`, `EXPOJSI002`, `EXPOJSI008`, `EXPOJSI015`, or
+  `EXPOJSI023`
+- **AND** generated source SHALL NOT pass a static codec class as a type
+  argument
+
+#### Scenario: Record field needs a runtime context
+- **GIVEN** a generated record has a `JavaScriptCallback` field, or a field
+  whose codec the generic-argument rule rejects
+- **WHEN** a `[JS]` method parameter, return, async result, or shared-object
+  constructor parameter uses the record
+- **THEN** the generator SHALL report `EXPOJSI007` naming the record and field
+- **AND** the using member SHALL report its unsupported-type diagnostic
+- **AND** a `[JS]` property whose type contains a callback SHALL keep
+  reporting only `EXPOJSI015`
+
+#### Scenario: Async method returns a byte span
+- **GIVEN** an async `[JS]` method returns `Task<Span<byte>>` or
+  `Task<ReadOnlySpan<byte>>`
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report `EXPOJSI002` naming the method and type
+- **AND** the generator SHALL NOT fail or drop its other output
+
 ### Requirement: App Aggregation Is Owned By Dotnet Autolinking
 
 The generator SHALL keep module discovery library-local. The dotnet
@@ -1281,6 +1318,20 @@ dynamic invocation.
 - **THEN** it SHALL NOT use `Assembly.GetTypes`, `MethodInfo.Invoke`,
   `Delegate.DynamicInvoke`, `object?[]` as the normal argument container, or
   JSON serialization for ordinary JSI values
+
+### Requirement: Generator Conversion Policy Is Typed
+
+Generator analysis and emission SHALL read decode operation, runtime-context
+requirement, decoded ownership, encode operation, capabilities, and codec
+shape from typed `ExpoCodecDescriptor` fields. Production generator code SHALL
+NOT compare, prefix-match, or parse emitted codec-expression text to make a
+conversion decision.
+
+#### Scenario: Codec text is opaque
+- **GIVEN** the generator source under `Expo.ModulesCore.Generator`
+- **WHEN** a reviewer runs
+  `rg -n '\.\w*CodecExpression\b|\.Expression *(==|!=| is )|Expression\.(StartsWith|EndsWith|Contains)|StartsWith\("(JavaScriptArrayCodec|JavaScriptDictionaryCodec|SharedObjectCodec)|is "(JavaScriptValueCodec|ArrayBufferCodec)"' packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator`
+- **THEN** it SHALL print no matches
 
 ### Requirement: Generator Authoring Documentation Is Durable
 
@@ -1375,7 +1426,7 @@ additional backing kinds.
 
 | CLR type | Boundary behavior | Generated-binding constraints |
 | --- | --- | --- |
-| `ArrayBuffer` | Preserves wrapper ownership semantics | Ordinary codec |
+| `ArrayBuffer` | Preserves wrapper ownership semantics | Direct parameters, returns, properties, and record fields; not a list element, dictionary value, nullable inner type, or callback type argument |
 | `byte[]` | Copies in both directions | Rank-one arrays only |
 | `Memory<byte>` / `ReadOnlyMemory<byte>` | Copies in both directions, encoding exactly the current logical slice | Ordinary codecs |
 | `Span<byte>` / `ReadOnlySpan<byte>` | Borrows an input slice or copies a return value | One synchronous parameter only |
@@ -1411,7 +1462,8 @@ additional backing kinds.
 - **AND** memory codecs SHALL NOT pin, retain, or alias managed storage as
   JavaScript storage
 - **AND** one synchronous scoped span parameter MAY borrow bytes
-- **AND** asynchronous or multiple span parameters SHALL produce diagnostics
+- **AND** asynchronous or multiple span parameters, and asynchronous span
+  results, SHALL produce diagnostics
 - **AND** span return values SHALL be copied immediately
 - **AND** only rank-one `byte[]` parameters and returns SHALL use the byte-array
   codec; multidimensional byte arrays SHALL produce unsupported-type diagnostics
@@ -1506,12 +1558,49 @@ serve as an inner codec, keeping its existing copy-in-both-directions behavior.
 - **THEN** conversion SHALL delegate to the existing non-nullable codec
 - **AND** that codec's non-null behavior SHALL remain unchanged
 
+### Requirement: Non-Null Collections Compose Recursively
+
+`JavaScriptArrayCodec<T, TCodec>` SHALL implement
+`IJavaScriptCodec<IReadOnlyList<T>>`, and `JavaScriptDictionaryCodec<T,
+TCodec>` SHALL implement `IJavaScriptCodec<Dictionary<string, T>>` and
+`IJavaScriptCodec<IReadOnlyDictionary<string, T>>`. Their existing
+`DecodeToArray`, `DecodeToDictionary`, and `Encode` methods SHALL keep their
+signatures and behavior. Generated bindings SHALL support a non-null
+`IReadOnlyList<T>`, `Dictionary<string, T>`, or `IReadOnlyDictionary<string,
+T>` wherever a codec of `T` is supported: as a list element, a dictionary
+value, a nullable container's content, a callback result or argument, a
+generated record field, and a typed event payload.
+
+#### Scenario: Nested non-null collections round-trip
+- **GIVEN** a generated method accepts and returns
+  `IReadOnlyList<IReadOnlyList<int>>` or
+  `IReadOnlyDictionary<string, IReadOnlyList<string>>`
+- **WHEN** JavaScript passes nested arrays and objects
+- **THEN** generated dispatch SHALL decode and re-encode every level
+- **AND** direct collection parameters SHALL still decode through
+  `DecodeToArray` or `DecodeToDictionary`
+
+#### Scenario: Record collection field round-trips
+- **GIVEN** a positional record has an `IReadOnlyList<T>` or
+  `Dictionary<string, T>` field with a supported `T`
+- **WHEN** the record crosses a generated boundary
+- **THEN** the field SHALL decode from and encode to its lower-camel
+  JavaScript property
+
+#### Scenario: Typed event emits a collection payload
+- **GIVEN** a module or shared object declares
+  `[Event] Func<IReadOnlyList<T>, Task>` or a string-keyed dictionary payload
+  with a supported `T`
+- **WHEN** C# raises the event
+- **THEN** generated code SHALL compile and listeners SHALL receive a
+  JavaScript array or plain object
+
 ### Requirement: Nullable Collection Containers And Contents Compose Recursively
 
 Generated bindings SHALL support nullable `IReadOnlyList<T>`,
 `Dictionary<string, T>`, and `IReadOnlyDictionary<string, T>` containers through
-dedicated adapters, because the existing array and dictionary helpers use
-special decode methods and do not all implement `IJavaScriptCodec<T>`. The
+dedicated adapters, because a nullable container needs nullish handling that
+the non-null collection codecs do not have. The
 adapters SHALL be `NullableReadOnlyListCodec<T, TCodec>`,
 `NullableDictionaryCodec<T, TCodec>`, and
 `NullableReadOnlyDictionaryCodec<T, TCodec>`. Each SHALL return C# `null` for
@@ -2176,6 +2265,13 @@ and scoped wrapper before returning.
   JavaScript object
 - **THEN** conversion SHALL fail loudly
 - **AND** it SHALL NOT create a replacement pair or invoke `OnRelease` again
+
+#### Scenario: Span function returns a shared object
+- **GIVEN** a synchronous `[JS]` method has one `Span<byte>` or
+  `ReadOnlySpan<byte>` parameter and returns a valid `[ExpoSharedObject]` class
+- **WHEN** the method is generated
+- **THEN** the return encode SHALL receive the current `DotnetRuntimeContext`
+- **AND** the generated source SHALL compile
 
 ### Requirement: Public SharedObject Release Is Exactly Once
 

@@ -187,7 +187,7 @@ public sealed partial class ExpoModulesGenerator
 
       var payloadKind = ExpoEventPayloadKind.None;
       var payloadTypeName = string.Empty;
-      var codecExpression = string.Empty;
+      ExpoCodecDescriptor? eventCodec = null;
       if (propertyReason is null && !TryGetEventDelegatePayload(
               property.Type,
               out payloadType,
@@ -218,8 +218,8 @@ public sealed partial class ExpoModulesGenerator
         {
           var scratchRecordCodecs = recordCodecs.ToList();
           var scratchDiagnostics = new List<ExpoDiagnosticModel>();
-          codecExpression = GetCodecExpression(payloadType, scratchDiagnostics, scratchRecordCodecs) ?? string.Empty;
-          if (codecExpression.Length == 0)
+          eventCodec = AsGenericArgumentCodec(GetCodec(payloadType, scratchDiagnostics, scratchRecordCodecs));
+          if (eventCodec is null)
           {
             diagnostics.Add(CreateUnsupportedEventPayload(
                 moduleName,
@@ -273,7 +273,7 @@ public sealed partial class ExpoModulesGenerator
           GetCodecTypeArgumentName(property.Type),
           payloadTypeName,
           payloadKind,
-          codecExpression,
+          eventCodec,
           property.Locations.FirstOrDefault(),
           canReproduce,
           propertyReason is null

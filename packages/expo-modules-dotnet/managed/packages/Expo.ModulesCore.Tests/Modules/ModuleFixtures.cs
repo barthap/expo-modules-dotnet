@@ -216,6 +216,36 @@ public sealed partial class GeneratedArrayModule
   public IReadOnlyList<string> Labels() => ["one", "two"];
 }
 
+public record CollectionHolder(IReadOnlyList<int> Values, Dictionary<string, string> Labels);
+
+[ExpoModule("GeneratedNestedCollections")]
+public sealed partial class GeneratedNestedCollectionsModule : Module
+{
+  public GeneratedNestedCollectionsModule(DotnetRuntimeContext context)
+      : base(context)
+  {
+  }
+
+  [Event]
+  public partial Func<IReadOnlyList<int>, Task> Changed { get; }
+
+  [JS]
+  public IReadOnlyList<IReadOnlyList<int>> Grid(IReadOnlyList<IReadOnlyList<int>> grid) => grid;
+
+  [JS]
+  public IReadOnlyDictionary<string, IReadOnlyList<string>> Groups(
+      IReadOnlyDictionary<string, IReadOnlyList<string>> groups) => groups;
+
+  [JS]
+  public CollectionHolder Holder(CollectionHolder holder) => holder;
+
+  [JS]
+  public int CountAll(JavaScriptCallback<IReadOnlyList<int>> source) => source.Invoke().Sum();
+
+  [JS]
+  public Task Raise(IReadOnlyList<int> values) => Changed(values);
+}
+
 [ExpoModule("GeneratedCallbacks")]
 public sealed partial class GeneratedCallbacksModule
 {
