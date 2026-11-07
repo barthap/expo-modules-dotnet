@@ -3,8 +3,12 @@ name: native-tests
 # Heavy CI lane: Hermes prebuilt cache + native testhost + full managed suite.
 # Runs on ubuntu-latest and windows-latest only — Apple runners cost 10× minutes.
 # Fast lane (no native toolchain) lives in checks.yml.
+# PR jobs run only when the PR has the `run CI` label. Adding the label starts
+# a run, and later pushes to a labeled PR run again. Each job checks the label
+# in its `if`.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches:
       - main
@@ -17,6 +21,7 @@ concurrency:
 jobs:
   managed-tests:
     name: managed-tests (${{ matrix.os }})
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run CI')
     strategy:
       fail-fast: false
       matrix:
@@ -81,6 +86,7 @@ jobs:
 
   nativeaot-publish:
     name: nativeaot-publish (linux-x64)
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run CI')
     runs-on: ubuntu-24.04
 
     steps:
@@ -103,6 +109,7 @@ jobs:
 
   console-app:
     name: console-app (${{ matrix.loader }})
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run CI')
     strategy:
       fail-fast: false
       matrix:

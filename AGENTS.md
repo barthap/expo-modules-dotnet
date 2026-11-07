@@ -100,6 +100,20 @@ contain machine-specific paths or local workflow notes. Do not commit it.
   paths or placeholders such as `<repo>`, `<dotnet-root>`, and
   `<windows-test-machine>` in committed docs and examples.
 
+## Branches And Pull Requests
+
+- Open a PR for a roadmap item (brief, delta spec, plan, implementation) or
+  another significant code change. Name the branch `impl/NNN-<slug>`, where the
+  slug matches the roadmap brief.
+- Small fixes and docs-only updates do not need a PR. Commit them on `main`.
+- PRs are squash-merged, so do not squash a PR branch locally.
+- PR descriptions have `## Why`, `## How`, and `## Test Plan`. Do not list the
+  other PRs of a stack in a description. GitHub shows the stack in its UI.
+- Pushing and opening PRs still need explicit user approval.
+- On a PR, the `checks` and `native-tests` jobs run only when the PR has the
+  `run CI` label. Keep CI runs low: add the label, or re-run failed jobs, only
+  where the result gives new information, such as the topmost PR of a stack.
+
 ## Verification
 
 Run the Hermes-backed managed test suite with `scripts/test-managed.sh`.

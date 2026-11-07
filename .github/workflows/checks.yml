@@ -2,8 +2,12 @@ name: checks
 
 # Fast CI lane: no native toolchain, no Hermes, no Apple runners.
 # Heavy native suite lives in native-tests.yml (separate workflow).
+# PR jobs run only when the PR has the `run CI` label. Adding the label starts
+# a run, and later pushes to a labeled PR run again. Each job checks the label
+# in its `if`.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches:
       - main
@@ -16,6 +20,7 @@ concurrency:
 jobs:
   node:
     name: node (${{ matrix.os }})
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run CI')
     strategy:
       fail-fast: false
       matrix:
@@ -43,6 +48,7 @@ jobs:
 
   generator-tests:
     name: generator-tests (${{ matrix.os }})
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run CI')
     strategy:
       fail-fast: false
       matrix:
@@ -57,6 +63,7 @@ jobs:
 
   format:
     name: format
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run CI')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
