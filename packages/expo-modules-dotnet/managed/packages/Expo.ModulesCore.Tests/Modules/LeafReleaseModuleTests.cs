@@ -1215,6 +1215,29 @@ public sealed class LeafReleaseModuleTests
   }
 
   [Fact]
+  public void NullableCallbackWithBufferTypesFollowsTheLeafRules()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); globalThis.c = new ArrayBuffer(8); true");
+
+    // Null and undefined arrive as C# null. Only the buffer parameter releases, once per call.
+    leaf.Fixture.ResetCounters();
+    var nulls = leaf.ReadString(
+        "[m.exchangeThroughOptionalCallback(b, null), m.exchangeThroughOptionalCallback(b, undefined)].join(':')"
+    );
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("-1:-1", nulls);
+    Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    // The author's buffer stays readable after the callback, and the returned buffer is the
+    // author's to dispose: the parameter and the result release once each.
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("12", leaf.ReadString("String(m.exchangeThroughOptionalCallback(b, x => x === b ? c : null))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
   public void NestedNullableBufferEventPayloadStaysWithTheAuthor()
   {
     using var leaf = LeafReleaseFixture.Create();

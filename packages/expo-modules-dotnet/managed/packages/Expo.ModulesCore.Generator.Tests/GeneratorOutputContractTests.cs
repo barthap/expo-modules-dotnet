@@ -454,7 +454,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:2A6D1CF6FBBBF1F2E5194255ABDC560DB9E3698DC5A7B2640916AE6652CC4EF4",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:2E1AB916E578DEAD22DF80FC8AA98E236F3535F86DA91F0CB2789A4DB6B24B68",
         },
         result.GetOutputContract()
     );
@@ -463,7 +463,6 @@ public sealed class GeneratorOutputContractTests
         {
           "EXPOJSI015|Error|Property 'CallbackProperty' uses unsupported type 'global::Expo.ModulesCore.JavaScriptCallback<int>'|0|0|0|0",
           "EXPOJSI001|Error|Parameter 'value' on 'OptionalValue' uses unsupported type 'global::Expo.JSI.JavaScriptValue'|12|49|12|54",
-          "EXPOJSI008|Error|Callback parameter 'callback' on 'OptionalCallback' uses unsupported callback type 'global::Expo.ModulesCore.JavaScriptCallback<int>'. Callback argument and result type codecs are required, and callback arguments must use ValueTuple shapes.|14|60|14|68",
           "EXPOJSI023|Error|'OptionalSharedObject' cannot be exported to JavaScript: parameter 'value' uses shared-object type 'global::Expo.ModulesCore.SharedObject', which is the polymorphic SharedObject base|15|53|15|58",
           "EXPOJSI023|Error|'SharedObjects' cannot be exported to JavaScript: parameter 'value' uses shared-object type 'global::Expo.ModulesCore.SharedObject' inside a composed codec; shared-object types are supported only directly at the generated boundary|16|60|16|65",
           "EXPOJSI001|Error|Parameter 'value' on 'MutableList' uses unsupported type 'global::System.Collections.Generic.List<int>'|17|40|17|45",

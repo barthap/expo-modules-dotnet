@@ -153,8 +153,11 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
 - `JavaScriptCallback<TResult>` / `JavaScriptCallback<TArgs, TResult>` for
   JS function arguments (see Callbacks below). A callback is a parameter type
   only: it cannot be a return value, a collection element, or a record field.
-  Its result and argument types can hold `JavaScriptValue` and `ArrayBuffer`
-  at any depth.
+  `JavaScriptCallback<...>?` is accepted as a method or shared-object
+  constructor parameter, including with `= null`. JavaScript `null` and
+  `undefined` arrive as C# `null`, and a function is retained like a non-null
+  callback. Its result and argument types can hold `JavaScriptValue` and
+  `ArrayBuffer` at any depth.
 
 **Leaf ownership.** A `JavaScriptValue` or `ArrayBuffer` is a leaf. These
 rules apply at any depth, also inside records, lists, and dictionaries:
@@ -178,10 +181,9 @@ values work wherever the nested type is supported, so `IReadOnlyList<string?>?`
 composes. `List<T>` stays unsupported in both forms, because its non-nullable
 form has no codec either.
 
-`JavaScriptValue?`, `JavaScriptCallback<...>?`, `SharedObject?`,
-`SharedRef<T>?`, and a nullable concrete `[ExpoSharedObject]` class are build
-diagnostics. `JavaScriptValue` already represents JavaScript `null` and
-`undefined`. The others carry retained callback state or shared-object
+`JavaScriptValue?`, `SharedObject?`, `SharedRef<T>?`, and a nullable concrete
+`[ExpoSharedObject]` class are build diagnostics. `JavaScriptValue` already
+represents JavaScript `null` and `undefined`. The others carry shared-object
 identity, and a null axis multiplies those states.
 
 Decoding treats JavaScript `null` and `undefined` alike as C# `null`, and C#

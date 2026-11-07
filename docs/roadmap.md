@@ -54,7 +54,7 @@ history keeps it.
 | 029 | Typed codec conversion descriptors                  | P1    | M      | 028          | DONE    | —                                                                           |
 | 030 | Composable codec leaf release                       | P1    | L      | 029          | DONE    | —                                                                           |
 | 031 | Nullable ArrayBuffer codecs                         | P1    | M      | 030          | DONE    | —                                                                           |
-| 032 | Nullable JavaScript callback parameters             | P2    | M      | 031          | TODO    | [032](plans/032-nullable-javascript-callback-parameters.md)                 |
+| 032 | Nullable JavaScript callback parameters             | P2    | M      | 031          | DONE    | —                                                                           |
 | 033 | Nullable concrete SharedObject classes              | P2    | M      | 032          | TODO    | [033](plans/033-nullable-concrete-shared-object-codecs.md)                  |
 | 034 | Base-class shared-object arguments                  | P1    | M      | 030          | TODO    | —                                                                           |
 | 035 | Union arguments (`string \| ArrayBuffer`)           | P1    | M      | 030          | TODO    | —                                                                           |
@@ -130,7 +130,11 @@ The next free ID is 041.
   0 skipped). `ArrayBuffer?` now works wherever `ArrayBuffer` does, through
   `NullableReferenceCodec<ArrayBuffer, ArrayBufferCodec>`, and a direct
   `Func<ArrayBuffer?, Task>` event delivers one JavaScript `null` with no
-  lease. 032 and 033 then apply their own null policies; each brief needs a
+  lease. 032 is done: it landed on 2026-11-06 with a local
+  `scripts/test-managed.sh` run (1177 passed, 0 failed, 0 skipped).
+  `JavaScriptCallback<...>?` now works as a module or shared-object method or
+  constructor parameter; `null` and `undefined` decode to C# `null` and
+  register nothing. 033 then applies its own null policy; its brief needs a
   rebase on this design first. `JavaScriptValue?` and direct `SharedObject?` /
   `SharedRef<T>?` bases stay unsupported by design.
 - **018**: direct MSBuild, RNW CLI build/deploy/launch, and live-app rebuild

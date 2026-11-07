@@ -159,7 +159,9 @@ A leaf is a `JavaScriptValue` or an `ArrayBuffer` wrapper. Every
 caller every leaf in the result. `Encode` SHALL return a new owned JavaScript
 value and SHALL NOT dispose `value` or any leaf in it. `Release` SHALL dispose
 every leaf in `value`, and SHALL do nothing for null or default. A decoded
-`ArrayBuffer?` that is `null` holds no leaf.
+`ArrayBuffer?` that is `null` holds no leaf. A nullable callback parameter that
+decodes to `null` holds nothing. A non-null one is context-retained by
+`DotnetRuntimeContext`, never a leaf holder.
 
 Authored code SHALL follow four rules:
 

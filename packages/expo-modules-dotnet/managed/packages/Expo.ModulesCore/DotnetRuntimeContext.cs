@@ -259,6 +259,22 @@ public sealed class DotnetRuntimeContext : IDisposable
     return callback;
   }
 
+  /// <summary>
+  /// The number of entries in this context's retained list, for tests. The list holds callbacks and
+  /// shared-object class installations. Explicit callback disposal does not lower it, and context
+  /// teardown clears it.
+  /// </summary>
+  internal int RetainedCallbackCount
+  {
+    get
+    {
+      lock (gate)
+      {
+        return retainedCallbacks.Count;
+      }
+    }
+  }
+
   public void Dispose()
   {
     List<GeneratedHostFunctionRegistration> registrations;
