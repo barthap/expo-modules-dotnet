@@ -24,4 +24,13 @@ public readonly struct NullableReadOnlyListCodec<T, TCodec> : IJavaScriptCodec<I
       value is null
           ? runtime.CreateNull()
           : JavaScriptArrayCodec<T, TCodec>.Encode(value, runtime);
+
+  /// <summary>Releases every element of a non-null list.</summary>
+  public static void Release(IReadOnlyList<T>? value)
+  {
+    if (value is not null)
+    {
+      JavaScriptArrayCodec<T, TCodec>.Release(value);
+    }
+  }
 }

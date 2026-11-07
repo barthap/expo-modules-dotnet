@@ -36,10 +36,10 @@ rejected nullable callback types because callback conversion retains a JS
 function in `DotnetRuntimeContext`.
 
 The correct nullable rule is small once conversion policy is typed: test
-nullish first, return C# null without calling `AsFunction` or registering
+nullish first, return C# null without calling `AsFunction` or retaining
 anything, and delegate every non-null value to the existing callback codec.
-Callbacks remain decode-only and context-retained. They do not belong to the
-plan-030 invocation resource scope.
+Callbacks remain decode-only and context-retained. Plan-030 codec `Release`
+never frees them.
 
 ## Current state
 
@@ -73,8 +73,8 @@ descriptor with:
 - no encode capability;
 - callback/context retention distinct from invocation-owned wrapper cleanup.
 
-Plan 030 must not register callbacks in `JavaScriptConversionScope`. Keep that
-separation here.
+Plan 030 gives callbacks no `Release`: generated glue never releases a
+callback. Keep that separation here.
 
 ### Plan 026 rejects nullable callbacks on every shape
 
@@ -125,14 +125,14 @@ Semantics:
 | Runtime tests | `scripts/test-managed.sh --project packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests/Expo.ModulesCore.Tests.csproj` | all ModulesCore tests pass |
 | Full regression | `scripts/test-managed.sh` | all managed tests pass, none skipped |
 | Format | `scripts/format.sh --check --all` | exit 0 |
-| Callback scope scan | `rg -n 'JavaScriptConversionScope.*Callback|\\.Register\\([^\\n]*JavaScriptCallback|Own[^\\n]*JavaScriptCallback' packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator` | no callback registered with the invocation conversion scope |
+| Callback release scan | `rg -n 'CodecRelease\\.Release<[^\\n]*JavaScriptCallback|Own[^\\n]*JavaScriptCallback' packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator` | generated glue releases no callback |
 
 ## Suggested executor toolkit
 
 - Read `.agents/skills/living-spec-workflow/SKILL.md`.
 - Use `.agents/skills/expo-jsi-managed-handle-lifetime/SKILL.md` to verify the
-  context-retained callback owner. Do not generalize callback ownership into the
-  invocation scope.
+  context-retained callback owner. Do not generalize callback ownership into
+  codec `Release`.
 
 ## Scope
 
@@ -162,7 +162,7 @@ Semantics:
   condition for this plan
 - Callback encoding or any callback return/property/event support
 - Nested callback records or collections
-- Registering callbacks in `JavaScriptConversionScope`
+- Releasing callbacks through codec `Release`
 - ArrayBuffer, JavaScriptValue, or shared-object nullable behavior
 - Native code, ABI, scheduler, or platform adapters
 
@@ -182,7 +182,7 @@ Semantics:
 Create the delta spec with the exact supported and unsupported positions above.
 Replace the callback part of plan 026's blanket exclusion with a parameter-only
 requirement. State that callback ownership is `DotnetRuntimeContext`, not
-`JavaScriptConversionScope`.
+codec `Release`.
 
 Get approval and commit the delta, then approve and commit the change-local
 plan.
@@ -205,7 +205,7 @@ For each, assert generated code:
 - checks nullish before callback decode;
 - passes the exact runtime context only for non-null decode;
 - invokes authored code with a nullable C# local;
-- emits no conversion-scope registration or callback disposal.
+- emits no `Release` call or disposal for the callback.
 
 Keep rejection tests for return, property, record, collection, module event, and
 shared-object event positions. Assert their existing context-specific diagnostic
@@ -234,7 +234,7 @@ Do not place a generic nullable-reference `IJavaScriptCodec<T>` wrapper around
 the callback helper; the callback helper does not implement that interface and
 requires context.
 
-**Verify**: generator tests pass and the callback scope scan has no match.
+**Verify**: generator tests pass and the callback release scan has no match.
 
 ### Step 4: Prove no registration on null
 
@@ -258,7 +258,7 @@ solely for a counter.
 
 ### Step 5: Regress and merge
 
-Run full managed tests, format, `git diff --check`, and the scope scan. Merge the
+Run full managed tests, format, `git diff --check`, and the release scan. Merge the
 delta into the living specs and authoring guide, archive it, and mark plan 032
 DONE with commits/test count.
 
@@ -288,8 +288,7 @@ Expected: clean tree; the privacy scan prints nothing and exits 1.
 - [ ] Optional omission, null, and undefined reach authored code as null.
 - [ ] Nullish decode performs no `AsFunction` or context registration.
 - [ ] Non-null callbacks keep context-retained behavior.
-- [ ] Generated glue never registers/disposes callbacks through the conversion
-  scope.
+- [ ] Generated glue never releases callbacks through codec `Release`.
 - [ ] Returns, properties, records, collections, and events remain unsupported.
 - [ ] Generator, runtime, full managed tests, and format pass without skips.
 - [ ] Specs/guide are merged, package archived, and plan 032 marked DONE.
@@ -310,6 +309,6 @@ Stop and report if:
 ## Maintenance notes
 
 Callbacks have one owner: `DotnetRuntimeContext`, until explicit disposal or
-context teardown. The conversion scope owns invocation-scoped wrapper values,
-not retained callbacks. Keep that division even if both types implement
+context teardown. Codec `Release` frees invocation-scoped wrapper values, not
+retained callbacks. Keep that division even if both types implement
 `IDisposable`.

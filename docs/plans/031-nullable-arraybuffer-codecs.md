@@ -12,8 +12,9 @@
 > ```sh
 > git diff --stat 512ab46e..HEAD -- packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/Codecs packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/ModuleEventEmitter.cs packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/SharedObjectEventEmitter.cs packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests docs/specs/ownership-and-scoped-refs.md docs/specs/modules-core-boundary.md docs/module-authoring-guide.md docs/roadmap.md
 > ```
-> Plans 028–030 must be DONE. Rebase the drift check to plan 030's final commit.
-> If the scoped ArrayBuffer adapter, nullability dispatch, event payload
+> Plans 028–030 must be DONE. Rebase the drift check to the merged 030 change
+> (`docs/archive/changes/2026-11-06-codec-leaf-release/`).
+> If `ArrayBufferCodec`, nullability dispatch, event payload
 > classification, or plan-026 exclusion diagnostics differ from "Current
 > state," stop and reconcile before coding.
 
@@ -33,12 +34,13 @@
 Plan 026 deliberately rejected `ArrayBuffer?` because cleanup did not compose.
 Plan 030 supplies the missing mechanism. This plan applies that mechanism:
 JavaScript `null`/`undefined` maps to C# `null`, a non-null buffer follows the
-same scoped rules as `ArrayBuffer`, and null registers no cleanup.
+same `Release` rules as `ArrayBuffer`, and null releases nothing.
 
 Support is not limited to direct parameters. Nullable buffers must work inside
 records and current collection shapes. Direct nullable typed events reuse the
-existing direct ArrayBuffer scheduling-lease path; nested resource-bearing event
-payloads remain unsupported. `JavaScriptValue?` remains unsupported because
+existing direct ArrayBuffer scheduling-lease path. Plan 030 made nested
+non-null leaves valid in event payloads; a nested `ArrayBuffer?` payload stays
+unsupported. `JavaScriptValue?` remains unsupported because
 `JavaScriptValue` already represents and inspects JavaScript null/undefined
 explicitly.
 
@@ -76,7 +78,7 @@ temporary contract.
 `JavaScriptValue` and `ArrayBuffer`. Plan 026 had to reject
 `Func<ArrayBuffer?, Task>` inside `GetUnsupportedEventPayload`, because that
 shape bypasses `GetCodecExpression`. Plan 031 must update that direct event
-classification without removing the nested-resource event diagnostic.
+classification without removing the nested `ArrayBuffer?` event diagnostic.
 
 The generated delegate also needs a callable runtime path:
 
@@ -84,8 +86,9 @@ The generated delegate also needs a callable runtime path:
   rejects null and synchronously retains an invocation lease.
 - `SharedObjectEventEmitter.cs:26-39` has the equivalent shared-object event
   overload.
-- Their generic overloads require `IJavaScriptCodec<T>` and cannot accept the
-  scoped ArrayBuffer helper.
+- Their generic overloads take any `IJavaScriptCodec<T>`, including
+  `ArrayBufferCodec`, but encode later on the runtime and retain no lease
+  first.
 
 Change the direct overload parameters to `ArrayBuffer?`. Null must schedule a JS
 null payload without retaining a lease. Non-null must run the existing retain
@@ -96,12 +99,12 @@ do not add a second overload with the same signature.
 
 The implementation must use plan 030's:
 
-- `JavaScriptConversionScope`;
-- scope-aware ArrayBuffer codec;
-- recursive scope-aware record/list/dictionary codecs;
+- `Release` on `IJavaScriptCodec<T>`;
+- `ArrayBufferCodec` as an `IJavaScriptCodec<ArrayBuffer>`;
+- record, list, dictionary, and nullable codecs that release each child;
 - the existing direct event scheduling lease, and return/property-get
-  `Transfer` followed by `EncodeBorrowed`;
-- reference-identity deduplication and partial-failure cleanup.
+  `Encode` followed by `Release` in `finally`;
+- idempotent leaf `Dispose` and partial-decode cleanup.
 
 Do not add a nullable-specific disposal path.
 
@@ -122,10 +125,10 @@ Semantics:
 
 - JS `null` or `undefined` decodes to C# `null`.
 - C# `null` encodes as JS `null`.
-- Null registers nothing in `JavaScriptConversionScope`.
-- Non-null decode is invocation-owned and follows the same scope as
+- `Release` of null releases nothing.
+- Non-null decode is invocation-owned and follows the same release path as
   `ArrayBuffer`.
-- Non-null return/property-get encode transfers the source wrapper.
+- Non-null return/property-get glue encodes, then releases the source wrapper.
 - Non-null direct event dispatch synchronously retains the same scheduling lease
   as non-null `ArrayBuffer`, so the caller may dispose the original after the
   event invocation returns.
@@ -164,7 +167,7 @@ where the complete containing shape is now supported.
 - `docs/specs/modules-core-boundary.md`
 - `docs/module-authoring-guide.md`
 - `docs/roadmap.md`
-- The scope-aware nullable/ArrayBuffer codec files under
+- The nullable and ArrayBuffer codec files under
   `Expo.ModulesCore/Codecs/`
 - `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/ModuleEventEmitter.cs`
 - `packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore/SharedObjectEventEmitter.cs`
@@ -182,11 +185,13 @@ where the complete containing shape is now supported.
 - `JavaScriptValue?`
 - Nullable callbacks or shared objects
 - New collection types
-- Callback argument/result positions that reject non-null ArrayBuffer
+- `ArrayBuffer?` in callback argument and result types (plan 030 made non-null
+  `ArrayBuffer` valid there; the delta spec decides the nullable form)
 - Copying buffer bytes to avoid ownership rules
 - Changes to `ArrayBuffer.Dispose`, `ArrayBuffer.Retain`, native backing-store
   ownership, ABI, scheduler, or platform code
-- Any per-surface nullable disposal mechanism outside the plan-030 scope
+- Any per-surface nullable disposal mechanism outside the plan-030 `Release`
+  protocol
 
 ## Git workflow
 
@@ -205,8 +210,8 @@ where the complete containing shape is now supported.
 Specify the exact support contract above. Amend the plan-026 exclusion
 requirement so it lists `JavaScriptValue`, callbacks, and shared-object families,
 not `ArrayBuffer`. Add direct, record/collection, optional-default, property,
-direct-event, and shared-object scenarios. Preserve nested-resource event
-rejection.
+direct-event, and shared-object scenarios. Preserve the nested `ArrayBuffer?`
+event rejection.
 
 Get approval and commit the delta, then approve and commit its implementation
 plan.
@@ -228,33 +233,32 @@ Update/add generator tests for:
 - record field and record inside list/dictionary;
 - list/dictionary of nullable buffers;
 - module and shared-object direct typed events;
-- nested event record/collection rejection;
+- nested `ArrayBuffer?` event record/collection rejection;
 - supported shared-object constructor and member;
 - unsupported containing shapes, which must retain their existing diagnostic.
 
-Assert generated null short-circuit, scoped non-null delegation,
-returns/getters calling `Transfer` first, and direct events retaining a non-null
+Assert generated null short-circuit, non-null delegation,
+returns/getters calling `Release` after `Encode`, and direct events retaining a non-null
 scheduling lease before returning. Do not assert only compilation.
 
 **Verify**: new acceptance tests fail before production changes for the expected
 plan-026 diagnostics.
 
-### Step 3: Add nullable scoped ArrayBuffer conversion
+### Step 3: Add nullable ArrayBuffer conversion
 
-Prefer the generic nullable-reference scoped adapter introduced by plan 030 if
-its constraints fit ArrayBuffer. Otherwise add one
-`NullableArrayBufferScopedCodec`; do not add separate parameter, property,
-event, or return helpers.
+Prefer the generic `NullableReferenceCodec<T, TCodec>` if its constraints fit
+ArrayBuffer. Otherwise add one `NullableArrayBufferCodec`; do not add separate
+parameter, property, event, or return helpers.
 
 Its operations must short-circuit before touching the non-null codec:
 
 ```text
-Decode(nullish)      -> null, no registration
-Decode(non-nullish)  -> scoped ArrayBuffer decode
-Transfer(null)       -> no registration
-Transfer(non-null)   -> delegate to scoped ArrayBuffer transfer
-EncodeBorrowed(null) -> runtime.CreateNull()
-EncodeBorrowed(value)-> delegate to scoped ArrayBuffer borrowed encode
+Decode(nullish)      -> null
+Decode(non-nullish)  -> ArrayBufferCodec.Decode
+Encode(null)         -> runtime.CreateNull()
+Encode(value)        -> ArrayBufferCodec.Encode
+Release(null)        -> nothing
+Release(value)       -> ArrayBufferCodec.Release
 ```
 
 Update `ExpoCodecDescriptor` resolution so the nullable descriptor preserves
@@ -279,8 +283,8 @@ Teach direct typed event analysis to recognize annotated ArrayBuffer as the same
 payload family plus nullability. Remove the plan-026 event exclusion only for
 ArrayBuffer. Emit JS null for null. For non-null, reuse the current direct
 ArrayBuffer path that synchronously retains an independent lease before the
-dispatch Task is returned. Do not route this path through transfer cleanup.
-Keep nested resource-bearing event payloads rejected.
+dispatch Task is returned. Do not route this path through `Release`.
+Keep nested `ArrayBuffer?` event payloads rejected.
 
 The event property itself remains async `Func<T, Task>` and keeps all existing
 scheduling/error behavior.
@@ -304,8 +308,8 @@ Add Hermes-backed fixtures and counter assertions:
   create no retained lease;
 - direct event non-null source may be disposed after invocation returns while
   dispatch still succeeds through its retained lease;
-- nested list/dictionary/record null leaves create no registration;
-- duplicate non-null leaf references dispose once in transfer mode;
+- nested list/dictionary/record null leaves release nothing;
+- duplicate non-null returned leaf references release the native handle once;
 - failure after a non-null earlier field cleans it once.
 
 **Verify**: ModulesCore tests pass; new assertions use deterministic counters.
@@ -328,9 +332,9 @@ Expected: clean tree; the privacy scan prints nothing and exits 1.
 ## Test plan
 
 - Generator tests cover every supported boundary family, both null branches,
-  and nested-event rejection.
+  and nested `ArrayBuffer?` event rejection.
 - Runtime tests distinguish null, undefined, non-null, omitted optional default,
-  borrow, transfer, alias, failure, and async lifetime.
+  borrow, return, alias, failure, and async lifetime.
 - Use ArrayBuffer/native lease counters, not only decoded byte equality.
 - Existing non-null ArrayBuffer tests and every plan-026 regular nullable test
   remain enabled.
@@ -342,13 +346,14 @@ Expected: clean tree; the privacy scan prints nothing and exits 1.
 - [ ] `ArrayBuffer?` is supported on every listed direct boundary.
 - [ ] Nullable buffers compose through current records/lists/dictionaries.
 - [ ] Direct typed events reuse the existing scheduling lease; nested
-  resource-bearing typed events remain unsupported.
+  `ArrayBuffer?` typed events remain unsupported.
 - [ ] Module and shared-object null events dispatch one explicit JS null payload
   with zero retained lease.
-- [ ] Null and undefined decode to null and register no resource.
+- [ ] Null and undefined decode to null and release nothing.
 - [ ] Null encodes as JS null.
 - [ ] Optional authored defaults keep plan-026 semantics.
-- [ ] Non-null values reuse the plan-030 scope with no new disposal path.
+- [ ] Non-null values reuse the plan-030 `Release` protocol with no new
+  disposal path.
 - [ ] `JavaScriptValue?` remains rejected on every boundary.
 - [ ] Unsupported containing shapes remain unsupported.
 - [ ] Generator, runtime, full managed tests, and format pass without skips.
@@ -358,7 +363,7 @@ Expected: clean tree; the privacy scan prints nothing and exits 1.
 
 Stop and report if:
 
-- Null creates a scope registration or native backing-store lease.
+- Null releases a leaf or creates a native backing-store lease.
 - Supporting nested ArrayBuffer requires copying bytes.
 - Direct events must consume or dispose authored payload wrappers.
 - A separate cleanup mechanism is needed outside plan 030.
@@ -369,7 +374,7 @@ Stop and report if:
 
 ## Maintenance notes
 
-ArrayBuffer nullability is now ordinary policy layered over the scoped
-resource codec. Future resource codecs should follow this pattern: null
-short-circuits, non-null delegates, and the conversion scope remains the only
-owner.
+ArrayBuffer nullability is now ordinary policy layered over
+`ArrayBufferCodec.Release`. Future resource codecs should follow this pattern:
+null short-circuits, non-null delegates, and `Release` remains the only cleanup
+path.

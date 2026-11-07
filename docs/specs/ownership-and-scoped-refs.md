@@ -151,3 +151,54 @@ whose caller must dispose or transfer it independently.
 - **WHEN** JSI is no longer safe
 - **THEN** native SHALL abandon the payload without JSI access
 - **AND** both terminal paths SHALL erase the long-lived collection entry
+
+### Requirement: Boundary Leaf Ownership Is Explicit
+
+A leaf is a `JavaScriptValue` or an `ArrayBuffer` wrapper. Every
+`IJavaScriptCodec<T>` SHALL follow this contract: `Decode` SHALL give the
+caller every leaf in the result. `Encode` SHALL return a new owned JavaScript
+value and SHALL NOT dispose `value` or any leaf in it. `Release` SHALL dispose
+every leaf in `value`, and SHALL do nothing for null or default.
+
+Authored code SHALL follow four rules:
+
+1. A leaf received as a parameter is valid until the call ends, or until the
+   returned `Task` completes for an async method. Authored code SHALL call
+   `Retain()` to keep it.
+2. A returned leaf belongs to generated glue.
+3. A leaf passed to a callback or an event stays with the author, who SHALL
+   keep it alive until the call or the returned `Task` completes.
+4. A leaf returned by a callback belongs to the author, who SHALL dispose it.
+
+#### Scenario: Stored state is returned
+- **GIVEN** a getter exposes a stored record with a `JavaScriptValue` field
+- **WHEN** JavaScript reads it
+- **THEN** the getter SHALL return a new record built from `Retain()` copies
+- **AND** the stored record SHALL stay usable
+
+#### Scenario: Method returns its own input leaf
+- **GIVEN** a sync or async method returns one of its `JavaScriptValue`
+  inputs, or a record that contains one
+- **WHEN** JavaScript calls it
+- **THEN** the call or the Promise SHALL produce that value
+- **AND** the leaf SHALL release exactly once
+
+#### Scenario: Async inputs live until settlement
+- **GIVEN** an async method has a leaf-bearing parameter and a leaf-bearing
+  result
+- **WHEN** the Task completes
+- **THEN** the input leaf SHALL stay alive until the factory has encoded the
+  result or the result is abandoned
+- **AND** it SHALL release exactly once
+
+#### Scenario: Callback argument stays with the author
+- **GIVEN** authored code invokes a callback with a `JavaScriptValue` or a
+  record holding an `ArrayBuffer`
+- **WHEN** the invocation returns
+- **THEN** the author's leaves SHALL stay usable
+- **AND** each encoded copy SHALL release exactly once
+
+#### Scenario: Callback result belongs to the author
+- **GIVEN** a callback result type holds an `ArrayBuffer`
+- **WHEN** the author disposes the decoded leaves
+- **THEN** each SHALL release exactly once

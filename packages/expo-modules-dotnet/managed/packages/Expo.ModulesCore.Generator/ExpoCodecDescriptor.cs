@@ -29,20 +29,15 @@ internal enum ExpoContextRequirement
   DotnetRuntimeContext,
 }
 
-/// <summary>Who releases a decoded value. Generated glue disposes only invocation-owned values.</summary>
-internal enum ExpoDecodedOwnership
+/// <summary>
+/// Who releases the wrapper leaves of a value. A value that holds leaves has at least one, and
+/// generated glue releases it through its codec's <c>Release</c>.
+/// </summary>
+internal enum ExpoResourceOwnership
 {
   Borrowed,
-  InvocationOwned,
+  HoldsLeaves,
   ContextRetained,
-}
-
-/// <summary>How a returned value is encoded.</summary>
-internal enum ExpoEncodeOperation
-{
-  Standard,
-  TransferJavaScriptValue,
-  EncodeThenDisposeArrayBuffer,
 }
 
 /// <summary>
@@ -55,5 +50,11 @@ internal sealed record ExpoCodecDescriptor(
     ExpoCodecCapabilities Capabilities,
     ExpoDecodeOperation DecodeOperation,
     ExpoContextRequirement ContextRequirement,
-    ExpoDecodedOwnership DecodedOwnership,
-    ExpoEncodeOperation EncodeOperation);
+    ExpoResourceOwnership ResourceOwnership)
+{
+  /// <summary>
+  /// The codec's value type with its nullable annotation, which generated glue uses to declare
+  /// leaf-bearing locals and as the type argument of <c>CodecRelease.Release</c>.
+  /// </summary>
+  public string ValueTypeName { get; init; } = string.Empty;
+}

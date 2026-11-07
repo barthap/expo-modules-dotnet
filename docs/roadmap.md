@@ -52,7 +52,7 @@ history keeps it.
 | 025 | `expo-crypto-dotnet`                                | P1    | M      | 024, 036     | TODO    | [025](plans/025-expo-crypto-dotnet.md)                                      |
 | 028 | Annotation-insensitive shared-object boundaries     | P2    | S      | —            | DONE    | —                                                                           |
 | 029 | Typed codec conversion descriptors                  | P1    | M      | 028          | DONE    | —                                                                           |
-| 030 | Compositional codec resource scope                  | P1    | L      | 029          | TODO    | [030](plans/030-compositional-codec-resource-scope.md)                      |
+| 030 | Composable codec leaf release                       | P1    | L      | 029          | DONE    | —                                                                           |
 | 031 | Nullable ArrayBuffer codecs                         | P1    | M      | 030          | TODO    | [031](plans/031-nullable-arraybuffer-codecs.md)                             |
 | 032 | Nullable JavaScript callback parameters             | P2    | M      | 031          | TODO    | [032](plans/032-nullable-javascript-callback-parameters.md)                 |
 | 033 | Nullable concrete SharedObject classes              | P2    | M      | 032          | TODO    | [033](plans/033-nullable-concrete-shared-object-codecs.md)                  |
@@ -102,7 +102,7 @@ The next free ID is 041.
   024 passed on Windows x64 at `13cf0a7` on 2026-10-22 with a local
   `scripts/test-managed.ps1` run (904 passed, 0 failed, 0 skipped).
 - **028–030 before 034–036**: new codecs build on typed conversion
-  descriptors (029) and the conversion scope (030), so they add no
+  descriptors (029) and codec leaf release (030), so they add no
   codec-string policy checks.
 - **034**: an authored abstract shared-object base with a closed set of
   owned sealed subclasses (`FileSystemPath`) as an argument type. This changes
@@ -121,10 +121,14 @@ The next free ID is 041.
   passed, 0 failed, 0 skipped). It also made non-null lists and dictionaries
   compose in nested, record-field, callback, and event positions, so 030
   builds on them, and it rejects uncompilable codec compositions with build
-  diagnostics. 030 adds one explicit conversion scope with
-  identity-deduplicated reverse cleanup. 031–033 then apply their own null
-  policies. `JavaScriptValue?` and direct `SharedObject?` / `SharedRef<T>?`
-  bases stay unsupported by design.
+  diagnostics. 030 is done:
+  it landed on 2026-11-06 with a local `scripts/test-managed.sh` run (1070
+  passed, 0 failed, 0 skipped). It replaced the first scoped-codec design with
+  `Release` on the one codec protocol, so `JavaScriptValue` and `ArrayBuffer`
+  leaves now compose in every position except a nullable inner type. 031–033
+  then apply their own null policies; each brief needs a rebase on this
+  design first. `JavaScriptValue?` and direct `SharedObject?` /
+  `SharedRef<T>?` bases stay unsupported by design.
 - **018**: direct MSBuild, RNW CLI build/deploy/launch, and live-app rebuild
   did not reproduce a PDB lock on the RNW 0.81 / VS 2026 lane (2026-07-23).
   Closed with 039, which runs the `ReactNativeDir` resolver from the
@@ -192,6 +196,11 @@ and a status row.
 
 ### ABI and codecs
 
+- **P2 — Callback lifetime**: the runtime context keeps one retained entry
+  per decoded callback until teardown.
+- **P2 — Async start order**: the authored async method starts before
+  `CreatePromise` returns, so a failure in between releases arguments that the
+  running Task still uses (from 030).
 - **P2/P3 — Generalized `instanceof`**: beyond Promise and Error, for typed
   record deserialization and custom class detection.
 - **P2/P3 — Record shape extensions**: explicit per-field naming,

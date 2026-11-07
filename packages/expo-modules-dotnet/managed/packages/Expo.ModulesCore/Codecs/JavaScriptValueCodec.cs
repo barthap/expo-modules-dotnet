@@ -21,6 +21,9 @@ public readonly struct JavaScriptValueCodec : IJavaScriptCodec<JavaScriptValue>
   {
     ArgumentNullException.ThrowIfNull(value);
     ArgumentNullException.ThrowIfNull(runtime);
-    return value;
+    return value.Retain();
   }
+
+  /// <summary>Disposes <paramref name="value"/>. A null value does nothing.</summary>
+  public static void Release(JavaScriptValue value) => value?.Dispose();
 }

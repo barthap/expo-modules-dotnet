@@ -140,7 +140,7 @@ Semantics:
 - Exact runtime type, owning context, strict JS identity, released-object
   rejection, and teardown behavior remain unchanged.
 - Optional omission/undefined uses the authored default under plan-026 rules.
-- Shared objects do not register with `JavaScriptConversionScope`.
+- Generated glue never releases a shared object through codec `Release`.
 
 ## Commands you will need
 
@@ -150,7 +150,7 @@ Semantics:
 | Runtime tests | `scripts/test-managed.sh --project packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Tests/Expo.ModulesCore.Tests.csproj` | all ModulesCore tests pass |
 | Full regression | `scripts/test-managed.sh` | all managed tests pass, none skipped |
 | Format | `scripts/format.sh --check --all` | exit 0 |
-| Scope scan | `rg -n 'JavaScriptConversionScope.*SharedObject|Own[^\\n]*Shared(Object|Ref)' packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator` | no shared object registered with the conversion scope |
+| Release scan | `rg -n 'CodecRelease\\.Release<[^\\n]*SharedObject|Own[^\\n]*Shared(Object|Ref)' packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator` | generated glue releases no shared object |
 | Polymorphic codec scan | `rg -n 'NullableSharedObjectCodec<(global::Expo\\.ModulesCore\\.)?(SharedObject|SharedRef)' packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator.Tests` | no generated nullable codec for polymorphic bases |
 
 ## Suggested executor toolkit
@@ -192,7 +192,7 @@ Semantics:
 - Nested/composed shared-object codecs
 - Shared-object typed event payload values
 - Callback argument/result support
-- `JavaScriptConversionScope` ownership of shared objects
+- Codec `Release` of shared objects
 - Native ABI, runtime scheduler, platform adapters, or TypeScript facade changes
 
 ## Git workflow
@@ -232,7 +232,7 @@ Add acceptance cases for both a direct `SharedObject` subclass and a concrete
 - null-aware codec is selected;
 - runtime context is passed on decode and encode;
 - async result captures the exact context before the host frame exits;
-- no conversion scope registration is emitted.
+- no `Release` call is emitted for the shared object.
 
 Keep rejection tests for polymorphic bases, invalid concrete classes, nested
 records/collections/callbacks, and events. Verify `EXPOJSI023` from plan 028.
@@ -262,7 +262,7 @@ Update descriptor resolution and shared-object validation:
   decode/encode capabilities;
 - bases and nested shapes remain handled diagnostics, never codec fallback.
 
-**Verify**: generator tests pass; scope and polymorphic-codec scans have no
+**Verify**: generator tests pass; release and polymorphic-codec scans have no
 matches.
 
 ### Step 4: Prove null bypass and non-null identity
@@ -327,7 +327,7 @@ Expected: clean tree; the privacy scan prints nothing and exits 1.
 - [ ] Null performs no shared-object registry or class-registration work.
 - [ ] Non-null exact identity, context, release, and teardown behavior is
   unchanged.
-- [ ] No shared object enters `JavaScriptConversionScope`.
+- [ ] Generated glue releases no shared object through codec `Release`.
 - [ ] Generator, runtime, full managed tests, and format pass without skips.
 - [ ] Specs/guide are merged, package archived, and plan 033 marked DONE.
 
@@ -340,7 +340,7 @@ Stop and report if:
   a disposed runtime context.
 - Non-null repeated encode loses strict JS identity.
 - A nested shared-object shape becomes valid through generic nullable handling.
-- Shared objects must enter `JavaScriptConversionScope`.
+- Shared objects must be released through codec `Release`.
 - Registry, SharedObject, SharedRef, release, or teardown internals need changes.
 - A verification fails twice or an out-of-scope file is needed.
 

@@ -293,24 +293,26 @@ public sealed partial class ExpoModulesGenerator
     builder.AppendLine("      object context)");
     builder.AppendLine("  {");
     builder.AppendLine($"    GeneratedSharedObjectClass.RequireArgumentCount(\"{EscapeString(sharedObject.JavaScriptClassName)}\", arguments, {requiredCount}, {parameters.Count});");
-    for (var index = 0; index < parameters.Count; index++)
-    {
-      var parameter = parameters[index];
-      var decodeExpression = GetDecodeExpression(parameter.Codec!, index, "runtime");
-      if (parameter.HasDefaultValue)
-      {
-        decodeExpression =
-            $"arguments.Length <= {index} || arguments.GetValue({index}).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? {parameter.DefaultValueExpression} : {decodeExpression}";
-      }
-      var declaration = IsInvocationOwned(parameter) ? "using var" : "var";
-      builder.AppendLine($"    {declaration} {GetParameterLocalName(index)} = {decodeExpression};");
-    }
-
     var argumentList = string.Join(
         ", ",
         parameters.Select((_, index) => GetParameterLocalName(index))
     );
-    builder.AppendLine($"    return new {sharedObject.FullyQualifiedTypeName}({argumentList});");
+    EmitLeafReleasingCall(builder, GetLeafArguments(parameters), null, indent =>
+    {
+      for (var index = 0; index < parameters.Count; index++)
+      {
+        var parameter = parameters[index];
+        var decodeExpression = GetDecodeExpression(parameter.Codec!, index, "runtime");
+        if (parameter.HasDefaultValue)
+        {
+          decodeExpression =
+              $"arguments.Length <= {index} || arguments.GetValue({index}).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? {parameter.DefaultValueExpression} : {decodeExpression}";
+        }
+        builder.AppendLine($"{indent}{GetLocalDeclaration(parameter.Codec, GetParameterLocalName(index), decodeExpression)}");
+      }
+
+      builder.AppendLine($"{indent}return new {sharedObject.FullyQualifiedTypeName}({argumentList});");
+    });
     builder.AppendLine("  }");
   }
 
@@ -813,157 +815,321 @@ public sealed partial class ExpoModulesGenerator
     builder.AppendLine("      global::Expo.JSI.JavaScriptArguments arguments,");
     builder.AppendLine("      object context)");
     builder.AppendLine("  {");
+    var argumentList = string.Join(
+        ", ",
+        function.Parameters.Values.Select((_, index) => GetParameterLocalName(index))
+    );
+    var leafArguments = GetLeafArguments(function.Parameters.Values);
     if (function.IsAsync)
     {
-      for (var index = 0; index < function.Parameters.Values.Count; index++)
-      {
-        if (IsInvocationOwned(function.Parameters.Values[index]))
-        {
-          builder.AppendLine($"    {function.Parameters.Values[index].TypeName}? {GetParameterLocalName(index)} = null;");
-        }
-      }
-    }
-
-    if (function.IsAsync)
-    {
-      builder.AppendLine("    try");
-      builder.AppendLine("    {");
-      builder.AppendLine($"      GeneratedFunction.RequireArgumentCount(\"{EscapeString(label)}.{EscapeString(function.JavaScriptName)}\", arguments, {GetRequiredParameterCount(function)}, {function.Parameters.Values.Count});");
-      builder.AppendLine($"      {targetDeclaration}");
-      if (function.AsyncResultCodec?.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext)
-      {
-        // Capture the exact runtime context while the host-function frame is active; Promise
-        // settlement runs after the frame exits and must never read the thread-static accessor.
-        builder.AppendLine("      var __expoRuntimeContext = GeneratedFunction.CurrentRuntimeContext;");
-      }
+      EmitAsyncHostFunctionBody(builder, function, runtimeParameterName, label, targetDeclaration, argumentList, leafArguments);
     }
     else
     {
       builder.AppendLine($"    GeneratedFunction.RequireArgumentCount(\"{EscapeString(label)}.{EscapeString(function.JavaScriptName)}\", arguments, {GetRequiredParameterCount(function)}, {function.Parameters.Values.Count});");
       builder.AppendLine();
       builder.AppendLine($"    {targetDeclaration}");
+      EmitLeafReleasingCall(builder, leafArguments, GetLeafResult(function.ReturnCodec), indent =>
+      {
+        for (var index = 0; index < function.Parameters.Values.Count; index++)
+        {
+          var parameter = function.Parameters.Values[index];
+          builder.AppendLine($"{indent}{GetLocalDeclaration(parameter.Codec, GetParameterLocalName(index), GetParameterExpression(parameter, index, runtimeParameterName))}");
+        }
+
+        EmitSyncInvocation(builder, indent, function, $"module.{function.MethodName}({argumentList})");
+      });
+    }
+    builder.AppendLine("  }");
+  }
+
+  private static void EmitAsyncHostFunctionBody(
+      StringBuilder builder,
+      ExpoFunctionModel function,
+      string runtimeParameterName,
+      string label,
+      string targetDeclaration,
+      string argumentList,
+      IReadOnlyList<LeafValue> leafArguments)
+  {
+    // Leaf-bearing arguments exist before the outer try, so a failure before CreatePromise returns
+    // can release them there. The Promise value is assigned inside the try and returned after it.
+    var hasLeafArguments = leafArguments.Count > 0;
+    if (hasLeafArguments)
+    {
+      EmitLeafDeclarations(builder, "    ", leafArguments);
+      builder.AppendLine("    global::Expo.JSI.JavaScriptPromiseValue __expoPromiseValue;");
+    }
+    builder.AppendLine("    try");
+    builder.AppendLine("    {");
+    builder.AppendLine($"      GeneratedFunction.RequireArgumentCount(\"{EscapeString(label)}.{EscapeString(function.JavaScriptName)}\", arguments, {GetRequiredParameterCount(function)}, {function.Parameters.Values.Count});");
+    builder.AppendLine($"      {targetDeclaration}");
+    if (function.AsyncResultCodec?.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext)
+    {
+      // Capture the exact runtime context while the host-function frame is active; Promise
+      // settlement runs after the frame exits and must never read the thread-static accessor.
+      builder.AppendLine("      var __expoRuntimeContext = GeneratedFunction.CurrentRuntimeContext;");
     }
 
     for (var index = 0; index < function.Parameters.Values.Count; index++)
     {
       var parameter = function.Parameters.Values[index];
-      var parameterLocalName = GetParameterLocalName(index);
-      if (function.IsAsync && IsInvocationOwned(parameter))
-      {
-        builder.AppendLine($"      {parameterLocalName} = {GetParameterExpression(parameter, index, runtimeParameterName)};");
-      }
-      else
-      {
-        var declaration = IsInvocationOwned(parameter) ? "using var" : "var";
-        builder.AppendLine(function.IsAsync
-            ? $"      {declaration} {parameterLocalName} = {GetParameterExpression(parameter, index, runtimeParameterName)};"
-            : $"    {declaration} {parameterLocalName} = {GetParameterExpression(parameter, index, runtimeParameterName)};");
-      }
+      builder.AppendLine($"      {GetLocalDeclaration(parameter.Codec, GetParameterLocalName(index), GetParameterExpression(parameter, index, runtimeParameterName))}");
     }
 
-    var argumentList = string.Join(
-        ", ",
-        function.Parameters.Values.Select((parameter, index) =>
-            function.IsAsync && IsInvocationOwned(parameter)
-                ? $"{GetParameterLocalName(index)}!"
-                : GetParameterLocalName(index))
-    );
-    var disposeAsyncDecodedValues = function.Parameters.Values.Any(IsInvocationOwned);
-    if (function.IsAsync)
+    builder.AppendLine($"      var __expoTask = module.{function.MethodName}({argumentList});");
+    builder.AppendLine(hasLeafArguments
+        ? $"      __expoPromiseValue = {runtimeParameterName}.CreatePromise("
+        : $"      using var __expoPromiseValue = {runtimeParameterName}.CreatePromise(");
+    builder.AppendLine("          async _ =>");
+    builder.AppendLine("          {");
+    if (GetLeafResult(function.AsyncResultCodec) is not null)
     {
-      builder.AppendLine($"      var __expoTask = module.{function.MethodName}({argumentList});");
-      builder.AppendLine($"      using var __expoPromiseValue = {runtimeParameterName}.CreatePromise(");
-      builder.AppendLine("          async _ =>");
-      builder.AppendLine("          {");
-      if (disposeAsyncDecodedValues)
-      {
-        builder.AppendLine("            try");
-        builder.AppendLine("            {");
-      }
-
-      var asyncIndent = disposeAsyncDecodedValues ? "              " : "            ";
-      if (function.AsyncReturnsVoid)
-      {
-        builder.AppendLine($"{asyncIndent}await __expoTask.ConfigureAwait(false);");
-        builder.AppendLine($"{asyncIndent}return global::Expo.JSI.JavaScriptPromiseResult.Resolve(static runtime => runtime.CreateUndefined());");
-      }
-      else if (function.AsyncResultCodec!.EncodeOperation == ExpoEncodeOperation.TransferJavaScriptValue)
-      {
-        builder.AppendLine($"{asyncIndent}var __expoResult = await __expoTask.ConfigureAwait(false);");
-        builder.AppendLine($"{asyncIndent}return global::Expo.JSI.JavaScriptPromiseResult.ResolveOwned(");
-        builder.AppendLine($"{asyncIndent}    __expoResult,");
-        builder.AppendLine($"{asyncIndent}    static (_, value) => value,");
-        builder.AppendLine($"{asyncIndent}    static value => value.Dispose()");
-        builder.AppendLine($"{asyncIndent});");
-      }
-      else if (function.AsyncResultCodec!.EncodeOperation == ExpoEncodeOperation.EncodeThenDisposeArrayBuffer)
-      {
-        builder.AppendLine($"{asyncIndent}var __expoResult = await __expoTask.ConfigureAwait(false);");
-        builder.AppendLine($"{asyncIndent}return global::Expo.JSI.JavaScriptPromiseResult.ResolveOwned(");
-        builder.AppendLine($"{asyncIndent}    __expoResult,");
-        builder.AppendLine($"{asyncIndent}    static (runtime, value) =>");
-        builder.AppendLine($"{asyncIndent}    {{");
-        builder.AppendLine($"{asyncIndent}      try {{ return {function.AsyncResultCodec.Expression}.Encode(value, runtime); }}");
-        builder.AppendLine($"{asyncIndent}      finally {{ value.Dispose(); }}");
-        builder.AppendLine($"{asyncIndent}    }},");
-        builder.AppendLine($"{asyncIndent}    static value => value.Dispose()");
-        builder.AppendLine($"{asyncIndent});");
-      }
-      else
-      {
-        var asyncEncodeContextArgument = function.AsyncResultCodec.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext
-            ? ", __expoRuntimeContext"
-            : string.Empty;
-        builder.AppendLine($"{asyncIndent}var __expoResult = await __expoTask.ConfigureAwait(false);");
-        builder.AppendLine($"{asyncIndent}return global::Expo.JSI.JavaScriptPromiseResult.Resolve(runtime => {function.AsyncResultCodec.Expression}.Encode(__expoResult, runtime{asyncEncodeContextArgument}));");
-      }
-
-      if (disposeAsyncDecodedValues)
-      {
-        builder.AppendLine("            }");
-        builder.AppendLine("            finally");
-        builder.AppendLine("            {");
-        EmitDisposeDecodedValues(builder, function, "              ");
-        builder.AppendLine("            }");
-      }
-      builder.AppendLine("          }");
-      builder.AppendLine("      );");
-      builder.AppendLine("      return __expoPromiseValue.AsValue();");
-      builder.AppendLine("    }");
-      builder.AppendLine("    catch (global::System.Exception exception)");
-      builder.AppendLine("    {");
-      if (disposeAsyncDecodedValues)
-      {
-        EmitDisposeDecodedValues(builder, function, "      ");
-      }
-      builder.AppendLine($"      return GeneratedFunction.CreateRejectedPromise({runtimeParameterName}, exception);");
-      builder.AppendLine("    }");
+      EmitAsyncLeafResultSettlement(builder, function, leafArguments);
     }
-    else if (function.ReturnsVoid)
+    else if (hasLeafArguments)
     {
-      builder.AppendLine($"    module.{function.MethodName}({argumentList});");
-      builder.AppendLine("    return runtime.CreateUndefined();");
+      // From here the Promise lambda owns the arguments and releases them when the Task finishes.
+      builder.AppendLine("            try");
+      builder.AppendLine("            {");
+      EmitAsyncSettlement(builder, "              ", function);
+      builder.AppendLine("            }");
+      builder.AppendLine("            finally");
+      builder.AppendLine("            {");
+      EmitRelease(builder, "              ", leafArguments);
+      builder.AppendLine("            }");
     }
     else
     {
-      if (function.ReturnPassingKind != ExpoReturnPassingKind.Codec)
-      {
-        builder.AppendLine($"    return ArrayBufferCodec.EncodeCopy(module.{function.MethodName}({argumentList}), runtime);");
-      }
-      else if (function.ReturnCodec!.EncodeOperation == ExpoEncodeOperation.EncodeThenDisposeArrayBuffer)
-      {
-        builder.AppendLine($"    using var __expoResult = module.{function.MethodName}({argumentList});");
-        builder.AppendLine($"    return {function.ReturnCodec.Expression}.Encode(__expoResult, runtime);");
-      }
-      else
-      {
-        var returnEncodeContextArgument = function.ReturnCodec.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext
-            ? ", GeneratedFunction.CurrentRuntimeContext"
-            : string.Empty;
-        builder.AppendLine($"    return {function.ReturnCodec.Expression}.Encode(module.{function.MethodName}({argumentList}), runtime{returnEncodeContextArgument});");
-      }
+      EmitAsyncSettlement(builder, "            ", function);
     }
-    builder.AppendLine("  }");
+    builder.AppendLine("          }");
+    builder.AppendLine("      );");
+    if (!hasLeafArguments)
+    {
+      builder.AppendLine("      return __expoPromiseValue.AsValue();");
+    }
+    builder.AppendLine("    }");
+    builder.AppendLine("    catch (global::System.Exception exception)");
+    builder.AppendLine("    {");
+    if (hasLeafArguments)
+    {
+      EmitRelease(builder, "      ", leafArguments);
+    }
+    builder.AppendLine($"      return GeneratedFunction.CreateRejectedPromise({runtimeParameterName}, exception);");
+    builder.AppendLine("    }");
+    if (hasLeafArguments)
+    {
+      // From here the Promise lambda is the sole owner of the arguments; the host frame never
+      // touches them again.
+      builder.AppendLine("    using (__expoPromiseValue)");
+      builder.AppendLine("    {");
+      builder.AppendLine("      return __expoPromiseValue.AsValue();");
+      builder.AppendLine("    }");
+    }
+  }
+
+  // Awaits a leaf-free or void result and resolves the Promise with it.
+  private static void EmitAsyncSettlement(StringBuilder builder, string indent, ExpoFunctionModel function)
+  {
+    if (function.AsyncReturnsVoid)
+    {
+      builder.AppendLine($"{indent}await __expoTask.ConfigureAwait(false);");
+      builder.AppendLine($"{indent}return global::Expo.JSI.JavaScriptPromiseResult.Resolve(static runtime => runtime.CreateUndefined());");
+      return;
+    }
+
+    var asyncEncodeContextArgument = function.AsyncResultCodec!.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext
+        ? ", __expoRuntimeContext"
+        : string.Empty;
+    builder.AppendLine($"{indent}var __expoResult = await __expoTask.ConfigureAwait(false);");
+    builder.AppendLine($"{indent}return global::Expo.JSI.JavaScriptPromiseResult.Resolve(runtime => {function.AsyncResultCodec.Expression}.Encode(__expoResult, runtime{asyncEncodeContextArgument}));");
+  }
+
+  // A leaf-bearing result travels with the leaf-bearing arguments in a StrongBox to the Promise
+  // result. The factory encodes the result and then releases them, and the abandon callback
+  // releases them without encoding. A fault or cancel releases them in the lambda's catch.
+  private static void EmitAsyncLeafResultSettlement(
+      StringBuilder builder,
+      ExpoFunctionModel function,
+      IReadOnlyList<LeafValue> leafArguments)
+  {
+    var resultCodec = function.AsyncResultCodec!;
+    var result = new LeafValue(function.AsyncResultType, resultCodec.Expression, "__expoResult");
+    LeafValue[] stateValues;
+    string stateType;
+    string stateValue;
+    if (leafArguments.Count == 0)
+    {
+      // StrongBox<T>.Value is maybe-null, so the scalar form reads it with `!`.
+      stateValues = new[] { result with { Value = "__expoState.Value!" } };
+      stateType = function.AsyncResultType;
+      stateValue = "__expoResult";
+    }
+    else
+    {
+      var values = new[] { result }.Concat(leafArguments).ToArray();
+      stateValues = values
+          .Select((value, index) => value with { Value = $"__expoState.Value.Item{(index + 1).ToString(CultureInfo.InvariantCulture)}" })
+          .ToArray();
+      stateType = $"({string.Join(", ", values.Select(value => value.TypeName))})";
+      stateValue = $"({string.Join(", ", values.Select(value => value.Value))})";
+    }
+
+    builder.AppendLine($"            {function.AsyncResultType} __expoResult = default!;");
+    builder.AppendLine("            try");
+    builder.AppendLine("            {");
+    builder.AppendLine("              __expoResult = await __expoTask.ConfigureAwait(false);");
+    builder.AppendLine("              return global::Expo.JSI.JavaScriptPromiseResult.ResolveOwned(");
+    builder.AppendLine($"                  new global::System.Runtime.CompilerServices.StrongBox<{stateType}>({stateValue}),");
+    builder.AppendLine("                  static (runtime, __expoState) =>");
+    builder.AppendLine("                  {");
+    builder.AppendLine("                    try");
+    builder.AppendLine("                    {");
+    builder.AppendLine($"                      return {resultCodec.Expression}.Encode({stateValues[0].Value}, runtime);");
+    builder.AppendLine("                    }");
+    builder.AppendLine("                    finally");
+    builder.AppendLine("                    {");
+    EmitRelease(builder, "                      ", stateValues);
+    builder.AppendLine("                    }");
+    builder.AppendLine("                  },");
+    builder.AppendLine("                  static __expoState =>");
+    builder.AppendLine("                  {");
+    EmitRelease(builder, "                    ", stateValues);
+    builder.AppendLine("                  }");
+    builder.AppendLine("              );");
+    builder.AppendLine("            }");
+    builder.AppendLine("            catch");
+    builder.AppendLine("            {");
+    EmitRelease(builder, "              ", new[] { result }.Concat(leafArguments));
+    builder.AppendLine("              throw;");
+    builder.AppendLine("            }");
+  }
+
+  // Calls the authored method and returns its encoded result, inside the host-function frame.
+  private static void EmitSyncInvocation(
+      StringBuilder builder,
+      string indent,
+      ExpoFunctionModel function,
+      string invocation)
+  {
+    if (function.ReturnsVoid)
+    {
+      builder.AppendLine($"{indent}{invocation};");
+      builder.AppendLine($"{indent}return runtime.CreateUndefined();");
+    }
+    else if (function.ReturnPassingKind != ExpoReturnPassingKind.Codec)
+    {
+      builder.AppendLine($"{indent}return ArrayBufferCodec.EncodeCopy({invocation}, runtime);");
+    }
+    else
+    {
+      // The call runs synchronously inside the host-function frame, so the thread-static runtime
+      // context is the current one.
+      var returnEncodeContextArgument = function.ReturnCodec!.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext
+          ? ", GeneratedFunction.CurrentRuntimeContext"
+          : string.Empty;
+      EmitEncodedReturn(builder, indent, function.ReturnCodec, invocation, returnEncodeContextArgument);
+    }
+  }
+
+  // Returns the encoded value. A leaf-bearing value is kept in __expoResult first, so the finally
+  // releases it after the encode or after a failure.
+  private static void EmitEncodedReturn(
+      StringBuilder builder,
+      string indent,
+      ExpoCodecDescriptor codec,
+      string valueExpression,
+      string encodeContextArgument)
+  {
+    if (HoldsLeaves(codec))
+    {
+      builder.AppendLine($"{indent}__expoResult = {valueExpression};");
+      valueExpression = "__expoResult";
+    }
+    builder.AppendLine($"{indent}return {codec.Expression}.Encode({valueExpression}, runtime{encodeContextArgument});");
+  }
+
+  /// <summary>
+  /// A leaf-bearing value that generated glue releases: its type with the nullable annotation,
+  /// its codec, and the local or expression that holds it.
+  /// </summary>
+  private sealed record LeafValue(string TypeName, string Codec, string Value);
+
+  // The leaf-bearing codec arguments in declaration order.
+  private static IReadOnlyList<LeafValue> GetLeafArguments(IReadOnlyList<ExpoParameterModel> parameters) =>
+      parameters
+          .Select((parameter, index) => (Parameter: parameter, Index: index))
+          .Where(item => item.Parameter.PassingKind == ExpoParameterPassingKind.Codec && HoldsLeaves(item.Parameter.Codec))
+          .Select(item => new LeafValue(
+              item.Parameter.Codec!.ValueTypeName,
+              item.Parameter.Codec.Expression,
+              GetParameterLocalName(item.Index)
+          ))
+          .ToArray();
+
+  private static LeafValue? GetLeafResult(ExpoCodecDescriptor? codec) =>
+      HoldsLeaves(codec) ? new LeafValue(codec!.ValueTypeName, codec.Expression, "__expoResult") : null;
+
+  // A leaf-bearing local is declared before the try, so it is only assigned here.
+  private static string GetLocalDeclaration(ExpoCodecDescriptor? codec, string local, string expression) =>
+      HoldsLeaves(codec) ? $"{local} = {expression};" : $"var {local} = {expression};";
+
+  private static void EmitLeafDeclarations(StringBuilder builder, string indent, IEnumerable<LeafValue> values)
+  {
+    foreach (var value in values)
+    {
+      builder.AppendLine($"{indent}{value.TypeName} {value.Value} = default!;");
+    }
+  }
+
+  // Releases each value through its codec in order, attempting every release before one
+  // AggregateException is thrown.
+  private static void EmitRelease(StringBuilder builder, string indent, IEnumerable<LeafValue> values)
+  {
+    builder.AppendLine($"{indent}global::System.Collections.Generic.List<global::System.Exception>? __expoReleaseFailures = null;");
+    foreach (var value in values)
+    {
+      builder.AppendLine($"{indent}CodecRelease.Release<{value.TypeName}, {value.Codec}>({value.Value}, ref __expoReleaseFailures);");
+    }
+    builder.AppendLine($"{indent}CodecRelease.ThrowIfFailed(__expoReleaseFailures);");
+  }
+
+  // Emits the body of a sync host function, property accessor, or shared-object factory. With no
+  // leaf-bearing value the body is emitted as is, so leaf-free glue keeps its text. Otherwise the
+  // leaf-bearing locals are declared before one try, and its finally releases the result first and
+  // then the arguments in declaration order. A value that never decoded is still default and
+  // releases nothing.
+  private static void EmitLeafReleasingCall(
+      StringBuilder builder,
+      IReadOnlyList<LeafValue> leafArguments,
+      LeafValue? leafResult,
+      Action<string> emitBody)
+  {
+    const string indent = "    ";
+    if (leafArguments.Count == 0 && leafResult is null)
+    {
+      emitBody(indent);
+      return;
+    }
+
+    EmitLeafDeclarations(builder, indent, leafArguments);
+    if (leafResult is not null)
+    {
+      EmitLeafDeclarations(builder, indent, new[] { leafResult });
+    }
+    builder.AppendLine($"{indent}try");
+    builder.AppendLine($"{indent}{{");
+    emitBody(indent + "  ");
+    builder.AppendLine($"{indent}}}");
+    builder.AppendLine($"{indent}finally");
+    builder.AppendLine($"{indent}{{");
+    EmitRelease(
+        builder,
+        indent + "  ",
+        leafResult is null ? leafArguments : new[] { leafResult }.Concat(leafArguments)
+    );
+    builder.AppendLine($"{indent}}}");
   }
 
   private static void EmitPropertyGetter(
@@ -990,15 +1156,12 @@ public sealed partial class ExpoModulesGenerator
     builder.AppendLine("  {");
     builder.AppendLine($"    GeneratedFunction.RequireArgumentCount(\"{EscapeString(label)}.{EscapeString(property.JavaScriptName)}\", arguments, 0);");
     builder.AppendLine($"    {targetDeclaration}");
-    if (property.Codec.EncodeOperation == ExpoEncodeOperation.EncodeThenDisposeArrayBuffer)
-    {
-      builder.AppendLine($"    using var __expoResult = module.{property.PropertyName};");
-      builder.AppendLine($"    return {property.Codec.Expression}.Encode(__expoResult, runtime);");
-    }
-    else
-    {
-      builder.AppendLine($"    return {property.Codec.Expression}.Encode(module.{property.PropertyName}, runtime{encodeContextArgument});");
-    }
+    EmitLeafReleasingCall(
+        builder,
+        Array.Empty<LeafValue>(),
+        GetLeafResult(property.Codec),
+        indent => EmitEncodedReturn(builder, indent, property.Codec, $"module.{property.PropertyName}", encodeContextArgument)
+    );
     builder.AppendLine("  }");
   }
 
@@ -1023,12 +1186,15 @@ public sealed partial class ExpoModulesGenerator
     builder.AppendLine("  {");
     builder.AppendLine($"    GeneratedFunction.RequireArgumentCount(\"{EscapeString(label)}.{EscapeString(property.JavaScriptName)}\", arguments, 1);");
     builder.AppendLine($"    {targetDeclaration}");
-    var decode = GetDecodeExpression(property.Codec, 0, "runtime");
-    builder.AppendLine(property.Codec.DecodedOwnership == ExpoDecodedOwnership.InvocationOwned
-        ? $"    using var __expoValue = {decode};"
-        : $"    var __expoValue = {decode};");
-    builder.AppendLine($"    module.{property.PropertyName} = __expoValue;");
-    builder.AppendLine("    return runtime.CreateUndefined();");
+    var leafValues = HoldsLeaves(property.Codec)
+        ? new[] { new LeafValue(property.Codec.ValueTypeName, property.Codec.Expression, "__expoValue") }
+        : Array.Empty<LeafValue>();
+    EmitLeafReleasingCall(builder, leafValues, null, indent =>
+    {
+      builder.AppendLine($"{indent}{GetLocalDeclaration(property.Codec, "__expoValue", GetDecodeExpression(property.Codec, 0, "runtime"))}");
+      builder.AppendLine($"{indent}module.{property.PropertyName} = __expoValue;");
+      builder.AppendLine($"{indent}return runtime.CreateUndefined();");
+    });
     builder.AppendLine("  }");
   }
 
@@ -1061,45 +1227,26 @@ public sealed partial class ExpoModulesGenerator
     builder.AppendLine("  {");
     builder.AppendLine($"    GeneratedFunction.RequireArgumentCount(\"{EscapeString(spanLabel)}.{EscapeString(function.JavaScriptName)}\", arguments, {GetRequiredParameterCount(function)}, {function.Parameters.Values.Count});");
     builder.AppendLine($"    {spanTargetDeclaration}");
-    for (var index = 0; index < function.Parameters.Values.Count; index++)
-    {
-      var parameter = function.Parameters.Values[index];
-      if (parameter.PassingKind != ExpoParameterPassingKind.Codec)
-      {
-        continue;
-      }
-      var declaration = IsInvocationOwned(parameter) ? "using var" : "var";
-      builder.AppendLine($"    {declaration} {GetParameterLocalName(index)} = {GetParameterExpression(parameter, index, "runtime")};");
-    }
-    builder.AppendLine($"    using var {spanBuffer} = ArrayBufferCodec.Decode(arguments.GetValue({spanIndex}), runtime);");
-    builder.AppendLine($"    return {spanBuffer}.{spanMethod}(__expoArg{spanIndex} =>");
-    builder.AppendLine("    {");
     var argumentList = string.Join(", ", function.Parameters.Values.Select((_, index) => GetParameterLocalName(index)));
-    var invocation = $"module.{function.MethodName}({argumentList})";
-    if (function.ReturnsVoid)
+    // One try around WithBytes releases the leaf-bearing arguments and result. The span lease
+    // keeps its own using, because it must outlive the whole WithBytes call.
+    EmitLeafReleasingCall(builder, GetLeafArguments(function.Parameters.Values), GetLeafResult(function.ReturnCodec), indent =>
     {
-      builder.AppendLine($"      {invocation};");
-      builder.AppendLine("      return runtime.CreateUndefined();");
-    }
-    else if (function.ReturnPassingKind != ExpoReturnPassingKind.Codec)
-    {
-      builder.AppendLine($"      return ArrayBufferCodec.EncodeCopy({invocation}, runtime);");
-    }
-    else if (function.ReturnCodec!.EncodeOperation == ExpoEncodeOperation.EncodeThenDisposeArrayBuffer)
-    {
-      builder.AppendLine($"      using var __expoResult = {invocation};");
-      builder.AppendLine($"      return {function.ReturnCodec.Expression}.Encode(__expoResult, runtime);");
-    }
-    else
-    {
-      // The lambda runs synchronously inside the host-function frame, so the thread-static runtime
-      // context is the current one.
-      var spanEncodeContextArgument = function.ReturnCodec.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext
-          ? ", GeneratedFunction.CurrentRuntimeContext"
-          : string.Empty;
-      builder.AppendLine($"      return {function.ReturnCodec.Expression}.Encode({invocation}, runtime{spanEncodeContextArgument});");
-    }
-    builder.AppendLine("    });");
+      for (var index = 0; index < function.Parameters.Values.Count; index++)
+      {
+        var parameter = function.Parameters.Values[index];
+        if (parameter.PassingKind != ExpoParameterPassingKind.Codec)
+        {
+          continue;
+        }
+        builder.AppendLine($"{indent}{GetLocalDeclaration(parameter.Codec, GetParameterLocalName(index), GetParameterExpression(parameter, index, "runtime"))}");
+      }
+      builder.AppendLine($"{indent}using var {spanBuffer} = ArrayBufferCodec.Decode(arguments.GetValue({spanIndex}), runtime);");
+      builder.AppendLine($"{indent}return {spanBuffer}.{spanMethod}(__expoArg{spanIndex} =>");
+      builder.AppendLine($"{indent}{{");
+      EmitSyncInvocation(builder, indent + "  ", function, $"module.{function.MethodName}({argumentList})");
+      builder.AppendLine($"{indent}}});");
+    });
     builder.AppendLine("  }");
   }
 
@@ -1138,43 +1285,41 @@ public sealed partial class ExpoModulesGenerator
     builder.AppendLine("  }");
   }
 
-  private static void EmitDisposeDecodedValues(
-      StringBuilder builder,
-      ExpoFunctionModel function,
-      string indent)
-  {
-    for (var index = 0; index < function.Parameters.Values.Count; index++)
-    {
-      if (IsInvocationOwned(function.Parameters.Values[index]))
-      {
-        builder.AppendLine($"{indent}{GetParameterLocalName(index)}?.Dispose();");
-      }
-    }
-  }
-
+  // One emitter for every record codec. A record that holds leaves also gets Release, and its
+  // Decode releases the leaf fields it already decoded when a later field fails. Encode never
+  // disposes a field of the record, so every record keeps the same Encode text.
   private static void EmitRecordCodec(StringBuilder builder, ExpoGeneratedRecordCodecModel codec)
   {
+    var leafFieldModels = codec.Fields.Values.Where(field => HoldsLeaves(field.Codec)).ToArray();
+    var leafFields = leafFieldModels
+        .Select(field => new LeafValue(field.Codec.ValueTypeName, field.Codec.Expression, GetRecordFieldLocalName(field)))
+        .ToArray();
+
     builder.AppendLine($"  private readonly struct {codec.CodecTypeName} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<{codec.RecordTypeName}>");
     builder.AppendLine("  {");
     builder.AppendLine($"    public static {codec.RecordTypeName} Decode(global::Expo.JSI.JavaScriptValueRef value, global::Expo.JSI.JavaScriptRuntime runtime)");
     builder.AppendLine("    {");
     builder.AppendLine("      var obj = value.AsObject();");
-    foreach (var field in codec.Fields.Values)
+    EmitRecordDecodeBody(builder, codec, leafFields, indent =>
     {
-      builder.AppendLine($"      var {GetRecordFieldLocalName(field)} = {field.Codec.Expression}.Decode(obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\"), runtime);");
-    }
-    builder.AppendLine($"      return new {codec.RecordTypeName}({string.Join(", ", codec.Fields.Values.Select(GetRecordFieldLocalName))});");
+      foreach (var field in codec.Fields.Values)
+      {
+        builder.AppendLine($"{indent}{GetLocalDeclaration(field.Codec, GetRecordFieldLocalName(field), $"{field.Codec.Expression}.Decode(obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\"), runtime)")}");
+      }
+    });
     builder.AppendLine("    }");
     builder.AppendLine();
     builder.AppendLine($"    public static {codec.RecordTypeName} Decode(global::Expo.JSI.JavaScriptValue value, global::Expo.JSI.JavaScriptRuntime runtime)");
     builder.AppendLine("    {");
     builder.AppendLine("      using var obj = value.AsObject();");
-    foreach (var field in codec.Fields.Values)
+    EmitRecordDecodeBody(builder, codec, leafFields, indent =>
     {
-      builder.AppendLine($"      using var {field.ParameterName}Value = obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\");");
-      builder.AppendLine($"      var {GetRecordFieldLocalName(field)} = {field.Codec.Expression}.Decode({field.ParameterName}Value, runtime);");
-    }
-    builder.AppendLine($"      return new {codec.RecordTypeName}({string.Join(", ", codec.Fields.Values.Select(GetRecordFieldLocalName))});");
+      foreach (var field in codec.Fields.Values)
+      {
+        builder.AppendLine($"{indent}using var {field.ParameterName}Value = obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\");");
+        builder.AppendLine($"{indent}{GetLocalDeclaration(field.Codec, GetRecordFieldLocalName(field), $"{field.Codec.Expression}.Decode({field.ParameterName}Value, runtime)")}");
+      }
+    });
     builder.AppendLine("    }");
     builder.AppendLine();
     builder.AppendLine($"    public static global::Expo.JSI.JavaScriptValue Encode({codec.RecordTypeName} value, global::Expo.JSI.JavaScriptRuntime runtime)");
@@ -1187,8 +1332,56 @@ public sealed partial class ExpoModulesGenerator
     }
     builder.AppendLine("      return obj.AsValue();");
     builder.AppendLine("    }");
+    if (leafFields.Length > 0)
+    {
+      // A class record can be null inside a collection, so Release skips it and the collection
+      // still releases its other elements.
+      builder.AppendLine();
+      builder.AppendLine($"    public static void Release({codec.RecordTypeName} value)");
+      builder.AppendLine("    {");
+      if (!codec.IsValueType)
+      {
+        builder.AppendLine("      if (value is null) return;");
+      }
+      EmitRelease(
+          builder,
+          "      ",
+          leafFieldModels.Select(field =>
+              new LeafValue(field.Codec.ValueTypeName, field.Codec.Expression, $"value.{field.CSharpPropertyName}"))
+      );
+      builder.AppendLine("    }");
+    }
     builder.AppendLine("  }");
     builder.AppendLine();
+  }
+
+  // Emits the field decodes and the record construction. With leaf fields, they are declared
+  // before a try whose catch releases the ones already decoded and rethrows.
+  private static void EmitRecordDecodeBody(
+      StringBuilder builder,
+      ExpoGeneratedRecordCodecModel codec,
+      IReadOnlyList<LeafValue> leafFields,
+      Action<string> emitFieldDecodes)
+  {
+    var construction = $"return new {codec.RecordTypeName}({string.Join(", ", codec.Fields.Values.Select(GetRecordFieldLocalName))});";
+    if (leafFields.Count == 0)
+    {
+      emitFieldDecodes("      ");
+      builder.AppendLine($"      {construction}");
+      return;
+    }
+
+    EmitLeafDeclarations(builder, "      ", leafFields);
+    builder.AppendLine("      try");
+    builder.AppendLine("      {");
+    emitFieldDecodes("        ");
+    builder.AppendLine($"        {construction}");
+    builder.AppendLine("      }");
+    builder.AppendLine("      catch");
+    builder.AppendLine("      {");
+    EmitRelease(builder, "        ", leafFields);
+    builder.AppendLine("        throw;");
+    builder.AppendLine("      }");
   }
 
   private static string SanitizeIdentifier(string value)

@@ -474,7 +474,7 @@ public sealed partial class ExpoModulesGenerator
       // Validate the generated return path before collecting parameters.
       var isAsync = TryGetTaskResultType(member.ReturnType, out var asyncResultType);
       var asyncReturnsVoid = isAsync && asyncResultType is null;
-      var asyncResultTypeName = asyncResultType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? string.Empty;
+      var asyncResultTypeName = asyncResultType is null ? string.Empty : GetCodecTypeArgumentName(asyncResultType);
       var asyncResultPassingKind = GetReturnPassingKind(asyncResultType);
       ExpoCodecDescriptor? asyncResultCodec;
       if (asyncResultType is not null &&

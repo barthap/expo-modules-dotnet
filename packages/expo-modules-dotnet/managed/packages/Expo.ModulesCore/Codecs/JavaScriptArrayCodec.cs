@@ -20,11 +20,20 @@ public readonly struct JavaScriptArrayCodec<T, TCodec> : IJavaScriptCodec<IReadO
     var array = value.AsArray();
     var length = checked((int)array.Length);
     var result = new T[length];
+    var index = 0;
 
-    for (var index = 0; index < length; index++)
+    try
     {
-      var element = array.GetValue((uint)index);
-      result[index] = TCodec.Decode(element, runtime);
+      for (; index < length; index++)
+      {
+        var element = array.GetValue((uint)index);
+        result[index] = TCodec.Decode(element, runtime);
+      }
+    }
+    catch
+    {
+      Release(new ArraySegment<T>(result, 0, index));
+      throw;
     }
 
     return result;
@@ -39,14 +48,44 @@ public readonly struct JavaScriptArrayCodec<T, TCodec> : IJavaScriptCodec<IReadO
     using var array = value.AsArray();
     var length = checked((int)array.Length);
     var result = new T[length];
+    var index = 0;
 
-    for (var index = 0; index < length; index++)
+    try
     {
-      using var element = array.GetValue((uint)index);
-      result[index] = TCodec.Decode(element, runtime);
+      for (; index < length; index++)
+      {
+        using var element = array.GetValue((uint)index);
+        result[index] = TCodec.Decode(element, runtime);
+      }
+    }
+    catch
+    {
+      Release(new ArraySegment<T>(result, 0, index));
+      throw;
     }
 
     return result;
+  }
+
+  /// <summary>
+  /// Releases every element of <paramref name="values"/> through <typeparamref name="TCodec"/> and
+  /// attempts all of them before it throws one <see cref="AggregateException"/>. A null list
+  /// releases nothing.
+  /// </summary>
+  public static void Release(IReadOnlyList<T> values)
+  {
+    if (values is null)
+    {
+      return;
+    }
+
+    List<Exception>? failures = null;
+    for (var index = 0; index < values.Count; index++)
+    {
+      CodecRelease.Release<T, TCodec>(values[index], ref failures);
+    }
+
+    CodecRelease.ThrowIfFailed(failures);
   }
 
   /// <summary>Decodes a scoped JavaScript array into a read-only list backed by a new array.</summary>

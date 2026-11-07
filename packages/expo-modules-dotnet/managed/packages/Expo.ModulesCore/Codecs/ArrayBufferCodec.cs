@@ -2,7 +2,7 @@ using Expo.JSI;
 
 namespace Expo.ModulesCore.Codecs;
 
-public static class ArrayBufferCodec
+public readonly struct ArrayBufferCodec : IJavaScriptCodec<ArrayBuffer>
 {
   public static ArrayBuffer Decode(JavaScriptValueRef value, JavaScriptRuntime runtime)
   {
@@ -22,6 +22,9 @@ public static class ArrayBufferCodec
     ArgumentNullException.ThrowIfNull(value);
     return value.Encode(runtime);
   }
+
+  /// <summary>Disposes <paramref name="value"/>. A null buffer does nothing.</summary>
+  public static void Release(ArrayBuffer value) => value?.Dispose();
 
   public static JavaScriptValue EncodeCopy(ReadOnlySpan<byte> bytes, JavaScriptRuntime runtime)
   {

@@ -218,7 +218,7 @@ public sealed partial class ExpoModulesGenerator
         {
           var scratchRecordCodecs = recordCodecs.ToList();
           var scratchDiagnostics = new List<ExpoDiagnosticModel>();
-          eventCodec = AsGenericArgumentCodec(GetCodec(payloadType, scratchDiagnostics, scratchRecordCodecs));
+          eventCodec = AsCompositeChildCodec(GetCodec(payloadType, scratchDiagnostics, scratchRecordCodecs));
           if (eventCodec is null)
           {
             diagnostics.Add(CreateUnsupportedEventPayload(
@@ -366,11 +366,10 @@ public sealed partial class ExpoModulesGenerator
       "global::System.Threading.Tasks.Task";
 
   private static string? GetUnsupportedEventPayload(ITypeSymbol payloadType) =>
-      GetUnsupportedEventPayload(payloadType, true, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default));
+      GetUnsupportedEventPayload(payloadType, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default));
 
   private static string? GetUnsupportedEventPayload(
       ITypeSymbol typeSymbol,
-      bool isTopLevel,
       HashSet<ITypeSymbol> visitedTypes)
   {
     if (!visitedTypes.Add(typeSymbol))
@@ -383,30 +382,30 @@ public sealed partial class ExpoModulesGenerator
       var typeName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
       if (typeName is JavaScriptValueMetadataName or ArrayBufferMetadataName)
       {
-        // A transfer-sensitive wrapper keeps its non-nullable transfer rules, and its payload kind
-        // bypasses codec resolution, so the nullable annotation has to be rejected here.
-        if (isTopLevel && typeSymbol.NullableAnnotation != NullableAnnotation.Annotated) return null;
-        return isTopLevel
+        // A transfer-sensitive wrapper keeps its non-nullable transfer rules at any depth, and its
+        // top-level payload kind bypasses codec resolution, so the nullable annotation has to be
+        // rejected here. A nested nullable leaf would otherwise get the generic no-codec reason.
+        return typeSymbol.NullableAnnotation == NullableAnnotation.Annotated
             ? "it applies a nullable annotation to a transfer-sensitive wrapper"
-            : "it contains a nested transfer-sensitive wrapper";
+            : null;
       }
       if (typeSymbol is not INamedTypeSymbol namedType) return null;
       if (namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
-        return GetUnsupportedEventPayload(namedType.TypeArguments.Single(), false, visitedTypes);
+        return GetUnsupportedEventPayload(namedType.TypeArguments.Single(), visitedTypes);
       if (namedType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ==
           "global::System.Collections.Generic.IReadOnlyList<T>")
-        return GetUnsupportedEventPayload(namedType.TypeArguments.Single(), false, visitedTypes);
+        return GetUnsupportedEventPayload(namedType.TypeArguments.Single(), visitedTypes);
       var definition = namedType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
       if (definition is "global::System.Collections.Generic.Dictionary<TKey, TValue>" or
           "global::System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>")
         return namedType.TypeArguments[0].SpecialType == SpecialType.System_String
-            ? GetUnsupportedEventPayload(namedType.TypeArguments[1], false, visitedTypes)
+            ? GetUnsupportedEventPayload(namedType.TypeArguments[1], visitedTypes)
             : null;
       if (!namedType.IsRecord) return null;
       var constructor = GetRecordCodecConstructor(namedType);
       return constructor is null
           ? null
-          : constructor.Parameters.Select(parameter => GetUnsupportedEventPayload(parameter.Type, false, visitedTypes))
+          : constructor.Parameters.Select(parameter => GetUnsupportedEventPayload(parameter.Type, visitedTypes))
               .FirstOrDefault(reason => reason is not null);
     }
     finally

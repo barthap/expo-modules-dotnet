@@ -24,10 +24,19 @@ public readonly struct JavaScriptDictionaryCodec<T, TCodec>
   {
     var obj = value.AsObject();
     var result = new Dictionary<string, T>(StringComparer.Ordinal);
-    foreach (var name in obj.GetOwnPropertyNames())
+
+    try
     {
-      var property = obj.GetProperty(name);
-      result[name] = TCodec.Decode(property, runtime);
+      foreach (var name in obj.GetOwnPropertyNames())
+      {
+        var property = obj.GetProperty(name);
+        result[name] = TCodec.Decode(property, runtime);
+      }
+    }
+    catch
+    {
+      Release(result);
+      throw;
     }
 
     return result;
@@ -43,13 +52,43 @@ public readonly struct JavaScriptDictionaryCodec<T, TCodec>
   {
     using var obj = value.AsObject();
     var result = new Dictionary<string, T>(StringComparer.Ordinal);
-    foreach (var name in obj.GetOwnPropertyNames())
+
+    try
     {
-      using var property = obj.GetProperty(name);
-      result[name] = TCodec.Decode(property, runtime);
+      foreach (var name in obj.GetOwnPropertyNames())
+      {
+        using var property = obj.GetProperty(name);
+        result[name] = TCodec.Decode(property, runtime);
+      }
+    }
+    catch
+    {
+      Release(result);
+      throw;
     }
 
     return result;
+  }
+
+  /// <summary>
+  /// Releases every value of <paramref name="values"/> through <typeparamref name="TCodec"/> and
+  /// attempts all of them before it throws one <see cref="AggregateException"/>. A null dictionary
+  /// releases nothing.
+  /// </summary>
+  public static void Release(IReadOnlyDictionary<string, T> values)
+  {
+    if (values is null)
+    {
+      return;
+    }
+
+    List<Exception>? failures = null;
+    foreach (var pair in values)
+    {
+      CodecRelease.Release<T, TCodec>(pair.Value, ref failures);
+    }
+
+    CodecRelease.ThrowIfFailed(failures);
   }
 
   /// <summary>Decodes a scoped JavaScript object into a new dictionary.</summary>
@@ -91,4 +130,7 @@ public readonly struct JavaScriptDictionaryCodec<T, TCodec>
       Dictionary<string, T> value,
       JavaScriptRuntime runtime) =>
       Encode(value, runtime);
+
+  static void IJavaScriptCodec<Dictionary<string, T>>.Release(Dictionary<string, T> value) =>
+      Release(value);
 }
