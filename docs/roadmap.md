@@ -53,7 +53,7 @@ history keeps it.
 | 028 | Annotation-insensitive shared-object boundaries     | P2    | S      | —            | DONE    | —                                                                           |
 | 029 | Typed codec conversion descriptors                  | P1    | M      | 028          | DONE    | —                                                                           |
 | 030 | Composable codec leaf release                       | P1    | L      | 029          | DONE    | —                                                                           |
-| 031 | Nullable ArrayBuffer codecs                         | P1    | M      | 030          | TODO    | [031](plans/031-nullable-arraybuffer-codecs.md)                             |
+| 031 | Nullable ArrayBuffer codecs                         | P1    | M      | 030          | DONE    | —                                                                           |
 | 032 | Nullable JavaScript callback parameters             | P2    | M      | 031          | TODO    | [032](plans/032-nullable-javascript-callback-parameters.md)                 |
 | 033 | Nullable concrete SharedObject classes              | P2    | M      | 032          | TODO    | [033](plans/033-nullable-concrete-shared-object-codecs.md)                  |
 | 034 | Base-class shared-object arguments                  | P1    | M      | 030          | TODO    | —                                                                           |
@@ -125,9 +125,13 @@ The next free ID is 041.
   it landed on 2026-11-06 with a local `scripts/test-managed.sh` run (1070
   passed, 0 failed, 0 skipped). It replaced the first scoped-codec design with
   `Release` on the one codec protocol, so `JavaScriptValue` and `ArrayBuffer`
-  leaves now compose in every position except a nullable inner type. 031–033
-  then apply their own null policies; each brief needs a rebase on this
-  design first. `JavaScriptValue?` and direct `SharedObject?` /
+  leaves now compose in every position. 031 is done: it landed on 2026-11-06
+  with a local `scripts/test-managed.sh` run (1129 passed, 0 failed,
+  0 skipped). `ArrayBuffer?` now works wherever `ArrayBuffer` does, through
+  `NullableReferenceCodec<ArrayBuffer, ArrayBufferCodec>`, and a direct
+  `Func<ArrayBuffer?, Task>` event delivers one JavaScript `null` with no
+  lease. 032 and 033 then apply their own null policies; each brief needs a
+  rebase on this design first. `JavaScriptValue?` and direct `SharedObject?` /
   `SharedRef<T>?` bases stay unsupported by design.
 - **018**: direct MSBuild, RNW CLI build/deploy/launch, and live-app rebuild
   did not reproduce a PDB lock on the RNW 0.81 / VS 2026 lane (2026-07-23).

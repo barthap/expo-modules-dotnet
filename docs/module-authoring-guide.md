@@ -141,8 +141,8 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
 - Binary data: `ArrayBuffer`, plus `byte[]`, `Memory<byte>` and
   `ReadOnlyMemory<byte>` as convenience types. These copy in both directions.
   `Span<byte>` and `ReadOnlySpan<byte>` borrow one synchronous input parameter,
-  and a returned span is copied. `ArrayBuffer` works in every position except
-  as a nullable inner type. See the
+  and a returned span is copied. `ArrayBuffer` and `ArrayBuffer?` work in every
+  position. See the
   "Module-facing ArrayBuffer And Binary Codecs" requirement in
   `docs/specs/modules-core-boundary.md`.
 - Shared objects, declared as described in section 8.
@@ -170,18 +170,19 @@ Call `JavaScriptValue.Retain()` on the JavaScript runtime thread. In an async
 method, call it before the first `await`. See
 `docs/specs/ownership-and-scoped-refs.md`.
 
-Nullable reference types work for the codecs that carry no JSI ownership:
-`string?`, `Uri?`, `byte[]?`, positional reference records, and the
-`IReadOnlyList<T>?`, `Dictionary<string, T>?`, and
+Nullable reference types work for `ArrayBuffer?` and for the codecs that carry
+no JSI ownership: `string?`, `Uri?`, `byte[]?`, positional reference records,
+and the `IReadOnlyList<T>?`, `Dictionary<string, T>?`, and
 `IReadOnlyDictionary<string, T>?` containers. Nullable elements and dictionary
 values work wherever the nested type is supported, so `IReadOnlyList<string?>?`
 composes. `List<T>` stays unsupported in both forms, because its non-nullable
 form has no codec either.
 
-`JavaScriptValue?`, `ArrayBuffer?`, `JavaScriptCallback<...>?`, `SharedObject?`,
+`JavaScriptValue?`, `JavaScriptCallback<...>?`, `SharedObject?`,
 `SharedRef<T>?`, and a nullable concrete `[ExpoSharedObject]` class are build
-diagnostics. Their conversion carries JSI ownership, retained callback state, or
-shared-object identity, and a null axis multiplies those states.
+diagnostics. `JavaScriptValue` already represents JavaScript `null` and
+`undefined`. The others carry retained callback state or shared-object
+identity, and a null axis multiplies those states.
 
 Decoding treats JavaScript `null` and `undefined` alike as C# `null`, and C#
 `null` encodes as JavaScript `null`, never `undefined`. A non-nullable reference
@@ -310,11 +311,14 @@ lifetime rules:
 - A `JavaScriptValue` original stays alive until the event task completes. Its
   invocation copy can only be retained while running on the owning JavaScript
   runtime.
+- A `Func<ArrayBuffer?, Task>` event delivers C# `null` as one JavaScript `null`
+  argument and retains no lease. A non-null buffer follows the `ArrayBuffer`
+  rule.
 
-Records, lists, and dictionaries that hold `JavaScriptValue` or `ArrayBuffer`
-are valid payloads. The nested leaves stay yours (rule 3 in section 3): keep
-them alive until the event task completes. Callback payloads and a nullable
-`JavaScriptValue` or `ArrayBuffer` are build diagnostics. `JavaScriptObject` is
+Records, lists, and dictionaries that hold `JavaScriptValue`, `ArrayBuffer`, or
+`ArrayBuffer?` are valid payloads. The nested leaves stay yours (rule 3 in
+section 3): keep them alive until the event task completes. Callback payloads
+and a nullable `JavaScriptValue` are build diagnostics. `JavaScriptObject` is
 not currently a generated module codec, but remains a possible future advanced
 convertible.
 

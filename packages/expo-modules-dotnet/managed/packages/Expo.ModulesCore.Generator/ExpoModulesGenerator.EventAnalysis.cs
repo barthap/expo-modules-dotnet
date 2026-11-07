@@ -380,11 +380,11 @@ public sealed partial class ExpoModulesGenerator
     {
       if (IsJavaScriptCallbackType(typeSymbol)) return "it contains JavaScriptCallback, which is decode-only";
       var typeName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-      if (typeName is JavaScriptValueMetadataName or ArrayBufferMetadataName)
+      if (typeName == JavaScriptValueMetadataName)
       {
-        // A transfer-sensitive wrapper keeps its non-nullable transfer rules at any depth, and its
-        // top-level payload kind bypasses codec resolution, so the nullable annotation has to be
-        // rejected here. A nested nullable leaf would otherwise get the generic no-codec reason.
+        // JavaScriptValue already represents JavaScript null and undefined, so a nullable
+        // annotation on it is rejected at any depth. A direct payload kind bypasses codec
+        // resolution, so only this check can report the top-level form.
         return typeSymbol.NullableAnnotation == NullableAnnotation.Annotated
             ? "it applies a nullable annotation to a transfer-sensitive wrapper"
             : null;

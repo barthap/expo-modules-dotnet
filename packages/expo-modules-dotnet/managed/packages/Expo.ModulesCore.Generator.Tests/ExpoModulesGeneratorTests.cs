@@ -4217,7 +4217,6 @@ public sealed class ExpoModulesGeneratorTests
 
   [Theory]
   [InlineData("JavaScriptValue", "global::Expo.JSI.JavaScriptValue", "JavaScriptValueCodec")]
-  [InlineData("ArrayBuffer", "global::Expo.ModulesCore.ArrayBuffer", "ArrayBufferCodec")]
   public void GeneratorReportsMethodDiagnosticsForExcludedNullableParametersAndReturns(
       string declaredType,
       string diagnosticType,
@@ -4358,18 +4357,18 @@ public sealed class ExpoModulesGeneratorTests
         [ExpoModule("Events", Classes = new[] { typeof(Entry) })]
         public sealed partial class EventsModule
         {
-          [Event] public partial Func<ArrayBuffer?, Task> OnBuffer { get; }
+          [Event] public partial Func<JavaScriptValue?, Task> OnValue { get; }
         }
         """
     );
 
     var moduleDiagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI019");
-    Assert.Contains("OnBuffer", moduleDiagnostic.GetMessage());
+    Assert.Contains("OnValue", moduleDiagnostic.GetMessage());
     Assert.Contains("nullable annotation", moduleDiagnostic.GetMessage());
     var sharedDiagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI027");
     Assert.Contains("OnSharedValue", sharedDiagnostic.GetMessage());
     var source = GeneratedText(result);
-    Assert.DoesNotContain("\"onBuffer\"", source);
+    Assert.DoesNotContain("\"onValue\"", source);
     Assert.DoesNotContain("\"onSharedValue\"", source);
     AssertNoCompilerErrors(result);
   }
@@ -5258,7 +5257,7 @@ public sealed class ExpoModulesGeneratorTests
   [InlineData(true, "EXPOJSI027")]
   public void GeneratorRejectsNestedNullableLeafEventPayloads(bool onSharedObject, string expectedId)
   {
-    const string member = "[Event] public partial Func<IReadOnlyList<ArrayBuffer?>, Task> OnBuffers { get; }";
+    const string member = "[Event] public partial Func<IReadOnlyList<JavaScriptValue?>, Task> OnValues { get; }";
     var result = GeneratorTestHost.Run(
         onSharedObject ? SharedObjectMemberSource(member) : ModuleSource(string.Empty, member)
     );
@@ -5266,6 +5265,150 @@ public sealed class ExpoModulesGeneratorTests
     var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == expectedId);
     Assert.Contains("nullable annotation", diagnostic.GetMessage(), StringComparison.Ordinal);
     Assert.Equal(new[] { expectedId }, GeneratorDiagnosticIds(result));
+  }
+
+  // The codec expression of ArrayBuffer?: the type argument is the de-annotated symbol, codec names are unqualified.
+  private const string Nabc = "NullableReferenceCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>";
+
+  // Generated glue releases an ArrayBuffer? local through the nullable codec, which skips null.
+  private const string NabcRelease = "CodecRelease.Release<global::Expo.ModulesCore.ArrayBuffer?, " + Nabc + ">(";
+
+  [Theory]
+  [InlineData("[JS] public int M(ArrayBuffer? value) => 0;", "__expoArg0 = " + Nabc + ".Decode(arguments.GetValue(0), runtime);")]
+  [InlineData("[JS] public int M(ArrayBuffer? value = null) => 0;", "__expoArg0 = arguments.Count <= 0 || arguments.GetValue(0).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? null : " + Nabc + ".Decode(arguments.GetValue(0), runtime);")]
+  [InlineData("[JS] public ArrayBuffer? M() => null;", NabcRelease + "__expoResult, ref __expoReleaseFailures);")]
+  [InlineData("[JS] public ArrayBuffer? M(ArrayBuffer? value) => value;", "return " + Nabc + ".Encode(__expoResult, runtime);")]
+  [InlineData("[JS] public Task<int> M(ArrayBuffer? value) => Task.FromResult(0);", NabcRelease + "__expoArg0, ref __expoReleaseFailures);")]
+  [InlineData("[JS] public Task<ArrayBuffer?> M() => Task.FromResult<ArrayBuffer?>(null);", "StrongBox<global::Expo.ModulesCore.ArrayBuffer?>(__expoResult)")]
+  public void GeneratorAcceptsNullableArrayBufferParametersAndReturns(string member, string expectedFragment)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(string.Empty, member));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var text = GeneratedText(result);
+    Assert.Contains(NabcRelease, text, StringComparison.Ordinal);
+    Assert.Contains(expectedFragment, text, StringComparison.Ordinal);
+  }
+
+  [Theory]
+  [InlineData("[JS] public ArrayBuffer? Buffer { get; set; }", "__expoValue = " + Nabc + ".Decode(arguments.GetValue(0), runtime);")]
+  [InlineData("[JS] public ArrayBuffer? Buffer => null;", "return " + Nabc + ".Encode(__expoResult, runtime);")]
+  public void GeneratorAcceptsNullableArrayBufferProperties(string member, string expectedFragment)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(string.Empty, member));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var text = GeneratedText(result);
+    Assert.Contains(NabcRelease, text, StringComparison.Ordinal);
+    Assert.Contains(expectedFragment, text, StringComparison.Ordinal);
+  }
+
+  [Theory]
+  [InlineData("public sealed record Holder(ArrayBuffer? Buffer);", "[JS] public Holder M(Holder holder) => holder;", Nabc + ".Decode(obj.GetProperty(\"buffer\"), runtime);")]
+  [InlineData("public sealed record Holder(ArrayBuffer? Buffer);", "[JS] public Holder M(Holder holder) => holder;", NabcRelease + "value.Buffer, ref __expoReleaseFailures);")]
+  [InlineData("public readonly record struct Slot(ArrayBuffer? Buffer);", "[JS] public int M(Slot? slot) => 0;", "CodecRelease.Release<global::Expo.TestModules.Slot?, NullableCodec<global::Expo.TestModules.Slot, ")]
+  [InlineData("", "[JS] public int M(IReadOnlyList<ArrayBuffer?> values) => 0;", "JavaScriptArrayCodec<global::Expo.ModulesCore.ArrayBuffer?, " + Nabc + ">.DecodeToArray(arguments.GetValue(0), runtime)")]
+  [InlineData("", "[JS] public Dictionary<string, ArrayBuffer?> M() => new();", "CodecRelease.Release<global::System.Collections.Generic.Dictionary<string, global::Expo.ModulesCore.ArrayBuffer?>, JavaScriptDictionaryCodec<global::Expo.ModulesCore.ArrayBuffer?, " + Nabc + ">>(__expoResult, ref __expoReleaseFailures);")]
+  [InlineData("", "[JS] public int M(IReadOnlyDictionary<string, ArrayBuffer?> values) => 0;", "JavaScriptDictionaryCodec<global::Expo.ModulesCore.ArrayBuffer?, " + Nabc + ">.DecodeToDictionary(")]
+  [InlineData("", "[JS] public int M(IReadOnlyList<ArrayBuffer?>? values) => 0;", "NullableReadOnlyListCodec<global::Expo.ModulesCore.ArrayBuffer?, " + Nabc + ">.Decode(arguments.GetValue(0), runtime)")]
+  [InlineData("public sealed record Shelf(IReadOnlyList<Dictionary<string, ArrayBuffer?>> Rows);", "[JS] public Shelf M(Shelf shelf) => shelf;", "JavaScriptDictionaryCodec<global::Expo.ModulesCore.ArrayBuffer?, " + Nabc + ">>>(value.Rows, ref __expoReleaseFailures);")]
+  [InlineData("public sealed record Holder(ArrayBuffer? Buffer);", "[JS] public int M(IReadOnlyList<Holder> holders) => 0;", "CodecRelease.Release<global::System.Collections.Generic.IReadOnlyList<global::Expo.TestModules.Holder>, JavaScriptArrayCodec<global::Expo.TestModules.Holder, HolderCodec_")]
+  public void GeneratorAcceptsNullableArrayBufferInRecordsAndCollections(
+      string declarations,
+      string member,
+      string expectedFragment)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(declarations, member));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var text = GeneratedText(result);
+    Assert.Contains(Nabc, text, StringComparison.Ordinal);
+    Assert.Contains(expectedFragment, text, StringComparison.Ordinal);
+  }
+
+  [Theory]
+  [InlineData("[JS] public Entry(ArrayBuffer? seed) { }", "__expoArg0 = " + Nabc + ".Decode(arguments.GetValue(0), runtime);")]
+  [InlineData("[JS] public int Measure(ArrayBuffer? value) => 0;", "__expoArg0 = " + Nabc + ".Decode(arguments.GetValue(0), runtime);")]
+  [InlineData("[JS] public ArrayBuffer? Buffer { get; set; }", NabcRelease + "__expoResult, ref __expoReleaseFailures);")]
+  public void GeneratorAcceptsNullableArrayBufferOnSharedObjectMembers(string member, string expectedFragment)
+  {
+    var result = GeneratorTestHost.Run(SharedObjectMemberSource(member));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerErrors(result);
+    Assert.DoesNotContain(result.Diagnostics, item => item.Id is "CS8604" or "CS8625");
+    var text = GeneratedText(result);
+    Assert.Contains(NabcRelease, text, StringComparison.Ordinal);
+    Assert.Contains(expectedFragment, text, StringComparison.Ordinal);
+  }
+
+  [Theory]
+  [InlineData(false, "Func<ArrayBuffer?, Task> OnBuffer", "onBufferValue => emitter.EmitAsync(module, \"onBuffer\", onBufferValue)")]
+  [InlineData(true, "Func<ArrayBuffer?, Task> OnBuffer", "onBufferValue => global::Expo.ModulesCore.GeneratedSharedObjectEvents.EmitAsync(context, sharedObject, \"onBuffer\", onBufferValue)")]
+  [InlineData(false, "Func<IReadOnlyList<ArrayBuffer?>, Task> OnBuffers", "emitter.EmitAsync<JavaScriptArrayCodec<global::Expo.ModulesCore.ArrayBuffer?, " + Nabc + ">, global::System.Collections.Generic.IReadOnlyList<global::Expo.ModulesCore.ArrayBuffer?>>(module, \"onBuffers\", onBuffersValue)")]
+  [InlineData(true, "Func<IReadOnlyList<ArrayBuffer?>, Task> OnBuffers", "GeneratedSharedObjectEvents.EmitAsync<JavaScriptArrayCodec<global::Expo.ModulesCore.ArrayBuffer?, " + Nabc + ">, global::System.Collections.Generic.IReadOnlyList<global::Expo.ModulesCore.ArrayBuffer?>>(context, sharedObject, \"onBuffers\", onBuffersValue)")]
+  public void GeneratorAcceptsNullableArrayBufferEventPayloads(bool onSharedObject, string property, string expectedFragment)
+  {
+    var member = $"[Event] public partial {property} {{ get; }}";
+    var result = GeneratorTestHost.Run(
+        onSharedObject ? SharedObjectMemberSource(member) : ModuleSource(string.Empty, member)
+    );
+
+    // A direct payload binds to the nullable emitter overload; a nested one encodes through its codec.
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerErrors(result);
+    Assert.DoesNotContain(result.Diagnostics, item => item.Id is "CS8604" or "CS8625");
+    Assert.Contains(expectedFragment, GeneratedText(result), StringComparison.Ordinal);
+  }
+
+  [Theory]
+  [InlineData("[JS] public int M(JavaScriptCallback<ArrayBuffer?> callback) => 0;", false, "JavaScriptCallbackCodec<global::Expo.ModulesCore.ArrayBuffer?, " + Nabc + ">.Decode(")]
+  [InlineData("[JS] public int M(JavaScriptCallback<ValueTuple<ArrayBuffer?>, int> callback) => 0;", false, "ValueTupleCodec<global::Expo.ModulesCore.ArrayBuffer?, " + Nabc + ">")]
+  [InlineData("[JS] public void Run(JavaScriptCallback<ArrayBuffer?> callback) { }", true, "JavaScriptCallbackCodec<global::Expo.ModulesCore.ArrayBuffer?, " + Nabc + ">.Decode(")]
+  public void GeneratorAcceptsNullableArrayBufferCallbackTypeArguments(string member, bool onSharedObject, string expectedFragment)
+  {
+    var result = GeneratorTestHost.Run(
+        onSharedObject ? SharedObjectMemberSource(member) : ModuleSource(string.Empty, member)
+    );
+
+    // The nullable codec is an ordinary IJavaScriptCodec<T>, so it follows the ArrayBuffer callback rule.
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerErrors(result);
+    Assert.Contains(expectedFragment, GeneratedText(result), StringComparison.Ordinal);
+  }
+
+  [Theory]
+  [InlineData("", "[JS] public int TakeValue(JavaScriptValue? value) => 0;", "[JS] public int TakeBuffer(ArrayBuffer? value) => 0;", false, "EXPOJSI001", "takeBuffer")]
+  [InlineData("", "[JS] public JavaScriptValue? GiveValue() => null;", "[JS] public ArrayBuffer? GiveBuffer() => null;", false, "EXPOJSI002", "giveBuffer")]
+  [InlineData("", "[JS] public JavaScriptValue? ValueProperty { get; set; }", "[JS] public ArrayBuffer? BufferProperty { get; set; }", false, "EXPOJSI015", "bufferProperty")]
+  [InlineData("public sealed record ValueHolder(JavaScriptValue? Value); public sealed record BufferHolder(ArrayBuffer? Buffer);", "[JS] public int TakeValueHolder(ValueHolder holder) => 0;", "[JS] public int TakeBufferHolder(BufferHolder holder) => 0;", false, "EXPOJSI007,EXPOJSI001", "takeBufferHolder")]
+  [InlineData("", "[Event] public partial Func<JavaScriptValue?, Task> OnValue { get; }", "[Event] public partial Func<ArrayBuffer?, Task> OnBuffer { get; }", false, "EXPOJSI019", "onBuffer")]
+  [InlineData("", "[Event] public partial Func<IReadOnlyList<JavaScriptValue?>, Task> OnValues { get; }", "[Event] public partial Func<IReadOnlyList<ArrayBuffer?>, Task> OnBuffers { get; }", false, "EXPOJSI019", "onBuffers")]
+  [InlineData("", "[JS] public int TakeValue(JavaScriptValue? value) => 0;", "[JS] public int TakeBuffer(ArrayBuffer? value) => 0;", true, "EXPOJSI023", "takeBuffer")]
+  [InlineData("", "[Event] public partial Func<JavaScriptValue?, Task> OnValue { get; }", "[Event] public partial Func<ArrayBuffer?, Task> OnBuffer { get; }", true, "EXPOJSI027", "onBuffer")]
+  public void GeneratorKeepsJavaScriptValueExclusionNextToNullableArrayBuffer(
+      string declarations,
+      string valueMember,
+      string bufferMember,
+      bool onSharedObject,
+      string expectedIds,
+      string acceptedJsName)
+  {
+    var members = valueMember + "\n" + bufferMember;
+    var result = GeneratorTestHost.Run(
+        onSharedObject ? SharedObjectMemberSource(members) : ModuleSource(declarations, members)
+    );
+
+    Assert.Equal(expectedIds.Split(','), GeneratorDiagnosticIds(result));
+    Assert.DoesNotContain(
+        result.GeneratorDiagnostics ?? Array.Empty<Diagnostic>(),
+        item => item.GetMessage().Contains("global::Expo.ModulesCore.ArrayBuffer", StringComparison.Ordinal)
+    );
+    Assert.Contains($"\"{acceptedJsName}\"", GeneratedText(result), StringComparison.Ordinal);
+    AssertNoCompilerErrors(result);
   }
 
   private static string SharedObjectMemberSource(string member) =>
