@@ -59,7 +59,7 @@ full list and the ownership rules.
 - Build-time generated bindings with NativeAOT support
 - Autolinking of modules on all four platforms
 
-See the [roadmap](docs/roadmap.md) for planned features and open work.
+See the [roadmap](docs/roadmap.md) for planned features.
 
 ## How it works
 
@@ -149,6 +149,6 @@ If the check fails, run `scripts/format.sh` and check again.
 
 - `docs/README.md` is the map of all documentation.
 - `docs/specs/` holds the living specs. They describe current behavior.
-- `docs/roadmap.md` lists open work and decisions.
+- `docs/roadmap.md` lists the project direction and planned features.
 - `docs/references/previous-windows-prototype.md` gives history from the
   earlier Windows prototype.

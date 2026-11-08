@@ -10,10 +10,10 @@ implementation plans go to the repo-local `living-spec-workflow` skill
 If `improve` is invoked here anyway, follow it only as far as these rules
 allow:
 
-- `docs/roadmap.md` is the only backlog and status tracker. Never create or
-  update `plans/README.md`, `docs/plans/README.md`, or `advisor-plans/`.
-- Write briefs to `docs/plans/NNN-<slug>.md` with the template in
-  `.agents/skills/living-spec-workflow/references/brief-template.md`, and add
-  a matching roadmap row.
+- The Notion Roadmap database is the only backlog and status tracker. Never
+  create tracking files in git, such as `plans/README.md` or `advisor-plans/`.
+- Write a brief as a Notion Roadmap row through `living-spec-workflow`, with
+  the template in
+  `.agents/skills/living-spec-workflow/references/brief-template.md`.
 - Implementation goes through the `living-spec-workflow` deliver mode, not
   `improve execute`.

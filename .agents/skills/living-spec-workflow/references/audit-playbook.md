@@ -7,8 +7,8 @@ packages, a Roslyn source generator, platform adapters, and authored modules.
 A finding needs evidence. "Probably leaks somewhere" is not a finding;
 `JavaScriptRuntime.cs:142 creates an owned wrapper that is never disposed` is.
 
-Settled decisions are not findings. The living specs, the roadmap's
-"Considered and rejected" section, and `AGENTS.md` record them. Report a
+Settled decisions are not findings. The living specs, the Notion
+"Considered and rejected" page, and `AGENTS.md` record them. Report a
 settled decision only when the code has drifted from it, and then report the
 drift.
 
@@ -100,9 +100,9 @@ fix. No runnable demonstration strings.
 
 Every suggestion cites evidence from the repo or the roadmap. Sources:
 
-- The roadmap Direction section and milestone order. The current milestone is
+- The public `docs/roadmap.md` Direction section and milestone order. The current milestone is
   authored modules; prefer work that unblocks it.
-- The roadmap "Unplanned backlog": promote items that are now unblocked or
+- `Idea` rows in the Notion Roadmap: promote items that are now unblocked or
   more urgent.
 - Upstream Expo module APIs that authored `expo-*-dotnet` packages do not
   cover yet, and what expo-desktop's polyfill still provides.
@@ -138,5 +138,5 @@ Tiebreakers:
 1. Work that unblocks other items or the current milestone goes first.
 2. HIGH-confidence security findings go above equal-leverage findings.
 3. Prefer findings with a clean verification story.
-4. "Not worth doing" is a valid verdict. Record it in the roadmap's
-   "Considered and rejected" section with one line of reasoning.
+4. "Not worth doing" is a valid verdict. Record it on the Notion
+   "Considered and rejected" page with one line of reasoning.

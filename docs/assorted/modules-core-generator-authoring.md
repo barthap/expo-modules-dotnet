@@ -113,8 +113,7 @@ public sealed partial class InternalMathModule
 }
 ```
 
-See `docs/roadmap.md` for the current authoring scope and what remains in the
-backlog; that list is maintained there rather than duplicated here.
+See `docs/roadmap.md` for planned features.
 
 ## Library-Local Generated Provider
 

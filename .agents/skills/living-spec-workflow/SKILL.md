@@ -1,6 +1,6 @@
 ---
 name: living-spec-workflow
-description: "Use for repo-local planning and spec-driven work in expo-modules-csharp: auditing the codebase, finding improvements, deciding what to build next, writing roadmap briefs, reconciling docs/roadmap.md, implementing a roadmap item, creating or updating living specs, writing delta specs, planning implementation, validating code against specs, archiving old docs, or maintaining the Superpowers/OpenSpec-style workflow for the portable C# / JSI bridge. Applies to ABI changes, Expo.JSI wrapper semantics, ownership/scoped refs, host functions, promises, scheduler/runtime behavior, Hermes testhost work, Expo.ModulesCore planning, NativeAOT/HostFXR proofs, and docs/spec archival."
+description: "Use for repo-local planning and spec-driven work in expo-modules-csharp: auditing the codebase, finding improvements, deciding what to build next, writing roadmap briefs, reconciling the Notion Roadmap, implementing a roadmap item (EMC-<n>), creating or updating living specs, writing delta specs, planning implementation, validating code against specs, or maintaining the Superpowers/OpenSpec-style workflow for the portable C# / JSI bridge. Applies to ABI changes, Expo.JSI wrapper semantics, ownership/scoped refs, host functions, promises, scheduler/runtime behavior, Hermes testhost work, Expo.ModulesCore planning, and NativeAOT/HostFXR work."
 ---
 
 # Living Spec Workflow
@@ -9,8 +9,9 @@ Use this skill to plan work and keep code, tests, and docs/specs aligned. It
 owns the whole chain, from finding work to closing it:
 
 ```text
-discover/brief -> roadmap row + brief -> brainstorm -> delta spec -> plan ->
-implement -> verify -> merge into docs/specs -> archive -> roadmap row DONE
+discover/brief -> Notion row + brief -> brainstorm -> delta spec (Notion) ->
+Spec approved -> plan (local) -> implement -> verify -> merge into docs/specs
+-> PR (In review) -> merged (Done)
 ```
 
 The delivery half is the repo-local wrapper around the normal Superpowers flow.
@@ -21,6 +22,10 @@ OpenSpec or Superspec commands.
 ## Dependencies
 
 - Required: this repo's `AGENTS.md` rules and `docs/specs/`.
+- Required for tracking: the Notion MCP and the "Notion tracking" section of
+  the git-ignored `AGENTS.local.md`. Read
+  [references/notion.md](references/notion.md) before any mode that reads or
+  writes roadmap items. If Notion is not connected, stop and tell the owner.
 - Expected for normal feature work: global Superpowers skills. Use them for
   brainstorming, plan writing, TDD, code review, and verification when
   available. When they are unavailable, follow the equivalent workflow
@@ -33,36 +38,39 @@ used only to shape the initial living-spec migration.
 
 ## Roadmap And Briefs
 
-`docs/roadmap.md` is the only backlog and status tracker. Do not create another
-index, such as `plans/README.md` or `docs/plans/README.md`.
+The Notion Roadmap database is the only backlog and status tracker. Do not
+track items in git: no status tables, no brief files, no `plans/README.md`.
+The committed `docs/roadmap.md` is a short public page (direction, shipped,
+planned) with no IDs or statuses.
 
-- Every planned item has one roadmap row and one brief at
-  `docs/plans/NNN-<slug>.md`, where `NNN` is the roadmap ID.
-- Ideas without a brief go in the roadmap's "Unplanned backlog".
-- A brief says what and why. The step-by-step plan is
-  `docs/changes/<yyyy-mm-dd-slug>/plan.md`, written in deliver mode.
-- Table cells stay short (status is one word). Detail goes in the notes under
-  the table.
+- Every planned item is one Notion row, `EMC-<n>`. Its brief is the `## Brief`
+  section of the row's page.
+- Ideas without a brief are rows with Status `Idea`.
+- A brief says what and why. The step-by-step plan is the local, git-ignored
+  `docs/work/EMC-<n>-<slug>/plan.md`, written in deliver mode.
+- Use the `notion-tracker` agent for large reads and writes, so page content
+  stays out of the main context.
 
 ## Modes
 
 Pick the mode from the request:
 
 - **Discover**: "audit", "what next", "find improvements", optionally with a
-  focus or `quick`/`deep`. Read-only on source; writes briefs and roadmap rows.
-- **Brief**: "brief <description>", or "plan X" when X has no roadmap row.
-  Writes one brief and one row.
-- **Reconcile**: refresh the roadmap against code, specs, and git history.
-- **Deliver**: "implement X", "start <ID>", "work on X from the roadmap", or
+  focus or `quick`/`deep`. Read-only on source; writes Notion rows.
+- **Brief**: "brief <description>", or "plan X" when X has no row. Writes one
+  row with its brief.
+- **Reconcile**: refresh the Notion rows against code, specs, branches, and
+  PRs, and refresh the public `docs/roadmap.md` lists.
+- **Deliver**: "implement X", "start EMC-<n>", "work on X from the roadmap", or
   any behavior change. Runs the delta spec workflow below.
 
 For discover, brief, and reconcile, read
 [references/discover.md](references/discover.md) first. It links the audit
 playbook and the brief template.
 
-If the request is to implement something with no roadmap row, ask whether to
-write a brief first. A small, well-scoped change can go straight to deliver
-mode; add its row in the same branch.
+If the request is to implement something with no row, ask whether to write a
+brief first. A small, well-scoped change can go straight to deliver mode;
+create its row (Status `In progress`) when you start.
 
 ## Source Priority
 
@@ -71,8 +79,8 @@ When sources conflict, prefer:
 1. Current code and ABI.
 2. Current tests.
 3. Current living specs in `docs/specs/`.
-4. Closed specs, plans, and spike results in git history (local copies may
-   sit in the git-ignored `docs/archive/`).
+4. Closed specs, plans, and spike results: Notion Done rows and git history
+   (older local copies may sit in the git-ignored `docs/archive/`).
 5. Learning guides and historical references.
 
 ## Request Classification
@@ -85,54 +93,56 @@ Classify the task before writing:
 - Spike/proof: record hypothesis, commands, expected/actual results,
   artifacts, ownership/lifetime findings, scheduler findings, and stop/go
   decision.
-- Docs/archive maintenance: update front-door docs and archive stale artifacts.
+- Docs maintenance: update front-door docs and remove stale ones.
 
 Ask only when capability scope is ambiguous or when multiple plausible package
 boundaries exist.
 
 ## Delta Spec Workflow
 
-For non-trivial behavior changes, run this sequence:
+For non-trivial behavior changes, run this sequence. `<ID>` is `EMC-<n>` and
+`<dir>` is `docs/work/EMC-<n>-<slug>/`.
 
-1. Read `AGENTS.md`, `AGENTS.local.md` if present, `docs/specs/README.md`, the
-   relevant `docs/specs/<capability>.md`, and the item's roadmap row and brief.
-   Run the brief's drift check. Treat the brief's open design questions as
-   brainstorming input, not as approved decisions.
-2. Use Superpowers brainstorming to refine the feature unless the user
-   explicitly says the design is already approved.
-3. Before writing repo artifacts, ensure work is on a normal feature branch. If
-   the current branch is `main` or `master`, create a `codex/<slug>` branch
-   unless the user instructed otherwise. Do not use worktrees unless explicitly
-   asked.
-4. Write the approved design as `docs/changes/<yyyy-mm-dd-slug>/spec.md`, not
-   under `docs/superpowers/`. This is the normal Superpowers design spec, but
-   framed as a delta against the current living specs. After user approval,
-   commit `spec.md` before planning unless the user explicitly asked not to
-   commit.
-5. Use Superpowers writing-plans after the delta spec is approved. Save the
-   plan as `docs/changes/<yyyy-mm-dd-slug>/plan.md` unless the user asks for a
-   different location. Commit `plan.md` before implementation unless the user
-   explicitly asked not to commit.
-6. Implement through TDD or the closest practical equivalent for the change.
+1. **Start.** Read `AGENTS.md`, `AGENTS.local.md`, `docs/specs/README.md`,
+   and the relevant `docs/specs/<capability>.md`. Run `notion-tracker`
+   `pull <ID>`, then read `<dir>brief.md`. Run the brief's drift check if it
+   has one. A row with no brief (a small change started directly in deliver
+   mode) skips the pull and the drift check. Treat the brief's open design
+   questions as brainstorming input, not as approved decisions.
+2. **Branch.** Work on `impl/EMC-<n>-<slug>`, created from `main`. Do not use
+   worktrees unless explicitly asked. Run `notion-tracker`
+   `set <ID> "Status=In progress" "Branch=impl/EMC-<n>-<slug>"`.
+3. **Brainstorm.** Use Superpowers brainstorming to refine the feature unless
+   the user explicitly says the design is already approved.
+4. **Delta spec.** Write the approved design as `<dir>spec.md`, framed as a
+   delta against the current living specs. Use no title line, start the top
+   headings at `###`, and do not hard-wrap paragraphs (see
+   [references/notion.md](references/notion.md)). Run `notion-tracker`
+   `push-spec <ID> <dir>spec.md`. The delta spec is never committed.
+5. **Approval gate.** The owner approves in chat or ticks "Spec approved" in
+   Notion. On approval in chat, run `set <ID> "Spec approved=__YES__"`. Do not
+   plan while it is unticked. If the delta spec later changes in a material
+   way, untick it and ask again.
+6. **Refresh.** Run `pull <ID>` again before planning. The owner may have
+   edited the page. Notion wins on any difference.
+7. **Plan.** Use Superpowers writing-plans and save the plan as
+   `<dir>plan.md`. The plan stays local; never commit it or copy it to
+   Notion.
+8. **Implement.** Use TDD or the closest practical equivalent for the change.
    Commit in plan/task slices as work becomes verified instead of waiting to
    split the entire tree retroactively.
-7. Verify with repo-owned commands.
-8. Merge accepted deltas into `docs/specs/`.
-9. Archive or remove transient planning artifacts. Plans are not durable
-   current-state docs after implementation.
-10. Close the roadmap item: set its row to `DONE` (or `OPEN` with a note when a
-    follow-up remains), remove its brief from git, set the row's brief cell to
-    `—`, and add deferred follow-ups to "Unplanned backlog". `docs/archive/`
-    is git-ignored: moving the brief, spec, and plan there keeps a local copy
-    and removes them from git in one step.
+9. **Verify** with repo-owned commands.
+10. **Merge** accepted deltas into `docs/specs/` on the same branch. The PR
+    diff of `docs/specs/` is how reviewers read the delta.
+11. **PR.** After the owner approves the push and the PR, run
+    `set <ID> "Status=In review" "PR=<url>"`. Add deferred follow-ups as new rows
+    (`Idea`, or `Backlog` with a brief) that depend on this one.
+12. **Done.** The owner merges on GitHub. Reconcile mode, or the owner, sets
+    Status to `Done`. The local `<dir>` can be deleted after that.
 
-Set the row to `IN PROGRESS` in the commit that adds `spec.md`.
-
-Commit cadence is part of the Superpowers workflow in this repo: approved
-`spec.md` gets its own commit, approved `plan.md` gets its own commit, and
-implementation proceeds through focused verified commits. Before any commit,
-check staged content for local absolute paths, usernames, machine names,
-private hostnames, and machine-specific install paths.
+Before any commit, check staged content for local absolute paths, usernames,
+machine names, private hostnames, machine-specific install paths, and Notion
+IDs or URLs.
 
 For an approved implementation slice, merging the accepted delta into
 `docs/specs/` is part of the work, not a separate branch-finishing choice. Do it
@@ -141,50 +151,44 @@ ask only if the implementation materially diverged from the approved spec, if
 the living-spec update would add new unapproved requirements, or if the user
 asked for docs-only design work.
 
-Do not offer "write only the delta spec" as a normal milestone option. A
-`docs/changes/<yyyy-mm-dd-slug>/spec.md` file is the first artifact in an
-implementation slice, not a parking lot for architecture thoughts. Create one
-only when the next intended steps are `plan.md`, implementation, verification,
-and merge into `docs/specs/`, unless the user explicitly asks for docs-only
-design work. If implementation is not intended yet, stay in brainstorming and
-summarize decisions in the conversation instead of creating transient repo
-artifacts.
-
-The change directory layout is:
-
-```text
-docs/changes/<yyyy-mm-dd-slug>/
-  spec.md
-  plan.md
-```
+Do not offer "write only the delta spec" as a normal milestone option. A delta
+spec is the first artifact in an implementation slice, not a parking lot for
+architecture thoughts. Write one only when the next intended steps are the
+plan, implementation, verification, and merge into `docs/specs/`, unless the
+user explicitly asks for docs-only design work. If implementation is not
+intended yet, stay in brainstorming and summarize decisions in the
+conversation.
 
 Artifact meanings:
 
-- `spec.md`: the Superpowers design artifact. It SHOULD include goal, scope,
-  accepted design, and delta requirements/scenarios against `docs/specs/*.md`.
-  Use `ADDED`, `MODIFIED`, and `REMOVED` headings when they make the delta
-  easier to merge, but do not create separate OpenSpec proposal/task files.
-- `plan.md`: the Superpowers implementation plan. It is transient and MUST be
-  removed or archived after the accepted delta is merged into `docs/specs/`.
+- Delta spec (`<dir>spec.md`, Notion "Delta spec" section): the Superpowers
+  design artifact. It SHOULD include goal, scope, accepted design, and delta
+  requirements/scenarios against `docs/specs/*.md`. Use `ADDED`, `MODIFIED`,
+  and `REMOVED` headings when they make the delta easier to merge, but do not
+  create separate OpenSpec proposal/task files.
+- Plan (`<dir>plan.md`): the Superpowers implementation plan. Local and
+  transient. The Superpowers SDD `review-package` script takes this path.
 
 ## Superpowers Integration Rules
 
 Use Superpowers normally, with these repo overrides:
 
 - If brainstorming says to write the design under `docs/superpowers/specs/`,
-  write it as `docs/changes/<yyyy-mm-dd-slug>/spec.md` instead.
+  write it as `docs/work/EMC-<n>-<slug>/spec.md` and push it to Notion
+  instead. Do not commit it.
 - If writing-plans says to save plans under `docs/superpowers/plans/`, save the
-  plan as `docs/changes/<yyyy-mm-dd-slug>/plan.md` instead.
+  plan as `docs/work/EMC-<n>-<slug>/plan.md` instead. Do not commit it.
 - If a Superpowers skill says to commit, push, create a worktree, or open a PR,
   follow `AGENTS.md` and user instructions instead. In this repo, do not use
   worktrees, pushes, PRs, comments, or publishing without explicit approval.
 - Preserve Superpowers review gates: get user approval for the delta spec before
-  planning, and verify before claiming completion.
-- After implementation, do not leave the change spec as the only source of
+  planning (the "Spec approved" checkbox), and verify before claiming
+  completion.
+- After implementation, do not leave the delta spec as the only source of
   truth. Merge accepted requirements into `docs/specs/`.
 - Invoke branch-finishing choices only after implementation, verification,
-  living-spec merge, and transient artifact cleanup are complete. Branch
-  disposition is a user choice; living-spec sync for accepted behavior is not.
+  and living-spec merge are complete. Branch disposition is a user choice;
+  living-spec sync for accepted behavior is not.
 
 ## Living Spec Format
 

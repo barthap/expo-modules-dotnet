@@ -4,7 +4,7 @@ Last refreshed: 2026-09-25.
 
 This directory contains the current documentation for the portable C# / JSI
 bridge. The authoritative current-state specs live in `docs/specs/`. Historical
-plans, spike notes, and one-slice Superpowers artifacts live in git history.
+plans and spike notes live in git history.
 
 The architecture rule is non-negotiable:
 
@@ -95,43 +95,8 @@ For current implementation work:
    generator wiring and authoring background
 6. `docs/module-authoring-guide.md` for a practical, tutorial-style guide to
    writing a .NET-backed Expo module using `packages/example-module`
-7. `docs/roadmap.md` for direction, open work, and status; open briefs live
-   in `docs/plans/`
-8. Git history only when historical rationale or proof evidence is needed.
-   `docs/archive/` is git-ignored and holds only local copies.
-
-## Spec Workflow
-
-This repo uses a living-spec workflow. `docs/roadmap.md` is the only
-backlog and status tracker: discover mode adds briefs under `docs/plans/` and
-roadmap rows, and each slice below starts from one roadmap item.
-
-1. Brainstorm the feature through Superpowers or the equivalent manual flow.
-2. Write the approved design as `docs/changes/<yyyy-mm-dd-slug>/spec.md`.
-3. Commit the approved `spec.md`.
-4. Write the implementation plan as `docs/changes/<yyyy-mm-dd-slug>/plan.md`.
-5. Commit the approved `plan.md`.
-6. Implement and verify behavior with focused commits for plan/task slices.
-7. Merge accepted deltas into `docs/specs/`.
-8. Archive or remove transient planning artifacts.
-9. Mark the roadmap row DONE and remove its brief from git.
-
-A change spec is for a milestone that is ready to continue into planning and
-implementation. For pure exploration, keep decisions in the conversation or
-promote them directly into durable docs only when that is the actual docs task.
-In the normal workflow, a delta spec implies the plan, implementation,
-verification, and living-spec merge will follow.
-
-For an implemented milestone, updating `docs/specs/` is part of the work before
-branch handoff. Merge, PR, keep-as-is, and discard decisions happen after the
-code, tests, and living specs already reflect the accepted behavior.
-
-Before committing docs, check that staged content does not include local
-absolute paths, usernames, machine names, private hostnames, concrete local repo
-paths, or machine-specific install paths.
-
-Use the repo-local `living-spec-workflow` skill in `.agents/skills/` for the
-exact workflow and guardrails.
+7. `docs/roadmap.md` for the project direction and planned features
+8. Git history only when historical rationale or proof evidence is needed
 
 ## Verification
 
@@ -158,7 +123,4 @@ Docs-only changes should at least run:
 
 ```sh
 git diff --check
-rg "self[-]contained planning package|planning[ ]artifacts,[ ]not[ ]implementation|expo[-]modules[-]windows[-]core|Phase[ ]1:[ ]clean[ ]separate[ ]research[ ]repo|create[ ]a[ ]clean[ ]local[ ]research[ ]repository" docs/README.md docs/specs docs/roadmap.md AGENTS.md .agents/skills
 ```
-
-Any match should be intentional and explained by context.

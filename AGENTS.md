@@ -32,28 +32,32 @@ Read:
    task
 
 Use `docs/references/previous-windows-prototype.md` only for historical context.
-`docs/archive/` is git-ignored. It holds only local copies of closed briefs,
-change specs, and plans; git history keeps the committed versions. It is not
-authoritative over current code, tests, or `docs/specs/`.
+`docs/archive/` is git-ignored. It holds only older local copies of closed
+briefs, change specs, and plans; git history keeps the committed versions. It
+is not authoritative over current code, tests, or `docs/specs/`.
+
+Roadmap items, briefs, and delta specs live in a private Notion Roadmap
+database, not in git. `docs/roadmap.md` is only the public direction page.
 
 For non-trivial behavior changes, use the repo-local living spec workflow:
 
-1. Create or update a delta spec before implementation.
-2. Commit the approved delta spec.
-3. Create and commit the implementation plan.
-4. Implement through Superpowers or an equivalent repo-local plan with focused
-   verified commits.
-5. Verify with repo-owned commands.
-6. Merge accepted deltas into `docs/specs/`.
-7. Archive or remove transient planning artifacts.
+1. Read the item's brief from its Notion row.
+2. Write the delta spec and put it in the Notion row. Do not commit it.
+3. Wait until the owner approves the delta spec ("Spec approved").
+4. Write the implementation plan in the git-ignored `docs/work/`. Do not
+   commit it.
+5. Implement through Superpowers or an equivalent plan with focused verified
+   commits.
+6. Verify with repo-owned commands.
+7. Merge accepted deltas into `docs/specs/` in the same PR.
 
-The repo-local skill is `.agents/skills/living-spec-workflow/SKILL.md`.
-This workflow is the project override for Superpowers artifact locations:
-delta specs and plans are `docs/changes/<yyyy-mm-dd-slug>/spec.md` and
-`docs/changes/<yyyy-mm-dd-slug>/plan.md`, not `docs/superpowers/` artifacts.
+The repo-local skill is `.agents/skills/living-spec-workflow/SKILL.md`. It
+has the Notion details and the project override for Superpowers artifact
+locations: delta specs and plans go to `docs/work/<ID>-<slug>/`, not
+`docs/superpowers/`.
 Before committing any repo artifact, check that staged content does not contain
 local absolute paths, usernames, machine names, private hostnames, concrete
-local repo paths, or machine-specific install paths.
+local repo paths, machine-specific install paths, or Notion IDs and URLs.
 Do not create a delta spec as a standalone milestone unless the user explicitly
 asks for docs-only design work; a normal delta spec implies plan,
 implementation, verification, and merge into `docs/specs/`.
@@ -63,7 +67,8 @@ the approved spec or the docs update would introduce new unapproved
 requirements.
 
 If `AGENTS.local.md` exists, read it after this file. It is gitignored and may
-contain machine-specific paths or local workflow notes. Do not commit it.
+contain machine-specific paths, the Notion IDs, or local workflow notes. Do not
+commit it.
 
 ## Constraints
 
@@ -102,9 +107,9 @@ contain machine-specific paths or local workflow notes. Do not commit it.
 
 ## Branches And Pull Requests
 
-- Open a PR for a roadmap item (brief, delta spec, plan, implementation) or
-  another significant code change. Name the branch `impl/NNN-<slug>`, where the
-  slug matches the roadmap brief.
+- Open a PR for a roadmap item or another significant code change. Name the
+  branch `impl/EMC-<n>-<slug>`, where `EMC-<n>` is the item's ID in the Notion
+  Roadmap and the slug is a short form of its title.
 - Small fixes and docs-only updates do not need a PR. Commit them on `main`.
 - PRs are squash-merged, so do not squash a PR branch locally.
 - PR descriptions have `## Why`, `## How`, and `## Test Plan`. Do not list the

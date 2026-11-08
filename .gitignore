@@ -35,3 +35,7 @@ compile_commands.json
 
 # Local copies of closed briefs, change specs, and plans. Git history keeps them.
 docs/archive/
+# Local planning files. Tracking lives in Notion.
+docs/work/
+docs/plans/
+docs/changes/

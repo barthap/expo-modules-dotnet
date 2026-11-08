@@ -1,15 +1,18 @@
 # Discover, Brief, and Reconcile Modes
 
 Adapted from the `improve` skill by shadcn (MIT). This repo-local fork writes
-to `docs/roadmap.md` and `docs/plans/` and hands every brief to deliver mode.
+rows to the Notion Roadmap database and hands every brief to deliver mode.
+Read [notion.md](notion.md) first: it has the database, the IDs, and the
+`notion-tracker` agent.
 
 In these modes you are an advisor, not an implementer. You find and specify
 work; deliver mode ships it.
 
 ## Hard Rules
 
-1. Do not modify source code, tests, specs, or build files. The only files you
-   may create or change are `docs/roadmap.md` and briefs under `docs/plans/`.
+1. Do not modify source code, tests, specs, or build files. You may create
+   or change Notion Roadmap rows and the "Considered and rejected" page.
+   Reconcile may also update the public `docs/roadmap.md` lists.
 2. Run only read-only commands: searches, `git log`, typecheck or test in check
    mode when cheap. No installs, no formatters that write, no builds that write
    outside ignored directories.
@@ -32,10 +35,12 @@ and an effort level (`quick`, `standard`, `deep`).
 
 - Read `AGENTS.md`, `docs/README.md`, `docs/specs/README.md`, and
   `docs/roadmap.md`.
-- The roadmap is the intent document. Its Direction section is the product
-  intent; its "Considered and rejected" section and the specs record settled
-  decisions. A settled decision is not a finding unless the code drifted from
-  it.
+- Run `notion-tracker` `list` for rows whose Status is not Done or Rejected,
+  and read the Notion "Considered and rejected" page with `notion-fetch` (its
+  ID is in `AGENTS.local.md`).
+- The public roadmap's Direction section is the product intent. The
+  "Considered and rejected" page and the specs record settled decisions. A
+  settled decision is not a finding unless the code drifted from it.
 - Check `git log --oneline -30` for active areas.
 - Verification commands come from `AGENTS.md`: `scripts/test-managed.sh`,
   `scripts/format.sh --check --all`, `pnpm --filter mobile-app typecheck`.
@@ -76,50 +81,63 @@ Present direction findings after the table: 2–4 options with evidence and
 trade-offs. Then ask which findings become briefs, and name dependency order.
 Wait for the selection.
 
-### Phase 4 — Write Briefs and Roadmap Rows
+### Phase 4 — Write Briefs and Rows
 
 - Record `git rev-parse --short HEAD`; every brief stamps it.
-- Read the current roadmap first. Keep IDs monotonic (the roadmap states the
-  next free ID). Skip findings that already have a row or are rejected.
-- Write each selected finding as `docs/plans/NNN-<slug>.md` from
-  [brief-template.md](brief-template.md). Take excerpts from your own reads,
-  never from a subagent report.
-- Add a status row (`TODO`) for each brief, put dependency detail in the notes
-  below the table, and bump the next free ID.
-- Add unselected but valid findings to "Unplanned backlog", and rejected ones
-  to "Considered and rejected" with one line of reasoning.
-- Commit the briefs and roadmap together on a feature branch, for example
-  `docs(plans): define <topic> briefs`, after the privacy check in `AGENTS.md`.
+- Skip findings that already have a row or are on the "Considered and
+  rejected" page.
+- Write each selected finding's brief from
+  [brief-template.md](brief-template.md) to a local file under `docs/work/`,
+  then create its row with `notion-tracker` `create Todo "<title>" <file>`
+  (or `Backlog` if it is not scheduled). Notion assigns the `EMC-<n>` ID. Take
+  excerpts from your own reads, never from a subagent report.
+- Set Priority, Effort, Area, Milestone, and "Depends on" on each new row.
+- Create unselected but valid findings as `Idea` rows (title and one
+  paragraph), and add rejected ones to the "Considered and rejected" page
+  with one line of reasoning (`notion-update-page`, `insert_content` at the
+  end).
+- Nothing is committed to git in this phase.
 
 ## Brief
 
-Trigger: "brief <description>", "plan feature X" when X has no roadmap row,
+Trigger: "brief <description>", "plan feature X" when X has no Notion row,
 or a request to turn an unplanned backlog item into a brief.
 
 Skip the audit. Run recon, investigate just enough to specify the item, and
-write one brief and one roadmap row. Resolve ambiguity from the code first.
-Ask only what remains, one question at a time, each with a recommended answer.
-If the item came from "Unplanned backlog", remove it from that list.
+write one brief. Resolve ambiguity from the code first. Ask only what remains,
+one question at a time, each with a recommended answer.
+
+Write the brief to a local file under `docs/work/` with the
+[brief-template.md](brief-template.md) heading rules. If the item is an
+`Idea` row, run `notion-tracker` `push-brief <EMC-n> <file>` and set its
+Status to `Todo` or `Backlog`. Otherwise run `create`.
 
 After writing a brief in the same session you researched it, have a
 fresh-context subagent read it cold and report ambiguities. Fix them before
-committing.
+writing it to Notion.
 
 ## Reconcile
 
 Trigger: "reconcile the roadmap", or before a discover run when the roadmap
 looks stale.
 
-For each roadmap row:
+Compare the rows with git branches, `gh pr list --state all`, and
+`docs/specs/`:
 
-- `DONE`: check that the brief and the change directory are gone from git.
-  Spot-check cheap done criteria.
-- `IN PROGRESS`: if no branch or recent commit shows progress, report it.
-- `BLOCKED` / `OPEN`: check whether the blocker still holds.
-- `TODO`: run the brief's drift check. If drifted, confirm the problem still
-  exists, then refresh "Current state" and the planned-at SHA. If the problem
-  is gone, mark the row `REJECTED` with "fixed independently".
+- `In review`: if `gh pr list --state merged` shows its PR merged, set
+  `Done`.
+- `In progress`: if no branch or recent commit shows progress, report it. If
+  a PR is open for its branch, set `In review` and fill PR.
+- `Blocked`: check whether the blocker still holds.
+- `Todo` / `Backlog`: `pull` the row and run the brief's drift check, if it
+  has one. If drifted, confirm the problem still exists, then refresh
+  "Current state" and the planned-at SHA in `brief.md` and `push-brief` it.
+  If the problem is gone, set `Rejected` with "fixed independently".
+- `Idea`: remove nothing, but report ideas that the specs show as shipped.
 
-Also check the unplanned backlog against the specs and remove items that have
-shipped. Finish with a short report: verified, refreshed, rejected, and what is
-ready to deliver now.
+Then update the public `docs/roadmap.md`: move shipped features from Planned
+to Shipped and add newly planned large features. Commit it as a docs-only
+commit on `main` (`docs: refresh public roadmap`). Item PRs never edit it.
+
+Finish with a short report: verified, refreshed, rejected, differences you
+could not resolve, and what is ready to deliver now.
