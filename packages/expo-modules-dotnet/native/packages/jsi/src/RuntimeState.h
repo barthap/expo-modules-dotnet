@@ -27,6 +27,7 @@ public:
   void releaseLongLivedObject(uint64_t id) noexcept;
   LongLivedObjectCollection &longLivedObjects() noexcept;
   OwnedValueList &ownedValues() noexcept;
+  bool canReleaseOwnedValue() noexcept;
   bool isActive() const noexcept;
   bool isValid() const noexcept;
   void noteArrayBufferReleased() noexcept;

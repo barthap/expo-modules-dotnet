@@ -63,8 +63,10 @@ void RuntimeState::prepareForInvalidation()
   }
 
   try {
-    connector->runtimeExecutor().executeSync(
-      [this](jsi::Runtime &runtime) { longLivedObjects_.sweep(runtime); });
+    connector->runtimeExecutor().executeSync([this](jsi::Runtime &runtime) {
+      longLivedObjects_.sweep(runtime);
+      ownedValues_.sweep();
+    });
   } catch (...) {
     invalidateWithoutRuntime();
     return;
@@ -79,6 +81,7 @@ void RuntimeState::invalidateWithoutRuntime() noexcept
     return;
   }
   longLivedObjects_.invalidateWithoutRuntime();
+  ownedValues_.abandonAll();
   std::lock_guard<std::mutex> lock(mutex_);
   connector_ = nullptr;
 }
@@ -121,6 +124,7 @@ bool RuntimeState::tryInvalidateWithoutRuntime() noexcept
     return false;
   }
   longLivedObjects_.invalidateWithoutRuntime();
+  ownedValues_.abandonAll();
   std::lock_guard<std::mutex> lock(mutex_);
   connector_ = nullptr;
   return true;
@@ -134,6 +138,29 @@ LongLivedObjectCollection &RuntimeState::longLivedObjects() noexcept
 OwnedValueList &RuntimeState::ownedValues() noexcept
 {
   return ownedValues_;
+}
+
+// Called with ownedValueLinkMutex() held, so this takes mutex_ second, in the
+// documented lock order. It only reads: changing state here would call
+// abandonAll(), which takes the link mutex again.
+//
+// The reverse order cannot happen today. releaseLongLivedObject holds mutex_
+// through requestRelease, but no LongLivedObject type (PromiseHandles.h,
+// WeakObjectHandles.h, ArrayBufferHandles.h) creates or destroys a
+// ValueHandle. A change that puts a ValueHandle inside a long-lived entry must
+// revisit this.
+//
+// Closing counts as safe: the host destroys the runtime only after
+// preparation returns.
+bool RuntimeState::canReleaseOwnedValue() noexcept
+{
+  try {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return state_.load(std::memory_order_acquire) != State::Invalid && connector_ != nullptr &&
+           connector_->isRuntimeValid();
+  } catch (...) {
+    return false;
+  }
 }
 
 bool RuntimeState::isActive() const noexcept
@@ -288,6 +315,27 @@ void OwnedValueList::unlinkOnDestroy(ValueHandle &handle) noexcept
     return;
   }
   list->unlinkLocked(handle);
+  if (list->state_.canReleaseOwnedValue()) {
+    // Destroy under the link mutex, so a release never overlaps a sweep.
+    handle.ownedValue_.reset();
+  } else {
+    // JSI is no longer valid, so the value's destructor must never run.
+    (void)handle.ownedValue_.release();
+    ++list->abandoned_;
+  }
+}
+
+void OwnedValueList::sweep() noexcept
+{
+  std::lock_guard<std::mutex> lock(ownedValueLinkMutex());
+  closed_ = true;
+  while (head_ != nullptr) {
+    auto &handle = *head_;
+    // Runs on the runtime thread while JSI is still valid.
+    handle.ownedValue_.reset();
+    unlinkLocked(handle);
+    ++swept_;
+  }
 }
 
 void OwnedValueList::abandonAll() noexcept
@@ -334,8 +382,8 @@ std::unique_ptr<ValueHandle> ValueHandle::owned(RuntimeState &state, jsi::Value 
   // touches the runtime and it needs no teardown tracking.
   const bool needsLink =
     !(value.isUndefined() || value.isNull() || value.isBool() || value.isNumber());
-  auto handle = std::unique_ptr<ValueHandle>(
-    new ValueHandle(std::make_unique<jsi::Value>(std::move(value))));
+  auto handle =
+    std::unique_ptr<ValueHandle>(new ValueHandle(std::make_unique<jsi::Value>(std::move(value))));
   if (needsLink) {
     state.ownedValues().link(*handle);
     handle->linkedAtCreation_ = true;
