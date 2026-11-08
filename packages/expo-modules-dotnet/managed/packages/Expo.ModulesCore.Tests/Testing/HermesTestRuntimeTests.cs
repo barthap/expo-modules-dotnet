@@ -22,6 +22,22 @@ public sealed class HermesTestRuntimeTests
     testRuntime.Dispose();
   }
 
+  // This package mirrors the native testhost counter struct. A mirror that is
+  // shorter than the native struct lets the native call write past the managed
+  // return buffer, so the mirror must carry the newest native fields.
+  [Fact]
+  public void CountersReportOwnedValueTracking()
+  {
+    using var testRuntime = HermesTestRuntime.Create();
+    var retained = testRuntime.Runtime.Execute(runtime => runtime.CreateObject());
+
+    Assert.Equal(1u, testRuntime.Counters.OwnedValuesTracked);
+
+    retained.Dispose();
+
+    Assert.Equal(0u, testRuntime.Counters.OwnedValuesTracked);
+  }
+
   [Fact]
   public void MissingLibraryConfigurationNamesCanonicalRunner()
   {
