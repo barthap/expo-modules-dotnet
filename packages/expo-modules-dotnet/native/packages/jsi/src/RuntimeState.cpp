@@ -140,9 +140,9 @@ OwnedValueList &RuntimeState::ownedValues() noexcept
   return ownedValues_;
 }
 
-// Called with ownedValueLinkMutex() held, so this takes mutex_ second, in the
-// documented lock order. It only reads: changing state here would call
-// abandonAll(), which takes the link mutex again.
+// Called with ownedValueLinkMutex() held, so this takes mutex_ second and the
+// connector's isRuntimeValid() lock third, in the documented lock order. It only reads: changing
+// state here would call abandonAll(), which takes the link mutex again.
 //
 // The reverse order cannot happen today. releaseLongLivedObject holds mutex_
 // through requestRelease, but no LongLivedObject type (PromiseHandles.h,

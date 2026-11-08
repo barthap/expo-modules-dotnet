@@ -259,6 +259,11 @@ void HermesConsoleRuntimeExecutor::threadMain()
     idleChanged_.notify_all();
     workAvailable_.notify_all();
 
+    // Hermes runs finalizers while the runtime is destroyed. They can release
+    // managed state that calls isRuntimeValid(), which takes mutex_, so the
+    // runtime is moved out under the lock and destroyed after it. The state
+    // stays Stopping until then, which already rejects new work.
+    std::unique_ptr<jsi::Runtime> stoppedRuntime;
     while (true) {
       QueuedTask task{};
       {
@@ -270,11 +275,8 @@ void HermesConsoleRuntimeExecutor::threadMain()
         // task is done and the queue is empty, the runtime can be destroyed on
         // the executor thread that owns it.
         if (state_ == State::Stopping && queue_.empty()) {
-          state_ = State::Stopped;
-          runtime_.reset();
-          notifyIdleIfNeededLocked();
-          idleChanged_.notify_all();
-          return;
+          stoppedRuntime = std::move(runtime_);
+          break;
         }
 
         auto index = nextTaskIndexLocked();
@@ -327,12 +329,22 @@ void HermesConsoleRuntimeExecutor::threadMain()
         notifyIdleIfNeededLocked();
       }
     }
-  } catch (...) {
+
+    stoppedRuntime.reset();
     std::lock_guard<std::mutex> lock(mutex_);
-    startupException_ = std::current_exception();
     state_ = State::Stopped;
-    runtime_.reset();
-    releaseQueuedTasksLocked();
+    notifyIdleIfNeededLocked();
+  } catch (...) {
+    std::unique_ptr<jsi::Runtime> failedRuntime;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      startupException_ = std::current_exception();
+      state_ = State::Stopped;
+      failedRuntime = std::move(runtime_);
+      releaseQueuedTasksLocked();
+    }
+    failedRuntime.reset();
+    std::lock_guard<std::mutex> lock(mutex_);
     notifyIdleIfNeededLocked();
   }
   idleChanged_.notify_all();

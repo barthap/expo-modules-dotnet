@@ -11,10 +11,13 @@ class ValueHandle;
 // Guards the link state of every owned value handle in the process. A handle
 // can outlive its RuntimeState, so this lock cannot belong to the state.
 //
-// Lock order: this mutex first, RuntimeState::mutex_ second. No code path may
-// hold RuntimeState::mutex_ while it takes this mutex. The only nested lock is
-// OwnedValueList::unlinkOnDestroy, which asks RuntimeState whether JSI is
-// still safe to touch.
+// Lock order: this mutex first, RuntimeState::mutex_ second, and then any lock
+// the connector takes in isRuntimeValid() (the Hermes console executor locks
+// its own mutex there). No code path may hold a later lock while it takes an
+// earlier one. The only nested lock is OwnedValueList::unlinkOnDestroy, which
+// asks RuntimeState whether JSI is still safe to touch. So a connector must not
+// destroy its runtime while it holds the lock that isRuntimeValid() takes:
+// Hermes finalizers can release owned values during that destruction.
 std::mutex &ownedValueLinkMutex() noexcept;
 
 // Intrusive list of the owned non-primitive value handles of one runtime. It

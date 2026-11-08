@@ -113,6 +113,42 @@ public sealed class JavaScriptValueTeardownTests
     retained.Dispose();
   }
 
+  // A host function's callback state can own a retained value. When the
+  // connector is invalidated without preparation, Hermes releases that state
+  // while it destroys the runtime. The release must abandon the value and must
+  // not wait on the executor that is destroying the runtime.
+  [Fact]
+  public void CallbackStateReleasesOwnedValueWhileRuntimeIsDestroyed()
+  {
+    var fixture = HermesRuntimeFixture.Create();
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      var retained = runtime.CreateObject();
+      using var function = runtime.CreateHostFunction(
+          "ownsRetained",
+          0,
+          (callbackRuntime, _, _, _) => callbackRuntime.CreateUndefined(),
+          retained,
+          state => ((JavaScriptObject)state).Dispose());
+      using var functionValue = function.AsValue();
+      global.SetProperty("ownsRetained", functionValue);
+      return true;
+    });
+
+    var invalidation = Task.Run(fixture.InvalidateRuntime);
+    // On a deadlock, leave the fixture undisposed: disposal would wait on the
+    // same blocked executor thread.
+    Assert.True(
+        invalidation.Wait(TimeSpan.FromSeconds(10)),
+        "Runtime invalidation deadlocked while it released host-function state.");
+
+    Assert.Equal(0u, fixture.Counters.OwnedValuesSwept);
+    Assert.Equal(1u, fixture.Counters.OwnedValuesAbandoned);
+    Assert.Equal(0u, fixture.Counters.OwnedValuesTracked);
+    fixture.Dispose();
+  }
+
   // A release must not overlap a concurrent preparation sweep. The runtime is
   // valid while it is closing, so nothing may be abandoned.
   [Fact]
