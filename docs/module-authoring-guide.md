@@ -251,13 +251,16 @@ failures surface as catchable JavaScript errors.
 `JavaScriptValue` properties use the same explicit ownership rule as methods.
 The setter receives an invocation-owned wrapper: do not dispose or store that
 wrapper. Call `Retain()` if the module needs a copy after the setter returns,
-then dispose the retained copy when the module no longer needs it. A getter
-transfers its returned wrapper to generated glue, so return `stored.Retain()`
-when the module keeps ownership of `stored`. A getter that returns a record,
-list, or dictionary holding a stored wrapper returns a new value built from
-`Retain()` copies. `JavaScriptObject` may become an optional advanced module
-convertible in a separate future change, but it does not have a generated
-module codec today.
+then dispose the retained copy when the module no longer needs it. Disposing a
+retained copy after the runtime is torn down is safe and frees only native
+memory, so module cleanup code does not need to check whether the runtime is
+still alive. Any other use of the copy after teardown fails with an error. A
+getter transfers its returned wrapper to generated glue, so return
+`stored.Retain()` when the module keeps ownership of `stored`. A getter that
+returns a record, list, or dictionary holding a stored wrapper returns a new
+value built from `Retain()` copies. `JavaScriptObject` may become an optional
+advanced module convertible in a separate future change, but it does not have a
+generated module codec today.
 
 ## 4. Async methods
 
