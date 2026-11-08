@@ -43,6 +43,9 @@ typedef struct expo_jsi_testhost_counters {
   uint32_t long_lived_promises_released;
   uint32_t long_lived_promises_abandoned;
   uint32_t long_lived_objects_remaining;
+  uint32_t owned_values_swept;
+  uint32_t owned_values_abandoned;
+  uint32_t owned_values_tracked;
 } expo_jsi_testhost_counters;
 
 EXPO_JSI_TESTHOST_EXPORT expo_jsi_testhost_create_result expo_jsi_testhost_create_runtime(void);

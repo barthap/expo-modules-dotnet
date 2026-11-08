@@ -16,6 +16,9 @@ struct RuntimeLongLivedCounters {
   uint32_t promisesReleased = 0;
   uint32_t promisesAbandoned = 0;
   uint32_t remaining = 0;
+  uint32_t ownedValuesSwept = 0;
+  uint32_t ownedValuesAbandoned = 0;
+  uint32_t ownedValuesTracked = 0;
 };
 
 RuntimeLongLivedCounters getRuntimeLongLivedCounters(expo_jsi_runtime_handle runtime) noexcept;

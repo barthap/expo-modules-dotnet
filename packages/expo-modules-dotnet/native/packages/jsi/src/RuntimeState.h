@@ -7,6 +7,7 @@
 
 #include "JsiRuntimeConnector.h"
 #include "LongLivedObjectCollection.h"
+#include "OwnedValueList.h"
 
 namespace expo::dotnet {
 
@@ -25,6 +26,7 @@ public:
   void invalidateWithoutRuntime() noexcept;
   void releaseLongLivedObject(uint64_t id) noexcept;
   LongLivedObjectCollection &longLivedObjects() noexcept;
+  OwnedValueList &ownedValues() noexcept;
   bool isActive() const noexcept;
   bool isValid() const noexcept;
   void noteArrayBufferReleased() noexcept;
@@ -53,6 +55,7 @@ private:
   JsiRuntimeConnector *connector_;
   std::atomic<State> state_{State::Active};
   LongLivedObjectCollection longLivedObjects_;
+  OwnedValueList ownedValues_{*this};
   std::atomic<uint32_t> released_{0};
   std::atomic<uint32_t> abandoned_{0};
   std::atomic<uint32_t> weakReleased_{0};

@@ -2,6 +2,8 @@
 
 #include <stdexcept>
 
+#include "ValueHandle.h"
+
 namespace expo::dotnet {
 
 std::shared_ptr<RuntimeState> RuntimeState::create(JsiRuntimeConnector &connector)
@@ -129,6 +131,11 @@ LongLivedObjectCollection &RuntimeState::longLivedObjects() noexcept
   return longLivedObjects_;
 }
 
+OwnedValueList &RuntimeState::ownedValues() noexcept
+{
+  return ownedValues_;
+}
+
 bool RuntimeState::isActive() const noexcept
 {
   return state_.load(std::memory_order_acquire) == State::Active;
@@ -220,6 +227,127 @@ void RuntimeState::resetPromiseCounters() noexcept
 uint32_t RuntimeState::longLivedObjectCount() const noexcept
 {
   return longLivedObjects_.size();
+}
+
+std::mutex &ownedValueLinkMutex() noexcept
+{
+  // Never destroyed: a managed wrapper may release its handle while static
+  // destructors run at process exit.
+  static auto *mutex = new std::mutex();
+  return *mutex;
+}
+
+OwnedValueList::OwnedValueList(RuntimeState &state) noexcept
+  : state_(state)
+{
+}
+
+OwnedValueList::~OwnedValueList()
+{
+  // Handles can outlive the runtime state. Leave none pointing at this list.
+  abandonAll();
+}
+
+void OwnedValueList::link(ValueHandle &handle)
+{
+  std::lock_guard<std::mutex> lock(ownedValueLinkMutex());
+  if (closed_) {
+    throw std::runtime_error("Runtime connector is invalid.");
+  }
+  handle.list_ = this;
+  handle.prev_ = nullptr;
+  handle.next_ = head_;
+  if (head_ != nullptr) {
+    head_->prev_ = &handle;
+  }
+  head_ = &handle;
+  ++tracked_;
+}
+
+void OwnedValueList::unlinkLocked(ValueHandle &handle) noexcept
+{
+  if (handle.prev_ != nullptr) {
+    handle.prev_->next_ = handle.next_;
+  } else {
+    head_ = handle.next_;
+  }
+  if (handle.next_ != nullptr) {
+    handle.next_->prev_ = handle.prev_;
+  }
+  handle.list_ = nullptr;
+  handle.prev_ = nullptr;
+  handle.next_ = nullptr;
+  --tracked_;
+}
+
+void OwnedValueList::unlinkOnDestroy(ValueHandle &handle) noexcept
+{
+  std::lock_guard<std::mutex> lock(ownedValueLinkMutex());
+  auto *list = handle.list_;
+  if (list == nullptr) {
+    return;
+  }
+  list->unlinkLocked(handle);
+}
+
+void OwnedValueList::abandonAll() noexcept
+{
+  std::lock_guard<std::mutex> lock(ownedValueLinkMutex());
+  closed_ = true;
+  while (head_ != nullptr) {
+    auto &handle = *head_;
+    // JSI is no longer valid, so the value's destructor must never run.
+    (void)handle.ownedValue_.release();
+    unlinkLocked(handle);
+    ++abandoned_;
+  }
+}
+
+uint32_t OwnedValueList::tracked() const noexcept
+{
+  std::lock_guard<std::mutex> lock(ownedValueLinkMutex());
+  return tracked_;
+}
+
+uint32_t OwnedValueList::swept() const noexcept
+{
+  std::lock_guard<std::mutex> lock(ownedValueLinkMutex());
+  return swept_;
+}
+
+uint32_t OwnedValueList::abandoned() const noexcept
+{
+  std::lock_guard<std::mutex> lock(ownedValueLinkMutex());
+  return abandoned_;
+}
+
+void OwnedValueList::resetCounters() noexcept
+{
+  std::lock_guard<std::mutex> lock(ownedValueLinkMutex());
+  swept_ = 0;
+  abandoned_ = 0;
+}
+
+std::unique_ptr<ValueHandle> ValueHandle::owned(RuntimeState &state, jsi::Value value)
+{
+  // A primitive jsi::Value holds no runtime pointer, so its destructor never
+  // touches the runtime and it needs no teardown tracking.
+  const bool needsLink =
+    !(value.isUndefined() || value.isNull() || value.isBool() || value.isNumber());
+  auto handle = std::unique_ptr<ValueHandle>(
+    new ValueHandle(std::make_unique<jsi::Value>(std::move(value))));
+  if (needsLink) {
+    state.ownedValues().link(*handle);
+    handle->linkedAtCreation_ = true;
+  }
+  return handle;
+}
+
+ValueHandle::~ValueHandle()
+{
+  if (linkedAtCreation_) {
+    OwnedValueList::unlinkOnDestroy(*this);
+  }
 }
 
 } // namespace expo::dotnet

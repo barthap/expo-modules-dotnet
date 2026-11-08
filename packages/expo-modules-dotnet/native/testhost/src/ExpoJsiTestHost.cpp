@@ -624,7 +624,7 @@ extern "C" expo_jsi_value_result expo_jsi_testhost_evaluate_script(
       auto value = runtime.evaluateJavaScript(std::make_unique<jsi::StringBuffer>(script), url);
       result = expo_jsi_value_result{
         1,
-        expo::dotnet::createOwnedValueHandle(std::move(value)),
+        expo::dotnet::createOwnedValueHandle(testhost->runtime, std::move(value)),
         makeOk(),
       };
     });
@@ -655,6 +655,9 @@ extern "C" expo_jsi_testhost_counters expo_jsi_testhost_get_counters(
     counters.long_lived_promises_released = longLived.promisesReleased;
     counters.long_lived_promises_abandoned = longLived.promisesAbandoned;
     counters.long_lived_objects_remaining = longLived.remaining;
+    counters.owned_values_swept = longLived.ownedValuesSwept;
+    counters.owned_values_abandoned = longLived.ownedValuesAbandoned;
+    counters.owned_values_tracked = longLived.ownedValuesTracked;
   }
   return counters;
 }
@@ -949,6 +952,9 @@ extern "C" void expo_jsi_testhost_release_bridge_runtime_handle(
   testhost->counters.long_lived_promises_released = longLived.promisesReleased;
   testhost->counters.long_lived_promises_abandoned = longLived.promisesAbandoned;
   testhost->counters.long_lived_objects_remaining = longLived.remaining;
+  testhost->counters.owned_values_swept = longLived.ownedValuesSwept;
+  testhost->counters.owned_values_abandoned = longLived.ownedValuesAbandoned;
+  testhost->counters.owned_values_tracked = longLived.ownedValuesTracked;
   testhost->runtime = nullptr;
 }
 
