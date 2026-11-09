@@ -72,6 +72,11 @@ The ABI SHALL use `expo_jsi_value_handle` for ordinary JavaScript values,
 objects, arrays, and functions. Promise capability ownership SHALL remain
 separate as `expo_jsi_promise_handle`.
 
+An owned value handle that holds a number, boolean, `null`, or `undefined`
+holds no runtime pointer and needs no teardown tracking. An owned value handle
+that holds an object, string, symbol, or bigint SHALL be tracked by its runtime
+state from creation until release, sweep, or abandonment.
+
 #### Scenario: Object and array operations use value handles
 - **GIVEN** managed code has an owned object or array wrapper
 - **WHEN** it gets/sets a property or array element
@@ -796,7 +801,9 @@ the connector only while it is Active or Closing, and SHALL own the
 retain `RuntimeState` until collection erase, at which point that cycle SHALL be
 broken. A final entry release SHALL retain RuntimeState's connector coordination
 through executor enqueue; it SHALL NOT use an executor reference after that
-coordination is released.
+coordination is released. `RuntimeState` SHALL also track every live owned
+non-primitive value handle without owning it. Each such handle SHALL stay safe
+to release after its `RuntimeState` is destroyed.
 
 Production adapter teardown SHALL preserve this order while its connector can
 still use JSI:
@@ -810,8 +817,8 @@ prepare runtime handle -> invalidate connector -> tear down managed context
 - **GIVEN** a production adapter still owns a runtime handle and connector
 - **WHEN** the host begins teardown
 - **THEN** it SHALL prepare the runtime handle before invalidating the connector
-- **AND** preparation SHALL sweep JSI-backed long-lived entries on the runtime
-  executor when JSI remains valid
+- **AND** preparation SHALL sweep JSI-backed long-lived entries and live owned
+  value handles on the runtime executor when JSI remains valid
 - **AND** runtime-handle release after connector invalidation SHALL not
   dereference the connector
 - **AND** the host SHALL destroy the connector only after releasing the runtime

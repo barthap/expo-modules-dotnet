@@ -14,6 +14,16 @@ relinquish the owned handle so duplicate `Dispose` calls are safe. This does not
 make disposal concurrent with member access safe: wrappers are single-owner, and
 code that needs independent concurrent ownership SHALL call `Retain` first.
 
+Releasing an owned value handle SHALL be safe at any time in the runtime's
+life, including after runtime teardown and after the runtime handle is
+released. Native code SHALL release the JSI value of every owned non-primitive
+handle that is still live when the runtime is prepared for invalidation, on the
+runtime executor while JSI is valid. When the runtime becomes invalid without
+that sweep, native code SHALL abandon those values without invoking JSI. A
+later release of a swept or abandoned handle SHALL free only native memory. Any
+other use of a swept or abandoned handle SHALL fail with an error and SHALL NOT
+invoke JSI.
+
 #### Scenario: Value wrapper is disposed
 - **GIVEN** a `JavaScriptValue` owns a native value handle
 - **WHEN** `Dispose` is called
@@ -25,6 +35,29 @@ code that needs independent concurrent ownership SHALL call `Retain` first.
 - **WHEN** managed code detaches the value for native return handling
 - **THEN** the wrapper SHALL stop owning the handle and native code SHALL become
   responsible for releasing it exactly once
+
+#### Scenario: Owned value is disposed after production-order teardown
+- **GIVEN** an owned `JavaScriptValue`, `JavaScriptObject`, `JavaScriptFunction`,
+  or `JavaScriptArray` holds a non-primitive value
+- **WHEN** the host prepares the runtime, invalidates the connector, and
+  releases the runtime handle
+- **AND** the wrapper is disposed after that
+- **THEN** preparation SHALL have released the JSI value on the runtime executor
+- **AND** `Dispose` SHALL NOT invoke JSI
+
+#### Scenario: Owned value is disposed after late invalidation
+- **GIVEN** an owned wrapper holds a non-primitive value
+- **WHEN** the connector is invalidated without preparation
+- **AND** the wrapper is disposed after that
+- **THEN** the JSI value SHALL be abandoned without invoking JSI
+
+#### Scenario: Owned value is disposed off the runtime thread
+- **GIVEN** the runtime is active and an owned wrapper holds a non-primitive
+  value
+- **WHEN** a thread other than the runtime thread disposes the wrapper
+- **THEN** native code SHALL release the JSI value before `Dispose` returns,
+  without queuing work on the runtime executor
+- **AND** the release SHALL NOT overlap a concurrent preparation sweep
 
 ### Requirement: Scoped Refs Are Temporary
 

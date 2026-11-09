@@ -24,6 +24,7 @@
 #include "JsiRuntimeConnector.h"
 #include "PromiseHandles.h"
 #include "RuntimeState.h"
+#include "ValueHandle.h"
 #include "WeakObjectHandles.h"
 
 namespace expo::dotnet {
@@ -72,47 +73,13 @@ public:
   {
     return state_;
   }
+  RuntimeState &stateRef() const noexcept
+  {
+    return *state_;
+  }
 
 private:
   std::shared_ptr<RuntimeState> state_;
-};
-
-class ValueHandle final {
-public:
-  static std::unique_ptr<ValueHandle> owned(jsi::Value value)
-  {
-    return std::unique_ptr<ValueHandle>(
-      new ValueHandle(std::make_unique<jsi::Value>(std::move(value))));
-  }
-
-  static std::unique_ptr<ValueHandle> borrowed(const jsi::Value &value)
-  {
-    return std::unique_ptr<ValueHandle>(new ValueHandle(&value));
-  }
-
-  const jsi::Value &value() const
-  {
-    return ownedValue_ != nullptr ? *ownedValue_ : *borrowedValue_;
-  }
-
-  bool isOwned() const
-  {
-    return ownedValue_ != nullptr;
-  }
-
-private:
-  explicit ValueHandle(std::unique_ptr<jsi::Value> value)
-    : ownedValue_(std::move(value))
-  {
-  }
-
-  explicit ValueHandle(const jsi::Value *value)
-    : borrowedValue_(value)
-  {
-  }
-
-  std::unique_ptr<jsi::Value> ownedValue_;
-  const jsi::Value *borrowedValue_ = nullptr;
 };
 
 class ArgumentsHandle final {
@@ -831,12 +798,14 @@ std::vector<jsi::Value> copyCallArguments(jsi::Runtime &runtime,
 expo_jsi_value_result createNumber(expo_jsi_runtime_handle runtime, double number)
 {
   expo_jsi_error error{};
-  if (tryRuntimeHandle(runtime, &error) == nullptr) {
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
     return expo_jsi_value_result{0, nullptr, error};
   }
 
   try {
-    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(number)));
+    return makeValueResult(
+      expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(), jsi::Value(number)));
   } catch (const std::exception &ex) {
     return makeErrorResult(3, ex.what());
   } catch (...) {
@@ -847,12 +816,14 @@ expo_jsi_value_result createNumber(expo_jsi_runtime_handle runtime, double numbe
 expo_jsi_value_result createBool(expo_jsi_runtime_handle runtime, uint8_t value)
 {
   expo_jsi_error error{};
-  if (tryRuntimeHandle(runtime, &error) == nullptr) {
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
     return expo_jsi_value_result{0, nullptr, error};
   }
 
   try {
-    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(value != 0)));
+    return makeValueResult(
+      expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(), jsi::Value(value != 0)));
   } catch (const std::exception &ex) {
     return makeErrorResult(12, ex.what());
   } catch (...) {
@@ -865,22 +836,27 @@ expo_jsi_value_result createPrimitiveValue(expo_jsi_runtime_handle runtime,
                                            uint64_t value)
 {
   expo_jsi_error error{};
-  if (tryRuntimeHandle(runtime, &error) == nullptr) {
+  auto *runtimeHandle = tryRuntimeHandle(runtime, &error);
+  if (runtimeHandle == nullptr) {
     return expo_jsi_value_result{0, nullptr, error};
   }
 
   try {
     switch (kind) {
     case EXPO_JSI_VALUE_UNDEFINED:
-      return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value::undefined()));
+      return makeValueResult(
+        expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(), jsi::Value::undefined()));
     case EXPO_JSI_VALUE_NULL:
-      return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value::null()));
+      return makeValueResult(
+        expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(), jsi::Value::null()));
     case EXPO_JSI_VALUE_BOOL:
-      return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(value != 0)));
+      return makeValueResult(
+        expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(), jsi::Value(value != 0)));
     case EXPO_JSI_VALUE_NUMBER: {
       static_assert(sizeof(double) == sizeof(uint64_t));
       double number = std::bit_cast<double>(value);
-      return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(number)));
+      return makeValueResult(
+        expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(), jsi::Value(number)));
     }
     default:
       return makeErrorResult(116, "Unsupported primitive value kind.");
@@ -911,7 +887,8 @@ expo_jsi_value_result createString(expo_jsi_runtime_handle runtime,
     auto value = jsi::Value(
       runtimeHandle->runtime(),
       jsi::String::createFromUtf8(runtimeHandle->runtime(), utf8, static_cast<size_t>(length)));
-    return makeValueResult(expo::dotnet::ValueHandle::owned(std::move(value)));
+    return makeValueResult(
+      expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(), std::move(value)));
   } catch (const std::exception &ex) {
     return makeErrorResult(43, ex.what());
   } catch (...) {
@@ -932,7 +909,8 @@ expo_jsi_value_result cloneValue(expo_jsi_runtime_handle runtime, expo_jsi_value
 
   try {
     auto &jsRuntime = runtimeHandle->runtime();
-    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, value->value())));
+    return makeValueResult(expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(),
+                                                            jsi::Value(jsRuntime, value->value())));
   } catch (const std::exception &ex) {
     return makeErrorResult(102, ex.what());
   } catch (...) {
@@ -957,8 +935,8 @@ expo_jsi_value_result createError(expo_jsi_runtime_handle runtime,
     const char *text = messageLength == 0 ? "" : reinterpret_cast<const char *>(message);
     auto jsError =
       jsi::JSError(runtimeHandle->runtime(), std::string(text, static_cast<size_t>(messageLength)));
-    return makeValueResult(
-      expo::dotnet::ValueHandle::owned(jsi::Value(runtimeHandle->runtime(), jsError.value())));
+    return makeValueResult(expo::dotnet::ValueHandle::owned(
+      runtimeHandle->stateRef(), jsi::Value(runtimeHandle->runtime(), jsError.value())));
   } catch (const std::exception &ex) {
     return makeErrorResult(105, ex.what());
   } catch (...) {
@@ -1134,8 +1112,8 @@ expo_jsi_value_result getGlobalObject(expo_jsi_runtime_handle runtime)
 
   try {
     auto &jsRuntime = runtimeHandle->runtime();
-    return makeValueResult(
-      expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, jsRuntime.global())));
+    return makeValueResult(expo::dotnet::ValueHandle::owned(
+      runtimeHandle->stateRef(), jsi::Value(jsRuntime, jsRuntime.global())));
   } catch (const std::exception &ex) {
     return makeErrorResult(14, ex.what());
   } catch (...) {
@@ -1153,8 +1131,8 @@ expo_jsi_value_result createObject(expo_jsi_runtime_handle runtime)
 
   try {
     auto &jsRuntime = runtimeHandle->runtime();
-    return makeValueResult(
-      expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, jsi::Object(jsRuntime))));
+    return makeValueResult(expo::dotnet::ValueHandle::owned(
+      runtimeHandle->stateRef(), jsi::Value(jsRuntime, jsi::Object(jsRuntime))));
   } catch (const std::exception &ex) {
     return makeErrorResult(16, ex.what());
   } catch (...) {
@@ -1178,7 +1156,8 @@ expo_jsi_value_result createObjectWithPrototypeValue(expo_jsi_runtime_handle run
     auto &jsRuntime = runtimeHandle->runtime();
     auto jsPrototype = checkedObject(jsRuntime, prototype);
     auto object = createObjectWithPrototype(jsRuntime, jsPrototype);
-    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, object)));
+    return makeValueResult(
+      expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(), jsi::Value(jsRuntime, object)));
   } catch (const std::exception &ex) {
     return makeErrorResult(120, ex.what());
   } catch (...) {
@@ -1203,7 +1182,8 @@ expo_jsi_value_result createClassValue(expo_jsi_runtime_handle runtime,
     auto &jsRuntime = runtimeHandle->runtime();
     auto className = std::string(name, static_cast<size_t>(name_len));
     auto klass = createClass(jsRuntime, className);
-    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, klass)));
+    return makeValueResult(
+      expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(), jsi::Value(jsRuntime, klass)));
   } catch (const std::exception &ex) {
     return makeErrorResult(123, ex.what());
   } catch (...) {
@@ -1233,7 +1213,8 @@ expo_jsi_value_result createClassWithSuperclassValue(expo_jsi_runtime_handle run
     auto className = std::string(name, static_cast<size_t>(name_len));
     auto jsSuperclass = checkedFunction(jsRuntime, superclass);
     auto klass = createClassWithSuperclass(jsRuntime, className, jsSuperclass);
-    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, klass)));
+    return makeValueResult(
+      expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(), jsi::Value(jsRuntime, klass)));
   } catch (const std::exception &ex) {
     return makeErrorResult(127, ex.what());
   } catch (...) {
@@ -1409,7 +1390,8 @@ expo_jsi_value_result arrayBufferAsValue(expo_jsi_runtime_handle runtime,
     } catch (const std::invalid_argument &error) {
       return makeErrorResult(156, error.what());
     }
-    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, arrayBuffer)));
+    return makeValueResult(expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(),
+                                                            jsi::Value(jsRuntime, arrayBuffer)));
   } catch (const std::exception &ex) {
     return makeErrorResult(157, ex.what());
   } catch (...) {
@@ -1461,8 +1443,8 @@ expo_jsi_weak_object_lock_result lockWeakObject(expo_jsi_runtime_handle runtime,
     if (!object.has_value()) {
       return makeWeakObjectLockNotFoundResult();
     }
-    return makeWeakObjectLockResult(
-      expo::dotnet::ValueHandle::owned(jsi::Value(runtimeHandle->runtime(), std::move(*object))));
+    return makeWeakObjectLockResult(expo::dotnet::ValueHandle::owned(
+      runtimeHandle->stateRef(), jsi::Value(runtimeHandle->runtime(), std::move(*object))));
   } catch (const std::exception &ex) {
     return makeWeakObjectLockErrorResult(182, ex.what());
   } catch (...) {
@@ -1556,7 +1538,7 @@ expo_jsi_value_result mutableBufferAsValue(expo_jsi_runtime_handle runtime,
   try {
     auto arrayBuffer = jsi::ArrayBuffer(runtimeHandle->runtime(), handle->buffer());
     return makeValueResult(expo::dotnet::ValueHandle::owned(
-      jsi::Value(runtimeHandle->runtime(), std::move(arrayBuffer))));
+      runtimeHandle->stateRef(), jsi::Value(runtimeHandle->runtime(), std::move(arrayBuffer))));
   } catch (const std::exception &ex) {
     return makeErrorResult(172, ex.what());
   } catch (...) {
@@ -1598,7 +1580,8 @@ expo_jsi_value_result valueRetainAs(expo_jsi_runtime_handle runtime,
       return makeErrorResult(39, "Unknown value expectation.");
     }
 
-    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, value->value())));
+    return makeValueResult(expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(),
+                                                            jsi::Value(jsRuntime, value->value())));
   } catch (const std::exception &ex) {
     return makeErrorResult(40, ex.what());
   } catch (...) {
@@ -1617,7 +1600,8 @@ expo_jsi_value_result createArray(expo_jsi_runtime_handle runtime, uint32_t leng
   try {
     auto &jsRuntime = runtimeHandle->runtime();
     auto array = jsi::Array(jsRuntime, length);
-    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, array)));
+    return makeValueResult(
+      expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(), jsi::Value(jsRuntime, array)));
   } catch (const std::exception &ex) {
     return makeErrorResult(63, ex.what());
   } catch (...) {
@@ -1668,8 +1652,8 @@ expo_jsi_value_result arrayGetValueAtIndex(expo_jsi_runtime_handle runtime,
   try {
     auto &jsRuntime = runtimeHandle->runtime();
     auto jsArray = checkedArray(jsRuntime, array);
-    return makeValueResult(
-      expo::dotnet::ValueHandle::owned(jsArray.getValueAtIndex(jsRuntime, index)));
+    return makeValueResult(expo::dotnet::ValueHandle::owned(
+      runtimeHandle->stateRef(), jsArray.getValueAtIndex(jsRuntime, index)));
   } catch (const std::exception &ex) {
     return makeErrorResult(80, ex.what());
   } catch (...) {
@@ -1787,8 +1771,8 @@ expo_jsi_value_result promiseAsValue(expo_jsi_runtime_handle runtime,
 
   try {
     auto entry = promise->entry();
-    return makeValueResult(
-      expo::dotnet::ValueHandle::owned(entry->promiseValue(runtimeHandle->runtime())));
+    return makeValueResult(expo::dotnet::ValueHandle::owned(
+      runtimeHandle->stateRef(), entry->promiseValue(runtimeHandle->runtime())));
   } catch (const std::exception &ex) {
     return makeErrorResult(89, ex.what());
   } catch (...) {
@@ -1948,8 +1932,8 @@ expo_jsi_value_result objectGetProperty(expo_jsi_runtime_handle runtime,
     auto propertyName = jsi::PropNameID::forUtf8(
       jsRuntime, reinterpret_cast<const uint8_t *>(name), static_cast<size_t>(name_len));
     auto jsObject = checkedObject(jsRuntime, object);
-    return makeValueResult(
-      expo::dotnet::ValueHandle::owned(jsObject.getProperty(jsRuntime, propertyName)));
+    return makeValueResult(expo::dotnet::ValueHandle::owned(
+      runtimeHandle->stateRef(), jsObject.getProperty(jsRuntime, propertyName)));
   } catch (const std::exception &ex) {
     return makeErrorResult(52, ex.what());
   } catch (...) {
@@ -2154,7 +2138,8 @@ expo_jsi_value_result callFunction(expo_jsi_runtime_handle runtime,
     auto copiedArguments = copyCallArguments(jsRuntime, arguments, argumentCount);
     const jsi::Value *argumentData = copiedArguments.empty() ? nullptr : copiedArguments.data();
     auto result = jsFunction.call(jsRuntime, argumentData, copiedArguments.size());
-    return makeValueResult(expo::dotnet::ValueHandle::owned(std::move(result)));
+    return makeValueResult(
+      expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(), std::move(result)));
   } catch (const std::exception &ex) {
     return makeErrorResult(105, ex.what());
   } catch (...) {
@@ -2182,7 +2167,8 @@ expo_jsi_value_result callFunctionWithThis(expo_jsi_runtime_handle runtime,
     const jsi::Value *argumentData = copiedArguments.empty() ? nullptr : copiedArguments.data();
     auto result =
       jsFunction.callWithThis(jsRuntime, receiver, argumentData, copiedArguments.size());
-    return makeValueResult(expo::dotnet::ValueHandle::owned(std::move(result)));
+    return makeValueResult(
+      expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(), std::move(result)));
   } catch (const std::exception &ex) {
     return makeErrorResult(107, ex.what());
   } catch (...) {
@@ -2207,7 +2193,8 @@ expo_jsi_value_result callFunctionAsConstructor(expo_jsi_runtime_handle runtime,
     auto copiedArguments = copyCallArguments(jsRuntime, arguments, argumentCount);
     const jsi::Value *argumentData = copiedArguments.empty() ? nullptr : copiedArguments.data();
     auto result = jsFunction.callAsConstructor(jsRuntime, argumentData, copiedArguments.size());
-    return makeValueResult(expo::dotnet::ValueHandle::owned(std::move(result)));
+    return makeValueResult(
+      expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(), std::move(result)));
   } catch (const std::exception &ex) {
     return makeErrorResult(109, ex.what());
   } catch (...) {
@@ -2516,7 +2503,8 @@ expo_jsi_value_result createHostFunction(
         }
       });
 
-    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, function)));
+    return makeValueResult(
+      expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(), jsi::Value(jsRuntime, function)));
   } catch (const std::exception &ex) {
     return makeErrorResult(29, ex.what());
   } catch (...) {
@@ -2548,7 +2536,8 @@ expo_jsi_value_result createHostObject(expo_jsi_runtime_handle runtime,
       runtime, get, set, getPropertyNames, callbackContext, releaseCallbackContext);
     releaseOnError = false;
     auto object = jsi::Object::createFromHostObject(jsRuntime, std::move(hostObject));
-    return makeValueResult(expo::dotnet::ValueHandle::owned(jsi::Value(jsRuntime, object)));
+    return makeValueResult(
+      expo::dotnet::ValueHandle::owned(runtimeHandle->stateRef(), jsi::Value(jsRuntime, object)));
   } catch (const std::exception &ex) {
     if (releaseOnError && releaseCallbackContext != nullptr && callbackContext != nullptr) {
       releaseCallbackContext(callbackContext);
@@ -2780,6 +2769,9 @@ RuntimeLongLivedCounters getRuntimeLongLivedCounters(expo_jsi_runtime_handle run
     state->promisesReleased(),
     state->promisesAbandoned(),
     state->longLivedObjectCount(),
+    state->ownedValues().swept(),
+    state->ownedValues().abandoned(),
+    state->ownedValues().tracked(),
   };
 }
 
@@ -2790,6 +2782,7 @@ void resetRuntimeLongLivedCounters(expo_jsi_runtime_handle runtime) noexcept
     state->resetArrayBufferCounters();
     state->resetWeakObjectCounters();
     state->resetPromiseCounters();
+    state->ownedValues().resetCounters();
   }
 }
 
@@ -2885,9 +2878,9 @@ void releaseRuntimeHandle(expo_jsi_runtime_handle runtime)
   (void)releaseRuntimeHandleAndGetLongLivedCounters(runtime);
 }
 
-expo_jsi_value_handle createOwnedValueHandle(jsi::Value value)
+expo_jsi_value_handle createOwnedValueHandle(expo_jsi_runtime_handle runtime, jsi::Value value)
 {
-  return ValueHandle::owned(std::move(value)).release();
+  return ValueHandle::owned(runtime->stateRef(), std::move(value)).release();
 }
 
 const expo_jsi_api *api()

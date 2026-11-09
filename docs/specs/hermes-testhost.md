@@ -222,7 +222,8 @@ drop-next, drop-queued, and bridge-handle-release controls. These controls
 SHALL use condition-variable barriers rather than sleeps or polling so lifetime
 tests can force release-versus-teardown orderings. The testhost counters SHALL
 report ArrayBuffer release and abandonment separately from generic collection
-metrics.
+metrics. They SHALL also report owned value handles swept at preparation, owned
+value handles abandoned, and owned value handles still tracked.
 
 #### Scenario: A queued release is dropped
 - **GIVEN** the executor is paused and a release task is observed in its queue
@@ -245,6 +246,15 @@ metrics.
 - **AND** queued work SHALL fault or release its task context without running
 - **AND** tests that require a JSI-safe long-lived-object sweep SHALL call the
   explicit prepare-for-invalidation control before connector invalidation
+
+#### Scenario: Test proves owned value teardown
+- **GIVEN** a test holds an owned wrapper over a non-primitive value
+- **WHEN** it runs `prepare -> invalidate -> release runtime handle` and then
+  disposes the wrapper
+- **THEN** the counters SHALL report one swept value, zero abandoned values, and
+  zero tracked values
+- **AND** with bare invalidation instead of preparation, they SHALL report zero
+  swept values and one abandoned value
 
 ### Requirement: Deterministic Garbage Collection And Weak Counters
 

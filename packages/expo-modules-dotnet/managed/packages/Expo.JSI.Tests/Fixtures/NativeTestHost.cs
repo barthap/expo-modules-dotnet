@@ -84,6 +84,9 @@ internal static unsafe class NativeTestHost
     public readonly uint LongLivedPromisesReleased;
     public readonly uint LongLivedPromisesAbandoned;
     public readonly uint LongLivedObjectsRemaining;
+    public readonly uint OwnedValuesSwept;
+    public readonly uint OwnedValuesAbandoned;
+    public readonly uint OwnedValuesTracked;
   }
 
   internal static CreateResult CreateRuntime()
