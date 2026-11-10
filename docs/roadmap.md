@@ -34,6 +34,10 @@ platforms.
 Standing quality rule: authored modules use no workarounds for missing core
 features. Fix the core first.
 
+The C# authoring API follows upstream Expo Modules v2 (the Swift macros and
+the Kotlin annotations). Where both upstream platforms ship a feature, C#
+matches it, even if existing C# modules must change.
+
 ## Shipped
 
 - The bridge and authoring core on Android, iOS, macOS, and Windows
@@ -57,5 +61,11 @@ features. Fix the core first.
 - A demo app that uses upstream Expo, expo-desktop, and .NET modules on all
   four platforms
 - Coded JavaScript errors, as upstream Expo modules have
+- Authoring API parity with upstream Expo Modules v2: unions, record field
+  defaults, constants, more typed arrays, tuples, callbacks as delegates,
+  and upstream naming for modules and events
+- A module authoring guide that maps C# to the upstream Swift and Kotlin
+  syntax, with a feature support table
+- TypeScript types generated with the upstream `typegen` tool
 - Desktop packaging for macOS (HostFXR and NativeAOT)
 - Mobile NativeAOT hardening
