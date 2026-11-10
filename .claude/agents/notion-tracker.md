@@ -27,34 +27,44 @@ Rules:
 - Find a row by its ID number: `notion-query-data-sources` in `rows` mode on
   the data source, with a filter on property `userDefined:ID` (not `ID`; a
   filter on `ID` is ignored without an error), `propertyType`
-  `auto_increment_id`, operator `number_equals`. `EMC-17` means number 17.
+  `auto_increment_id`, operator `number_equals`, inside a `group` filter (a bare
+  property filter fails validation). `EMC-17` means number 17.
   Check that the one row returned has that `userDefined:ID`.
 - Use `rows` mode for reads. Do not use SQL mode.
 - Copy text exactly. Do not reword, shorten, summarize, or reorder content
   you move between Notion and local files.
 
-## Page body layout
+## Page layout
 
-A row's page body has these parts, in this order. Each part is optional.
+A row's page body is for the owner, a human. Agent material lives on child
+pages of the row:
 
 ```
 Former repo ID: NNN          (migrated rows only)
 
-## Brief
-...brief, with ### and #### headings...
+## Summary
+...plain-English summary for the owner...
 
-## Delta spec
-...delta spec, with ### and #### headings...
+<page url="...">Agent brief</page>    (child page: the brief)
+<page url="...">Delta spec</page>     (child page: the delta spec)
 ```
 
-A part ends at the next `## ` heading that is outside a code block. Code
-blocks can contain lines that start with `## `; they are not part headings.
+Each part is optional. A `fetch` of the row prints each child page as a
+three-line tag: `<page url="...">`, the title, `</page>`. Find a child by its
+title, `Agent brief` or `Delta spec`, and fetch its URL to read it. The
+`## Summary` section ends at the first child-page tag or the end of the body.
 
-Local files hold one part each, without its `## Brief` or `## Delta spec`
-line. Keep every heading at the same level as in Notion (part headings start
-at `###`). Do not move headings up or down. Remove only the backslash escapes
-Notion adds (`\<`, `\[`, `\*`, `\_` become `<`, `[`, `*`, `_`) outside code.
-When you write to Notion, escape `<` outside code and change nothing else.
+When you change the row body with `replace_content`, keep every child-page
+tag exactly as fetch printed it. Never set `allow_deleting_content`. If a call
+says a child page would be deleted, stop and report it.
+
+Local files: `brief.md` is the whole `Agent brief` page, `spec.md` the whole
+`Delta spec` page, and `summary.md` (written by the main agent, read by
+`push-brief` and `create`) the `## Summary` section without its heading line. Keep every heading at the same level as in Notion (brief and
+spec headings start at `###`). Do not move headings up or down. Remove only
+the backslash escapes Notion adds (`\<`, `\[`, `\*`, `\_` become `<`, `[`, `*`,
+`_`) outside code. When you write to Notion, escape `<` outside code and
+change nothing else.
 
 Line breaks: Notion turns every line break inside a paragraph or list item
 into a hard break (`<br />`). So a paragraph or list item must be one line.
@@ -71,27 +81,31 @@ trailing `-`. The local folder is `docs/work/EMC-<n>-<slug>/`.
 
 ### `pull <EMC-n>`
 
-Fetch the row's page. Write the "Brief" part to
-`docs/work/EMC-<n>-<slug>/brief.md` and the "Delta spec" part, if present,
-to `docs/work/EMC-<n>-<slug>/spec.md`. Overwrite existing files: Notion
-wins. Report the paths written and the row's Status, Branch, and Spec
-approved values.
+Fetch the row's page. Write the `Agent brief` child page to
+`docs/work/EMC-<n>-<slug>/brief.md` and the `Delta spec` child page, if
+present, to `spec.md`. Do not write the summary: it is for the owner, and
+deliver mode works from the brief.
+Overwrite existing files: Notion wins. Report the paths written and the
+row's Status, Branch, and Spec approved values.
 
 ### `push-brief <EMC-n> <path>` and `push-spec <EMC-n> <path>`
 
-Read the local file. If it has a `#` or `##` heading outside a code block,
-stop and report it: part headings start at `###`, and a `##` heading would
-end the part on the next pull.
+Read the local file. Fetch the row page. `push-brief` writes the
+`Agent brief` child page and `push-spec` the `Delta spec` child page. If the
+child page exists, replace its whole content with the file
+(`replace_content`). If it does not exist, create it with
+`notion-create-pages` (`allow_async: false`,
+`parent: {"type": "page_id", "page_id": "<row page id>"}`, title
+`Agent brief` or `Delta spec`). A new child page goes to the end of the row
+body; if a `Delta spec` tag then comes before `Agent brief`, reorder the two
+tags with `replace_content` on the row body. Fetch the child page again and
+check that its last heading matches the file's last heading.
 
-Fetch the page. `push-brief` writes the "Brief" part and `push-spec` the
-"Delta spec" part. If the part exists, replace it (from its `## ` heading to
-the next part heading, or the end of the page) with the heading plus the file
-content. Keep the "Former repo ID" line and the other part. If the part does
-not exist, add it: the Brief goes after the "Former repo ID" line (or at the
-start) and the Delta spec at the end. Use `update_content`, or
-`replace_content` with the whole new body. Fetch the page again and check
-that the part's last heading matches the file's last heading. Report the row
-URL and "<part> replaced" or "<part> added".
+`push-brief` also writes the summary: if `summary.md` sits next to the brief
+file, replace the row's `## Summary` section with it (or add the section
+after the "Former repo ID" line, or at the start). Keep the other body parts
+and every child-page tag. Report the row URL and, for each part,
+"replaced" or "added".
 
 ### `set <EMC-n> "<property>=<value>" ...`
 
@@ -107,11 +121,16 @@ first and pass the full list. Report the old and new values.
 
 Create one row in the data source with `notion-create-pages`
 (`allow_async: false`). Set Name and Status, plus any other properties the
-main agent gives. If a body file is given, the page body is `## Brief`
-followed by the file content, so `pull` finds it. For Status `Idea`, the file
-content is the whole body, with no heading. Apply the Notion conversion
-above. Then fetch the returned page URL and read its `userDefined:ID`
-property. Report `EMC-<n>` and the page URL.
+main agent gives. Then fetch the returned page URL and read its
+`userDefined:ID` property.
+
+If a body file is given and the status is not `Idea`, the file is the brief.
+`summary.md` must sit next to it; if it does not, stop and report. The row
+body is `## Summary` followed by the summary, and the brief goes to an
+`Agent brief` child page, as in `push-brief`. For Status `Idea`, the file is
+the summary: the row body is `## Summary` followed by the file content, with
+no child page. Apply the Notion conversion above. Report `EMC-<n>` and the
+page URL.
 
 ### `list <filter>`
 

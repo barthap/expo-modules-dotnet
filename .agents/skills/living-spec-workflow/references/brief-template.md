@@ -7,9 +7,11 @@ start deliver mode without this session. It is not an implementation plan:
 deliver mode brainstorms the design, writes the delta spec, and writes the
 step-by-step local plan. Do not write ordered implementation steps in a brief.
 
-A brief is the `## Brief` section of a Notion Roadmap row. The row title is
-the brief's title, so the brief has no title line, and its headings start at
-`###`. See [notion.md](notion.md) for the page layout.
+A brief is the `Agent brief` child page of a Notion Roadmap row. The row
+title is the brief's title, so the brief has no title line, and its headings
+start at `###`. The row page body holds a short summary for the owner,
+written from the brief (see "Row summary" below). See [notion.md](notion.md)
+for the page layout.
 
 ## Template
 
@@ -99,3 +101,56 @@ become new rows (`Idea`, or `Backlog` with a brief) that depend on this one.
   approve?
 - Is the planned-at SHA filled in, and do the drift-check paths match Scope?
 - No secret values, local absolute paths, usernames, or machine names.
+- Does `summary.md` tell the owner what, why, and what is open, with no file
+  references?
+
+## Row summary
+
+The brief is for agents. The owner reads the row summary instead, so write
+`summary.md` next to `brief.md` for every brief. `push-brief` and `create`
+put it under `## Summary` on the row page. The reader knows the project and
+C#, but wants to know in about one minute what this is, why it matters, and
+what is still open.
+
+Use these bold labels. Leave out a label that has no content.
+
+```markdown
+**What:** 1-2 sentences. What is true after this item ships.
+
+**Why:** 1-3 sentences. The problem today and its cost.
+
+**What changes:**
+
+- 2-5 visible changes, for module authors, app developers, or the repo.
+
+**Not included:**
+
+- 1-3 items, each with a short reason.
+
+**Open questions:**
+
+- One per open design question, with the recommended answer in a few words.
+
+**Done when:** One sentence on the evidence (which tests, which docs).
+
+**Depends on / risk:** One line, only for a dependency or a MED/HIGH risk.
+```
+
+For an `Idea` row, the summary is 1-4 plain sentences with no labels.
+
+Rules:
+
+- At most 300 words. One idea per sentence, active voice, plain words.
+- Use only facts from the brief. Add no new scope or evidence.
+- No `file:line` references, file paths, git SHAs, "drift check", "STOP
+  condition", "planned at", diagnostic numbers, or instructions to an agent.
+- Backticks only for names a module author types or sees, such as an
+  attribute (`[Constant]`), a type, or a package name.
+- Write "upstream Android" and "upstream iOS" in words. Write other rows as
+  the ID plus a few words (`EMC-30`, TypeScript generation).
+
+Check before pushing (must print nothing):
+
+```sh
+grep -nE '\.(cs|md|kt|swift|ts|tsx|json|sh|cpp|h):?[0-9]*|/[A-Za-z]+/|STOP|[Dd]rift|[Pp]lanned at|\b[0-9a-f]{7}\b' summary.md
+```

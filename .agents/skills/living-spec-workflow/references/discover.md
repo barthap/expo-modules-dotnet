@@ -88,12 +88,12 @@ Wait for the selection.
   rejected" page.
 - Write each selected finding's brief from
   [brief-template.md](brief-template.md) to a local file under `docs/work/`,
-  then create its row with `notion-tracker` `create Todo "<title>" <file>`
+  with its row summary as `summary.md` in the same folder, then create its row with `notion-tracker` `create Todo "<title>" <file>`
   (or `Backlog` if it is not scheduled). Notion assigns the `EMC-<n>` ID. Take
   excerpts from your own reads, never from a subagent report.
 - Set Priority, Effort, Area, Milestone, and "Depends on" on each new row.
-- Create unselected but valid findings as `Idea` rows (title and one
-  paragraph), and add rejected ones to the "Considered and rejected" page
+- Create unselected but valid findings as `Idea` rows (title and a
+  1-4 sentence plain summary), and add rejected ones to the "Considered and rejected" page
   with one line of reasoning (`notion-update-page`, `insert_content` at the
   end).
 - Nothing is committed to git in this phase.
@@ -108,7 +108,8 @@ write one brief. Resolve ambiguity from the code first. Ask only what remains,
 one question at a time, each with a recommended answer.
 
 Write the brief to a local file under `docs/work/` with the
-[brief-template.md](brief-template.md) heading rules. If the item is an
+[brief-template.md](brief-template.md) heading rules, and its row summary as
+`summary.md` in the same folder. If the item is an
 `Idea` row, run `notion-tracker` `push-brief <EMC-n> <file>` and set its
 Status to `Todo` or `Backlog`. Otherwise run `create`.
 

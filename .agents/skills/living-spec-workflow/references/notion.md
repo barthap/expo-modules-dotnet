@@ -10,10 +10,11 @@ specs in `docs/specs/`.
 | Content | Location |
 | --- | --- |
 | Status, priority, branch, PR, dependencies | Notion Roadmap row properties |
-| Brief | Row page body, under `## Brief` |
-| Delta spec | Row page body, under `## Delta spec` |
+| Summary for the owner | Row page body, under `## Summary` |
+| Brief | Child page `Agent brief` of the row |
+| Delta spec | Child page `Delta spec` of the row |
 | Audit findings checked and rejected | Notion page "Considered and rejected" |
-| Local copies of brief and delta spec | `docs/work/EMC-<n>-<slug>/brief.md`, `spec.md` (git-ignored) |
+| Local copies of summary, brief, and delta spec | `docs/work/EMC-<n>-<slug>/summary.md`, `brief.md`, `spec.md` (git-ignored) |
 | Implementation plan | `docs/work/EMC-<n>-<slug>/plan.md` (git-ignored, never in Notion) |
 | Accepted behavior | `docs/specs/` (committed, merged in the item's PR) |
 
@@ -73,21 +74,27 @@ three-digit IDs in briefs and notes refer to that line. To find the row, use
 call-path benchmark and the shared-object composites). Former IDs 001–021
 have no row.
 
-## Page body
+## Page layout
+
+The row page body is for the owner, a human. It holds a short plain-English
+summary. Agent material lives on child pages of the row.
 
 ```markdown
 Former repo ID: NNN          (migrated rows only)
 
-## Brief
-...from references/brief-template.md, headings start at ###...
+## Summary
+...owner summary, see "Row summary" in references/brief-template.md...
 
-## Delta spec
-...added in deliver mode, headings start at ###...
+[child page] Agent brief     ...from references/brief-template.md, headings start at ###...
+[child page] Delta spec      ...added in deliver mode, headings start at ###...
 ```
 
+An `Idea` row has only the summary, with no child page.
+
 Local copies keep the Notion heading levels: in `brief.md` and `spec.md`,
-the top headings are `###`, without the `## Brief` or `## Delta spec` line.
-Write a new `spec.md` the same way, so `push-spec` copies it without changes.
+the top headings are `###`. `summary.md` is the `## Summary` section without
+its heading line. Write a new `spec.md` the same way, so `push-spec` copies it
+without changes.
 Do not hard-wrap paragraphs or list items in these files: Notion turns every
 line break into a hard break.
 
@@ -100,10 +107,10 @@ main context and returns short summaries. Operations:
 | Operation | Effect |
 | --- | --- |
 | `pull <EMC-n>` | Writes `docs/work/EMC-<n>-<slug>/brief.md` and, if present, `spec.md`. Notion wins. |
-| `push-brief <EMC-n> <path>` | Replaces or adds the page's "Brief" part with the file. |
-| `push-spec <EMC-n> <path>` | Replaces or adds the page's "Delta spec" part with the file. |
+| `push-brief <EMC-n> <path>` | Replaces or creates the `Agent brief` child page with the file, and the row's `## Summary` with `summary.md` from the same folder, if present. |
+| `push-spec <EMC-n> <path>` | Replaces or creates the `Delta spec` child page with the file. |
 | `set <EMC-n> "<property>=<value>" ...` | Updates properties. Quote each pair. |
-| `create <status> <title> [body-file]` | Creates a row, with the file under `## Brief` (or as the whole body for `Idea`); returns `EMC-<n>` and the URL. |
+| `create <status> <title> [body-file]` | Creates a row. The file is the brief, put on an `Agent brief` child page, with `summary.md` from the same folder as the row's `## Summary`. For `Idea`, the file is the summary. Returns `EMC-<n>` and the URL. |
 | `list <filter>` | One line per row: ID, title, Status, Branch, PR. |
 
 If the agent type is not available (a new definition needs a Claude Code

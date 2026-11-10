@@ -43,8 +43,9 @@ track items in git: no status tables, no brief files, no `plans/README.md`.
 The committed `docs/roadmap.md` is a short public page (direction, shipped,
 planned) with no IDs or statuses.
 
-- Every planned item is one Notion row, `EMC-<n>`. Its brief is the `## Brief`
-  section of the row's page.
+- Every planned item is one Notion row, `EMC-<n>`. The row page body has a
+  short `## Summary` for the owner. The brief is the row's `Agent brief`
+  child page, and the delta spec its `Delta spec` child page.
 - Ideas without a brief are rows with Status `Idea`.
 - A brief says what and why. The step-by-step plan is the local, git-ignored
   `docs/work/EMC-<n>-<slug>/plan.md`, written in deliver mode.
@@ -161,7 +162,7 @@ conversation.
 
 Artifact meanings:
 
-- Delta spec (`<dir>spec.md`, Notion "Delta spec" section): the Superpowers
+- Delta spec (`<dir>spec.md`, Notion `Delta spec` child page): the Superpowers
   design artifact. It SHOULD include goal, scope, accepted design, and delta
   requirements/scenarios against `docs/specs/*.md`. Use `ADDED`, `MODIFIED`,
   and `REMOVED` headings when they make the delta easier to merge, but do not
