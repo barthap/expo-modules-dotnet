@@ -113,7 +113,7 @@ public sealed partial class ExpoModulesGenerator
   private static bool HoldsLeaves(ExpoCodecDescriptor? codec) =>
       codec?.ResourceOwnership == ExpoResourceOwnership.HoldsLeaves;
 
-  // A list, dictionary, nullable, or union codec holds leaves when a child does, and releases them
+  // A list, dictionary, or nullable codec holds leaves when a child does, and releases them
   // through the child codec.
   private static ExpoCodecDescriptor CompositeCodec(ExpoCodecDescriptor codec, ExpoCodecDescriptor child) =>
       HoldsLeaves(child) ? codec with { ResourceOwnership = ExpoResourceOwnership.HoldsLeaves } : codec;
@@ -316,8 +316,6 @@ public sealed partial class ExpoModulesGenerator
     return true;
   }
 
-  private const string EitherMetadataName = "global::Expo.ModulesCore.Either<TFirst, TSecond>";
-
   private const string Uint8ArrayMetadataName = "global::Expo.ModulesCore.Uint8Array";
 
   // The ten numeric special types that NumberCodec<T> decodes.
@@ -333,75 +331,6 @@ public sealed partial class ExpoModulesGenerator
           SpecialType.System_UInt64 or
           SpecialType.System_Single or
           SpecialType.System_Double;
-
-  // The JavaScript kind a union member decodes from. The names mirror JavaScriptValueKind and the
-  // Kind of the leaf codecs, which the managed union codec compares at runtime. A type outside the
-  // table, or an annotated one (null is not a kind), is not a union member. A Uint8Array is an
-  // Object, and its codec then proves that the object is a Uint8Array.
-  private static string? GetUnionMemberKind(ITypeSymbol typeSymbol)
-  {
-    if (typeSymbol.NullableAnnotation == NullableAnnotation.Annotated)
-    {
-      return null;
-    }
-
-    switch (typeSymbol.SpecialType)
-    {
-      case SpecialType.System_String:
-        return "String";
-      case SpecialType.System_Boolean:
-        return "Bool";
-      case var specialType when IsNumberSpecialType(specialType):
-        return "Number";
-    }
-
-    if (typeSymbol is IArrayTypeSymbol { Rank: 1, ElementType.SpecialType: SpecialType.System_Byte })
-    {
-      return "ArrayBuffer";
-    }
-
-    return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) switch
-    {
-      ArrayBufferMetadataName or
-      "global::System.Memory<byte>" or
-      "global::System.ReadOnlyMemory<byte>" => "ArrayBuffer",
-      Uint8ArrayMetadataName => "Object",
-      _ => null,
-    };
-  }
-
-  // A union is one ordinary codec. Its members must be of different JavaScript kinds, and it holds
-  // leaves when a member does.
-  private static ExpoCodecDescriptor? GetEitherCodec(
-      INamedTypeSymbol typeSymbol,
-      List<ExpoDiagnosticModel> diagnostics,
-      ExpoCodecCollector codecs)
-  {
-    var firstType = typeSymbol.TypeArguments[0];
-    var secondType = typeSymbol.TypeArguments[1];
-
-    // The kinds are checked before any member codec resolves, so a rejected union adds no record
-    // codec and no diagnostic as a side effect.
-    var firstKind = GetUnionMemberKind(firstType);
-    var secondKind = GetUnionMemberKind(secondType);
-    if (firstKind is null || secondKind is null || firstKind == secondKind)
-    {
-      return null;
-    }
-
-    var firstCodec = AsCompositeChildCodec(GetCodec(firstType, diagnostics, codecs));
-    var secondCodec = AsCompositeChildCodec(GetCodec(secondType, diagnostics, codecs));
-    if (firstCodec is null || secondCodec is null)
-    {
-      return null;
-    }
-
-    var codec = OrdinaryCodec(
-        $"EitherCodec<{GetCodecTypeArgumentName(firstType)}, {firstCodec.Expression}, " +
-        $"{GetCodecTypeArgumentName(secondType)}, {secondCodec.Expression}>"
-    );
-    return CompositeCodec(CompositeCodec(codec, firstCodec), secondCodec);
-  }
 
   private static ExpoCodecDescriptor? TryGetReadOnlyListCodec(
       ITypeSymbol typeSymbol,
@@ -763,14 +692,6 @@ public sealed partial class ExpoModulesGenerator
     if (IsUnionCaseType(typeSymbol))
     {
       return null;
-    }
-
-    // A union never reaches the later branches, even when it is rejected. Either<,>? reaches this
-    // branch through TryGetNullableCodec.
-    if (typeSymbol is INamedTypeSymbol eitherType &&
-        eitherType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == EitherMetadataName)
-    {
-      return GetEitherCodec(eitherType, diagnostics, codecs);
     }
 
     if (TryGetNullableCodec(typeSymbol, diagnostics, codecs) is { } nullableCodec)
