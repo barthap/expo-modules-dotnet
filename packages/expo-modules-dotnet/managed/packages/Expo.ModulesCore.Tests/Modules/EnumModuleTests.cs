@@ -45,6 +45,25 @@ public sealed class EnumModuleTests
     Assert.Equal("\"42\"", await ReadAsync(host, "m.plainOutOfRange()"));
   }
 
+  // A usage-level [JSEnum] wins over the enum type's. A record field has no usage-level attribute,
+  // so it keeps the type's Number.
+  [Fact]
+  public async Task UsageLevelRepresentationWinsOverTheEnumType()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal("\"Fast\"", await ReadAsync(host, "m.describeNumberModeAsString('Fast')"));
+    Assert.Equal("{\"mode\":1}", await ReadAsync(host, "m.echoNumberModeHolder({ mode: 1 })"));
+  }
+
+  [Fact]
+  public async Task UsageLevelNumberReachesANullableEnum()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal("[1,null]", await ReadAsync(host, "[m.echoPlainAsNullableNumber(1), m.echoPlainAsNullableNumber(null)]"));
+  }
+
   private static ExpoModuleTestHost CreateHost() =>
       ExpoModuleTestHost.Create(ExpoModulesProvider_Expo_ModulesCore_Tests.Register);
 

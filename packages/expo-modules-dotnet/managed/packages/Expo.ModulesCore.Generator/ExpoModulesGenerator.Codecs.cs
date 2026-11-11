@@ -145,13 +145,16 @@ public sealed partial class ExpoModulesGenerator
     };
   }
 
+  // The value of Expo.ModulesCore.EnumRepresentation.Number.
+  private const int NumberEnumRepresentation = 1;
+
+  // The effective representation of an enum at one codec position: the usage-level [JSEnum] on the
+  // parameter or return value when present, else the enum type's [JSEnum], else String.
   private static bool UsesNumberEnumRepresentation(
       ITypeSymbol enumType,
-      IEnumerable<AttributeData>? usageAttributes)
-  {
-    return GetEnumRepresentation(usageAttributes) == 1 ||
-        GetEnumRepresentation(enumType.GetAttributes()) == 1;
-  }
+      IEnumerable<AttributeData>? usageAttributes) =>
+      (GetEnumRepresentation(usageAttributes) ?? GetEnumRepresentation(enumType.GetAttributes())) ==
+      NumberEnumRepresentation;
 
   private static int? GetEnumRepresentation(IEnumerable<AttributeData>? attributes)
   {
@@ -187,10 +190,12 @@ public sealed partial class ExpoModulesGenerator
     };
   }
 
+  // A usage-level [JSEnum] on a Nullable<TEnum> parameter or return value applies to the enum inside.
   private static ExpoCodecDescriptor? TryGetNullableCodec(
       ITypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
-      ExpoCodecCollector codecs)
+      ExpoCodecCollector codecs,
+      IEnumerable<AttributeData>? usageAttributes)
   {
     if (typeSymbol is not INamedTypeSymbol namedType ||
         namedType.ConstructedFrom.SpecialType != SpecialType.System_Nullable_T)
@@ -199,7 +204,7 @@ public sealed partial class ExpoModulesGenerator
     }
 
     var valueType = namedType.TypeArguments.Single();
-    var valueCodec = AsCompositeChildCodec(GetCodec(valueType, diagnostics, codecs));
+    var valueCodec = AsCompositeChildCodec(GetCodec(valueType, diagnostics, codecs, usageAttributes));
     if (valueCodec is null)
     {
       return null;
@@ -694,7 +699,7 @@ public sealed partial class ExpoModulesGenerator
       return null;
     }
 
-    if (TryGetNullableCodec(typeSymbol, diagnostics, codecs) is { } nullableCodec)
+    if (TryGetNullableCodec(typeSymbol, diagnostics, codecs, usageAttributes) is { } nullableCodec)
     {
       return nullableCodec;
     }
@@ -705,7 +710,7 @@ public sealed partial class ExpoModulesGenerator
     }
     if (typeSymbol.TypeKind == TypeKind.Enum)
     {
-      // Usage-level enum metadata wins over enum-type metadata; string remains the default.
+      // The effective representation decides the codec; see UsesNumberEnumRepresentation.
       var enumTypeName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
       return OrdinaryCodec(
           UsesNumberEnumRepresentation(typeSymbol, usageAttributes)

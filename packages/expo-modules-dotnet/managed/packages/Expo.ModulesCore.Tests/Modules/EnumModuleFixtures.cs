@@ -7,6 +7,15 @@ public enum PlainMode
   Fast,
 }
 
+[JSEnum(EnumRepresentation.Number)]
+public enum NumberMode
+{
+  Slow,
+  Fast,
+}
+
+public sealed record NumberModeHolder(NumberMode Mode);
+
 [ExpoModule("EnumScenarios")]
 public sealed partial class EnumScenariosModule : Module
 {
@@ -21,4 +30,14 @@ public sealed partial class EnumScenariosModule : Module
   // 42 names no member of PlainMode.
   [JS]
   public PlainMode PlainOutOfRange() => (PlainMode)42;
+
+  [JS]
+  public string DescribeNumberModeAsString([JSEnum(EnumRepresentation.String)] NumberMode mode) => mode.ToString();
+
+  [JS]
+  public NumberModeHolder EchoNumberModeHolder(NumberModeHolder holder) => holder;
+
+  [JS]
+  [return: JSEnum(EnumRepresentation.Number)]
+  public PlainMode? EchoPlainAsNullableNumber([JSEnum(EnumRepresentation.Number)] PlainMode? mode) => mode;
 }
