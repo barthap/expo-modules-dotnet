@@ -83,3 +83,11 @@ jobs:
       - name: Install cmake-format
         run: pipx install cmakelang
       - run: scripts/format.sh --check --all
+
+  guide-samples:
+    name: guide-samples
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run CI')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/check-guide-samples.sh
