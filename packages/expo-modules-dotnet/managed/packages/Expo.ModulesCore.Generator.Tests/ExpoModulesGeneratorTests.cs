@@ -1299,9 +1299,88 @@ public sealed class ExpoModulesGeneratorTests
     );
 
     var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI007");
-    Assert.Contains("Bad", diagnostic.GetMessage());
-    Assert.Contains("Value", diagnostic.GetMessage());
-    Assert.Contains("System.Decimal", diagnostic.GetMessage());
+    // The type reason keeps its exact text after the format gains a reason argument.
+    Assert.Equal("Record 'Bad' field 'Value' uses unsupported type 'System.Decimal'", diagnostic.GetMessage());
+  }
+
+  // A default there can only be C# null (or a struct holding one), which is not a JavaScript
+  // undefined value and which JavaScriptValueCodec.Encode rejects. The message blames the default,
+  // not the type, and no codec is emitted for the record or for the struct it holds.
+  [Fact]
+  public void GeneratorRejectsDefaultOnJavaScriptValueRecordFields()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.JSI;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public record Holder(string Name, JavaScriptValue V = null);
+        public readonly record struct Slot(JavaScriptValue Value);
+        public record Wrapper(Slot Slot = default);
+        public readonly record struct Outer(Slot Inner);
+        public record DeepWrapper(Outer Outer = default);
+
+        [ExpoModule("Holders")]
+        public sealed partial class HoldersModule
+        {
+          [JS] public int TakeHolder(Holder holder) => 0;
+          [JS] public int TakeWrapper(Wrapper wrapper) => 0;
+          [JS] public int TakeDeep(DeepWrapper wrapper) => 0;
+        }
+        """
+    );
+
+    var messages = (result.GeneratorDiagnostics ?? Array.Empty<Diagnostic>())
+        .Where(item => item.Id == "EXPOJSI007")
+        .Select(item => item.GetMessage())
+        .ToArray();
+    // Report order follows member analysis order, which this test does not pin.
+    Assert.Equal(
+        new[]
+        {
+          "Record 'DeepWrapper' field 'Outer' of type 'global::Expo.TestModules.Outer' cannot have a default value because the type holds a JavaScriptValue",
+          "Record 'Holder' field 'V' of type 'global::Expo.JSI.JavaScriptValue' cannot have a default value",
+          "Record 'Wrapper' field 'Slot' of type 'global::Expo.TestModules.Slot' cannot have a default value because the type holds a JavaScriptValue",
+        },
+        messages.OrderBy(message => message, StringComparer.Ordinal).ToArray()
+    );
+    var source = GeneratedText(result);
+    Assert.DoesNotContain(RecordCodecName("Holder", "global::Expo.TestModules.Holder"), source, StringComparison.Ordinal);
+    Assert.DoesNotContain(RecordCodecName("Wrapper", "global::Expo.TestModules.Wrapper"), source, StringComparison.Ordinal);
+    Assert.DoesNotContain(RecordCodecName("DeepWrapper", "global::Expo.TestModules.DeepWrapper"), source, StringComparison.Ordinal);
+    Assert.DoesNotContain(RecordCodecName("Slot", "global::Expo.TestModules.Slot"), source, StringComparison.Ordinal);
+  }
+
+  // Guard: without a default an omitted JavaScriptValue field already holds undefined, a method
+  // parameter default keeps its behavior, and other leaf-bearing fields may default to null.
+  [Fact]
+  public void GeneratorAcceptsJavaScriptValueRecordFieldWithoutDefault()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        #nullable enable
+        using Expo.JSI;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public record Holder(string Name, JavaScriptValue V);
+        public record OptionalBlob(ArrayBuffer? Data = null);
+
+        [ExpoModule("Holders")]
+        public sealed partial class HoldersModule
+        {
+          [JS] public int TakeHolder(Holder holder) => 0;
+          [JS] public int TakeBlob(OptionalBlob blob) => 0;
+          [JS] public int Run(JavaScriptValue value = null) => 0;
+        }
+        """
+    );
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerErrors(result);
   }
 
   // Each case was a generator crash (enum), a compile error (struct default, NaN, small integers),

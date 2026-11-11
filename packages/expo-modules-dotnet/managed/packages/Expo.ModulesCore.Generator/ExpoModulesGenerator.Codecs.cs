@@ -483,6 +483,18 @@ public sealed partial class ExpoModulesGenerator
     var fields = new List<ExpoGeneratedRecordFieldModel>();
     foreach (var parameter in constructor.Parameters)
     {
+      // Checked from the symbol before the field codec resolves, so a rejected record adds no
+      // codec for the struct it holds.
+      if (GetRecordFieldDefaultRejection(parameter) is { } rejection)
+      {
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.UnsupportedRecordField.Id,
+            parameter.Locations.FirstOrDefault(),
+            new EquatableArray<string>(new[] { typeSymbol.Name, parameter.Name, rejection })
+        ));
+        return null;
+      }
+
       var property = typeSymbol.GetMembers().OfType<IPropertySymbol>()
           .FirstOrDefault(item => item.Name == parameter.Name);
       var fieldCodec = GetCodec(parameter.Type, diagnostics, recordCodecs);
@@ -498,7 +510,12 @@ public sealed partial class ExpoModulesGenerator
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedRecordField.Id,
             parameter.Locations.FirstOrDefault(),
-            new EquatableArray<string>(new[] { typeSymbol.Name, parameter.Name, GetDiagnosticTypeName(parameter.Type) })
+            new EquatableArray<string>(new[]
+            {
+                typeSymbol.Name,
+                parameter.Name,
+                $"uses unsupported type '{GetDiagnosticTypeName(parameter.Type)}'",
+            })
         ));
         return null;
       }
@@ -548,6 +565,38 @@ public sealed partial class ExpoModulesGenerator
         type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == JavaScriptValueMetadataName;
     return isOptionalByType ? ExpoRecordFieldKind.OptionalByType : ExpoRecordFieldKind.Required;
   }
+
+  // A default on a JavaScriptValue field, or on a record struct field that holds one, can only be
+  // C# null or a struct holding null. That is not a JavaScript undefined value, and
+  // JavaScriptValueCodec.Encode rejects it. A method parameter default is not a record field and
+  // keeps its behavior.
+  private static string? GetRecordFieldDefaultRejection(IParameterSymbol parameter)
+  {
+    if (!parameter.HasExplicitDefaultValue)
+    {
+      return null;
+    }
+
+    var typeName = GetDiagnosticTypeName(parameter.Type);
+    if (parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == JavaScriptValueMetadataName)
+    {
+      return $"of type '{typeName}' cannot have a default value";
+    }
+
+    return HoldsJavaScriptValueByValue(parameter.Type)
+        ? $"of type '{typeName}' cannot have a default value because the type holds a JavaScriptValue"
+        : null;
+  }
+
+  // A record struct holds a JavaScriptValue when a constructor field is one, or is a record struct
+  // that holds one. A struct cannot contain itself by value (CS0523), so the recursion ends.
+  // Nullable<T> is not followed: its default is null, which encodes as JavaScript null.
+  private static bool HoldsJavaScriptValueByValue(ITypeSymbol typeSymbol) =>
+      typeSymbol is INamedTypeSymbol { IsRecord: true, IsValueType: true } recordType &&
+      GetRecordCodecConstructor(recordType) is { } constructor &&
+      constructor.Parameters.Any(parameter =>
+          parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == JavaScriptValueMetadataName ||
+          HoldsJavaScriptValueByValue(parameter.Type));
   private static string GetParameterExpression(
       ExpoParameterModel parameter,
       int index,
