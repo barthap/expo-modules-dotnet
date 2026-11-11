@@ -8,6 +8,9 @@ namespace ExpoFileSystemDotnet.Tests;
 
 public sealed class FileSystemBindingTests
 {
+  private const string Mismatch =
+      "ERR_UNION_CASE_MISMATCH|'WriteContent' expected string or ArrayBuffer or Uint8Array, but received ";
+
   private static string Eval(ExpoModuleTestHost host, string code) =>
       host.Runtime.Execute(_ =>
       {
@@ -110,7 +113,7 @@ public sealed class FileSystemBindingTests
           const m = _expoDotnet.modules.FileSystem;
           const f = new m.FileSystemFile('{{DirUri(temp.Path)}}a.txt');
           const d = new m.FileSystemDirectory('{{DirUri(temp.Path)}}');
-          const absent = ['write', 'writeSync', 'copy', 'copySync', 'move', 'moveSync', 'open', 'type'];
+          const absent = ['copy', 'copySync', 'move', 'moveSync', 'open', 'type'];
           return absent.filter((name) => name in f || name in d).join(',');
         })()
         """
@@ -412,5 +415,248 @@ public sealed class FileSystemBindingTests
           "true:0:256:256:0:255",
         },
         result);
+  }
+
+  [Fact]
+  public void WriteSyncTakesEachContentKind()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    using var host = ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoFileSystemDotnet.Register);
+
+    var result = EvalList(
+        host,
+        $$"""
+        (() => {
+          {{Prelude(DirUri(temp.Path))}}
+          const f = new m.FileSystemFile(dir + 'a.bin');
+          const g = new m.FileSystemFile(dir + 'b.bin');
+          const out = [];
+          f.writeSync('zażółć', {});
+          out.push(hex(f.bytesSync()));
+          f.writeSync(new Uint8Array([1, 2, 3]).buffer, { encoding: undefined, append: undefined });
+          out.push(hex(f.bytesSync()));
+          const buf = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]).buffer;
+          f.writeSync(new Uint8Array(buf, 2, 3));
+          out.push(hex(f.bytesSync()));
+          // bytesSync returns a native-backed view; its buffer is native-backed too.
+          g.writeSync(f.bytesSync());
+          out.push(hex(g.bytesSync()));
+          g.writeSync(f.bytesSync().buffer, { append: true });
+          out.push(hex(g.bytesSync()));
+          f.writeSync(new Uint8Array([9]), { encoding: 'base64' });
+          out.push(hex(f.bytesSync()));
+          f.writeSync('AQID\n', { encoding: 'base64' });
+          out.push(hex(f.bytesSync()));
+          out.push(err(() => f.writeSync('A', { encoding: 'base64' })));
+          out.push(hex(f.bytesSync()));
+          return JSON.stringify(out);
+        })()
+        """
+    );
+
+    var file = FileSystemLocation.Parse(Path.Combine(temp.Path, "a.bin"), isDirectory: false, PathFlavors.Current);
+    Assert.Equal(
+        new[]
+        {
+          "7a61c5bcc3b3c582c487",
+          "010203",
+          "020304",
+          "020304",
+          "020304020304",
+          "09",
+          "010203",
+          $"ERR_UNABLE_TO_WRITE_BASE64_DATA|Unable to write base64 data to a file: {file.Uri}",
+          "010203",
+        },
+        result);
+  }
+
+  [Fact]
+  public void FacadeConversionPassesOtherTypedArraysAsBytes()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    using var host = ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoFileSystemDotnet.Register);
+
+    // The ES5 form of the facade override in src/File.ts.
+    var result = EvalList(
+        host,
+        $$"""
+        (() => {
+          {{Prelude(DirUri(temp.Path))}}
+          const Base = m.FileSystemFile;
+          function toNativeContent(content) {
+            if (ArrayBuffer.isView(content) && !(content instanceof Uint8Array) && !(content instanceof DataView)) {
+              return new Uint8Array(content.buffer, content.byteOffset, content.byteLength);
+            }
+            return content;
+          }
+          function File(uri) { return Reflect.construct(Base, [uri], File); }
+          Object.setPrototypeOf(File, Base);
+          File.prototype = Object.create(Base.prototype, {
+            constructor: { value: File, writable: true, configurable: true },
+          });
+          File.prototype.writeSync = function (content, options) {
+            return Base.prototype.writeSync.call(this, toNativeContent(content), options);
+          };
+          const view = new Int16Array(new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]).buffer, 2, 2);
+          const f = new File(dir + 'a.bin');
+          f.writeSync(view);
+          const native = new Base(dir + 'b.bin');
+          return JSON.stringify([hex(f.bytesSync()), err(() => native.writeSync(view)), String(native.exists)]);
+        })()
+        """
+    );
+
+    Assert.Equal(
+        new[] { "02030405", Mismatch + "object\n→ Caused by: Value is not a Uint8Array.", "false" },
+        result);
+  }
+
+  [Fact]
+  public async Task InvalidContentAndOptionsFailBeforeTheCall()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    File.WriteAllText(Path.Combine(temp.Path, "a.txt"), "keep");
+    using var host = ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoFileSystemDotnet.Register);
+    var dir = DirUri(temp.Path);
+    const string NotAView = "object\n→ Caused by: Value is not a Uint8Array.";
+    const string BadEncoding =
+        "(none)|'hex' is not a valid ExpoFileSystemDotnet.EncodingType value. It must be one of: 'utf8', 'base64'";
+
+    var sync = EvalList(
+        host,
+        $$"""
+        (() => {
+          {{Prelude(dir)}}
+          const f = new m.FileSystemFile(dir + 'a.txt');
+          return JSON.stringify([
+            err(() => f.writeSync(5)),
+            err(() => f.writeSync({})),
+            err(() => f.writeSync(null)),
+            err(() => f.writeSync(undefined)),
+            err(() => f.writeSync(new DataView(new ArrayBuffer(2)))),
+            err(() => f.writeSync('x', { encoding: 'hex' })),
+            err(() => f.writeSync('x', { append: null })),
+            err(() => f.writeSync('x', { encoding: null })),
+          ]);
+        })()
+        """
+    );
+    var rejected = await EvalListAsync(
+        host,
+        $$"""
+        (() => {
+          {{Prelude(dir)}}
+          const f = new m.FileSystemFile(dir + 'a.txt');
+          return Promise.all([
+            rejection(f.write(5)),
+            rejection(f.write(new DataView(new ArrayBuffer(2)))),
+            rejection(f.write('x', { encoding: 'hex' })),
+          ]).then(JSON.stringify);
+        })()
+        """
+    );
+
+    Assert.Equal(
+        new[]
+        {
+          Mismatch + "number",
+          Mismatch + NotAView,
+          Mismatch + "null",
+          Mismatch + "undefined",
+          Mismatch + NotAView,
+          BadEncoding,
+        },
+        sync[..6]);
+    Assert.Matches(@"^\(none\)\|.*Value is not a boolean\.$", sync[6]);
+    Assert.Matches(@"^\(none\)\|.*Value is not a string\.$", sync[7]);
+    Assert.Equal(new[] { Mismatch + "number", Mismatch + NotAView, BadEncoding }, rejected);
+    Assert.Equal("keep", File.ReadAllText(Path.Combine(temp.Path, "a.txt")));
+  }
+
+  [Fact]
+  public async Task AsyncWriteCapturesTheContentAtTheCall()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    using var host = ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoFileSystemDotnet.Register);
+
+    var result = await EvalListAsync(
+        host,
+        $$"""
+        (() => {
+          {{Prelude(DirUri(temp.Path))}}
+          const f = new m.FileSystemFile(dir + 'a.bin');
+          const view = new Uint8Array([1, 2]);
+          const p = f.write(view);
+          view[0] = 9;
+          const buffer = new Uint8Array([3, 4]).buffer;
+          return p.then((value) => {
+            const q = f.write(buffer, { append: true });
+            new Uint8Array(buffer)[0] = 9;
+            return q.then(() => JSON.stringify([String(value), hex(f.bytesSync())]));
+          });
+        })()
+        """
+    );
+
+    Assert.Equal(new[] { "undefined", "01020304" }, result);
+  }
+
+  // Generated glue owns a leaf parameter and releases it once, after the call or after the Task.
+  // The module must not dispose it as well.
+  [Fact]
+  public async Task WriteLeavesParameterLeavesToTheBinding()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    // A host initializes the native buffer interface that ArrayBuffer and Uint8Array use.
+    using var host = ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoFileSystemDotnet.Register);
+    var path = Path.Combine(temp.Path, "a.bin");
+    var file = new FileSystemFile(FileSystemLocation.Parse(path, isDirectory: false, PathFlavors.Current));
+    using var view = Uint8Array.CopyFrom([1, 2]);
+    using var buffer = ArrayBuffer.CopyFrom([3]);
+
+    file.WriteSync(new WriteContent.View(view));
+    await file.Write(new WriteContent.Buffer(buffer), new WriteOptions(Append: true));
+    await file.Write(new WriteContent.View(view), new WriteOptions(Append: true));
+
+    Assert.Equal(2, view.Length);
+    Assert.Equal(1, buffer.ByteLength);
+    Assert.Equal(new byte[] { 1, 2, 3, 1, 2 }, File.ReadAllBytes(path));
+  }
+
+  [Fact]
+  public void WriteFailuresKeepTheirKind()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    Directory.CreateDirectory(Path.Combine(temp.Path, "app"));
+    File.WriteAllText(Path.Combine(temp.Path, "app", "a.txt"), "A");
+    using var bundle = FileSystemRoots.OverrideBundleForTests(Path.Combine(temp.Path, "app"));
+    using var host = ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoFileSystemDotnet.Register);
+    var dir = DirUri(temp.Path);
+
+    var result = EvalList(
+        host,
+        $$"""
+        (() => {
+          {{Prelude(dir)}}
+          return JSON.stringify([
+            err(() => new m.FileSystemFile(dir + 'missing/a.txt').writeSync('x')),
+            err(() => new m.FileSystemFile(dir + 'app/a.txt').writeSync('x')),
+          ]);
+        })()
+        """
+    );
+
+    Assert.Equal(
+        $"(none)|Could not find a part of the path '{Path.Combine(temp.Path, "missing", "a.txt")}'.",
+        result[0]);
+    Assert.Equal($"ERR_MISSING_PERMISSION|Missing permission for uri: {dir}app/a.txt", result[1]);
+    Assert.Equal("A", File.ReadAllText(Path.Combine(temp.Path, "app", "a.txt")));
   }
 }
