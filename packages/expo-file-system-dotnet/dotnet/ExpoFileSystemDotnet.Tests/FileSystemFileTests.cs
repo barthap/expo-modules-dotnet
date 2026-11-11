@@ -126,4 +126,14 @@ public sealed class FileSystemFileTests
       Assert.ThrowsAny<Exception>(() => file.TextSync());
     }
   }
+
+  [Fact]
+  public void LengthAboveIntMaxValueIsTooLarge()
+  {
+    Assert.Equal(int.MaxValue, FileSystemFile.CheckedLength(int.MaxValue, "file:///a"));
+    var error = Assert.Throws<FileTooLargeException>(
+        () => FileSystemFile.CheckedLength((long)int.MaxValue + 1, "file:///a"));
+    Assert.Equal("ERR_FILE_TOO_LARGE", error.Code);
+    Assert.Equal("File is too large to read into memory: file:///a", error.Message);
+  }
 }

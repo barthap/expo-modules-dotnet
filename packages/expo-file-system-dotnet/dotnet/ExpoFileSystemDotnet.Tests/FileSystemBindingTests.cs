@@ -110,8 +110,7 @@ public sealed class FileSystemBindingTests
           const m = _expoDotnet.modules.FileSystem;
           const f = new m.FileSystemFile('{{DirUri(temp.Path)}}a.txt');
           const d = new m.FileSystemDirectory('{{DirUri(temp.Path)}}');
-          const absent = ['write', 'writeSync', 'bytes', 'bytesSync', 'copy', 'copySync',
-            'move', 'moveSync', 'open', 'type'];
+          const absent = ['write', 'writeSync', 'copy', 'copySync', 'move', 'moveSync', 'open', 'type'];
           return absent.filter((name) => name in f || name in d).join(',');
         })()
         """
@@ -372,5 +371,46 @@ public sealed class FileSystemBindingTests
     Assert.Equal(new[] { "false", "no error", "true", "null" }, result[3..]);
     Assert.Equal("keep", File.ReadAllText(Path.Combine(temp.Path, "a.txt")));
     Assert.Equal("c", File.ReadAllText(Path.Combine(temp.Path, "d", "child.txt")));
+  }
+
+  [Fact]
+  public async Task BytesReturnsAViewOverTheWholeFile()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    File.WriteAllBytes(Path.Combine(temp.Path, "all.bin"), Enumerable.Range(0, 256).Select(i => (byte)i).ToArray());
+    File.WriteAllBytes(Path.Combine(temp.Path, "empty.bin"), []);
+    Directory.CreateDirectory(Path.Combine(temp.Path, "folder"));
+    using var host = ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoFileSystemDotnet.Register);
+
+    var result = await EvalListAsync(
+        host,
+        $$"""
+        (() => {
+          {{Prelude(DirUri(temp.Path))}}
+          const shape = (b) => [b instanceof Uint8Array, b.byteOffset, b.length, b.buffer.byteLength, b[0], b[255]].join(':');
+          const f = new m.FileSystemFile(dir + 'all.bin');
+          const empty = new m.FileSystemFile(dir + 'empty.bin').bytesSync();
+          const results = [
+            shape(f.bytesSync()),
+            empty.length + ':' + empty.buffer.byteLength,
+            err(() => new m.FileSystemFile(dir + 'missing.bin').bytesSync()),
+            err(() => new m.FileSystemFile(dir + 'folder').bytesSync()),
+          ];
+          return f.bytes().then((b) => JSON.stringify(results.concat([shape(b)])));
+        })()
+        """
+    );
+
+    Assert.Equal(
+        new[]
+        {
+          "true:0:256:256:0:255",
+          "0:0",
+          $"(none)|Could not find file '{Path.Combine(temp.Path, "missing.bin")}'.",
+          "ERR_INVALID_TYPE_FILE|A folder with the same name already exists in the file location",
+          "true:0:256:256:0:255",
+        },
+        result);
   }
 }

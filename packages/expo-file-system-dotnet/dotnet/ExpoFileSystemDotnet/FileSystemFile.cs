@@ -171,6 +171,42 @@ internal sealed partial class FileSystemFile : FileSystemPath
     return Task.Run(() => FileMetadata.HashHexAsync(target.NativePath, algorithm, CancellationToken.None));
   }
 
+  [JS]
+  public Uint8Array BytesSync()
+  {
+    var target = Location;
+    EnsureCorrectType(target.NativePath);
+    return ReadBytes(target);
+  }
+
+  [JS]
+  public Task<Uint8Array> Bytes()
+  {
+    var target = Location;
+    EnsureCorrectType(target.NativePath);
+    return Task.Run(() => ReadBytes(target));
+  }
+
+  /// <summary>Returns the length as an <see cref="int" />, the largest length a view can hold.</summary>
+  internal static int CheckedLength(long length, string uri) =>
+      length > int.MaxValue ? throw new FileTooLargeException(uri) : (int)length;
+
+  private static Uint8Array ReadBytes(FileSystemLocation target)
+  {
+    using var stream = new FileStream(target.NativePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+    var view = Uint8Array.Allocate(CheckedLength(stream.Length, target.Uri));
+    try
+    {
+      view.WithBytes(bytes => stream.ReadExactly(bytes));
+      return view;
+    }
+    catch
+    {
+      view.Dispose();
+      throw;
+    }
+  }
+
   protected override void EnsureCorrectType(string nativePath)
   {
     if (Directory.Exists(nativePath))
