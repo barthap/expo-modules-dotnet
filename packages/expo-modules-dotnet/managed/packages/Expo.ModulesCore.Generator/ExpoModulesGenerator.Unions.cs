@@ -93,9 +93,21 @@ public sealed partial class ExpoModulesGenerator
   }
 
   // The types that the codec of `namedType` decodes: a Nullable<T> inner type, a list element, a
-  // dictionary value, record constructor parameters, and the payloads of a nested union's cases.
+  // dictionary value, record constructor parameters, the payloads of a nested union's cases, the
+  // type arguments of a callback, and the elements of a ValueTuple. These are the type positions
+  // that GetCodec and the TryGet*Codec helpers it calls resolve into.
   private static IEnumerable<ITypeSymbol> GetPayloadChildTypes(INamedTypeSymbol namedType)
   {
+    if (IsJavaScriptCallbackType(namedType))
+    {
+      return namedType.TypeArguments;
+    }
+
+    if (GetValueTupleElements(namedType) is { } tupleElements)
+    {
+      return tupleElements;
+    }
+
     var definition = namedType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
     if (namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T ||
         definition == "global::System.Collections.Generic.IReadOnlyList<T>")
@@ -137,7 +149,47 @@ public sealed partial class ExpoModulesGenerator
     public ExpoCodecCollector? Codecs { get; set; }
   }
 
+  // Analysing a union resolves its payload codecs, which can resolve the union again. The
+  // in-progress set turns that re-entry into the recursive-union diagnostic instead of an
+  // unbounded recursion, whatever type position the path goes through.
   private static ExpoUnionAnalysis AnalyzeUnion(INamedTypeSymbol union, ExpoCodecCollector codecs)
+  {
+    var state = codecs.UnionAnalysis;
+    if (!state.InProgress.Add(union))
+    {
+      state.Reentered.Add(union);
+      var reentry = new ExpoUnionAnalysis();
+      reentry.Diagnostics.Add(CreateRecursiveUnionDiagnostic(union));
+      return reentry;
+    }
+
+    try
+    {
+      var analysis = AnalyzeUnionCases(union, codecs);
+      if (state.Reentered.Remove(union))
+      {
+        analysis.Diagnostics.Clear();
+        analysis.Diagnostics.Add(CreateRecursiveUnionDiagnostic(union));
+        analysis.Model = null;
+        analysis.Codecs = null;
+      }
+
+      return analysis;
+    }
+    finally
+    {
+      state.InProgress.Remove(union);
+    }
+  }
+
+  private static ExpoDiagnosticModel CreateRecursiveUnionDiagnostic(INamedTypeSymbol union) =>
+      new(
+          ExpoModulesDiagnostics.InvalidUnionDeclaration.Id,
+          union.Locations.FirstOrDefault(),
+          new EquatableArray<string>(new[] { union.ToDisplayString(), "it contains itself" })
+      );
+
+  private static ExpoUnionAnalysis AnalyzeUnionCases(INamedTypeSymbol union, ExpoCodecCollector codecs)
   {
     var analysis = new ExpoUnionAnalysis();
     var declarationRejection = GetUnionDeclarationRejection(union, out var candidates);

@@ -124,6 +124,54 @@ public sealed partial class ExpoModulesGeneratorTests
         diagnostic.GetMessage());
   }
 
+  // A union that reaches itself through a callback type argument is a recursive union. The walk
+  // used to stop at the callback, so codec resolution re-entered the union without end and
+  // overflowed the generator's stack at the declaration.
+  [Theory]
+  [InlineData("[Union] public abstract record U { public sealed record Run(JavaScriptCallback<U> Value) : U; public sealed record Text(string Value) : U; }", "U", "Run")]
+  [InlineData("public sealed record Box(JavaScriptCallback<U> F); [Union] public abstract record U { public sealed record Boxed(Box Value) : U; public sealed record Text(string Value) : U; }", "U", "Boxed")]
+  [InlineData("[Union] public abstract record U { public sealed record Run(JavaScriptCallback<ValueTuple<U>, int> Value) : U; public sealed record Text(string Value) : U; }", "U", "Run")]
+  public void GeneratorReportsUnionThatReachesItselfThroughACallback(string declarations, string unionName, string caseName)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(declarations, "[JS] public int Ok() => 0;"));
+
+    AssertNoCompilerErrors(result);
+    Assert.Equal(new[] { "EXPOJSI029" }, GeneratorDiagnosticIds(result));
+    Assert.Equal(
+        $"Union 'Expo.TestModules.{unionName}' is invalid: it contains itself through case '{caseName}'",
+        result.GeneratorDiagnostics!.Single().GetMessage());
+  }
+
+  // A member that uses such a union must not recurse either, and the union still reports once.
+  [Fact]
+  public void GeneratorRejectsMembersThatUseAUnionThatReachesItselfThroughACallback()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        "[Union] public abstract record U { public sealed record Run(JavaScriptCallback<U> Value) : U; public sealed record Text(string Value) : U; }",
+        "[JS] public int M(U value) => 0; [JS] public int N(JavaScriptCallback<U> callback) => 0;"));
+
+    AssertNoCompilerErrors(result);
+    var ids = GeneratorDiagnosticIds(result);
+    Assert.Single(ids, id => id == "EXPOJSI029");
+    Assert.Contains("EXPOJSI001", ids);
+  }
+
+  // A self-referential record behind a callback is the older record cycle: the union path reports
+  // it at the case and never reaches the record codec.
+  [Fact]
+  public void GeneratorReportsUnionPayloadWhoseCallbackReachesASelfReferentialRecord()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        "public sealed record Node(string Name, IReadOnlyList<Node> Children); [Union] public abstract record U { public sealed record Run(JavaScriptCallback<Node> Value) : U; public sealed record Text(string Value) : U; }",
+        "[JS] public int Ok() => 0;"));
+
+    AssertNoCompilerErrors(result);
+    Assert.Equal(new[] { "EXPOJSI030" }, GeneratorDiagnosticIds(result));
+    Assert.EndsWith(
+        "its payload type 'Expo.ModulesCore.JavaScriptCallback<Expo.TestModules.Node>' contains itself, which generated codecs do not support",
+        result.GeneratorDiagnostics!.Single().GetMessage());
+  }
+
   private const string UnionRecords =
       "public sealed record Point(double X, double Y); " +
       "public sealed record Circle(double X, double Y, double Radius); " +

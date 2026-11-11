@@ -21,10 +21,14 @@ internal sealed class ExpoCodecCollector
 
   public List<ExpoGeneratedUnionCodecModel> Unions { get; } = new();
 
+  // The unions whose analysis is running, and the ones that analysis reached again. Forks share
+  // this state, so a union that reaches itself through any codec path is caught on re-entry.
+  public UnionAnalysisState UnionAnalysis { get; private set; } = new();
+
   // A copy that resolution can fill and drop, so a rejected codec adds no model.
   public ExpoCodecCollector Fork()
   {
-    var fork = new ExpoCodecCollector(Assembly) { UseSite = UseSite };
+    var fork = new ExpoCodecCollector(Assembly) { UseSite = UseSite, UnionAnalysis = UnionAnalysis };
     fork.Records.AddRange(Records);
     fork.Unions.AddRange(Unions);
     return fork;
@@ -38,4 +42,11 @@ internal sealed class ExpoCodecCollector
     Unions.Clear();
     Unions.AddRange(fork.Unions);
   }
+}
+
+internal sealed class UnionAnalysisState
+{
+  public HashSet<INamedTypeSymbol> InProgress { get; } = new(SymbolEqualityComparer.Default);
+
+  public HashSet<INamedTypeSymbol> Reentered { get; } = new(SymbolEqualityComparer.Default);
 }
