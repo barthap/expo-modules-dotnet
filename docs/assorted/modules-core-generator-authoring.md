@@ -127,18 +127,27 @@ namespace Expo.ModulesCore.Generated;
 
 public static class ExpoModulesProvider_ExpoExample
 {
-  public static void Register(JavaScriptRuntime runtime)
+  public static void Register(DotnetRuntimeContext context)
   {
-    using var math = ModuleRegistry.DefineModule(runtime, "Math");
-    GeneratedFunction.DefineSync(
-        runtime,
-        math,
-        "add",
-        2,
-        MathAddHostFunction,
-        new Expo.Example.InternalMathModule()
+    ArgumentNullException.ThrowIfNull(context);
+    context.ModuleRegistry.RegisterLazyModule(
+        new LazyModuleDefinition(
+            "Math",
+            static (context, modules) => RegisterMath(context, modules)
+        )
     );
   }
+
+  public static void Register(DotnetRuntimeContext context, JavaScriptObject modules)
+  {
+    ArgumentNullException.ThrowIfNull(context);
+    ArgumentNullException.ThrowIfNull(modules);
+    using var module_Math = RegisterMath(context, modules);
+  }
+
+  // RegisterMath defines the "Math" module object through
+  // context.ModuleRegistry.DefineModule, gets the module instance through
+  // context.ModuleRegistry.GetOrCreateModule, and defines each [JS] member.
 }
 ```
 
@@ -171,10 +180,10 @@ Illustrative app-level output:
 ```csharp
 public static class LinkedExpoModulesProvider
 {
-  public static void Register(JavaScriptRuntime runtime)
+  public static void Register(DotnetRuntimeContext context)
   {
-    Expo.ModulesCore.Generated.ExpoModulesProvider_ExpoClipboard.Register(runtime);
-    Expo.ModulesCore.Generated.ExpoModulesProvider_ExpoFileSystem.Register(runtime);
+    Expo.ModulesCore.Generated.ExpoModulesProvider_ExpoClipboard.Register(context);
+    Expo.ModulesCore.Generated.ExpoModulesProvider_ExpoFileSystem.Register(context);
   }
 }
 ```

@@ -1,6 +1,6 @@
 # Portable C# / JSI Bridge Docs
 
-Last refreshed: 2026-09-25.
+Last refreshed: 2026-11-11.
 
 This directory contains the current documentation for the portable C# / JSI
 bridge. The authoritative current-state specs live in `docs/specs/`. Historical
@@ -93,8 +93,9 @@ For current implementation work:
    behavior
 5. `docs/assorted/modules-core-generator-authoring.md` for module-library
    generator wiring and authoring background
-6. `docs/module-authoring-guide.md` for a practical, tutorial-style guide to
-   writing a .NET-backed Expo module using `packages/example-module`
+6. `docs/module-authoring-guide.md` for the module authoring guide. It follows
+   the page order of the upstream Expo Modules API 2.0 docs, adapted to C#, and
+   holds the feature-support table (Swift, Kotlin, C#)
 7. `docs/roadmap.md` for the project direction and planned features
 8. Git history only when historical rationale or proof evidence is needed
 
