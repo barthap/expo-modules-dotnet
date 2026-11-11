@@ -871,7 +871,7 @@ public sealed class LeafReleaseModuleTests
 
     leaf.Fixture.ResetCounters();
     var result = leaf.ReadString(
-        "let seen; m.addListener('onPair', p => { seen = p.first === b && p.second === b; }); " +
+        "let seen; m.addListener('pair', p => { seen = p.first === b && p.second === b; }); " +
         "`${m.emitPair(b)}:${seen}`"
     );
     leaf.Fixture.WaitUntilIdle();
@@ -886,7 +886,7 @@ public sealed class LeafReleaseModuleTests
     using var leaf = LeafReleaseFixture.Create();
     leaf.Run(
         "globalThis.b = new ArrayBuffer(4); globalThis.seen = false; " +
-        "m.addListener('onPair', p => { globalThis.seen = p.first === b && p.second === b; }); true"
+        "m.addListener('pair', p => { globalThis.seen = p.first === b && p.second === b; }); true"
     );
 
     leaf.Fixture.ResetCounters();
@@ -909,7 +909,7 @@ public sealed class LeafReleaseModuleTests
     leaf.Fixture.ResetCounters();
     var result = leaf.ReadString(
         "const e = new m.LeafReleaseEntry(b, false); let seen; " +
-        "e.addListener('onBuffers', l => { seen = l.length === 1 && l[0] === b; }); " +
+        "e.addListener('buffers', l => { seen = l.length === 1 && l[0] === b; }); " +
         "`${e.emitBuffers(b)}:${seen}`"
     );
     leaf.Fixture.WaitUntilIdle();
@@ -1245,7 +1245,7 @@ public sealed class LeafReleaseModuleTests
 
     leaf.Fixture.ResetCounters();
     var result = leaf.ReadString(
-        "let seen; m.addListener('onOptionalBuffers', l => { seen = l.length === 2 && l[0] === null && l[1] === b; }); " +
+        "let seen; m.addListener('optionalBuffers', l => { seen = l.length === 2 && l[0] === null && l[1] === b; }); " +
         "`${m.emitOptionalBuffers(b)}:${seen}`"
     );
     leaf.Fixture.WaitUntilIdle();
@@ -1261,7 +1261,7 @@ public sealed class LeafReleaseModuleTests
     leaf.Run(
         "globalThis.b = new ArrayBuffer(4); globalThis.seen = []; " +
         "globalThis.e = new m.LeafReleaseOptionalEntry(null); " +
-        "e.addListener('onOptionalPair', p => { " +
+        "e.addListener('optionalPair', p => { " +
         "seen.push(`${p.first === null}:${p.second === null ? 'null' : p.second === b}`); }); true"
     );
 
@@ -1597,7 +1597,7 @@ public sealed class LeafReleaseModuleTests
   {
     using var leaf = LeafReleaseFixture.Create();
     leaf.Run(UnionSetup);
-    leaf.Run("globalThis.events = []; u.addListener('onContent', c => { events.push(c === b || c === 'x'); }); true");
+    leaf.Run("globalThis.events = []; u.addListener('content', c => { events.push(c === b || c === 'x'); }); true");
     UnionThingsModule.Calls = 0;
 
     leaf.Fixture.ResetCounters();
@@ -1933,7 +1933,7 @@ public sealed class LeafReleaseModuleTests
     using var leaf = LeafReleaseFixture.Create();
     leaf.Run(TypedArraySetup);
     leaf.Run(
-        "globalThis.events = []; t.addListener('onBytes', v => { "
+        "globalThis.events = []; t.addListener('bytes', v => { "
             + "events.push(v === null ? 'null' : `${v instanceof Uint8Array}:${v.buffer === buf}:${v.byteOffset}:${v.length}`); }); true"
     );
     TypedArrayThingsModule.Calls = 0;

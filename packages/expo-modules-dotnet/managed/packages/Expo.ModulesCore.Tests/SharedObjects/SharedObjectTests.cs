@@ -339,8 +339,8 @@ public sealed class GeneratedSharedObjectTests
           "globalThis.__eventLog = []; " +
           "globalThis.__eventA = new m.CounterEntry(1); " +
           "globalThis.__eventB = new m.CounterEntry(10); " +
-          "globalThis.__eventA.addListener('onChange', value => __eventLog.push('a:' + value)); " +
-          "globalThis.__eventB.addListener('onChange', value => __eventLog.push('b:' + value)); " +
+          "globalThis.__eventA.addListener('change', value => __eventLog.push('a:' + value)); " +
+          "globalThis.__eventB.addListener('change', value => __eventLog.push('b:' + value)); " +
           "globalThis.__eventA.incrementAndEmitAsync(2).then(() => { globalThis.__eventDone = true; });",
           "generated-shared-object-events-isolation.js"
       );
@@ -352,6 +352,43 @@ public sealed class GeneratedSharedObjectTests
     {
       using var result = fixture.Evaluate("globalThis.__eventLog.join(',')", "generated-shared-object-events-result.js");
       Assert.Equal("a:3", result.AsString());
+      context!.Dispose();
+      return true;
+    });
+  }
+
+  // A shared-object listener on the old prefixed name is accepted and never called; CounterEntry's
+  // OnChange dispatches change.
+  [Fact]
+  public async Task GeneratedSharedObjectEventDispatchesUnprefixedNameAndNotOldPrefixedName()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    DotnetRuntimeContext? context = null;
+    fixture.Runtime.Execute(runtime =>
+    {
+      context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+      using var setup = fixture.Evaluate(
+          "const m = globalThis._expoDotnet.modules.SharedThings; " +
+          "globalThis.__prefixLog = []; " +
+          "globalThis.__prefixCounter = new m.CounterEntry(1); " +
+          "__prefixCounter.addListener('change', value => __prefixLog.push('change:' + value)); " +
+          "__prefixCounter.addListener('onChange', value => __prefixLog.push('old:' + value)); " +
+          "__prefixCounter.incrementAndEmitAsync(2).then(() => { globalThis.__prefixDone = true; });",
+          "generated-shared-object-events-prefix.js"
+      );
+      return true;
+    });
+
+    await WaitForConditionAsync(fixture, "globalThis.__prefixDone === true");
+    fixture.Runtime.Execute(_ =>
+    {
+      using var result = fixture.Evaluate(
+          "globalThis.__prefixLog.join(',')",
+          "generated-shared-object-events-prefix-result.js"
+      );
+      Assert.Equal("change:3", result.AsString());
       context!.Dispose();
       return true;
     });
@@ -369,10 +406,10 @@ public sealed class GeneratedSharedObjectTests
       using var result = fixture.Evaluate(
           "const m = globalThis._expoDotnet.modules.SharedThings; " +
           "const c = new m.CounterEntry(1); const fn = () => {}; " +
-          "const first = c.addListener('onChange', fn); c.addListener('onChange', () => {}); " +
-          "const before = c.listenerCount('onChange'); first.remove(); first.remove(); " +
+          "const first = c.addListener('change', fn); c.addListener('change', () => {}); " +
+          "const before = c.listenerCount('change'); first.remove(); first.remove(); " +
           "const names = Object.getOwnPropertyNames(c); " +
-          "[before, c.listenerCount('onChange'), names.length, names.includes('addListener')].join(':')",
+          "[before, c.listenerCount('change'), names.length, names.includes('addListener')].join(':')",
           "generated-shared-object-events-remove.js"
       );
       Assert.Equal("2:1:1:false", result.AsString());
@@ -392,10 +429,10 @@ public sealed class GeneratedSharedObjectTests
       using var result = fixture.Evaluate(
           "const m = globalThis._expoDotnet.modules.SharedThings; const c = new m.CounterEntry(1); " +
           "const log = []; let added = false; " +
-          "c.addListener('onChange', () => { log.push('first'); if (!added) { added = true; c.addListener('onChange', () => log.push('late')); } }); " +
-          "c.addListener('onChange', () => { log.push('second'); throw new Error('ignored'); }); " +
-          "c.emit('onChange', 1); const first = log.join(','); c.emit('onChange', 2); " +
-          "let rejected = false; try { c.removeListener('onChange', 42); } catch { rejected = true; } " +
+          "c.addListener('change', () => { log.push('first'); if (!added) { added = true; c.addListener('change', () => log.push('late')); } }); " +
+          "c.addListener('change', () => { log.push('second'); throw new Error('ignored'); }); " +
+          "c.emit('change', 1); const first = log.join(','); c.emit('change', 2); " +
+          "let rejected = false; try { c.removeListener('change', 42); } catch { rejected = true; } " +
           "[first, log.join(','), rejected].join(':')",
           "generated-shared-object-events-mutation.js"
       );
@@ -420,7 +457,7 @@ public sealed class GeneratedSharedObjectTests
         ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
         using var setup = fixture.Evaluate(
             "const m = globalThis._expoDotnet.modules.SharedThings; globalThis.__subscriptionTarget = new m.CounterEntry(1); " +
-            "globalThis.__subscriptionTarget.addListener('onChange', () => {}); 'dropped'",
+            "globalThis.__subscriptionTarget.addListener('change', () => {}); 'dropped'",
             "generated-shared-object-events-subscription-gc.js"
         );
         return true;
@@ -496,8 +533,8 @@ public sealed class GeneratedSharedObjectTests
         using var result = fixture.Evaluate(
             "const m = globalThis._expoDotnet.modules.SharedThings; " +
             "const c = new m.CounterEntry(1); let failed = false; " +
-            "try { c.addListener('onChange', () => {}); } catch { failed = true; } " +
-            "[failed, c.listenerCount('onChange')].join(':')",
+            "try { c.addListener('change', () => {}); } catch { failed = true; } " +
+            "[failed, c.listenerCount('change')].join(':')",
             "generated-shared-object-events-add-failure.js"
         );
         Assert.Equal("true:0", result.AsString());
@@ -551,7 +588,7 @@ public sealed class GeneratedSharedObjectTests
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
       using var setup = fixture.Evaluate(
           "const m = globalThis._expoDotnet.modules.SharedThings; globalThis.__raceLog = []; " +
-          "globalThis.__raceA = new m.CounterEntry(1); __raceA.addListener('onReady', () => __raceLog.push('a')); " +
+          "globalThis.__raceA = new m.CounterEntry(1); __raceA.addListener('ready', () => __raceLog.push('a')); " +
           "m.echoCounter(__raceA); 'ready'",
           "generated-shared-object-events-race-a.js"
       );
@@ -575,7 +612,7 @@ public sealed class GeneratedSharedObjectTests
       context.SharedObjects.EventDispatchStepForTesting = null;
       using var setup = fixture.Evaluate(
           "const m = globalThis._expoDotnet.modules.SharedThings; " +
-          "globalThis.__raceB = new m.CounterEntry(2); __raceB.addListener('onReady', () => __raceLog.push('b')); " +
+          "globalThis.__raceB = new m.CounterEntry(2); __raceB.addListener('ready', () => __raceLog.push('b')); " +
           "m.echoCounter(__raceB); 'ready'",
           "generated-shared-object-events-race-b.js"
       );
@@ -618,7 +655,7 @@ public sealed class GeneratedSharedObjectTests
       using var setup = fixture.Evaluate(
           "const m = globalThis._expoDotnet.modules.SharedThings; " +
           "globalThis.__teardownBefore = new m.CounterEntry(1); " +
-          "__teardownBefore.addListener('onReady', () => { globalThis.__teardownBeforeCalled = true; }); " +
+          "__teardownBefore.addListener('ready', () => { globalThis.__teardownBeforeCalled = true; }); " +
           "m.echoCounter(__teardownBefore); 'ready'",
           "generated-shared-object-events-teardown-before.js"
       );
@@ -697,7 +734,7 @@ public sealed class GeneratedSharedObjectTests
       using var setup = fixture.Evaluate(
           "const m = globalThis._expoDotnet.modules.SharedThings; globalThis.__teardownAfterLog = []; " +
           "globalThis.__teardownAfter = new m.CounterEntry(1); " +
-          "__teardownAfter.addListener('onReady', () => __teardownAfterLog.push('called')); " +
+          "__teardownAfter.addListener('ready', () => __teardownAfterLog.push('called')); " +
           "m.echoCounter(__teardownAfter); 'ready'",
           "generated-shared-object-events-teardown-after.js"
       );
@@ -773,7 +810,7 @@ public sealed class GeneratedSharedObjectTests
       using var setup = fixture.Evaluate(
           "const m = globalThis._expoDotnet.modules.SharedThings; globalThis.__payloadValue = -1; " +
           "globalThis.__payloadCounter = new m.CounterEntry(1); " +
-          "__payloadCounter.addListener('onPayload', payload => { __payloadValue = payload.value; }); " +
+          "__payloadCounter.addListener('payload', payload => { __payloadValue = payload.value; }); " +
           "m.echoCounter(__payloadCounter); 'ready'",
           "generated-shared-object-events-record.js"
       );
@@ -824,7 +861,7 @@ public sealed class GeneratedSharedObjectTests
     fixture.WaitUntilIdle();
 
     fixture.ResetCounters();
-    await GeneratedSharedObjectEvents.EmitAsync(context, instance, "onBuffer", (ArrayBuffer?)null);
+    await GeneratedSharedObjectEvents.EmitAsync(context, instance, "buffer", (ArrayBuffer?)null);
     fixture.WaitUntilIdle();
 
     Assert.Equal("1:null", ReadSharedBuffer(fixture));
@@ -839,7 +876,7 @@ public sealed class GeneratedSharedObjectTests
     var (context, instance, payload) = SetUpBufferEvent(
         fixture,
         "generated-shared-object-events-optional-null-buffer.js",
-        "onOptionalBuffer"
+        "optionalBuffer"
     );
     payload.Dispose();
     fixture.WaitUntilIdle();
@@ -860,7 +897,7 @@ public sealed class GeneratedSharedObjectTests
     var (context, instance, payload) = SetUpBufferEvent(
         fixture,
         "generated-shared-object-events-optional-buffer.js",
-        "onOptionalBuffer"
+        "optionalBuffer"
     );
 
     fixture.ResetCounters();
@@ -882,7 +919,7 @@ public sealed class GeneratedSharedObjectTests
   private static (DotnetRuntimeContext Context, CounterEntry Instance, ArrayBuffer Payload) SetUpBufferEvent(
       HermesRuntimeFixture fixture,
       string sourceName,
-      string eventName = "onBuffer")
+      string eventName = "buffer")
   {
     DotnetRuntimeContext? context = null;
     CounterEntry? instance = null;
@@ -952,10 +989,10 @@ public sealed class GeneratedSharedObjectTests
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
       using var result = fixture.Evaluate(
           "const m = globalThis._expoDotnet.modules.SharedThings; const c = new m.CounterEntry(1); " +
-          "const a = () => {}; const b = () => {}; const sa = c.addListener('onChange', a); c.addListener('onChange', b); " +
-          "c.removeListener('onChange', a); const afterOne = c.listenerCount('onChange'); " +
-          "c.removeAllListeners('onChange'); const afterAll = c.listenerCount('onChange'); " +
-          "const sc = c.addListener('onChange', a); c.removeSubscription(sc); const afterSubscription = c.listenerCount('onChange'); " +
+          "const a = () => {}; const b = () => {}; const sa = c.addListener('change', a); c.addListener('change', b); " +
+          "c.removeListener('change', a); const afterOne = c.listenerCount('change'); " +
+          "c.removeAllListeners('change'); const afterAll = c.listenerCount('change'); " +
+          "const sc = c.addListener('change', a); c.removeSubscription(sc); const afterSubscription = c.listenerCount('change'); " +
           "const invalid = ['addListener', 'removeListener', 'removeAllListeners', 'emit', 'listenerCount', 'removeSubscription']" +
           ".every(name => { try { c[name](); return false; } catch { return true; } }); " +
           "globalThis.__retainedAddListener = c.addListener; [afterOne, afterAll, afterSubscription, invalid].join(':')",
@@ -987,7 +1024,7 @@ public sealed class GeneratedSharedObjectTests
       using var setup = fixture.Evaluate(
           "(() => { const m = globalThis._expoDotnet.modules.SharedThings; " +
           "const counter = new m.CounterEntry(1); " +
-          "counter.addListener('onChange', () => counter.current); })(); 'dropped'",
+          "counter.addListener('change', () => counter.current); })(); 'dropped'",
           "generated-shared-object-events-self-capture.js"
       );
       return true;
@@ -1810,7 +1847,7 @@ public sealed class GeneratedSharedObjectTests
       using var setup = fixture.Evaluate(
           "const m = globalThis._expoDotnet.modules.SharedThings; " +
           "const c = new m.CounterEntry(1); " +
-          "globalThis.__retainedSubscription = c.addListener('onChange', () => {}); 'retained'",
+          "globalThis.__retainedSubscription = c.addListener('change', () => {}); 'retained'",
           "generated-shared-object-events-retained-subscription.js"
       );
       contextReference = new WeakReference(context);

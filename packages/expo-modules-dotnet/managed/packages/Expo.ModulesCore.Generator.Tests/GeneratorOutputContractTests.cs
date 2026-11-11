@@ -202,7 +202,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:6DB0AD5C3DF264ECCE035674CDEFF7A06C0B2C160C7C09FB540D52E9853B4195",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:D60FB20FA493DAF75A51AC11BFEB623C16351B974C90947299EDCD585FF5F614",
           "global__Expo_TestModules_PolicyLeafFreeModule_8D511E8D.Events.g.cs:EB0CCDFABDF861EE54188FA227D628F2A6534E012C2B43EAEF6AFB0C0CA9DE8A",
         },
         result.GetOutputContract()
@@ -315,7 +315,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:CCBAE180F3668CAB107C689360A8CC52EA32FB3AD601B266BF1FB296EB2CC475",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:1577152A1DE7137B34712DCE89466A74DFDC5D04204114F2EDB7D88B1D17BB97",
           "global__Expo_TestModules_PolicyEntry_7B42955D.SharedObjectEvents.g.cs:7350FE94400C181F149408B9E9810B59C0B87573FD669DAB1B5D5C808A9A2A92",
         },
         result.GetOutputContract()

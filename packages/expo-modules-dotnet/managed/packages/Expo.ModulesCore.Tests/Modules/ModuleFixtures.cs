@@ -543,14 +543,32 @@ public sealed partial class GeneratedTypedEventsModule : Module
   [OnCreate]
   public void Create() => ReadySeenOnCreate = OnReady;
 
-  [OnStartObserving("onChange")]
-  public void Start() => Started = "onChange";
+  [OnStartObserving("change")]
+  public void Start() => Started = "change";
 
-  [OnStopObserving("onChange")]
-  public void Stop() => Stopped = "onChange";
+  [OnStopObserving("change")]
+  public void Stop() => Stopped = "change";
 
   public Task EmitLegacyAsync(string value) =>
       SendEventAsync<StringCodec, string>("onLegacy", value);
+}
+
+[ExpoModule("GeneratedEventMemberNames")]
+public sealed partial class GeneratedEventMemberNamesModule : Module
+{
+  public GeneratedEventMemberNamesModule(DotnetRuntimeContext context)
+      : base(context)
+  {
+  }
+
+  [Event]
+  public partial Func<string, Task> OnStatus { get; }
+
+  [JS]
+  public string Status => "status property";
+
+  [JS]
+  public Task EmitStatusAsync(string value) => OnStatus(value);
 }
 
 [ExpoModule("SharedThings", Classes = new[]
