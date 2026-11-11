@@ -406,6 +406,7 @@ keep their names: `ExpoAsset`, `ExponentConstants`, `FileSystem` and
 
 ### Supported types
 
+<!-- backed-by: spec "Requirement: ModulesCore Avoids Inert Authored Syntax" (modules-core-boundary.md); spec "Requirement: Non-Null Collections Compose Recursively" (modules-core-boundary.md) -->
 Supported parameter and return types, decoded/encoded through generated
 compile-time codecs (`Expo.ModulesCore.Codecs`):
 
@@ -427,16 +428,27 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
 - `JavaScriptValue` directly, for cases the typed codecs don't cover. See
   "Leaf ownership" below and `docs/specs/managed-jsi-wrappers.md`.
 - `JavaScriptCallback<TResult>` / `JavaScriptCallback<TArgs, TResult>` for
-  JS function arguments (see Closure arguments below). A callback is a parameter type
-  only: it cannot be a return value, a collection element, or a record field.
+  JS function arguments (see Closure arguments below). A callback is a parameter
+  type only: it cannot be a return value, a collection element, or a record
+  field.
   `JavaScriptCallback<...>?` is accepted as a method or shared-object
   constructor parameter, including with `= null`. JavaScript `null` and
   `undefined` arrive as C# `null`, and a function is retained like a non-null
   callback. Its result and argument types can hold `JavaScriptValue`,
   `ArrayBuffer`, and `Uint8Array` at any depth.
 
+### Enums
+
+<!-- backed-by: source StringEnumCodec; test GeneratedLookingCodeUsesStringEnumByDefault; test GeneratorUsesExplicitNumberEnumRepresentation -->
+<!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/types.mdx -->
+A string enum crosses as the C# member name, so `ImageFormat.Png` crosses as
+`"Png"`. Decoding is case-sensitive. `[JSEnum(EnumRepresentation.Number)]`
+switches to integers. There is no way to choose the string, unlike an upstream
+raw value.
+
 ### Leaf ownership
 
+<!-- backed-by: spec "Requirement: Boundary Leaf Ownership Is Explicit" (ownership-and-scoped-refs.md); source JavaScriptValue.Retain -->
 **Leaf ownership.** A `JavaScriptValue`, `ArrayBuffer`, or `Uint8Array` is a
 leaf. These rules apply at any depth, also inside records, lists, and
 dictionaries:
@@ -448,12 +460,14 @@ dictionaries:
    the call or the returned `Task` completes.
 4. A leaf you get back from a callback is yours. Dispose it.
 
+<!-- backed-by: spec "Requirement: Boundary Leaf Ownership Is Explicit" (ownership-and-scoped-refs.md); source JavaScriptValue.Retain -->
 Call `JavaScriptValue.Retain()` on the JavaScript runtime thread. In an async
 method, call it before the first `await`. See
 `docs/specs/ownership-and-scoped-refs.md`.
 
 ### Nullable values
 
+<!-- backed-by: spec "Requirement: Nullable Reference Codecs Are Annotation-Driven" (modules-core-boundary.md); spec "Requirement: Ownership-Bearing Nullable References Are Build Diagnostics" (modules-core-boundary.md) -->
 Nullable reference types work for `ArrayBuffer?`, `Uint8Array?`, and for the
 codecs that carry no JSI ownership: `string?`, `Uri?`, `byte[]?`, positional
 reference records, and the `IReadOnlyList<T>?`, `Dictionary<string, T>?`, and
@@ -462,12 +476,14 @@ values work wherever the nested type is supported, so `IReadOnlyList<string?>?`
 composes. `List<T>` stays unsupported in both forms, because its non-nullable
 form has no codec either.
 
+<!-- backed-by: spec "Requirement: Nullable Reference Codecs Are Annotation-Driven" (modules-core-boundary.md); spec "Requirement: Ownership-Bearing Nullable References Are Build Diagnostics" (modules-core-boundary.md) -->
 `JavaScriptValue?`, `SharedObject?`, and `SharedRef<T>?` are build
 diagnostics. `JavaScriptValue` already represents JavaScript `null` and
 `undefined`. The others carry shared-object identity, and a null axis
 multiplies those states. A nullable concrete `[ExpoSharedObject]` class is
 supported; see [Shared objects](#shared-objects).
 
+<!-- backed-by: spec "Requirement: Nullable Reference Codecs Are Annotation-Driven" (modules-core-boundary.md); spec "Requirement: Ownership-Bearing Nullable References Are Build Diagnostics" (modules-core-boundary.md) -->
 Decoding treats JavaScript `null` and `undefined` alike as C# `null`, and C#
 `null` encodes as JavaScript `null`, never `undefined`. A non-nullable reference
 stays strict: JavaScript `null` fails the argument decode before your code runs.
@@ -478,6 +494,7 @@ unannotated reference keeps its strict codec.
 
 ### Closure arguments
 
+<!-- backed-by: spec "Requirement: Sync Function Generation Uses Direct Calls" (modules-core-boundary.md); spec "Requirement: Nullish Callback Parameters Decode To Null Without Retention" (modules-core-boundary.md) -->
 `JavaScriptCallback<TResult>` (zero arguments) and
 `JavaScriptCallback<TArgs, TResult>` (one to eight arguments via `ValueTuple`)
 let a `[JS]` method accept a JavaScript function and call back into it:
@@ -493,6 +510,7 @@ let a `[JS]` method accept a JavaScript function and call back into it:
   }
 ```
 
+<!-- backed-by: spec "Requirement: Sync Function Generation Uses Direct Calls" (modules-core-boundary.md); spec "Requirement: Nullish Callback Parameters Decode To Null Without Retention" (modules-core-boundary.md) -->
 The callback is retained and owned by the current `DotnetRuntimeContext`.
 Calling `Invoke` while already executing on the owning JavaScript runtime runs
 synchronously; `InvokeAsync` schedules the call through the runtime for later,
@@ -500,12 +518,14 @@ event-style use. Invoking a callback after its runtime context has torn down
 fails loudly instead of touching released native state — don't cache a
 callback past the lifetime of the module/runtime that received it.
 
+<!-- backed-by: spec "Requirement: Boundary Leaf Ownership Is Explicit" (ownership-and-scoped-refs.md) -->
 Leaves follow rules 3 and 4 in Leaf ownership above. A leaf you pass as an
 argument stays yours. With `InvokeAsync`, keep it alive until the returned task
 completes. A leaf in the callback result is yours, so dispose it.
 
 ## Shared objects
 
+<!-- backed-by: spec "Requirement: Shared-Object Codecs Preserve Managed And JavaScript Identity" (modules-core-boundary.md) -->
 A shared object is an expensive native resource (file handle, image, crypto
 key) held by JavaScript as a class instance while C# keeps the original
 managed object. Both sides always see the same instance: converting the same
@@ -550,6 +570,7 @@ public sealed partial class ExampleCounter : SharedObject
 }
 ```
 
+<!-- backed-by: spec "Requirement: Public SharedObject Authoring Is Explicit" (modules-core-boundary.md) -->
 Declaration constraints (violations produce `EXPOJSI021`–`EXPOJSI028`
 diagnostics):
 
@@ -564,8 +585,13 @@ diagnostics):
   defaults), async, and codec rules as module members. `release`,
   `constructor`, `__proto__`, and the event-emitter method names are reserved.
 
+<!-- backed-by: source ExpoModulesGenerator.GetFunctions -->
+Static `[JS]` members are not supported. The generator reports them as an
+unsupported shape (EMC-66).
+
 ### Per-instance events
 
+<!-- backed-by: spec "Requirement: Shared Objects Declare Typed Awaitable Events" (modules-core-boundary.md) -->
 Declare shared-object events with the same awaitable typed shape as module
 events. The generated delegate becomes available when the object first pairs
 with its JavaScript instance:
@@ -584,6 +610,7 @@ with its JavaScript instance:
   }
 ```
 
+<!-- backed-by: spec "Requirement: Shared Objects Declare Typed Awaitable Events" (modules-core-boundary.md); spec "Requirement: Shared-Object Listeners Are JavaScript-Owned And Instance Scoped" (modules-core-boundary.md) -->
 Listeners belong to one JavaScript shared-object instance. A listener on one
 counter never receives another counter's event. The returned subscription has
 an idempotent `remove()` method; call it when the listener is no longer needed.
@@ -593,6 +620,7 @@ collected.
 
 ### Module ownership
 
+<!-- backed-by: spec "Requirement: Modules Explicitly Own Shared-Object Classes" (modules-core-boundary.md); spec "Requirement: Authored Abstract Bases Decode As Parameters" (modules-core-boundary.md) -->
 Exactly one module owns each shared class through the retained
 `[ExpoModule(Classes = ...)]` shape:
 
@@ -610,6 +638,7 @@ public sealed partial class ExampleMathModule : Module
 }
 ```
 
+<!-- backed-by: spec "Requirement: Modules Explicitly Own Shared-Object Classes" (modules-core-boundary.md); spec "Requirement: Authored Abstract Bases Decode As Parameters" (modules-core-boundary.md) -->
 The owning module exposes each constructible class as a class-name property
 (`module.ExampleCounter`). Exposed class names must not collide with the
 module's functions, properties, observing hooks, or event-runtime members.
@@ -628,6 +657,7 @@ sealed class; a `[JS]` member inherited from the abstract base is not exported.
 
 ### Lifetime and release
 
+<!-- backed-by: spec "Requirement: Public SharedObject Release Is Exactly Once" (modules-core-boundary.md) -->
 - `OnRelease()` runs exactly once per instance — on explicit JavaScript
   `release()`, deterministic garbage collection, or context teardown,
   whichever comes first. It runs synchronously and must be thread-agnostic:
@@ -638,15 +668,18 @@ sealed class; a `[JS]` member inherited from the abstract base is not exported.
 
 ### `SharedRef<T>`
 
+<!-- backed-by: spec "Requirement: SharedRef Is A Non-Owning SharedObject" (modules-core-boundary.md) -->
 `SharedRef<T>` is a non-owning shared wrapper: releasing the shared object
 does NOT dispose or clean up `Ref`. Derive a sealed class and add explicit
 cleanup in `OnRelease` only if your subclass owns the resource.
 
 ### TypeScript facade and cleanup recipe
 
+<!-- backed-by: spec "Requirement: Shared-Object TypeScript Facades Type Event Maps" (modules-core-boundary.md) -->
 The facade class extends `DotnetSharedObject` and types the module's class
 property, as the `ExampleCounter` declaration in `## Get started` shows.
 
+<!-- backed-by: spec "Requirement: TypeScript Facades Expose Explicit Release" (modules-core-boundary.md) -->
 Release deterministically with `try`/`finally`:
 
 <!-- backed-by: spec "Requirement: TypeScript Facades Expose Explicit Release" (modules-core-boundary.md) -->
@@ -663,20 +696,24 @@ try {
 }
 ```
 
+<!-- backed-by: spec "Requirement: TypeScript Facades Expose Explicit Release" (modules-core-boundary.md) -->
 `Symbol.dispose` / `using` support is deferred pending a TypeScript/runtime
 compatibility review; use explicit `release()`.
 
 ## Records
 
+<!-- backed-by: spec "Requirement: Generated Record Codecs Use Lower-Camel JavaScript Fields" (modules-core-boundary.md); source ExpoModulesGenerator.EmitRecordCodec -->
 Positional `record`, `record class` and `record struct` types (including simple
 nested records) map to and from plain JavaScript objects with lower-camel field
 names. For example, `ExampleUser.Name` and `ExampleUser.Age` map to `name` and
 `age`. Decode reads only those lower-camel names; there is no PascalCase
 compatibility fallback. A missing field follows its existing codec's
-`undefined` behavior.
+`undefined` behavior. A constructor default does not make a field optional today
+(EMC-61).
 
 ## Unions
 
+<!-- backed-by: spec "Requirement: Two-Member Unions Decode By Value Kind" (modules-core-boundary.md); source Either -->
 `Either<TFirst, TSecond>` is for a value that JavaScript passes as one of
 two kinds, such as `string | ArrayBuffer`. Each member is `string`, `bool`,
 a numeric type, a binary type (`ArrayBuffer`, `byte[]`, `Memory<byte>`,
@@ -691,8 +728,11 @@ result fails inside `Invoke()`. `Either<TFirst, TSecond>?` turns `null` and
 `undefined` into C# `null`. An `ArrayBuffer` or `Uint8Array` member is a leaf
 and follows the leaf rules in `## Types`.
 
+EMC-64 replaces `Either` with `[Union]`.
+
 ## Binary data
 
+<!-- backed-by: source ByteArrayCodec; spec "Requirement: Module-facing ArrayBuffer And Binary Codecs" (modules-core-boundary.md); spec "Requirement: Uint8Array Is A Byte View" (modules-core-boundary.md) -->
 The binary types are `ArrayBuffer`, plus `byte[]`, `Memory<byte>` and
 `ReadOnlyMemory<byte>` as convenience types. These copy in both directions.
 `Span<byte>` and `ReadOnlySpan<byte>` borrow one synchronous input parameter,
@@ -705,6 +745,10 @@ accepted. `byte[]` and `ArrayBuffer` parameters do not accept a
 `Uint8Array`; declare `Uint8Array` when JavaScript sends one. See the
 "Module-facing ArrayBuffer And Binary Codecs" requirement in
 `docs/specs/modules-core-boundary.md`.
+
+<!-- backed-by: source ByteArrayCodec; spec "Requirement: Module-facing ArrayBuffer And Binary Codecs" (modules-core-boundary.md); spec "Requirement: Uint8Array Is A Byte View" (modules-core-boundary.md) -->
+`byte[]` decodes only from and encodes only to `ArrayBuffer`, and `Uint8Array` is
+the only typed array (EMC-65).
 
 ## Events
 
