@@ -337,4 +337,40 @@ public sealed class FileSystemBindingTests
     Assert.Contains(Path.Combine(temp.Path, "x", "y", "a.txt"), sync[2]);
     Assert.DoesNotContain("→ Caused by:", sync[2]);
   }
+
+  [Fact]
+  public void ExplicitNullInAnExistingOptionRecordFails()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    File.WriteAllText(Path.Combine(temp.Path, "a.txt"), "keep");
+    Directory.CreateDirectory(Path.Combine(temp.Path, "d"));
+    File.WriteAllText(Path.Combine(temp.Path, "d", "child.txt"), "c");
+    using var host = ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoFileSystemDotnet.Register);
+
+    var result = EvalList(
+        host,
+        $$"""
+        (() => {
+          {{Prelude(DirUri(temp.Path))}}
+          const missing = new m.FileSystemFile(dir + 'n.txt');
+          const d = new m.FileSystemDirectory(dir + 'd');
+          const a = new m.FileSystemFile(dir + 'a.txt');
+          const results = [
+            err(() => missing.create({ overwrite: null })),
+            err(() => d.create({ idempotent: null })),
+            err(() => a.info({ md5: null })),
+            String(missing.exists),
+          ];
+          results.push(err(() => missing.create(null)), String(missing.exists), String(a.info(null).md5));
+          return JSON.stringify(results);
+        })()
+        """
+    );
+
+    Assert.All(result[..3], error => Assert.Matches(@"^\(none\)\|.*Value is not a boolean\.$", error));
+    Assert.Equal(new[] { "false", "no error", "true", "null" }, result[3..]);
+    Assert.Equal("keep", File.ReadAllText(Path.Combine(temp.Path, "a.txt")));
+    Assert.Equal("c", File.ReadAllText(Path.Combine(temp.Path, "d", "child.txt")));
+  }
 }

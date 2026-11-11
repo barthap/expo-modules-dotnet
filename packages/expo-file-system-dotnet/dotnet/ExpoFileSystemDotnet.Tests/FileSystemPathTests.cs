@@ -47,7 +47,7 @@ public sealed class FileSystemPathTests
     var path = Path.Combine(temp.Path, "a.txt");
     File.WriteAllText(path, "old");
 
-    NewFile(path).Create(new CreateOptions(null, true, null));
+    NewFile(path).Create(new CreateOptions(Overwrite: true));
 
     Assert.Equal(string.Empty, File.ReadAllText(path));
   }
@@ -65,7 +65,7 @@ public sealed class FileSystemPathTests
     Assert.Null(error.InnerException);
     Assert.False(Directory.Exists(Path.Combine(temp.Path, "x")));
 
-    NewFile(path).Create(new CreateOptions(true, null, null));
+    NewFile(path).Create(new CreateOptions(Intermediates: true));
     Assert.True(File.Exists(path));
   }
 
@@ -83,10 +83,10 @@ public sealed class FileSystemPathTests
     var error = Assert.Throws<FileAlreadyExistsException>(() => directory.Create());
     Assert.Equal($"File '{directory.Uri}' already exists", error.Message);
 
-    directory.Create(new CreateOptions(null, null, true));
+    directory.Create(new CreateOptions(Idempotent: true));
     Assert.True(File.Exists(Path.Combine(path, "child.txt")));
 
-    directory.Create(new CreateOptions(null, true, null));
+    directory.Create(new CreateOptions(Overwrite: true));
     Assert.Empty(Directory.EnumerateFileSystemEntries(path));
   }
 
@@ -101,7 +101,7 @@ public sealed class FileSystemPathTests
     Assert.Equal("Unable to create file or directory: parent directory does not exist", error.Message);
     Assert.False(Directory.Exists(Path.Combine(temp.Path, "x")));
 
-    NewDirectory(path).Create(new CreateOptions(true, null, null));
+    NewDirectory(path).Create(new CreateOptions(Intermediates: true));
     Assert.True(Directory.Exists(path));
   }
 
@@ -200,7 +200,7 @@ public sealed class FileSystemPathTests
     }
 
     var sub = NewDirectory(subPath);
-    AssertDenied(sub.Uri, () => sub.Create(new CreateOptions(null, true, null)));
+    AssertDenied(sub.Uri, () => sub.Create(new CreateOptions(Overwrite: true)));
     AssertDenied(sub.Uri, () => sub.Delete());
     AssertDenied(sub.Uri, () => sub.Rename("other"));
     Assert.False(Directory.Exists(Path.Combine(temp.Path, "other")));
@@ -237,7 +237,7 @@ public sealed class FileSystemPathTests
       File.WriteAllText(link, "old");
     }
 
-    NewFile(link).Create(new CreateOptions(null, true, null));
+    NewFile(link).Create(new CreateOptions(Overwrite: true));
 
     Assert.Equal("keep", File.ReadAllText(target));
     var info = new FileInfo(link);
@@ -283,7 +283,7 @@ public sealed class FileSystemPathTests
     using (FileLocks.BlockDelete(stuck))
     {
       createError = Assert.Throws<UnableToCreateException>(
-          () => directory.Create(new CreateOptions(null, true, null)));
+          () => directory.Create(new CreateOptions(Overwrite: true)));
       deleteError = Assert.Throws<UnableToDeleteException>(() => stuckFile.Delete());
     }
 

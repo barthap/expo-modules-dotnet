@@ -1,8 +1,8 @@
 namespace ExpoFileSystemDotnet;
 
-public sealed record CreateOptions(bool? Intermediates, bool? Overwrite, bool? Idempotent);
+public sealed record CreateOptions(bool Intermediates = false, bool Overwrite = false, bool Idempotent = false);
 
-public sealed record InfoOptions(bool? Md5);
+public sealed record InfoOptions(bool Md5 = false);
 
 public sealed record PathInfo(bool Exists, bool? IsDirectory);
 

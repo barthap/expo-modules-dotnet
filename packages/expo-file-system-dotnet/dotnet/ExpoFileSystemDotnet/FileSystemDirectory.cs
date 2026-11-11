@@ -48,17 +48,18 @@ internal sealed partial class FileSystemDirectory : FileSystemPath
   [JS]
   public void Create(CreateOptions? options = null)
   {
+    options ??= new CreateOptions();
     var target = Location;
     EnsureWritable(target);
     EnsureCorrectType(target.NativePath);
     var path = target.NativePath;
     if (Directory.Exists(path))
     {
-      if (options?.Idempotent == true)
+      if (options.Idempotent)
       {
         return;
       }
-      if (options?.Overwrite != true)
+      if (!options.Overwrite)
       {
         throw new FileAlreadyExistsException(target.Uri);
       }
@@ -69,7 +70,7 @@ internal sealed partial class FileSystemDirectory : FileSystemPath
       {
         Directory.Delete(path, recursive: true);
       }
-      if (options?.Intermediates != true && !Directory.Exists(target.Parent.NativePath))
+      if (!options.Intermediates && !Directory.Exists(target.Parent.NativePath))
       {
         throw new UnableToCreateException("parent directory does not exist");
       }

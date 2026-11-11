@@ -34,17 +34,18 @@ internal sealed partial class FileSystemFile : FileSystemPath
   [JS]
   public void Create(CreateOptions? options = null)
   {
+    options ??= new CreateOptions();
     var target = Location;
     EnsureWritable(target);
     EnsureCorrectType(target.NativePath);
     var path = target.NativePath;
-    if (File.Exists(path) && options?.Overwrite != true)
+    if (File.Exists(path) && !options.Overwrite)
     {
       throw new FileAlreadyExistsException(target.Uri);
     }
     try
     {
-      if (options?.Intermediates == true)
+      if (options.Intermediates)
       {
         Directory.CreateDirectory(target.Parent.NativePath);
       }
@@ -113,6 +114,7 @@ internal sealed partial class FileSystemFile : FileSystemPath
   [JS]
   public FileSystemFileInfo Info(InfoOptions? options = null)
   {
+    options ??= new InfoOptions();
     var target = Location;
     EnsureCorrectType(target.NativePath);
     if (!File.Exists(target.NativePath))
@@ -122,7 +124,7 @@ internal sealed partial class FileSystemFile : FileSystemPath
     return new FileSystemFileInfo(
         true,
         target.Uri,
-        options?.Md5 == true ? FileMetadata.HashHex(target.NativePath, "MD5") : null,
+        options.Md5 ? FileMetadata.HashHex(target.NativePath, "MD5") : null,
         new FileInfo(target.NativePath).Length,
         FileMetadata.ModificationTime(target.NativePath, isDirectory: false),
         FileMetadata.CreationTime(target.NativePath, isDirectory: false)
