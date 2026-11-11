@@ -1556,9 +1556,7 @@ public sealed partial class ExpoModulesGenerator
   private static void EmitEnumCodec(StringBuilder builder, ExpoGeneratedEnumCodecModel codec)
   {
     var enumTypeName = codec.EnumTypeName;
-    var displayName = enumTypeName.StartsWith("global::", StringComparison.Ordinal)
-        ? enumTypeName.Substring("global::".Length)
-        : enumTypeName;
+    var displayName = codec.DisplayName;
     var members = codec.Members.Values;
     var accepted = string.Join(", ", members.Select(member => $"'{member.JavaScriptName}'"));
 

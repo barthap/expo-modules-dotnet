@@ -348,6 +348,22 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.Contains("is not a valid Expo.TestModules.Outer.Mode value. It must be one of: 'Slow'", EnumCodecText(text, "Mode"), StringComparison.Ordinal);
   }
 
+  // The messages name the enum by its C# name without `global::`: type arguments of a generic
+  // container are qualified the same way, and a keyword identifier shows without its `@`.
+  [Theory]
+  [InlineData("public static class Outer<T> { public enum Mode { Slow } }", "Outer<System.Guid>.Mode", "Expo.TestModules.Outer<System.Guid>.Mode")]
+  [InlineData("public enum @event { Slow }", "@event", "Expo.TestModules.event")]
+  public void GeneratorNamesTheEnumWithoutGlobalOrEscapesInRuntimeErrors(string declaration, string use, string expectedName)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(declaration, $"[JS] public {use} A({use} value) => value;"));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var codec = EnumCodecText(GeneratedText(result), use.Split('.').Last().TrimStart('@'));
+    Assert.Contains($"is not a valid {expectedName} value. It must be one of: 'Slow'", codec, StringComparison.Ordinal);
+    Assert.Contains($" is not a member of {expectedName}, so it has no JavaScript value.", codec, StringComparison.Ordinal);
+  }
+
   // The default of a parameter and of a record field is a cast of the member's number; it never goes
   // through a string, so a declared value cannot change which member is the default.
   [Fact]

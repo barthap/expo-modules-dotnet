@@ -186,6 +186,7 @@ internal sealed record ExpoGeneratedUnionCaseModel(
 internal sealed record ExpoGeneratedEnumCodecModel(
     string CodecTypeName,
     string EnumTypeName,
+    string DisplayName,
     string UnderlyingTypeName,
     EquatableArray<ExpoGeneratedEnumMemberModel> Members);
 

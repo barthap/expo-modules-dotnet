@@ -93,6 +93,12 @@ public sealed partial class ExpoModulesGenerator
         : null;
   }
 
+  // The enum's full C# name as the runtime error messages show it: namespaces and containing types,
+  // type arguments qualified too, no `global::`, and keyword identifiers unescaped.
+  private static readonly SymbolDisplayFormat EnumDisplayNameFormat = new(
+      typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+      genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters);
+
   // Builds an EXPOJSI033 to 035 diagnostic: the enum's name first, then the arguments, then the
   // declaration suffix. A member of an enum declared in this compilation is reported at the member.
   // An enum from a referenced assembly is reported where it is used, and the message names the
@@ -245,6 +251,7 @@ public sealed partial class ExpoModulesGenerator
     var codec = new ExpoGeneratedEnumCodecModel(
         $"{SanitizeIdentifier(enumType.Name)}EnumCodec_{EncodeTypeIdentity(enumTypeName)}",
         enumTypeName,
+        enumType.ToDisplayString(EnumDisplayNameFormat),
         enumType.EnumUnderlyingType!.ToDisplayString(),
         new EquatableArray<ExpoGeneratedEnumMemberModel>(members.Select(member =>
             new ExpoGeneratedEnumMemberModel(member.Field.Name, member.JavaScriptName!))));
