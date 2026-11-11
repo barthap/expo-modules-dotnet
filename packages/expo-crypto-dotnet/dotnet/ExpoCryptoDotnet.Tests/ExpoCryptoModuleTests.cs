@@ -286,6 +286,47 @@ public sealed class ExpoCryptoModuleTests
     Assert.Equal("true|false|Value is not a Uint8Array.", Catch(host, "m.digest('SHA-256', new Uint8Array(32), new Int8Array(1))"));
   }
 
+  [Fact]
+  public void RandomUuidReturnsDistinctLowercaseVersion4Uuids()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal(
+        "100,100",
+        Run(host, """
+            const pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+            const uuids = Array.from({ length: 100 }, () => m.randomUUID());
+            return [uuids.filter(uuid => pattern.test(uuid)).length, new Set(uuids).size].join(',');
+            """));
+  }
+
+  // Exactly the upstream ExpoCrypto members; only digestStringAsync is async. No AES member exists.
+  [Fact]
+  public void NativeSurfaceMatchesUpstream()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal(
+        "digest,digestString,digestStringAsync,getRandomValues,randomUUID|function,function,function,function,function|false,false,true,false,false|false",
+        Run(host, """
+            const names = Object.getOwnPropertyNames(m).sort();
+            const results = [
+              m.digest('MD5', new Uint8Array(16), new Uint8Array(1)),
+              m.digestString('MD5', 'x', {}),
+              m.digestStringAsync('MD5', 'x', {}),
+              m.getRandomValues(new Uint8Array(1)),
+              m.randomUUID(),
+            ];
+            const aes = ['AESEncryptionKey', 'AESSealedData', 'aesEncryptAsync', 'aesDecryptAsync', 'AESKeySize'];
+            return [
+              names.join(','),
+              names.map(name => typeof m[name]).join(','),
+              results.map(result => result instanceof Promise).join(','),
+              aes.some(name => name in m),
+            ].join('|');
+            """));
+  }
+
   private static ExpoModuleTestHost CreateHost() =>
       ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoCryptoDotnet.Register);
 

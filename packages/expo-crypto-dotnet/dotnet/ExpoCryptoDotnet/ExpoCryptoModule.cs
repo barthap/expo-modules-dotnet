@@ -48,6 +48,11 @@ public sealed partial class ExpoCryptoModule : Module
     });
   }
 
+  // A version 4 UUID with the RFC 4122 variant, 36 lowercase characters. .NET 10 Guid.NewGuid uses
+  // the OS CSPRNG. The UUID is an identifier, not key material.
+  [JS]
+  public string RandomUUID() => Guid.NewGuid().ToString("D");
+
   // Hex is lowercase. Base64 is standard and padded, with no line breaks.
   private static string ComputeDigestString(DigestAlgorithm algorithm, string data, CryptoEncoding encoding)
   {
