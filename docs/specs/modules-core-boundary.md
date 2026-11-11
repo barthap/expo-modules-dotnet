@@ -1384,7 +1384,8 @@ throws.
   failure
 - **WHEN** control returns to native
 - **THEN** JavaScript SHALL still catch an `Error`, built from the original
-  exception's message result
+  exception's message result, which is its `ToString()` text and so holds the
+  .NET type name and the stack trace
 
 ### Requirement: Async Function Failures Reject Promises
 

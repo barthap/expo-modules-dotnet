@@ -943,6 +943,8 @@ internal sealed partial class ShowcaseModule : Module
   {
     return SendEventAsync<StringCodec, string>("onStatus", $"C# event: {label}");
   }
+// ...
+}
 ```
 
 <!-- backed-by: spec "Requirement: Event Modules Use NativeModule Objects" (modules-core-boundary.md) -->
@@ -1040,12 +1042,15 @@ message is the `OperationCanceledException` message.
 
 ### The cause chain
 
-<!-- backed-by: spec "Requirement: Module Failures Become JavaScript Errors" (modules-core-boundary.md); test ConverterBuildsAnErrorWithTheCodeAndTheCauseChain; test SyncThrowAndAsyncRejectionCarryTheSameError -->
+<!-- backed-by: spec "Requirement: Module Failures Become JavaScript Errors" (modules-core-boundary.md); test ConverterBuildsAnErrorWithTheCodeAndTheCauseChain; test SyncThrowAndAsyncRejectionCarryTheSameError; test ConverterFailureOnSyncPathFallsBackToTheMessageResult; test CreatePromiseThrowingErrorFactoryRejectsWithTheOriginalMessage -->
 `error.message` is the thrown exception's `Message`, followed by the message
 of each inner exception, from the direct inner exception to the root, each
 after a line feed and `→ Caused by: `. This is the iOS format. Only the thrown
-exception gives the `code`; the .NET type name and the stack trace never reach
-JavaScript.
+exception gives the `code`; the .NET type name and the stack trace do not reach
+JavaScript, with one exception. If the converter itself fails on the sync path,
+JavaScript gets an `Error` whose message is that exception's `ToString()` text,
+which holds the type name and the stack trace. The async path rejects with the
+plain `Message` instead.
 
 <!-- backed-by: test ConverterBuildsAnErrorWithTheCodeAndTheCauseChain -->
 ```csharp
