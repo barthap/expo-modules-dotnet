@@ -159,4 +159,104 @@ public sealed class FileSystemBindingTests
 
     Assert.Equal("true,true,true,0,string,1,false", result);
   }
+
+  // Behavior this item must keep: the messages of existing errors, uncoded I/O and host
+  // failures, and the defaults of omitted, undefined, and null options.
+  [Fact]
+  public async Task ExistingMessagesAndUncodedFailuresAreKept()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    File.WriteAllText(Path.Combine(temp.Path, "a.txt"), "x");
+    Directory.CreateDirectory(Path.Combine(temp.Path, "folder"));
+    using var host = ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoFileSystemDotnet.Register);
+    var dir = DirUri(temp.Path);
+    var root = DirUri(Path.GetPathRoot(temp.Path)!);
+
+    var sync = Eval(
+        host,
+        $$"""
+        (() => {
+          const m = _expoDotnet.modules.FileSystem;
+          const dir = '{{dir}}';
+          const message = (fn) => { try { fn(); return 'no error'; } catch (e) { return e.message; } };
+          const coded = (fn) => { try { fn(); return 'no error'; } catch (e) { return 'code' in e; } };
+          return [
+            message(() => new m.FileSystemFile(dir + 'a.txt').create()) === "File '" + dir + "a.txt' already exists",
+            message(() => new m.FileSystemFile(dir + 'folder').textSync()),
+            message(() => new m.FileSystemDirectory(dir + 'a.txt').info()),
+            message(() => new m.FileSystemDirectory(dir + 'missing').delete()),
+            message(() => new m.FileSystemFile(dir + 'a.txt').rename('../b.txt')),
+            message(() => new m.FileSystemFile('relative/a.txt')),
+            message(() => new m.FileSystemFile('{{root}}').validatePath()),
+            coded(() => new m.FileSystemFile(dir + 'missing.txt').textSync()),
+            coded(() => m.cacheDirectory),
+          ].join('\n');
+        })()
+        """
+    );
+    var rejected = await Assert.ThrowsAsync<JavaScriptPromiseRejectedException>(
+        () => host.EvaluatePromiseAsync(
+            $"new _expoDotnet.modules.FileSystem.FileSystemFile('{dir}a.txt').digest('SHA-3')",
+            TestContext.Current.CancellationToken));
+
+    Assert.Equal(
+        "true\n"
+        + "A folder with the same name already exists in the file location\n"
+        + "A file with the same name already exists in the directory location\n"
+        + "Unable to delete file or directory: path does not exist\n"
+        + "Invalid file name: '../b.txt'\n"
+        + "Invalid file system location: 'relative/a.txt'\n"
+        + "tried to create a file with a directory path\n"
+        + "false\n"
+        + "false",
+        sync);
+    Assert.Equal("Unsupported digest algorithm: SHA-3", rejected.Message);
+  }
+
+  [Fact]
+  public void OmittedUndefinedAndNullOptionsTakeEveryDefault()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    File.WriteAllText(Path.Combine(temp.Path, "a.txt"), "keep");
+    Directory.CreateDirectory(Path.Combine(temp.Path, "d"));
+    using var host = ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoFileSystemDotnet.Register);
+
+    var result = Eval(
+        host,
+        $$"""
+        (() => {
+          const m = _expoDotnet.modules.FileSystem;
+          const dir = '{{DirUri(temp.Path)}}';
+          const fails = (fn) => { try { fn(); return false; } catch (e) { return true; } };
+          const a = new m.FileSystemFile(dir + 'a.txt');
+          const d = new m.FileSystemDirectory(dir + 'd');
+          const created = [];
+          ['b', 'c', 'e', 'f', 'g'].forEach((name, index) => {
+            const f = new m.FileSystemFile(dir + name + '.txt');
+            const options = [undefined, undefined, null, {}, { intermediates: undefined, overwrite: undefined }][index];
+            if (index === 0) { f.create(); } else { f.create(options); }
+            created.push(f.exists);
+          });
+          return [
+            created.join(','),
+            fails(() => a.create()),
+            fails(() => a.create(null)),
+            fails(() => a.create({})),
+            fails(() => d.create(null)),
+            fails(() => d.create({ idempotent: undefined })),
+            a.info().md5 === null,
+            a.info(undefined).md5 === null,
+            a.info(null).md5 === null,
+            a.info({}).md5 === null,
+            typeof a.info({ md5: true }).md5,
+          ].join('|');
+        })()
+        """
+    );
+
+    Assert.Equal("true,true,true,true,true|true|true|true|true|true|true|true|true|true|string", result);
+    Assert.Equal("keep", File.ReadAllText(Path.Combine(temp.Path, "a.txt")));
+  }
 }
