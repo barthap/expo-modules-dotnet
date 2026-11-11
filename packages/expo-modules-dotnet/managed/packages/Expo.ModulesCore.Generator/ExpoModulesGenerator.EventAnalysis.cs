@@ -144,7 +144,7 @@ public sealed partial class ExpoModulesGenerator
       INamedTypeSymbol typeSymbol,
       string moduleName,
       List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs,
+      ExpoCodecCollector codecs,
       string unsupportedPropertyDiagnosticId = "EXPOJSI018",
       string unsupportedPayloadDiagnosticId = "EXPOJSI019",
       string? containerReasonOverride = null)
@@ -216,9 +216,9 @@ public sealed partial class ExpoModulesGenerator
         }
         else
         {
-          var scratchRecordCodecs = recordCodecs.ToList();
+          var scratch = codecs.Fork();
           var scratchDiagnostics = new List<ExpoDiagnosticModel>();
-          eventCodec = AsCompositeChildCodec(GetCodec(payloadType, scratchDiagnostics, scratchRecordCodecs));
+          eventCodec = AsCompositeChildCodec(GetCodec(payloadType, scratchDiagnostics, scratch));
           if (eventCodec is null)
           {
             diagnostics.Add(CreateUnsupportedEventPayload(
@@ -233,8 +233,7 @@ public sealed partial class ExpoModulesGenerator
           }
           else
           {
-            recordCodecs.Clear();
-            recordCodecs.AddRange(scratchRecordCodecs);
+            codecs.Adopt(scratch);
           }
         }
       }

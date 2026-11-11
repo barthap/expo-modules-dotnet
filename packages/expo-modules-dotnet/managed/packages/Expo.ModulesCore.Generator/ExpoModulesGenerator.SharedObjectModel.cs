@@ -35,26 +35,26 @@ public sealed partial class ExpoModulesGenerator
     ExpoSharedObjectConstructorModel? constructor = null;
     var functions = new List<ExpoFunctionModel>();
     var properties = new List<ExpoPropertyModel>();
-    var recordCodecs = new List<ExpoGeneratedRecordCodecModel>();
-    var events = GetTypedEvents(typeSymbol, typeSymbol.Name, diagnostics, recordCodecs, ExpoModulesDiagnostics.UnsupportedSharedObjectEventProperty.Id, ExpoModulesDiagnostics.UnsupportedSharedObjectEventPayload.Id, isDeclarationValid ? null : "declared on an invalid Expo shared object class");
+    var codecs = new ExpoCodecCollector(context.SemanticModel.Compilation.Assembly);
+    var events = GetTypedEvents(typeSymbol, typeSymbol.Name, diagnostics, codecs, ExpoModulesDiagnostics.UnsupportedSharedObjectEventProperty.Id, ExpoModulesDiagnostics.UnsupportedSharedObjectEventPayload.Id, isDeclarationValid ? null : "declared on an invalid Expo shared object class");
     if (isDeclarationValid)
     {
       var memberDiagnostics = new List<ExpoDiagnosticModel>();
-      var functionCollection = GetFunctions(typeSymbol, memberDiagnostics, recordCodecs, new HashSet<string>(StringComparer.Ordinal));
+      var functionCollection = GetFunctions(typeSymbol, memberDiagnostics, codecs, new HashSet<string>(StringComparer.Ordinal));
       functions = functionCollection.Functions;
-      properties = RemoveCollidingProperties(typeSymbol, functionCollection.ValidJavaScriptNames, GetProperties(typeSymbol, memberDiagnostics, recordCodecs, new HashSet<string>(StringComparer.Ordinal)), memberDiagnostics);
+      properties = RemoveCollidingProperties(typeSymbol, functionCollection.ValidJavaScriptNames, GetProperties(typeSymbol, memberDiagnostics, codecs, new HashSet<string>(StringComparer.Ordinal)), memberDiagnostics);
       foreach (var diagnostic in memberDiagnostics) diagnostics.Add(TranslateSharedObjectMemberDiagnostic(diagnostic, typeSymbol.Name));
       functions = RemoveInaccessibleSharedObjectMethods(typeSymbol, functions, diagnostics).Where(function => !ReportReservedSharedObjectMemberName(typeSymbol.Name, function.JavaScriptName, function.Location, diagnostics)).ToList();
       properties = properties.Where(property => !ReportReservedSharedObjectMemberName(typeSymbol.Name, property.JavaScriptName, property.Location, diagnostics)).ToList();
       ValidateSharedObjectEventNames(typeSymbol.Name, events, diagnostics);
-      constructor = GetSharedObjectConstructor(typeSymbol, diagnostics, recordCodecs);
+      constructor = GetSharedObjectConstructor(typeSymbol, diagnostics, codecs);
     }
-    return new ExpoSharedObjectModel(typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), typeSymbol.ContainingNamespace.IsGlobalNamespace ? string.Empty : typeSymbol.ContainingNamespace.ToDisplayString(), typeSymbol.Name, typeSymbol.DeclaredAccessibility == Accessibility.Public ? "public" : "internal", GetTypeDeclarationKind(context.TargetNode), javaScriptClassName, location, isDeclarationValid, constructor, new EquatableArray<ExpoEventModel>(events), new EquatableArray<ExpoFunctionModel>(functions), new EquatableArray<ExpoPropertyModel>(properties), new EquatableArray<ExpoGeneratedRecordCodecModel>(recordCodecs), new EquatableArray<ExpoDiagnosticModel>(diagnostics));
+    return new ExpoSharedObjectModel(typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), typeSymbol.ContainingNamespace.IsGlobalNamespace ? string.Empty : typeSymbol.ContainingNamespace.ToDisplayString(), typeSymbol.Name, typeSymbol.DeclaredAccessibility == Accessibility.Public ? "public" : "internal", GetTypeDeclarationKind(context.TargetNode), javaScriptClassName, location, isDeclarationValid, constructor, new EquatableArray<ExpoEventModel>(events), new EquatableArray<ExpoFunctionModel>(functions), new EquatableArray<ExpoPropertyModel>(properties), new EquatableArray<ExpoGeneratedRecordCodecModel>(codecs.Records), new EquatableArray<ExpoDiagnosticModel>(diagnostics));
   }
   private static ExpoSharedObjectConstructorModel? GetSharedObjectConstructor(
       INamedTypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs)
+      ExpoCodecCollector codecs)
   {
     void AddConstructorDiagnostic(Location? location, string reason) =>
         diagnostics.Add(new ExpoDiagnosticModel(
@@ -136,7 +136,7 @@ public sealed partial class ExpoModulesGenerator
       }
       else
       {
-        parameterCodec = GetCodec(parameter.Type, diagnostics, recordCodecs, parameter.GetAttributes());
+        parameterCodec = GetCodec(parameter.Type, diagnostics, codecs, parameter.GetAttributes());
       }
 
       if (parameterCodec is null)
