@@ -305,6 +305,28 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.Contains("var __expoArg0 = ChoiceUnionCodec_", text, StringComparison.Ordinal);
   }
 
+  private const string LeafFreeChoice =
+      "[Union] public abstract record Choice { public sealed record Number(double Value) : Choice; public sealed record Flag(bool Value) : Choice; }";
+
+  // A union with no leaf-bearing case keeps the leaf-free glue in every parameter position, not
+  // only as the first synchronous parameter.
+  [Theory]
+  [InlineData("[JS] public Task<int> M(Choice value) => Task.FromResult(0);", "var __expoArg0 = ChoiceUnionCodec_", ".Decode(arguments.GetValue(0), jsRuntime)")]
+  [InlineData("[JS] public int M(Choice? value) => 0;", "NullableReferenceCodec<global::Expo.TestModules.Choice, ChoiceUnionCodec_", ".Decode(arguments.GetValue(0), runtime)")]
+  [InlineData("[JS] public int M(IReadOnlyList<Choice> values) => 0;", "JavaScriptArrayCodec<global::Expo.TestModules.Choice, ChoiceUnionCodec_", ".DecodeToArray(arguments.GetValue(0), runtime)")]
+  [InlineData("[JS] public int M(string name, Choice value) => 0;", "var __expoArg1 = ChoiceUnionCodec_", ".Decode(arguments.GetValue(1), runtime)")]
+  public void GeneratorKeepsLeafFreeUnionParametersWithoutRelease(string member, string expectedFragment, string expectedDecode)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(LeafFreeChoice, member));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var text = GeneratedText(result);
+    Assert.DoesNotContain("CodecRelease", text, StringComparison.Ordinal);
+    Assert.Contains(expectedFragment, text, StringComparison.Ordinal);
+    Assert.Contains(expectedDecode, text, StringComparison.Ordinal);
+  }
+
   // Spec scenario "A release failure in an attempt propagates": a leaf-bearing record attempt
   // releases what it decoded, and if that release fails, the AggregateException is not swallowed
   // as a failed attempt. Generated glue has no hook to make a real release fail, so the generated
