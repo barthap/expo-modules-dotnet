@@ -136,7 +136,7 @@ public sealed partial class ExpoModulesGenerator
       }
       else
       {
-        parameterCodec = GetCodec(parameter.Type, diagnostics, codecs, parameter.GetAttributes());
+        parameterCodec = GetCodecAt(parameterLocation, parameter.Type, diagnostics, codecs, parameter.GetAttributes());
       }
 
       if (parameterCodec is null)

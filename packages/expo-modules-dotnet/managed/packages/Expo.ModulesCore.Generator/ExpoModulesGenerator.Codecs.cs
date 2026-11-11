@@ -504,7 +504,7 @@ public sealed partial class ExpoModulesGenerator
 
       var property = typeSymbol.GetMembers().OfType<IPropertySymbol>()
           .FirstOrDefault(item => item.Name == parameter.Name);
-      var fieldCodec = GetCodec(parameter.Type, diagnostics, codecs);
+      var fieldCodec = GetCodecAt(parameter.Locations.FirstOrDefault(), parameter.Type, diagnostics, codecs);
       // Composition rule: generated record codecs call field codecs directly with Decode and
       // Encode. A field needs both, and a context-bearing codec has no runtime context there.
       if (property is null ||
@@ -677,6 +677,27 @@ public sealed partial class ExpoModulesGenerator
       ResolveCodec(typeSymbol, diagnostics, codecs, usageAttributes) is { } codec
           ? codec with { ValueTypeName = GetCodecTypeArgumentName(typeSymbol) }
           : null;
+
+  // Resolves the codec of a boundary position and records where it is used, so a union declared in
+  // a referenced assembly is reported at that position.
+  private static ExpoCodecDescriptor? GetCodecAt(
+      Location? useSite,
+      ITypeSymbol typeSymbol,
+      List<ExpoDiagnosticModel> diagnostics,
+      ExpoCodecCollector codecs,
+      IEnumerable<AttributeData>? usageAttributes = null)
+  {
+    var previous = codecs.UseSite;
+    codecs.UseSite = useSite;
+    try
+    {
+      return GetCodec(typeSymbol, diagnostics, codecs, usageAttributes);
+    }
+    finally
+    {
+      codecs.UseSite = previous;
+    }
+  }
 
   private static ExpoCodecDescriptor? ResolveCodec(
       ITypeSymbol typeSymbol,

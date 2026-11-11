@@ -260,6 +260,23 @@ public sealed partial class ExpoModulesGenerator
       List<ExpoDiagnosticModel> diagnostics,
       ExpoCodecCollector codecs)
   {
+    // Case order is not available from metadata, so a union from another assembly is rejected where
+    // it is used. The comparison is on the assembly symbol, never on a syntax test: an IDE
+    // compilation reference yields source symbols.
+    if (!SymbolEqualityComparer.Default.Equals(union.ContainingAssembly, codecs.Assembly))
+    {
+      diagnostics.Add(new ExpoDiagnosticModel(
+          ExpoModulesDiagnostics.InvalidUnionDeclaration.Id,
+          codecs.UseSite,
+          new EquatableArray<string>(new[]
+          {
+              union.ToDisplayString(),
+              $"it is declared in referenced assembly '{union.ContainingAssembly.Name}'; declare the union in the project that uses it",
+          })
+      ));
+      return null;
+    }
+
     var unionTypeName = union.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
     var existing = codecs.Unions.FirstOrDefault(model => model.UnionTypeName == unionTypeName);
     if (existing is not null)

@@ -436,4 +436,67 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.Contains("EXPOJSI015", ids);
     Assert.DoesNotContain("\"value\"", GeneratedText(result), StringComparison.Ordinal);
   }
+
+  private const string ExternalUnionSource =
+      "namespace External; [Expo.ModulesCore.Union] public abstract record Shared { public sealed record Text(string Value) : Shared; public sealed record Count(int Value) : Shared; }";
+
+  // Case order is not available from metadata, so a union from a referenced assembly is rejected
+  // where it is used, and the position reports its own unsupported-type diagnostic.
+  [Theory]
+  [InlineData("", "[JS] public int M(External.Shared value) => 0;", "value", "EXPOJSI001")]
+  [InlineData("", "[JS] public External.Shared N() => null!;", "N", "EXPOJSI002")]
+  [InlineData("", "[JS] public External.Shared Value { get; set; } = null!;", "Value", "EXPOJSI015")]
+  [InlineData("public sealed record Holder(External.Shared Content);", "[JS] public int M(Holder holder) => 0;", "Content", "EXPOJSI007")]
+  [InlineData("", "[Event] public partial Func<External.Shared, Task> OnShared { get; }", "OnShared", "EXPOJSI019")]
+  public void GeneratorReportsUnionFromReferencedAssemblyAtTheUseSite(
+      string declarations,
+      string member,
+      string useSite,
+      string positionDiagnostic)
+  {
+    var source = ModuleSource(declarations, member);
+    var result = GeneratorTestHost.Run(
+        source,
+        additionalReferences: new[] { GeneratorTestHost.CompileReference(ExternalUnionSource, "External.Unions") });
+
+    AssertNoCompilerErrors(result);
+    var ids = GeneratorDiagnosticIds(result);
+    Assert.Contains(positionDiagnostic, ids);
+    var diagnostic = Assert.Single(result.GeneratorDiagnostics!, item => item.Id == "EXPOJSI029");
+    Assert.Equal(
+        "Union 'External.Shared' is invalid: it is declared in referenced assembly 'External.Unions'; declare the union in the project that uses it",
+        diagnostic.GetMessage());
+    var span = diagnostic.Location.SourceSpan;
+    Assert.Equal(useSite, source.Substring(span.Start, span.Length));
+    Assert.DoesNotContain("SharedUnionCodec_", GeneratedText(result), StringComparison.Ordinal);
+  }
+
+  // Payload codecs resolve by type, not by the declaring assembly, so records, enums, and lists of
+  // them from a referenced assembly work as union payloads.
+  [Fact]
+  public void GeneratorResolvesUnionCasePayloadsFromReferencedAssembly()
+  {
+    var reference = GeneratorTestHost.CompileReference(
+        "namespace External; public sealed record ExternalRecord(string Name, int Count); " +
+        "[Expo.ModulesCore.JSEnum(Expo.ModulesCore.EnumRepresentation.Number)] public enum ExternalLevel { Low = 1, High = 2 }",
+        "External.Types");
+    var result = GeneratorTestHost.Run(
+        ModuleSource(
+            "[Union] public abstract record Sth { " +
+            "public sealed record Foo(External.ExternalRecord Bar) : Sth; " +
+            "public sealed record Level(External.ExternalLevel Value) : Sth; " +
+            "public sealed record Many(IReadOnlyList<External.ExternalRecord> Value) : Sth; " +
+            "public sealed record Text(string Value) : Sth; }",
+            "[JS] public string Describe(Sth value) => \"\"; [JS] public Sth Make() => null!;"),
+        additionalReferences: new[] { reference });
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var text = GeneratedText(result);
+    Assert.Contains("private readonly struct ExternalRecordCodec_", text, StringComparison.Ordinal);
+    var codec = UnionCodecText(text, "Sth");
+    Assert.Contains("NumberEnumCodec<global::External.ExternalLevel>.Decode(value, runtime)", codec, StringComparison.Ordinal);
+    Assert.Contains("JavaScriptArrayCodec<global::External.ExternalRecord, ExternalRecordCodec_", codec, StringComparison.Ordinal);
+    Assert.Contains("new[] { \"ExternalRecord\", \"ExternalLevel\", \"IReadOnlyList<ExternalRecord>\", \"string\" }", codec, StringComparison.Ordinal);
+  }
 }

@@ -218,9 +218,13 @@ public sealed partial class ExpoModulesGenerator
         {
           var scratch = codecs.Fork();
           var scratchDiagnostics = new List<ExpoDiagnosticModel>();
-          eventCodec = AsCompositeChildCodec(GetCodec(payloadType, scratchDiagnostics, scratch));
+          eventCodec = AsCompositeChildCodec(GetCodecAt(property.Locations.FirstOrDefault(), payloadType, scratchDiagnostics, scratch));
           if (eventCodec is null)
           {
+            // A union from a referenced assembly is reported at the event property; the other
+            // scratch diagnostics stay dropped.
+            diagnostics.AddRange(scratchDiagnostics.Where(item =>
+                item.DescriptorId == ExpoModulesDiagnostics.InvalidUnionDeclaration.Id));
             diagnostics.Add(CreateUnsupportedEventPayload(
                 moduleName,
                 property,

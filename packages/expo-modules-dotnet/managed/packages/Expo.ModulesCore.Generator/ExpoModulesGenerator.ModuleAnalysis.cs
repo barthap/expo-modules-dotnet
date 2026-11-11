@@ -499,7 +499,8 @@ public sealed partial class ExpoModulesGenerator
       {
         asyncResultCodec = asyncResultType is null || asyncResultPassingKind != ExpoReturnPassingKind.Codec
             ? null
-            : GetCodec(
+            : GetCodecAt(
+                member.Locations.FirstOrDefault(),
                 asyncResultType,
                 diagnostics,
                 codecs,
@@ -558,7 +559,8 @@ public sealed partial class ExpoModulesGenerator
       {
         returnCodec = returnsVoid || isAsync || returnPassingKind != ExpoReturnPassingKind.Codec
             ? null
-            : GetCodec(
+            : GetCodecAt(
+                member.Locations.FirstOrDefault(),
                 member.ReturnType,
                 diagnostics,
                 codecs,
@@ -650,7 +652,8 @@ public sealed partial class ExpoModulesGenerator
         }
         else
         {
-          parameterCodec = GetCodec(
+          parameterCodec = GetCodecAt(
+              parameter.Locations.FirstOrDefault(),
               parameter.Type,
               diagnostics,
               codecs,
@@ -805,7 +808,7 @@ public sealed partial class ExpoModulesGenerator
       }
       else
       {
-        codec = GetCodec(member.Type, diagnostics, codecs, member.GetAttributes());
+        codec = GetCodecAt(member.Locations.FirstOrDefault(), member.Type, diagnostics, codecs, member.GetAttributes());
       }
       if (codec is null)
       {

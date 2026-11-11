@@ -14,6 +14,9 @@ internal sealed class ExpoCodecCollector
   // The assembly being compiled. A type from another assembly has a different ContainingAssembly.
   public IAssemblySymbol Assembly { get; }
 
+  // Where the codec being resolved is used, for diagnostics about a type that has no codec.
+  public Location? UseSite { get; set; }
+
   public List<ExpoGeneratedRecordCodecModel> Records { get; } = new();
 
   public List<ExpoGeneratedUnionCodecModel> Unions { get; } = new();
@@ -21,7 +24,7 @@ internal sealed class ExpoCodecCollector
   // A copy that resolution can fill and drop, so a rejected codec adds no model.
   public ExpoCodecCollector Fork()
   {
-    var fork = new ExpoCodecCollector(Assembly);
+    var fork = new ExpoCodecCollector(Assembly) { UseSite = UseSite };
     fork.Records.AddRange(Records);
     fork.Unions.AddRange(Unions);
     return fork;
