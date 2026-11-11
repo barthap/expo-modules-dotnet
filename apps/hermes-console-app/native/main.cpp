@@ -163,6 +163,9 @@ void run_generated_module_checks(jsi::Runtime &rt)
   std::cout << "JS called generated v2 C# module: " << v2_result.asNumber() << std::endl;
 }
 
+// getMessageAsync, emitStatusAsync, and failWithCodeAsync.
+constexpr int kShowcasePromiseCount = 3;
+
 void start_showcase_checks(jsi::Runtime &rt)
 {
   rt.evaluateJavaScript(std::make_unique<jsi::StringBuffer>(R"(
@@ -173,7 +176,16 @@ void start_showcase_checks(jsi::Runtime &rt)
       eventPayload: null,
       recordSummary: null,
       syncError: null,
-      asyncError: 'pending'
+      asyncError: 'pending',
+      settled: 0,
+      rejection: null
+    };
+    const outcome = global.__consoleShowcase;
+    const settle = error => {
+      outcome.settled++;
+      if (error !== undefined && outcome.rejection === null) {
+        outcome.rejection = String((error && error.message) || error);
+      }
     };
 
     const showcase = global._expoDotnet.modules.Showcase;
@@ -188,15 +200,16 @@ void start_showcase_checks(jsi::Runtime &rt)
       showcase.transformWithCallback('Hermes', value => `callback(${value})`);
 
     showcase.getMessageAsync().then(
-      value => { global.__consoleShowcase.asyncMessage = value; },
-      error => { global.__consoleShowcase.asyncMessage = error && error.message; }
+      value => { outcome.asyncMessage = value; settle(); },
+      error => { settle(error || 'rejected'); }
     );
     showcase.emitStatusAsync('ready').then(
       () => {
-        global.__consoleShowcase.eventDone = true;
+        outcome.eventDone = true;
         subscription.remove();
+        settle();
       },
-      error => { global.__consoleShowcase.eventPayload = error && error.message; }
+      error => { settle(error || 'rejected'); }
     );
 
     try {
@@ -206,9 +219,10 @@ void start_showcase_checks(jsi::Runtime &rt)
       global.__consoleShowcase.syncError = `${error instanceof Error}:${error.code}:${error.message}`;
     }
     showcase.failWithCodeAsync('blank').then(
-      () => { global.__consoleShowcase.asyncError = 'no error'; },
+      () => { outcome.asyncError = 'no error'; settle(); },
       error => {
-        global.__consoleShowcase.asyncError = `${error instanceof Error}:${error.code}:${error.message}`;
+        outcome.asyncError = `${error instanceof Error}:${error.code}:${error.message}`;
+        settle();
       }
     );
     true;
@@ -218,18 +232,26 @@ void start_showcase_checks(jsi::Runtime &rt)
 
 // The async showcase calls finish on managed threads, which waitUntilIdle does not track. An
 // exception thrown on a cold thread can take longer than the idle wait, so poll until every async
-// promise has settled instead of reading the outcome right after the idle wait.
+// promise has settled, fulfilled or rejected, instead of reading the outcome right after the idle
+// wait. An unexpected rejection is reported with its reason. failWithCodeAsync rejects on purpose
+// and records its error in asyncError, so it only counts as settled.
 void wait_for_showcase_settlement(expo::dotnet::HermesConsoleRuntimeConnector &connector)
 {
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
   for (;;) {
     bool settled = false;
+    std::string rejection;
     connector.runtimeExecutor().executeSync([&](jsi::Runtime &rt) {
       auto outcome = rt.global().getPropertyAsObject(rt, "__consoleShowcase");
-      settled = outcome.getProperty(rt, "asyncMessage").isString() &&
-                outcome.getProperty(rt, "eventDone").getBool() &&
-                outcome.getProperty(rt, "asyncError").asString(rt).utf8(rt) != "pending";
+      settled = outcome.getProperty(rt, "settled").asNumber() == kShowcasePromiseCount;
+      auto reason = outcome.getProperty(rt, "rejection");
+      if (reason.isString()) {
+        rejection = reason.asString(rt).utf8(rt);
+      }
     });
+    if (!rejection.empty()) {
+      throw std::runtime_error("Showcase promise rejected: " + rejection);
+    }
     if (settled) {
       return;
     }
@@ -285,29 +307,21 @@ void verify_showcase_checks(jsi::Runtime &rt)
             << std::endl;
 }
 
-} // namespace
-
-int main()
+// Managed code can hold the counter's API table and the runtime handle while an async continuation
+// is in flight, so a failure must tear the managed session down before the connector and the
+// counter go out of scope. Returns an empty string on success, otherwise the failure message.
+std::string run_checks(expo::dotnet::HermesConsoleRuntimeConnector &connector,
+                       const proof::ManagedEntryPoints &managed,
+                       expo_jsi_runtime_handle runtime_handle)
 {
-  expo_jsi_runtime_handle runtime_handle = nullptr;
+  auto release_counter = make_release_counter(expo::dotnet::api());
+  active_release_counter = &release_counter;
+  auto cs = CSharpAPI{
+    managed.create_session, managed.teardown_session, &release_counter.api, runtime_handle};
 
+  std::string failure;
   try {
     int rc = 0;
-    auto managed = proof::loadManagedEntryPoints();
-
-    expo::dotnet::HermesConsoleRuntimeConnector connector;
-    runtime_handle = expo::dotnet::createRuntimeHandle(connector);
-    if (runtime_handle == nullptr) {
-      throw std::runtime_error("Failed to create Expo JSI runtime handle.");
-    }
-
-    std::cout << "Created Hermes-backed JSI runtime" << std::endl;
-
-    auto release_counter = make_release_counter(expo::dotnet::api());
-    active_release_counter = &release_counter;
-    auto cs = CSharpAPI{
-      managed.create_session, managed.teardown_session, &release_counter.api, runtime_handle};
-
     connector.runtimeExecutor().executeSync([&](jsi::Runtime &rt) {
       create_managed_session(rt, cs);
       run_generated_module_checks(rt);
@@ -322,33 +336,62 @@ int main()
     if (rc != 0) {
       throw std::runtime_error("Managed JSI proof failed with code " + std::to_string(rc));
     }
+  } catch (const std::exception &error) {
+    failure = error.what();
+  }
 
-    teardown_modules(cs);
+  teardown_modules(cs);
 
-    auto value_release_count = release_counter.value_release_count;
-    std::cout << "Released owned value handles: " << value_release_count << std::endl;
-    if (value_release_count != 150) {
-      throw std::runtime_error("Expected exactly 150 counted owned value handle releases.");
+  if (failure.empty()) {
+    try {
+      auto value_release_count = release_counter.value_release_count;
+      std::cout << "Released owned value handles: " << value_release_count << std::endl;
+      if (value_release_count != 150) {
+        throw std::runtime_error("Expected exactly 150 counted owned value handle releases.");
+      }
+
+      auto string_release_count = release_counter.string_release_count;
+      std::cout << "Released string result buffers: " << string_release_count << std::endl;
+      if (string_release_count != 12) {
+        throw std::runtime_error("Expected exactly 12 counted string result buffer releases.");
+      }
+    } catch (const std::exception &error) {
+      failure = error.what();
+    }
+  }
+
+  active_release_counter = nullptr;
+  return failure;
+}
+
+} // namespace
+
+int main()
+{
+  try {
+    auto managed = proof::loadManagedEntryPoints();
+
+    expo::dotnet::HermesConsoleRuntimeConnector connector;
+    auto runtime_handle = expo::dotnet::createRuntimeHandle(connector);
+    if (runtime_handle == nullptr) {
+      throw std::runtime_error("Failed to create Expo JSI runtime handle.");
     }
 
-    auto string_release_count = release_counter.string_release_count;
-    std::cout << "Released string result buffers: " << string_release_count << std::endl;
-    if (string_release_count != 12) {
-      throw std::runtime_error("Expected exactly 12 counted string result buffer releases.");
-    }
+    std::cout << "Created Hermes-backed JSI runtime" << std::endl;
+
+    auto failure = run_checks(connector, managed, runtime_handle);
 
     expo::dotnet::releaseRuntimeHandle(runtime_handle);
-    runtime_handle = nullptr;
-    active_release_counter = nullptr;
     connector.invalidate();
+
+    if (!failure.empty()) {
+      std::cerr << "hermes_console_app failed: " << failure << std::endl;
+      return 1;
+    }
 
     std::cout << "hermes console app: ok" << std::endl;
     return 0;
   } catch (const std::exception &error) {
-    if (runtime_handle != nullptr) {
-      expo::dotnet::releaseRuntimeHandle(runtime_handle);
-    }
-    active_release_counter = nullptr;
     std::cerr << "hermes_console_app failed: " << error.what() << std::endl;
     return 1;
   }
