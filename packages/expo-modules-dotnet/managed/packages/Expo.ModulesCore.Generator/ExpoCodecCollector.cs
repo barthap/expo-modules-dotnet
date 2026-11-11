@@ -21,6 +21,8 @@ internal sealed class ExpoCodecCollector
 
   public List<ExpoGeneratedUnionCodecModel> Unions { get; } = new();
 
+  public List<ExpoGeneratedEnumCodecModel> Enums { get; } = new();
+
   // The unions whose analysis is running, and the ones that analysis reached again. Forks share
   // this state, so a union that reaches itself through any codec path is caught on re-entry.
   public UnionAnalysisState UnionAnalysis { get; private set; } = new();
@@ -31,6 +33,7 @@ internal sealed class ExpoCodecCollector
     var fork = new ExpoCodecCollector(Assembly) { UseSite = UseSite, UnionAnalysis = UnionAnalysis };
     fork.Records.AddRange(Records);
     fork.Unions.AddRange(Unions);
+    fork.Enums.AddRange(Enums);
     return fork;
   }
 
@@ -41,6 +44,8 @@ internal sealed class ExpoCodecCollector
     Records.AddRange(fork.Records);
     Unions.Clear();
     Unions.AddRange(fork.Unions);
+    Enums.Clear();
+    Enums.AddRange(fork.Enums);
   }
 }
 

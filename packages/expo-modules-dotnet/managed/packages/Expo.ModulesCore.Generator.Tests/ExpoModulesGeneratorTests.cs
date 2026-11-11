@@ -1113,8 +1113,9 @@ public sealed partial class ExpoModulesGeneratorTests
 
     Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
     var source = Assert.Single(result.GeneratedSources).Text;
-    Assert.Contains("StringEnumCodec<global::Expo.TestModules.Mode>.Decode(arguments.GetValue(0), runtime)", source);
-    Assert.Contains("StringEnumCodec<global::Expo.TestModules.Mode>.Encode(module.RoundTripMode(__expoArg0), runtime)", source);
+    var modeCodec = EnumCodecName("Mode", "global::Expo.TestModules.Mode");
+    Assert.Contains($"{modeCodec}.Decode(arguments.GetValue(0), runtime)", source);
+    Assert.Contains($"{modeCodec}.Encode(module.RoundTripMode(__expoArg0), runtime)", source);
     Assert.Contains("JavaScriptDictionaryCodec<double, NumberCodec<double>>.DecodeToDictionary(arguments.GetValue(0), runtime)", source);
     Assert.Contains("JavaScriptDictionaryCodec<string, StringCodec>.Encode(module.Labels(), runtime)", source);
   }
@@ -1270,9 +1271,10 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.Contains($"private readonly struct {addressCodec} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.Address>", source);
     Assert.Contains($"private readonly struct {userCodec} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.User>", source);
     Assert.Contains($"var address = {addressCodec}.Decode(addressValue, runtime);", source);
-    Assert.Contains("var status = StringEnumCodec<global::Expo.TestModules.Status>.Decode(statusValue, runtime);", source);
+    var statusCodec = EnumCodecName("Status", "global::Expo.TestModules.Status");
+    Assert.Contains($"var status = {statusCodec}.Decode(statusValue, runtime);", source);
     Assert.Contains($"using var address = {addressCodec}.Encode(value.Address, runtime);", source);
-    Assert.Contains("using var status = StringEnumCodec<global::Expo.TestModules.Status>.Encode(value.Status, runtime);", source);
+    Assert.Contains($"using var status = {statusCodec}.Encode(value.Status, runtime);", source);
     Assert.Contains("obj.SetProperty(\"address\", address);", source);
     Assert.Contains("obj.SetProperty(\"status\", status);", source);
     Assert.Contains("return new global::Expo.TestModules.User(name, address, status);", source);

@@ -21,6 +21,7 @@ internal sealed record ExpoModuleModel(
     EquatableArray<ExpoSharedObjectClassModel> SharedObjectClasses,
     EquatableArray<ExpoGeneratedRecordCodecModel> RecordCodecs,
     EquatableArray<ExpoGeneratedUnionCodecModel> UnionCodecs,
+    EquatableArray<ExpoGeneratedEnumCodecModel> EnumCodecs,
     EquatableArray<ExpoDiagnosticModel> Diagnostics);
 
 internal sealed record ExpoSharedObjectClassModel(
@@ -179,6 +180,18 @@ internal sealed record ExpoGeneratedUnionCaseModel(
     ExpoCodecDescriptor PayloadCodec,
     ExpoJavaScriptKinds Kinds,
     string IntegerGate);
+
+// One generated string-enum codec, deduplicated by EnumTypeName like record codecs. Members are in
+// declaration order and keep both names, because EMC-30 reports both.
+internal sealed record ExpoGeneratedEnumCodecModel(
+    string CodecTypeName,
+    string EnumTypeName,
+    string UnderlyingTypeName,
+    EquatableArray<ExpoGeneratedEnumMemberModel> Members);
+
+internal sealed record ExpoGeneratedEnumMemberModel(
+    string CSharpName,
+    string JavaScriptName);
 
 // The JavaScript kinds a union payload decodes. Member names equal the JavaScriptValueKind names, so
 // emission writes global::Expo.JSI.JavaScriptValueKind.<Name>.

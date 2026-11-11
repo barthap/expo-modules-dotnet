@@ -199,10 +199,11 @@ public sealed class GeneratorOutputContractTests
     );
 
     Assert.DoesNotContain(result.Diagnostics, d => d.Severity == DiagnosticSeverity.Error && d.Id.StartsWith("CS", StringComparison.Ordinal));
+    // EMC-76 re-pinned the provider digest: PolicyMode now crosses through a generated enum codec.
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:0E148F16FF25576D00F27114FA771BEC0C48E58F402465F6A44CB51C1A1BF7F6",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:724ACE64BB317D75E9DAA77EEA22A3A1FA171CE8A477514B805A0E8F12DA72A0",
           "global__Expo_TestModules_PolicyLeafFreeModule_8D511E8D.Events.g.cs:EB0CCDFABDF861EE54188FA227D628F2A6534E012C2B43EAEF6AFB0C0CA9DE8A",
         },
         result.GetOutputContract()

@@ -220,6 +220,12 @@ public sealed partial class ExpoModulesGenerator
       return OrdinaryCodec($"NumberEnumCodec<{enumTypeName}>");
     }
 
+    var existing = codecs.Enums.FirstOrDefault(model => model.EnumTypeName == enumTypeName);
+    if (existing is not null)
+    {
+      return OrdinaryCodec(existing.CodecTypeName);
+    }
+
     var errors = ValidateStringEnum(enumType, members, codecs);
     if (errors.Count > 0)
     {
@@ -227,6 +233,13 @@ public sealed partial class ExpoModulesGenerator
       return null;
     }
 
-    return OrdinaryCodec($"StringEnumCodec<{enumTypeName}>");
+    var codec = new ExpoGeneratedEnumCodecModel(
+        $"{SanitizeIdentifier(enumType.Name)}EnumCodec_{EncodeTypeIdentity(enumTypeName)}",
+        enumTypeName,
+        enumType.EnumUnderlyingType!.ToDisplayString(),
+        new EquatableArray<ExpoGeneratedEnumMemberModel>(members.Select(member =>
+            new ExpoGeneratedEnumMemberModel(member.Field.Name, member.JavaScriptName!))));
+    codecs.Enums.Add(codec);
+    return OrdinaryCodec(codec.CodecTypeName);
   }
 }

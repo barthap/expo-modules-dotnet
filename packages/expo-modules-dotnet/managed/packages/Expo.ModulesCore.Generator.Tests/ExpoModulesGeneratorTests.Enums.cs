@@ -21,7 +21,7 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.Empty(GeneratorDiagnosticIds(result));
     AssertNoCompilerDiagnostics(result);
     var text = GeneratedText(result);
-    Assert.Contains("StringEnumCodec<global::Expo.TestModules.TypeMode>.Decode(arguments.GetValue(0), runtime)", text, StringComparison.Ordinal);
+    Assert.Contains($"{EnumCodecName("TypeMode", "global::Expo.TestModules.TypeMode")}.Decode(arguments.GetValue(0), runtime)", text, StringComparison.Ordinal);
     Assert.Contains("NumberEnumCodec<global::Expo.TestModules.TypeMode>.Decode(modeValue, runtime)", text, StringComparison.Ordinal);
     Assert.Contains("NullableCodec<global::Expo.TestModules.PlainMode, NumberEnumCodec<global::Expo.TestModules.PlainMode>>.Decode(arguments.GetValue(0), runtime)", text, StringComparison.Ordinal);
     Assert.Contains("NullableCodec<global::Expo.TestModules.PlainMode, NumberEnumCodec<global::Expo.TestModules.PlainMode>>.Encode(", text, StringComparison.Ordinal);
@@ -211,5 +211,140 @@ public sealed partial class ExpoModulesGeneratorTests
         "[JS] public int Ok() => 0;"));
 
     Assert.Empty(GeneratorDiagnosticIds(result));
+  }
+
+  private static string EnumCodecName(string simpleName, string fullyQualifiedTypeName) =>
+      $"{simpleName}EnumCodec_{string.Concat(fullyQualifiedTypeName.Select(character => ((ushort)character).ToString("X4", System.Globalization.CultureInfo.InvariantCulture)))}";
+
+  // The enum codec struct of one enum, from its declaration to (not including) its closing brace.
+  private static string EnumCodecText(string text, string enumName)
+  {
+    var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal);
+    var start = normalized.IndexOf($"private readonly struct {enumName}EnumCodec_", StringComparison.Ordinal);
+    Assert.True(start >= 0);
+    return normalized[start..normalized.IndexOf("\n  }\n", start, StringComparison.Ordinal)];
+  }
+
+  private const string DigestAlgorithmSource =
+      "public enum DigestAlgorithm { MD5, [" + EM + "(Value = \"SHA-1\")] SHA1, [" + EM + "(Value = \"SHA-256\")] SHA256 }";
+
+  private static readonly string DigestAlgorithmCodec =
+      EnumCodecName("DigestAlgorithm", "global::Expo.TestModules.DigestAlgorithm");
+
+  // The emitted codec is two constant switches, so it needs no reflection and runs under NativeAOT.
+  // Keyword member names and values with quotes, backslashes, braces, or newlines must compile and
+  // keep the runtime string verbatim.
+  [Fact]
+  public void GeneratorEmitsAStringEnumCodecWithDeclaredStrings()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        """
+        public enum DigestAlgorithm
+        {
+          MD5,
+          [System.Runtime.Serialization.EnumMember(Value = "SHA-1")] SHA1,
+          [System.Runtime.Serialization.EnumMember] SHA256,
+          @class,
+          [System.Runtime.Serialization.EnumMember(Value = "q\"b\\{x}\n")] Odd,
+        }
+        """,
+        "[JS] public DigestAlgorithm Echo(DigestAlgorithm algorithm) => algorithm;"));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var text = GeneratedText(result);
+    var codecName = DigestAlgorithmCodec;
+    Assert.Equal(
+        $$"""
+        private readonly struct {{codecName}} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.DigestAlgorithm>
+          {
+            public static global::Expo.TestModules.DigestAlgorithm Decode(global::Expo.JSI.JavaScriptValueRef value, global::Expo.JSI.JavaScriptRuntime runtime) => FromJavaScriptString(value.AsString());
+
+            public static global::Expo.TestModules.DigestAlgorithm Decode(global::Expo.JSI.JavaScriptValue value, global::Expo.JSI.JavaScriptRuntime runtime) => FromJavaScriptString(value.AsString());
+
+            public static global::Expo.JSI.JavaScriptValue Encode(global::Expo.TestModules.DigestAlgorithm value, global::Expo.JSI.JavaScriptRuntime runtime) => runtime.CreateString(ToJavaScriptString(value));
+
+            private static global::Expo.TestModules.DigestAlgorithm FromJavaScriptString(string value) => value switch
+            {
+              "MD5" => global::Expo.TestModules.DigestAlgorithm.MD5,
+              "SHA-1" => global::Expo.TestModules.DigestAlgorithm.SHA1,
+              "SHA256" => global::Expo.TestModules.DigestAlgorithm.SHA256,
+              "class" => global::Expo.TestModules.DigestAlgorithm.@class,
+              "q\"b\\{x}\n" => global::Expo.TestModules.DigestAlgorithm.Odd,
+              _ => throw new global::System.ArgumentException("'" + value + "' is not a valid Expo.TestModules.DigestAlgorithm value. It must be one of: 'MD5', 'SHA-1', 'SHA256', 'class', 'q\"b\\{x}\n'"),
+            };
+
+            private static string ToJavaScriptString(global::Expo.TestModules.DigestAlgorithm value) => value switch
+            {
+              global::Expo.TestModules.DigestAlgorithm.MD5 => "MD5",
+              global::Expo.TestModules.DigestAlgorithm.SHA1 => "SHA-1",
+              global::Expo.TestModules.DigestAlgorithm.SHA256 => "SHA256",
+              global::Expo.TestModules.DigestAlgorithm.@class => "class",
+              global::Expo.TestModules.DigestAlgorithm.Odd => "q\"b\\{x}\n",
+              _ => throw new global::System.InvalidOperationException(((int)value).ToString(global::System.Globalization.CultureInfo.InvariantCulture) + " is not a member of Expo.TestModules.DigestAlgorithm, so it has no JavaScript value."),
+            };
+        """,
+        EnumCodecText(text, "DigestAlgorithm"));
+    Assert.Contains($"{codecName}.Decode(arguments.GetValue(0), runtime)", text, StringComparison.Ordinal);
+    Assert.Contains($"{codecName}.Encode(module.Echo(__expoArg0), runtime)", text, StringComparison.Ordinal);
+  }
+
+  // One codec per enum per provider, whatever the number of modules, shared objects, and positions;
+  // no runtime enum API anywhere in it; and no leaf release, because the codec holds no leaves.
+  [Fact]
+  public void GeneratorEmitsOneEnumCodecPerProvider()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        DigestAlgorithmSource + " public sealed record Options(DigestAlgorithm Algorithm); " +
+        "[ExpoSharedObject] public sealed partial class Hasher : SharedObject { [JS] public DigestAlgorithm Swap(DigestAlgorithm next) => next; } " +
+        "[ExpoModule(\"Second\", Classes = new[] { typeof(Hasher) })] public sealed partial class SecondModule { [JS] public DigestAlgorithm? M(IReadOnlyList<DigestAlgorithm> values) => null; }",
+        "[JS] public DigestAlgorithm A(DigestAlgorithm algorithm) => algorithm; [JS] public int B(Options options) => 0; " +
+        "[JS] public Task<DigestAlgorithm> C() => Task.FromResult(DigestAlgorithm.MD5); [JS] public DigestAlgorithm Preferred { get; set; }"));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var text = GeneratedText(result);
+    Assert.Equal(1, CountOccurrences(text, $"private readonly struct {DigestAlgorithmCodec} :"));
+    Assert.DoesNotContain("StringEnumCodec", text, StringComparison.Ordinal);
+    Assert.DoesNotContain("CodecRelease.Release<global::Expo.TestModules.DigestAlgorithm", text, StringComparison.Ordinal);
+    var codec = EnumCodecText(text, "DigestAlgorithm");
+    foreach (var forbidden in new[] { "Enum.TryParse", "Enum.IsDefined", "Enum.GetName", "GetType(", "typeof(", "value.ToString(", "public static void Release" })
+    {
+      Assert.DoesNotContain(forbidden, codec, StringComparison.Ordinal);
+    }
+  }
+
+  // Union and event analysis resolve payloads in a scratch collector and adopt it on success, so an
+  // enum reached only there still gets its codec emitted.
+  [Theory]
+  [InlineData("[Union] public abstract record Choice { public sealed record Pick(DigestAlgorithm Value) : Choice; public sealed record Count(int Value) : Choice; }", "[JS] public int M(Choice value) => 0;")]
+  [InlineData("", "[Event] public partial Func<DigestAlgorithm, Task> OnPick { get; }")]
+  public void GeneratorEmitsEnumCodecsReachedOnlyThroughAUnionOrAnEvent(string declarations, string member)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(DigestAlgorithmSource + " " + declarations, member));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    Assert.Equal(1, CountOccurrences(GeneratedText(result), $"private readonly struct {DigestAlgorithmCodec} :"));
+  }
+
+  // The encode error casts to the underlying type, so it never calls Enum.ToString and compiles for
+  // every underlying type. A nested enum is named as C# writes it, with a dot.
+  [Fact]
+  public void GeneratorRendersEnumEncodeErrorsFromTheUnderlyingType()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        "public enum Wide : ulong { Max = ulong.MaxValue } public enum Signed : sbyte { Minus = -1 } public static class Outer { public enum Mode { Slow } }",
+        "[JS] public Wide A(Wide value) => value; [JS] public Signed B(Signed value) => value; [JS] public Outer.Mode C(Outer.Mode value) => value;"));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var text = GeneratedText(result);
+    Assert.Contains(
+        "_ => throw new global::System.InvalidOperationException(((ulong)value).ToString(global::System.Globalization.CultureInfo.InvariantCulture) + \" is not a member of Expo.TestModules.Wide, so it has no JavaScript value.\"),",
+        EnumCodecText(text, "Wide"),
+        StringComparison.Ordinal);
+    Assert.Contains("((sbyte)value).ToString(global::System.Globalization.CultureInfo.InvariantCulture) + \" is not a member of Expo.TestModules.Signed,", EnumCodecText(text, "Signed"), StringComparison.Ordinal);
+    Assert.Contains("is not a valid Expo.TestModules.Outer.Mode value. It must be one of: 'Slow'", EnumCodecText(text, "Mode"), StringComparison.Ordinal);
   }
 }

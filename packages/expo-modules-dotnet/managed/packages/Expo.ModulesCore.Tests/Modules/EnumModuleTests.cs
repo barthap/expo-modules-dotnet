@@ -25,26 +25,6 @@ public sealed class EnumModuleTests
     Assert.StartsWith($"'fast' is not a valid {Ns}.PlainMode value.", outcome.Message, StringComparison.Ordinal);
   }
 
-  // Pins the StringEnumCodec behavior that the generated enum codec changes: Enum.TryParse also
-  // accepts the string of an underlying number.
-  [Fact]
-  public async Task PlainEnumDecodesANumberStringThroughEnumTryParse()
-  {
-    using var host = CreateHost();
-
-    Assert.Equal("[\"Slow\",\"Fast\"]", await ReadAsync(host, "[m.echoPlain('0'), m.echoPlain('1')]"));
-  }
-
-  // Pins the StringEnumCodec behavior that the generated enum codec changes: a value that names no
-  // member encodes as its number.
-  [Fact]
-  public async Task PlainEnumEncodesAnUndefinedValueAsItsNumber()
-  {
-    using var host = CreateHost();
-
-    Assert.Equal("\"42\"", await ReadAsync(host, "m.plainOutOfRange()"));
-  }
-
   // A usage-level [JSEnum] wins over the enum type's. A record field has no usage-level attribute,
   // so it keeps the type's Number.
   [Fact]
@@ -62,6 +42,106 @@ public sealed class EnumModuleTests
     using var host = CreateHost();
 
     Assert.Equal("[1,null]", await ReadAsync(host, "[m.echoPlainAsNullableNumber(1), m.echoPlainAsNullableNumber(null)]"));
+  }
+
+  // Enum.TryParse accepted the string of an underlying number. Only declared strings decode now.
+  [Theory]
+  [InlineData("0")]
+  [InlineData("1")]
+  public async Task PlainEnumRejectsNumberStrings(string input)
+  {
+    using var host = CreateHost();
+
+    var outcome = await CatchAsync(host, $"m.echoPlain('{input}')");
+
+    AssertUncodedError(outcome, "sync");
+    Assert.Equal($"'{input}' is not a valid {Ns}.PlainMode value. It must be one of: 'Slow', 'Fast'", outcome.Message);
+  }
+
+  // Enum.ToString encoded 42 as '42'. A value that names no member has no JavaScript string now.
+  [Fact]
+  public async Task PlainEnumRejectsAnUndefinedValueOnEncode()
+  {
+    using var host = CreateHost();
+
+    var outcome = await CatchAsync(host, "m.plainOutOfRange()");
+
+    AssertUncodedError(outcome, "sync");
+    Assert.Equal($"42 is not a member of {Ns}.PlainMode, so it has no JavaScript value.", outcome.Message);
+  }
+
+  // 'SHA-1' reaches authored code as SHA1, and SHA1 goes back as 'SHA-1'. MD5 has no value, so its
+  // C# name crosses both ways.
+  [Fact]
+  public async Task DeclaredStringsCrossBothWays()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal(
+        "[\"SHA1\",\"MD5\",\"SHA256\"]",
+        await ReadAsync(host, "[m.describeAlgorithm('SHA-1'), m.describeAlgorithm('MD5'), m.describeAlgorithm('SHA-256')]"));
+    Assert.Equal("[\"SHA-1\",\"MD5\",\"SHA-256\"]", await ReadAsync(host, "[m.echoAlgorithm('SHA-1'), m.echoAlgorithm('MD5'), m.echoAlgorithm('SHA-256')]"));
+  }
+
+  // Matching is exact and ordinal: the C# name of a member that has a value, another case, extra
+  // whitespace, a number string, and the empty string all fail before authored code runs, and the
+  // message lists every accepted string so a JavaScript caller can fix the call.
+  [Theory]
+  [InlineData("'SHA1'", "SHA1")]
+  [InlineData("'sha-1'", "sha-1")]
+  [InlineData("' SHA-1'", " SHA-1")]
+  [InlineData("'SHA-1 '", "SHA-1 ")]
+  [InlineData("'1'", "1")]
+  [InlineData("''", "")]
+  public async Task OnlyDeclaredStringsDecode(string input, string received)
+  {
+    using var host = CreateHost();
+
+    var outcome = await CatchAsync(host, $"m.describeAlgorithm({input})");
+
+    AssertUncodedError(outcome, "sync");
+    Assert.Equal($"'{received}' is not a valid {Ns}.DigestAlgorithm value. It must be one of: 'MD5', 'SHA-1', 'SHA-256'", outcome.Message);
+  }
+
+  // A value that is not a string fails exactly as it does for a string parameter.
+  [Theory]
+  [InlineData("1")]
+  [InlineData("null")]
+  [InlineData("({})")]
+  public async Task NonStringValuesFailLikeAStringParameter(string input)
+  {
+    using var host = CreateHost();
+
+    var expected = await CatchAsync(host, $"m.echoText({input})");
+    var outcome = await CatchAsync(host, $"m.describeAlgorithm({input})");
+
+    Assert.True(outcome.IsError);
+    Assert.Equal(expected, outcome);
+  }
+
+  [Fact]
+  public async Task UndefinedValuesDoNotEncode()
+  {
+    using var host = CreateHost();
+
+    var outcome = await CatchAsync(host, "m.undefinedAlgorithm()");
+
+    AssertUncodedError(outcome, "sync");
+    Assert.Equal($"42 is not a member of {Ns}.DigestAlgorithm, so it has no JavaScript value.", outcome.Message);
+  }
+
+  // An async function decodes its arguments before it starts, and a bad string rejects the promise
+  // instead of throwing synchronously.
+  [Fact]
+  public async Task AsyncFunctionsRejectForAnUndeclaredString()
+  {
+    using var host = CreateHost();
+
+    var outcome = await CatchAsync(host, "m.hashAsync('MD2')");
+
+    AssertUncodedError(outcome, "async");
+    Assert.Equal($"'MD2' is not a valid {Ns}.DigestAlgorithm value. It must be one of: 'MD5', 'SHA-1', 'SHA-256'", outcome.Message);
+    Assert.Equal("\"SHA1\"", await ReadAsync(host, "m.hashAsync('SHA-1')"));
   }
 
   private static ExpoModuleTestHost CreateHost() =>
