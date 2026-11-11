@@ -532,6 +532,9 @@ public sealed partial class GeneratedTypedEventsModule : Module
   [Event]
   public partial Func<string?, Task> OnText { get; }
 
+  [Event]
+  public partial Func<RecordDefaultOptions, Task> OnOptions { get; }
+
   public string? ConstructorEventError { get; }
 
   public Delegate? ReadySeenOnCreate { get; private set; }
@@ -1086,4 +1089,87 @@ public sealed partial class GeneratedParameterDefaultsModule
 
   [JS]
   public string Escaped(string value = "q\"b\\n\n\t\u2028\u00e9\U0001F600") => value;
+}
+
+public enum RecordDefaultMode
+{
+  Slow,
+  Fast,
+}
+
+public record RecordDefaultOptions(string Name, int Count = 5, string? Label = "x");
+
+public readonly record struct RecordDefaultSettings(
+    RecordDefaultMode Mode = RecordDefaultMode.Fast,
+    TimeSpan Delay = default,
+    RecordDefaultMode? Fallback = RecordDefaultMode.Slow);
+
+public record RecordDefaultEdges(
+    double Nan = double.NaN,
+    double Low = double.NegativeInfinity,
+    double Zero = -0.0,
+    byte Small = 7,
+    long Big = 9007199254740991L,
+    float Ratio = 0.5F,
+    string Text = "q\"b\\n\n\u2028\u00e9\U0001F600");
+
+// Settings uses `default`, which is default(T): Mode.Slow, not the struct's own Mode.Fast.
+public record RecordDefaultHolder(
+    RecordDefaultOptions Inner,
+    IReadOnlyList<RecordDefaultOptions> Items,
+    Dictionary<string, RecordDefaultOptions> ByKey,
+    RecordDefaultSettings Settings = default);
+
+public record RecordDefaultValueHolder(string Name, JavaScriptValue Value);
+
+[ExpoModule("GeneratedRecordDefaults")]
+public sealed partial class GeneratedRecordDefaultsModule
+{
+  private int calls;
+
+  // Counts calls that reached authored code, so a test can prove a failed decode stopped first.
+  [JS]
+  public int Calls => calls;
+
+  [JS]
+  public string Describe(RecordDefaultOptions options)
+  {
+    calls++;
+    return Format(options);
+  }
+
+  [JS]
+  public Task<string> DescribeAsync(RecordDefaultOptions options)
+  {
+    calls++;
+    return Task.FromResult(Format(options));
+  }
+
+  [JS]
+  public RecordDefaultOptions Echo(RecordDefaultOptions options) => options;
+
+  [JS]
+  public RecordDefaultOptions MakeDefault(string name) => new(name);
+
+  [JS]
+  public string DescribeSettings(RecordDefaultSettings settings) =>
+      $"{settings.Mode}:{settings.Delay.Ticks}:{settings.Fallback?.ToString() ?? "null"}";
+
+  [JS]
+  public RecordDefaultEdges EchoEdges(RecordDefaultEdges edges) => edges;
+
+  [JS]
+  public string DescribeHolder(RecordDefaultHolder holder) =>
+      $"{Format(holder.Inner)}|{string.Join(",", holder.Items.Select(Format))}|" +
+      $"{string.Join(",", holder.ByKey.Select(pair => pair.Key + "=" + Format(pair.Value)))}|{holder.Settings.Mode}";
+
+  // The callback result decodes through the owned Decode overload of the record codec.
+  [JS]
+  public string TakeOptions(JavaScriptCallback<RecordDefaultOptions> callback) => Format(callback.Invoke());
+
+  [JS]
+  public string ValueKind(RecordDefaultValueHolder holder) => holder.Value.Kind.ToString();
+
+  private static string Format(RecordDefaultOptions options) =>
+      $"{options.Name}:{options.Count}:{options.Label ?? "null"}";
 }

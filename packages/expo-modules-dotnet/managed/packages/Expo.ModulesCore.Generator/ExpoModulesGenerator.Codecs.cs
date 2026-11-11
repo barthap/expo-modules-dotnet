@@ -503,9 +503,15 @@ public sealed partial class ExpoModulesGenerator
         return null;
       }
 
+      // The default is rendered only after the codec check above, so a field type without a
+      // codec keeps its unsupported-type diagnostic.
       fields.Add(new ExpoGeneratedRecordFieldModel(
           LowerCamel(parameter.Name), property.Name, LowerCamel(property.Name),
           parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), fieldCodec,
+          GetRecordFieldKind(parameter),
+          parameter.HasExplicitDefaultValue
+              ? GetDefaultValueExpression(parameter.Type, parameter.ExplicitDefaultValue)
+              : string.Empty,
           parameter.Locations.FirstOrDefault()
       ));
     }
@@ -522,6 +528,25 @@ public sealed partial class ExpoModulesGenerator
     );
     recordCodecs.Add(codec);
     return RecordCodecDescriptor(codec);
+  }
+
+  // The upstream @Record rule: a default makes a field optional, an optional type makes it
+  // nullable and optional, and every other field is required. JavaScriptValue already represents
+  // null and undefined, and JavaScriptValue? is rejected, so it is optional by type. An oblivious
+  // reference (nullable context disabled) is not annotated and stays required.
+  private static ExpoRecordFieldKind GetRecordFieldKind(IParameterSymbol parameter)
+  {
+    if (parameter.HasExplicitDefaultValue)
+    {
+      return ExpoRecordFieldKind.Defaulted;
+    }
+
+    var type = parameter.Type;
+    var isOptionalByType =
+        type is INamedTypeSymbol { ConstructedFrom.SpecialType: SpecialType.System_Nullable_T } ||
+        (type.IsReferenceType && type.NullableAnnotation == NullableAnnotation.Annotated) ||
+        type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == JavaScriptValueMetadataName;
+    return isOptionalByType ? ExpoRecordFieldKind.OptionalByType : ExpoRecordFieldKind.Required;
   }
   private static string GetParameterExpression(
       ExpoParameterModel parameter,

@@ -1304,7 +1304,15 @@ public sealed partial class ExpoModulesGenerator
     {
       foreach (var field in codec.Fields.Values)
       {
-        builder.AppendLine($"{indent}{GetLocalDeclaration(field.Codec, GetRecordFieldLocalName(field), $"{field.Codec.Expression}.Decode(obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\"), runtime)")}");
+        var read = $"obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\")";
+        if (field.Kind != ExpoRecordFieldKind.Defaulted)
+        {
+          builder.AppendLine($"{indent}{GetLocalDeclaration(field.Codec, GetRecordFieldLocalName(field), $"{field.Codec.Expression}.Decode({read}, runtime)")}");
+          continue;
+        }
+
+        builder.AppendLine($"{indent}var {GetRecordFieldPropertyLocalName(field)} = {read};");
+        EmitRecordFieldDecode(builder, indent, field);
       }
     });
     builder.AppendLine("    }");
@@ -1316,8 +1324,8 @@ public sealed partial class ExpoModulesGenerator
     {
       foreach (var field in codec.Fields.Values)
       {
-        builder.AppendLine($"{indent}using var {field.ParameterName}Value = obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\");");
-        builder.AppendLine($"{indent}{GetLocalDeclaration(field.Codec, GetRecordFieldLocalName(field), $"{field.Codec.Expression}.Decode({field.ParameterName}Value, runtime)")}");
+        builder.AppendLine($"{indent}using var {GetRecordFieldPropertyLocalName(field)} = obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\");");
+        EmitRecordFieldDecode(builder, indent, field);
       }
     });
     builder.AppendLine("    }");
@@ -1411,6 +1419,29 @@ public sealed partial class ExpoModulesGenerator
 
   private static string GetRecordFieldLocalName(ExpoGeneratedRecordFieldModel field) =>
       field.ParameterName == "value" ? "__expoValue" : field.ParameterName;
+
+  // Decodes one record field from its property local, read once. A defaulted field yields its
+  // inlined default for JavaScript undefined without calling the codec. Explicit null and every
+  // other value go to the field codec.
+  private static void EmitRecordFieldDecode(
+      StringBuilder builder,
+      string indent,
+      ExpoGeneratedRecordFieldModel field)
+  {
+    var propertyLocal = GetRecordFieldPropertyLocalName(field);
+    var decode = $"{field.Codec.Expression}.Decode({propertyLocal}, runtime)";
+    if (field.Kind == ExpoRecordFieldKind.Defaulted)
+    {
+      decode = $"{propertyLocal}.Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? {field.DefaultValueExpression} : {decode}";
+    }
+
+    builder.AppendLine($"{indent}{GetLocalDeclaration(field.Codec, GetRecordFieldLocalName(field), decode)}");
+  }
+
+  // The owned overload already names this local `<field>Value`; the borrowed overload uses the
+  // same name, so an OptionalByType field keeps today's text in both.
+  private static string GetRecordFieldPropertyLocalName(ExpoGeneratedRecordFieldModel field) =>
+      $"{field.ParameterName}Value";
 
   private static int GetRequiredParameterCount(ExpoFunctionModel function) =>
       function.Parameters.Values.Count(parameter => !parameter.HasDefaultValue);

@@ -1485,6 +1485,85 @@ public sealed class ExpoModulesGeneratorTests
     Assert.DoesNotContain(result.Diagnostics, item => item.Id == "CS8785");
     Assert.Equal(new[] { "EXPOJSI001", "EXPOJSI001" }, GeneratorDiagnosticIds(result));
   }
+  // A defaulted field reads its property once and inlines the default for undefined in both
+  // Decode overloads. No reflection reads the default at runtime.
+  [Fact]
+  public void GeneratorEmitsDefaultedRecordFieldDecodeInBothOverloads()
+  {
+    var result = GeneratorTestHost.Run(
+        ModuleSource(
+            "public sealed record Options(string Name, int Count = 5, string? Label = \"x\");",
+            "[JS] public int M(Options options) => 0;"
+        )
+    );
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var source = GeneratedText(result);
+    Assert.Equal(1, CountOccurrences(source, "using var countValue = obj.GetProperty(\"count\");"));
+    Assert.Equal(2, CountOccurrences(source, "var countValue = obj.GetProperty(\"count\");"));
+    Assert.Equal(
+        2,
+        CountOccurrences(
+            source,
+            "var count = countValue.Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? 5 : NumberCodec<int>.Decode(countValue, runtime);"
+        )
+    );
+    Assert.Equal(
+        2,
+        CountOccurrences(
+            source,
+            "var label = labelValue.Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? \"x\" : NullableReferenceCodec<string, StringCodec>.Decode(labelValue, runtime);"
+        )
+    );
+    // Encode is unchanged and writes every field.
+    Assert.Contains("using var count = NumberCodec<int>.Encode(value.Count, runtime);", source, StringComparison.Ordinal);
+    Assert.Contains("obj.SetProperty(\"count\", count);", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("ExplicitDefaultValue", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("System.Reflection", source, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void GeneratorRendersRecordFieldDefaultsOfEveryConstantKind()
+  {
+    var result = GeneratorTestHost.Run(
+        ModuleSource(
+            """
+            public enum Mode { Slow, Fast }
+            public sealed record Inner(string Name);
+            public readonly record struct Pair(int A, int B);
+            public readonly record struct Settings(
+                Mode Mode = Mode.Fast,
+                TimeSpan Delay = default,
+                Mode? Fallback = Mode.Slow,
+                double Nan = double.NaN,
+                double High = double.PositiveInfinity,
+                double Zero = -0.0,
+                byte Small = 7,
+                string Text = "q\"b",
+                ArrayBuffer? Data = null,
+                Inner? Child = null,
+                Pair Pair = default);
+            """,
+            "[JS] public int M(Settings settings) => 0;"
+        )
+    );
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var source = GeneratedText(result);
+    Assert.Contains("modeValue.Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? (global::Expo.TestModules.Mode)(1) :", source, StringComparison.Ordinal);
+    Assert.Contains("delayValue.Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? default(global::System.TimeSpan) :", source, StringComparison.Ordinal);
+    Assert.Contains("fallbackValue.Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? (global::Expo.TestModules.Mode)(0) :", source, StringComparison.Ordinal);
+    Assert.Contains("? global::System.Double.NaN :", source, StringComparison.Ordinal);
+    Assert.Contains("? global::System.Double.PositiveInfinity :", source, StringComparison.Ordinal);
+    Assert.Contains("? -0.0 :", source, StringComparison.Ordinal);
+    Assert.Contains("? (byte)(7) :", source, StringComparison.Ordinal);
+    Assert.Contains("? \"q\\\"b\" :", source, StringComparison.Ordinal);
+    // The leaf local is declared before the try and only assigned here.
+    Assert.Contains("data = dataValue.Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? null : ", source, StringComparison.Ordinal);
+    Assert.Contains("? default(global::Expo.TestModules.Pair) :", source, StringComparison.Ordinal);
+  }
 
   [Fact]
   public void GeneratorEmitsNativeModuleRegistrationForEventModule()

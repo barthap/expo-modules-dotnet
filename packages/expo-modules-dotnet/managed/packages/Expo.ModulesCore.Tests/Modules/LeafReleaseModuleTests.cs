@@ -1086,6 +1086,23 @@ public sealed class LeafReleaseModuleTests
   }
 
   [Fact]
+  public void DefaultedLeafRecordFieldReleasesOnlyWhenSupplied()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("-1", leaf.ReadString("String(m.measureBlob({ name: 'a' }))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("4", leaf.ReadString("String(m.measureBlob({ name: 'a', data: b }))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
   public void NullableBufferCollectionsReleaseOnlyPresentLeaves()
   {
     using var leaf = LeafReleaseFixture.Create();

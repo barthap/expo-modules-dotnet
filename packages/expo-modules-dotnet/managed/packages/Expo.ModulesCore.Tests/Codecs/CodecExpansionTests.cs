@@ -165,6 +165,162 @@ public sealed class GeneratedCodecExpansionModuleTests
     });
   }
 
+  private static string EvaluateRecordDefaults(string expression, string sourceUrl)
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    return fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+      using var result = fixture.Evaluate(
+          "const m = globalThis._expoDotnet.modules.GeneratedRecordDefaults;\n" + expression,
+          sourceUrl
+      );
+      return result.AsString();
+    });
+  }
+
+  // An absent key and an explicit undefined both mean "not supplied", as on iOS and for C#
+  // function parameters, so both get the authored default.
+  [Fact]
+  public void GeneratedProviderAppliesOmittedOrUndefinedRecordFieldDefaults()
+  {
+    Assert.Equal(
+        "a:5:x|a:5:x",
+        EvaluateRecordDefaults(
+            "[m.describe({ name: 'a' }), m.describe({ name: 'a', count: undefined, label: undefined })].join('|')",
+            "record-default-omitted.js"
+        )
+    );
+  }
+
+  [Fact]
+  public void GeneratedProviderPrefersSuppliedRecordFieldValueOverDefault()
+  {
+    Assert.Equal(
+        "a:41:y",
+        EvaluateRecordDefaults("m.describe({ name: 'a', count: 41, label: 'y' })", "record-default-supplied.js")
+    );
+  }
+
+  // Decided: explicit null on a nullable field keeps null (Android and our parameter rule).
+  [Fact]
+  public void GeneratedProviderKeepsExplicitNullOnNullableDefaultedRecordField()
+  {
+    Assert.Equal(
+        "a:5:null|a:5:x",
+        EvaluateRecordDefaults(
+            "[m.describe({ name: 'a', label: null }), m.describe({ name: 'a' })].join('|')",
+            "record-default-null-nullable.js"
+        )
+    );
+  }
+
+  // Null is a value, not "not supplied": it goes to NumberCodec, which rejects it before the
+  // authored method runs.
+  [Fact]
+  public void GeneratedProviderRejectsExplicitNullOnNonNullableDefaultedRecordField()
+  {
+    Assert.Equal(
+        "true:0",
+        EvaluateRecordDefaults(
+            """
+            const before = m.calls;
+            let failed;
+            try { m.describe({ name: 'a', count: null }); failed = 'no error'; }
+            catch (error) { failed = String(error instanceof Error); }
+            failed + ':' + (m.calls - before)
+            """,
+            "record-default-null-required.js"
+        )
+    );
+  }
+
+  [Fact]
+  public void GeneratedProviderAppliesEnumAndValueTypeRecordDefaults()
+  {
+    Assert.Equal(
+        "Fast:0:Slow|Slow:0:null",
+        EvaluateRecordDefaults(
+            "[m.describeSettings({}), m.describeSettings({ mode: 'Slow', fallback: null })].join('|')",
+            "record-default-settings.js"
+        )
+    );
+  }
+
+  // The rule holds at every depth: a nested record, list elements, dictionary values. An omitted
+  // record-struct field with `= default` is default(T), whose Mode is Slow, while `settings: {}`
+  // runs the struct's own field defaults and gives Fast.
+  [Fact]
+  public void GeneratedProviderAppliesRecordDefaultsInNestedRecordsAndCollections()
+  {
+    Assert.Equal(
+        "a:5:x|b:5:x,c:2:x|k=d:5:null|Slow;a:5:x|||Fast",
+        EvaluateRecordDefaults(
+            """
+            [
+              m.describeHolder({ inner: { name: 'a' }, items: [{ name: 'b' }, { name: 'c', count: 2 }], byKey: { k: { name: 'd', label: null } } }),
+              m.describeHolder({ inner: { name: 'a' }, items: [], byKey: {}, settings: {} }),
+            ].join(';')
+            """,
+            "record-default-nested.js"
+        )
+    );
+  }
+
+  // A callback result decodes through the owned Decode overload, which must apply the same rule.
+  [Fact]
+  public void GeneratedProviderAppliesRecordDefaultsOnTheOwnedDecodePath()
+  {
+    Assert.Equal(
+        "a:5:x",
+        EvaluateRecordDefaults("m.takeOptions(() => ({ name: 'a' }))", "record-default-callback.js")
+    );
+  }
+
+  // Defaults are inbound only: encode writes every field, also one equal to its default.
+  [Fact]
+  public void GeneratedProviderEncodesEveryRecordFieldIncludingDefaults()
+  {
+    Assert.Equal(
+        "name,count,label:5:x|name,count,label:5:x",
+        EvaluateRecordDefaults(
+            """
+            const echoed = m.echo({ name: 'a' });
+            const made = m.makeDefault('z');
+            [echoed, made].map(r => Object.keys(r).join(',') + ':' + r.count + ':' + r.label).join('|')
+            """,
+            "record-default-encode.js"
+        )
+    );
+  }
+
+  // Record field defaults use the same renderer as parameters, so the edge constants survive
+  // decode with the default and encode back to JavaScript.
+  [Fact]
+  public void GeneratedProviderAppliesEdgeConstantRecordDefaults()
+  {
+    Assert.Equal(
+        "true,true,true,true,true,true,true",
+        EvaluateRecordDefaults(
+            """
+            const e = m.echoEdges({});
+            [
+              Number.isNaN(e.nan),
+              e.low === -Infinity,
+              Object.is(e.zero, -0),
+              e.small === 7,
+              e.big === 9007199254740991,
+              e.ratio === 0.5,
+              e.text === 'q"b\\n\n\u2028\u00e9\u{1F600}',
+            ].join(',')
+            """,
+            "record-default-edges.js"
+        )
+    );
+  }
+
   [Fact]
   public void GeneratedProviderRejectsStalePascalCaseForRequiredRecordField()
   {
