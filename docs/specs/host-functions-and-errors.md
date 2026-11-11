@@ -60,6 +60,12 @@ callback state at most once. The four-parameter overload SHALL keep callback
 state externally owned, and `Expo.JSI` SHALL NOT infer disposal from the state
 object's type.
 
+`CreateHostFunction` SHALL accept a `JavaScriptErrorFactory` through a separate
+six-parameter overload, not through an optional parameter on the five-parameter
+overload. An optional parameter would change the five-parameter signature and
+break binary compatibility with existing callers. The five-parameter overload
+SHALL call the six-parameter overload with no factory.
+
 The same terminal operation SHALL cover managed creation failure, JavaScript
 collection of the function, and runtime teardown of a still-live function.
 

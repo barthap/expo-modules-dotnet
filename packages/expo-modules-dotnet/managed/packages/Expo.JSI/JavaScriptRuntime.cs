@@ -451,6 +451,8 @@ public sealed unsafe class JavaScriptRuntime
   /// callback context and must not call into JSI or require a runtime access frame. When
   /// <paramref name="createError" /> is set and the callback throws, the function throws the
   /// factory's value to JavaScript instead of an error built from <see cref="Exception.ToString" />.
+  /// This is a separate overload instead of an optional parameter on the five-parameter overload,
+  /// because adding a parameter would change that signature and break binary compatibility.
   /// </remarks>
   public JavaScriptFunction CreateHostFunction(
       string name,
