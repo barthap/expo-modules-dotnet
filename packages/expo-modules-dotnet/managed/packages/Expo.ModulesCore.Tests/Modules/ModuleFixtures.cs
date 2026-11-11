@@ -1122,6 +1122,12 @@ public record RecordDefaultHolder(
 
 public record RecordDefaultValueHolder(string Name, JavaScriptValue Value);
 
+// The author writes `= null` on a non-nullable reference, so C# reports CS8625 here. The record
+// is declared to prove that generated decode then yields null for an omitted field.
+#pragma warning disable CS8625
+public record RecordDefaultNullName(string Name = null, int Count = 5);
+#pragma warning restore CS8625
+
 [ExpoModule("GeneratedRecordDefaults")]
 public sealed partial class GeneratedRecordDefaultsModule
 {
@@ -1169,6 +1175,9 @@ public sealed partial class GeneratedRecordDefaultsModule
 
   [JS]
   public string ValueKind(RecordDefaultValueHolder holder) => holder.Value.Kind.ToString();
+
+  [JS]
+  public string DescribeNullName(RecordDefaultNullName record) => $"{record.Name ?? "null"}:{record.Count}";
 
   private static string Format(RecordDefaultOptions options) =>
       $"{options.Name}:{options.Count}:{options.Label ?? "null"}";

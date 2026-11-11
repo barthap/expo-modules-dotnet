@@ -237,6 +237,20 @@ public sealed class GeneratedCodecExpansionModuleTests
     );
   }
 
+  // `string Name = null` is accepted: an omitted or undefined field decodes as null, a supplied
+  // one wins.
+  [Fact]
+  public void GeneratedProviderDecodesOmittedNullDefaultOnNonNullableReferenceRecordField()
+  {
+    Assert.Equal(
+        "null:5|null:5|z:5",
+        EvaluateRecordDefaults(
+            "[m.describeNullName({}), m.describeNullName({ name: undefined }), m.describeNullName({ name: 'z' })].join('|')",
+            "record-default-null-reference.js"
+        )
+    );
+  }
+
   [Fact]
   public void GeneratedProviderAppliesEnumAndValueTypeRecordDefaults()
   {
@@ -345,6 +359,27 @@ public sealed class GeneratedCodecExpansionModuleTests
       Assert.True(result.AsBool());
       return true;
     });
+  }
+
+  // The old PascalCase key is a different key, so it is never read. A defaulted field keeps its
+  // default instead of taking the PascalCase value, and a required field fails with the message.
+  [Fact]
+  public void GeneratedProviderIgnoresStalePascalCaseForDefaultedRecordFields()
+  {
+    Assert.Equal(
+        "a:5:x|true:0",
+        EvaluateRecordDefaults(
+            $$"""
+            const kept = m.describe({ name: 'a', Count: 41, Label: 'y' });
+            const before = m.calls;
+            let stale;
+            try { m.describe({ Name: 'a', Count: 41 }); stale = 'no error'; }
+            catch (error) { stale = String(error instanceof Error && error.message.includes("{{RequiredNameMessage}}")); }
+            kept + '|' + stale + ':' + (m.calls - before)
+            """,
+            "record-stale-pascal-defaulted.js"
+        )
+    );
   }
 
   private const string RequiredNameMessage = "Value for property 'name' is required, got undefined";
