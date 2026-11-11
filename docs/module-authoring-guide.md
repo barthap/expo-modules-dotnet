@@ -23,6 +23,7 @@ project file below shows.
 > libraries in separate repos, or as app-local modules, is a planned future
 > workflow and is not supported yet.
 
+<!-- backed-by: spec "Requirement: Dotnet Modules Declare Autolinking Metadata" (dotnet-autolinking.md); spec "Requirement: Aggregator Is The Single NativeAOT Publish Unit" (dotnet-autolinking.md) -->
 A dotnet Expo module package lives at `packages/<name>/dotnet/<AssemblyName>/`
 next to its JavaScript facade in `packages/<name>/src/`. The module project is
 a plain SDK-style csproj that references `Expo.ModulesCore` (which pulls in
@@ -61,6 +62,7 @@ a plain SDK-style csproj that references `Expo.ModulesCore` (which pulls in
 </Project>
 ```
 
+<!-- backed-by: spec "Requirement: Dotnet Modules Declare Autolinking Metadata" (dotnet-autolinking.md); spec "Requirement: Aggregator Is The Single NativeAOT Publish Unit" (dotnet-autolinking.md) -->
 The generator reference is conditioned on `PublishAot`: normal builds pull in
 the generator as a live analyzer project, while NativeAOT publishes use the
 generator's prebuilt DLL so the analyzer itself does not need to be
@@ -69,6 +71,7 @@ build (not this csproj) is the actual NativeAOT publish unit.
 
 ### Autolinking metadata
 
+<!-- backed-by: spec "Requirement: Dotnet Modules Declare Autolinking Metadata" (dotnet-autolinking.md); spec "Requirement: Autolinking Generates One App-Level Aggregator" (dotnet-autolinking.md) -->
 `expo-module.config.json` at the package root declares the dotnet platform and
 points at the csproj(s):
 
@@ -87,6 +90,7 @@ points at the csproj(s):
 }
 ```
 
+<!-- backed-by: spec "Requirement: Dotnet Modules Declare Autolinking Metadata" (dotnet-autolinking.md); spec "Requirement: Autolinking Generates One App-Level Aggregator" (dotnet-autolinking.md) -->
 The `expo-modules-dotnet-autolinking` CLI's `resolve` command walks app
 dependencies for packages that declare `"dotnet"` in `platforms`, and `generate`
 turns the resolved manifest into a single app-level `ExpoDotnetHost` aggregator
@@ -98,6 +102,7 @@ disk fails `resolve`/`generate` with an error naming the package and path. See
 
 ### First module
 
+<!-- backed-by: spec "Requirement: Generated JavaScript Member Names Are Lower Camel" (modules-core-boundary.md); spec "Requirement: Generated Bindings Avoid Hot-Path Reflection" (modules-core-boundary.md) -->
 A module is a class attributed with `[ExpoModule("Name")]`. Methods exposed to
 JavaScript are attributed with `[JS]` (optionally `[JS("jsName")]` to rename):
 
@@ -137,6 +142,7 @@ public readonly record struct ExampleUser(string Name, int Age);
 public readonly record struct ExampleUserSummary(string Name, int Age, string Summary);
 ```
 
+<!-- backed-by: spec "Requirement: Generated JavaScript Member Names Are Lower Camel" (modules-core-boundary.md); spec "Requirement: Generated Bindings Avoid Hot-Path Reflection" (modules-core-boundary.md) -->
 The Roslyn generator (`Expo.ModulesCore.Generator`) reads these attributes at
 compile time and emits direct-call dispatch glue; there is no runtime
 reflection on the hot path. The module class must be `partial` so the
@@ -147,6 +153,7 @@ JavaScript name lowercases the first C# character: `Add` becomes `add`,
 
 ### TypeScript facade
 
+<!-- backed-by: spec "Requirement: Typed JavaScript Facades Remain Registry-Owned" (modules-core-boundary.md); spec "Requirement: Generated Record Codecs Use Lower-Camel JavaScript Fields" (modules-core-boundary.md) -->
 The TypeScript side in `packages/<name>/src/` declares the native module shape
 and wraps it in an ergonomic public API:
 
@@ -214,6 +221,7 @@ export function addStatusListener(listener: (payload: string) => void): EventSub
 }
 ```
 
+<!-- backed-by: spec "Requirement: Typed JavaScript Facades Remain Registry-Owned" (modules-core-boundary.md); spec "Requirement: Generated Record Codecs Use Lower-Camel JavaScript Fields" (modules-core-boundary.md) -->
 `requireDotnetModule` is the dotnet-backed counterpart of Expo's
 `requireNativeModule` — it looks up the module by the name passed to
 `[ExpoModule("...")]`. Record fields already cross the boundary with
@@ -221,6 +229,7 @@ lower-camel JavaScript names, so the facade should declare `name`, `age`, and
 `summary` directly. Do not add a PascalCase translation object or rely on a
 PascalCase decode fallback.
 
+<!-- backed-by: spec "Requirement: Typed JavaScript Facades Remain Registry-Owned" (modules-core-boundary.md); spec "Requirement: Generated Record Codecs Use Lower-Camel JavaScript Fields" (modules-core-boundary.md) -->
 `DotnetModule` and `DotnetEventEmitter` are type bases, not usable JavaScript
 module constructors. Obtain module objects through `requireDotnetModule`, and
 do not use `instanceof` with either base because native registry objects do not
@@ -752,6 +761,7 @@ the only typed array (EMC-65).
 
 ## Events
 
+<!-- backed-by: spec "Requirement: Typed Event Members Are Awaitable Generated Properties" (modules-core-boundary.md); spec "Requirement: Typed Event Members Initialize Before Lifecycle Hooks" (modules-core-boundary.md) -->
 Use a typed `[Event]` member for new events. It declares both the JavaScript
 event name and its one payload type, then the generator supplies one cached,
 awaitable delegate per module instance. Declare a payload-less event as
@@ -772,6 +782,7 @@ public sealed partial class ExampleMathModule : Module
 }
 ```
 
+<!-- backed-by: spec "Requirement: Typed Event Members Are Awaitable Generated Properties" (modules-core-boundary.md); spec "Requirement: Typed Event Members Initialize Before Lifecycle Hooks" (modules-core-boundary.md) -->
 `[Event]` lowercases only the first character of the C# property name, so
 `OnStatus` emits `onStatus`; it does not strip the `On` prefix. Use
 `[Event("StatusChanged")]` when JavaScript must receive an explicit name
@@ -780,6 +791,7 @@ calling code needs to observe target lookup, payload encoding, scheduling, or
 teardown failures; a `[JS]` method returning that task exposes the result as a
 JavaScript Promise.
 
+<!-- backed-by: spec "Requirement: Typed Event Members Are Awaitable Generated Properties" (modules-core-boundary.md); spec "Requirement: Typed Event Members Initialize Before Lifecycle Hooks" (modules-core-boundary.md) -->
 Generated registration initializes typed event members before `[OnCreate]`
 runs. Reading one from an authored constructor fails with a clear
 `InvalidOperationException`, because registration has not initialized it yet.
@@ -788,6 +800,7 @@ fail if JavaScript has not attached the event target yet.
 
 ### Event payload ownership
 
+<!-- backed-by: spec "Requirement: Typed Event Payload Ownership Is Explicit" (modules-core-boundary.md) -->
 For ordinary payloads, keep mutable payload state stable until the event task
 completes. Direct `ArrayBuffer` and `JavaScriptValue` payloads have different
 lifetime rules:
@@ -804,6 +817,7 @@ lifetime rules:
 - A direct `Uint8Array` or `Uint8Array?` gets no lease; keep it alive until the
   task completes.
 
+<!-- backed-by: spec "Requirement: Typed Event Payload Ownership Is Explicit" (modules-core-boundary.md) -->
 Records, lists, and dictionaries that hold `JavaScriptValue`, `ArrayBuffer`,
 `ArrayBuffer?`, or `Uint8Array` are valid payloads, and so is a direct
 `Uint8Array` or `Uint8Array?`. These leaves stay yours (rule 3 in Leaf ownership under `## Types`):
@@ -814,6 +828,7 @@ convertible.
 
 ### Observing hooks
 
+<!-- backed-by: spec "Requirement: Event Observing Hooks Use Module Object Functions" (modules-core-boundary.md) -->
 To react when JavaScript adds or removes listeners, declare hook methods with
 `[OnStartObserving]` / `[OnStopObserving]` (optionally naming a specific event,
 for example `[OnStopObserving("onChange")]`):
@@ -827,12 +842,14 @@ public void Start(string eventName) { /* first listener for eventName added */ }
 public void Stop() { /* last listener for onChange removed */ }
 ```
 
+<!-- backed-by: spec "Requirement: Event Observing Hooks Use Module Object Functions" (modules-core-boundary.md) -->
 Typed events are registered as `_expoDotnet.NativeModule` instances, so the
 inherited `EventEmitter`/`addListener` JavaScript methods work through the
 prototype chain. You don't need (and can't declare) `[JS]` members named
 `startObserving` or `stopObserving` — those names are reserved for generated
 observing hooks.
 
+<!-- backed-by: spec "Requirement: Event Modules Use NativeModule Objects" (modules-core-boundary.md) -->
 On the JS facade side, subscribe with `addListener`:
 
 ```ts
@@ -842,11 +859,13 @@ export function addStatusListener(listener: (payload: string) => void): EventSub
 }
 ```
 
+<!-- backed-by: spec "Requirement: Event Modules Use NativeModule Objects" (modules-core-boundary.md) -->
 The JavaScript listener facade and its event map do not change when moving to a
 typed C# event member.
 
 ### Legacy `[Events]` and `SendEventAsync`
 
+<!-- backed-by: spec "Requirement: Event Modules Use NativeModule Objects" (modules-core-boundary.md) -->
 `[Events("name1", "name2", ...)]` and the inherited `SendEventAsync` methods
 remain supported for migration and interop. The event list must be non-empty
 and non-duplicated:
@@ -870,14 +889,24 @@ internal sealed partial class ShowcaseModule : Module
 }
 ```
 
+<!-- backed-by: spec "Requirement: Event Modules Use NativeModule Objects" (modules-core-boundary.md) -->
 Emitting a name outside the declared list fails loudly; an async `[JS]` caller
 observes that failure as a rejected Promise. Prefer typed `[Event]` members for
 new events so the name and payload type are checked at compile time.
+
+## Errors
+
+<!-- backed-by: spec "Requirement: Managed Exceptions Become Structured Errors" (host-functions-and-errors.md); test GeneratedProviderReportsInvalidConvertiblePrimitiveAsJavaScriptError; spec "Requirement: Async Function Failures Reject Promises" (modules-core-boundary.md); test GeneratedAsyncAuthoredMethodThrowingBeforeTaskRejectsPromise -->
+An exception thrown by a synchronous `[JS]` function becomes a catchable
+JavaScript `Error`. For an async method, argument-decode failures, a
+synchronous throw from the method, and a faulted or canceled task reject the
+Promise. EMC-18 adds coded errors here.
 
 ## Lifecycle and runtime context
 
 ### Lifecycle hooks
 
+<!-- backed-by: spec "Requirement: Runtime Context Owns Module Instances" (modules-core-boundary.md) -->
 `[OnCreate]` and `[OnDestroy]` mark parameterless instance methods called once
 per module instance:
 
@@ -896,6 +925,7 @@ per module instance:
   }
 ```
 
+<!-- backed-by: spec "Requirement: Runtime Context Owns Module Instances" (modules-core-boundary.md) -->
 `OnCreate` runs once, right after the module instance is stored in the owning
 `DotnetRuntimeContext`'s module registry. `OnDestroy` runs once when that
 runtime context is disposed, before `IDisposable.Dispose`; all modules'
@@ -903,22 +933,109 @@ destroy/dispose callbacks run even if one throws, with failures aggregated
 into a single `AggregateException` after cleanup finishes. Neither hook is
 exposed as a JavaScript-visible module property.
 
+<!-- backed-by: spec "Requirement: Runtime Context Owns Module Instances" (modules-core-boundary.md) -->
 A module instance is scoped to one `DotnetRuntimeContext` (one JavaScript
 runtime); a second runtime gets its own instance.
 
+### Runtime context
+
+<!-- backed-by: spec "Requirement: Runtime Context Exposes Host-Supplied App Directories" (modules-core-boundary.md); source Module.RuntimeContext; test UnconfiguredContextDirectoriesThrowFromBothConstructors; test HostAppMetadataKeepsIndependentNativeVersionsWithoutInventingDefaults -->
+`DotnetRuntimeContext` is the module's context. `Module` exposes it as the
+`protected RuntimeContext` property, and a module without the base class takes
+it in its constructor. `CacheDirectory` and `PersistentFilesDirectory` come
+from the host through `AppDirectories` and throw
+`AppDirectoryNotConfiguredException` when the host supplied no value.
+`AppMetadata` returns `HostAppMetadata` with `NativeAppVersion` and
+`NativeBuildVersion`. `ExpoConstantsModule` reads `context.AppMetadata`:
+
+```csharp
+// packages/expo-constants-dotnet/dotnet/ExpoConstantsDotnet/ExpoConstantsModule.cs
+[ExpoModule("ExponentConstants")]
+public sealed partial class ExpoConstantsModule : Module
+{
+  private readonly HostAppMetadata metadata;
+  private readonly string sessionId;
+
+  public ExpoConstantsModule(DotnetRuntimeContext context)
+      : base(context)
+  {
+    metadata = context.AppMetadata;
+    sessionId = Guid.NewGuid().ToString("D");
+  }
+```
+
+<!-- backed-by: spec "Requirement: Runtime Context Owns Module Instances" (modules-core-boundary.md); source ModuleRegistry.GetOrCreateModule -->
+`ModuleRegistry` is the context-owned registry that holds one instance of each
+module per runtime. Authored code has no supported way to look up another
+module yet (EMC-69). `GetOrCreateModule` is the registration helper that the
+generator calls.
+
+<!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/lifecycle.mdx -->
+Upstream reads directories and other modules through the app context. Swift
+uses `appContext?.config.cacheDirectory` and
+`appContext?.moduleRegistry.get(moduleWithName:)`. Kotlin uses `androidContext`
+and `context.module<T>()`.
+
 ## Threading
 
-A synchronous `[JS]` function runs as a direct JSI host function
-inside the current JavaScript call — it does not hop threads. Async work
-scheduled through `DotnetRuntimeContext` (for example inside a `Task`-returning
-method, or when emitting an event) is routed back onto the owning JavaScript
-runtime by the runtime scheduler; see `docs/specs/runtime-scheduling.md` for
-how each platform host (React Native, headless Hermes testhost) executes that
-scheduled work, and `docs/specs/promises.md` for how the underlying promise
-capability is settled.
+<!-- backed-by: spec "Requirement: Sync Function Generation Uses Direct Calls" (modules-core-boundary.md) -->
+A synchronous `[JS]` function runs inside the current JavaScript call, on the
+JavaScript thread. It does not hop threads.
+
+<!-- backed-by: spec "Requirement: Async Function Arguments Are Captured Before Await" (modules-core-boundary.md); spec "Requirement: Async Managed Promise Helper" (promises.md); source ExpoModulesGenerator.EmitAsyncHostFunctionBody; test AsyncSharedResultCompletedOnAnotherThreadPreservesIdentity -->
+An async `[JS]` method is called on the JavaScript thread, and its arguments are
+decoded there. It runs there until its first `await` that yields. Code after
+that `await` can run on another thread. The Promise settles on the runtime.
+
+<!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/concurrency.mdx -->
+<!-- backed-by: spec "Requirement: Async Function Arguments Are Captured Before Await" (modules-core-boundary.md); spec "Requirement: Async Managed Promise Helper" (promises.md); source ExpoModulesGenerator.EmitAsyncHostFunctionBody; test AsyncSharedResultCompletedOnAnotherThreadPreservesIdentity -->
+To move work off the JavaScript thread, `await Task.Run(...)` inside the `Task`
+method. C# has no option like Swift `@JS(.concurrent)`. Kotlin moves work with
+`withContext(Dispatchers.IO)` in a `suspend fun`.
+
+<!-- backed-by: spec "Requirement: Typed Event Tasks Carry Dispatch Outcomes" (modules-core-boundary.md) -->
+A typed event dispatches inline when invoked with runtime access. Otherwise it
+schedules. It never blocks the caller.
+
+<!-- backed-by: spec "Requirement: Sync Function Generation Uses Direct Calls" (modules-core-boundary.md) -->
+`JavaScriptCallback.Invoke` runs synchronously on the owning runtime.
+`InvokeAsync` schedules the call.
+
+<!-- backed-by: spec "Requirement: Public SharedObject Release Is Exactly Once" (modules-core-boundary.md) -->
+`OnRelease()` must not depend on a thread.
+
+<!-- backed-by: spec "Requirement: Boundary Leaf Ownership Is Explicit" (ownership-and-scoped-refs.md); source JavaScriptValue.Retain -->
+`JavaScriptValue.Retain()` runs on the JavaScript thread, so in an async method
+call it before the first `await`.
+
+See `docs/specs/runtime-scheduling.md` for how each platform host (React Native,
+headless Hermes testhost) executes scheduled work, and `docs/specs/promises.md`
+for how the underlying promise capability is settled.
+
+## Tooling
+
+<!-- backed-by: spec "Requirement: Autolinking Generates One App-Level Aggregator" (dotnet-autolinking.md); spec "Requirement: CLI Stages Loader-Expected Artifacts" (dotnet-autolinking.md) -->
+The `expo-modules-dotnet-autolinking` CLI has these commands:
+
+- `resolve`: discovers dotnet Expo module packages and prints the linking
+  manifest.
+- `generate`: generates the .NET host project for linked Expo modules.
+- `build`: builds the generated .NET host project.
+- `stage`: stages built .NET host artifacts into the app's managed directory.
+- `link`: resolves, generates, builds and stages .NET-backed Expo modules in one
+  step.
+- `sync-windows`: runs app-local RNW autolinking, then projects the generated
+  managed host, core packages and linked C# modules into an RNW `.sln`.
+
+Run `expo-modules-dotnet-autolinking <command> --help` for command options, and
+see `packages/expo-modules-dotnet-autolinking/README.md` for the full command
+reference. The "Inspecting Generated Output" section of
+`docs/assorted/modules-core-generator-authoring.md` shows how to read the
+generator output. TypeScript type generation is not built yet (EMC-30).
 
 ## Platform matrix
 
+<!-- backed-by: spec "Requirement: Aggregator Is The Single NativeAOT Publish Unit" (dotnet-autolinking.md); spec "Requirement: Generated Bindings Avoid Hot-Path Reflection" (modules-core-boundary.md) -->
 | Platform | HostFXR (dev loader) | NativeAOT | Mono AOT |
 |---|---|---|---|
 | Windows | yes | yes | no |
@@ -941,6 +1058,7 @@ See the root `README.md`'s "Platform support" section and
 
 ## Verification
 
+<!-- backed-by: spec "Requirement: Authored Packages Own Their Behavior Tests" (modules-core-boundary.md) -->
 Each repo-local authored package owns a non-packable `.Tests` project. Follow
 the `ExampleModule.Tests.csproj` reference shape:
 
@@ -967,6 +1085,7 @@ using Xunit;
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
 ```
 
+<!-- backed-by: spec "Requirement: Authored Packages Own Their Behavior Tests" (modules-core-boundary.md) -->
 Keep direct C# unit tests in the same project for behavior that does not need
 JavaScript or Hermes. Use `Expo.ModulesCore.Testing` only when testing the
 generated module surface. Register the generated provider explicitly; TestCore
@@ -979,6 +1098,7 @@ does not scan assemblies for providers:
     );
 ```
 
+<!-- backed-by: source ExpoModuleTestHost -->
 `ExpoModuleTestHost` owns the Hermes runtime and module context. Keep it in a
 `using` scope. Read and dispose `JavaScriptValue` instances inside
 `host.Runtime.Execute(...)`, including values fulfilled by
@@ -1054,6 +1174,7 @@ provide the native testhost.
 
 ## Troubleshooting
 
+<!-- backed-by: spec "Requirement: Dotnet Modules Declare Autolinking Metadata" (dotnet-autolinking.md); spec "Requirement: CLI Stages Loader-Expected Artifacts" (dotnet-autolinking.md); spec "Requirement: Mobile Staging Destinations Are Loader-Owned" (dotnet-autolinking.md); spec "Requirement: NativeAOT Publish Handles Mobile Toolchains" (dotnet-autolinking.md) -->
 - **A new module doesn't show up in the app**: confirm
   `expo-module.config.json` lists `"dotnet"` in `platforms` and the
   `dotnet.projects[].path` is correct; run the CLI's `resolve` command to see
