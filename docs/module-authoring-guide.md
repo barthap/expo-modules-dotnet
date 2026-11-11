@@ -36,6 +36,8 @@ upstream:
   under `## Modules`.
 - Event names keep the `On` prefix. See `## Events`.
 - Unions use `Either<TFirst, TSecond>`. See `## Unions`.
+- Errors: a plain exception gives an `Error` without `code`, and `error.message`
+  carries the cause chain in the iOS format. See `## Errors`.
 - Attributes (`[OnCreate]`, `[OnDestroy]`) take the place of overridable
   methods. See `## Syntax mapping: C# and Swift and Kotlin`.
 - There are no generated TypeScript types. See `## Tooling`.
@@ -348,11 +350,13 @@ promise-returning JavaScript function instead of a direct-call one:
   }
 ```
 
-<!-- backed-by: spec "Requirement: Async Function Generation Returns Promises" (modules-core-boundary.md); spec "Requirement: Async Function Failures Reject Promises" (modules-core-boundary.md) -->
+<!-- backed-by: spec "Requirement: Async Function Generation Returns Promises" (modules-core-boundary.md); spec "Requirement: Async Function Failures Reject Promises" (modules-core-boundary.md); spec "Requirement: Module Failures Become JavaScript Errors" (modules-core-boundary.md) -->
 Arguments are decoded and captured before the authored method is awaited.
 Argument validation/decoding failures, an authored method throwing
 synchronously, and a faulted or canceled task all reject the returned
 JavaScript Promise instead of throwing synchronously.
+The rejection carries the same `code` and `message` as a synchronous throw; see
+`## Errors`.
 
 ### Properties
 
@@ -939,7 +943,6 @@ internal sealed partial class ShowcaseModule : Module
   {
     return SendEventAsync<StringCodec, string>("onStatus", $"C# event: {label}");
   }
-}
 ```
 
 <!-- backed-by: spec "Requirement: Event Modules Use NativeModule Objects" (modules-core-boundary.md) -->
@@ -949,11 +952,115 @@ new events so the name and payload type are checked at compile time.
 
 ## Errors
 
-<!-- backed-by: spec "Requirement: Managed Exceptions Become Structured Errors" (host-functions-and-errors.md); test GeneratedProviderReportsInvalidConvertiblePrimitiveAsJavaScriptError; spec "Requirement: Async Function Failures Reject Promises" (modules-core-boundary.md); test GeneratedAsyncAuthoredMethodThrowingBeforeTaskRejectsPromise -->
-An exception thrown by a synchronous `[JS]` function becomes a catchable
-JavaScript `Error`. For an async method, argument-decode failures, a
-synchronous throw from the method, and a faulted or canceled task reject the
-Promise. EMC-18 adds coded errors here.
+<!-- backed-by: spec "Requirement: Coded Exceptions" (modules-core-boundary.md); spec "Requirement: Module Failures Become JavaScript Errors" (modules-core-boundary.md); test EveryFailurePointConvertsAndReleasesTheError; test CodeIsDerivedFromTheClassNameWithTheIosRule -->
+Throw a subclass of `CodedException` to give JavaScript a stable `code`. A
+synchronous `[JS]` function, property getter or setter, shared-object method
+or shared-object constructor throws an `Error`; an async method rejects its
+Promise with the same `Error`. JavaScript reads `error.code` and
+`error.message`, as it does for upstream Swift and Kotlin modules.
+
+```csharp
+// apps/hermes-console-app/managed/HermesConsoleApp/ShowcaseModule.cs
+  [JS("failWithCode")]
+  public void FailWithCode(string label)
+  {
+    throw new InvalidLabelException(label);
+  }
+
+  [JS("failWithCodeAsync")]
+  public async Task FailWithCodeAsync(string label)
+  {
+    await Task.Yield();
+    throw new InvalidLabelException(label);
+  }
+}
+
+// JavaScript reads error.code === 'ERR_INVALID_LABEL', derived from the class name.
+internal sealed class InvalidLabelException(string label)
+    : CodedException($"Invalid label: {label}");
+```
+
+```js
+const Showcase = globalThis._expoDotnet.modules.Showcase;
+
+try {
+  Showcase.failWithCode('blank');
+} catch (error) {
+  if (error.code === 'ERR_INVALID_LABEL') {
+    // error.message === 'Invalid label: blank'
+  }
+}
+
+Showcase.failWithCodeAsync('blank').catch((error) => {
+  console.log(error.code); // 'ERR_INVALID_LABEL'
+});
+```
+
+### Codes
+
+<!-- backed-by: spec "Requirement: Coded Exceptions" (modules-core-boundary.md); test CodeIsDerivedFromTheClassNameWithTheIosRule; test ConstructorsBindAsTheSpecExpects; test NullExplicitCodeDerivesAndEmptyExplicitCodeStaysEmpty -->
+Without an explicit code, the code comes from the class name, with the iOS
+rule: remove a generic arity suffix and one trailing `Exception` or `Error`,
+put `_` before each uppercase letter that follows another character (pairs do
+not overlap), uppercase, and prefix `ERR_`.
+
+| Class name | `error.code` |
+| --- | --- |
+| `InvalidPathException` | `ERR_INVALID_PATH` |
+| `NotFoundError` | `ERR_NOT_FOUND` |
+| `HTTPException` | `ERR_H_TT_P` |
+| `PathException<T>` | `ERR_PATH` |
+| `Outer.InvalidPathException` (nested) | `ERR_INVALID_PATH` |
+| `CodedException` | `ERR_CODED` |
+
+Pass an explicit code as the first constructor argument. A `null` code derives
+the code from the class name. An empty code, or a `Code` override that returns
+an empty string, gives an `Error` without a `code` property.
+
+<!-- backed-by: source CodedException; test SubclassCanOverrideCodeAndMessage -->
+```csharp
+public sealed class SaveFailedException(string path, Exception inner)
+    : CodedException("ERR_SAVE", $"Unable to save {path}", inner);
+
+public sealed class RephrasedException() : CodedException("original")
+{
+  public override string Code => "ERR_REPHRASED";
+
+  public override string Message => "rephrased";
+}
+```
+
+### Plain exceptions and cancellation
+
+<!-- backed-by: spec "Requirement: Module Failures Become JavaScript Errors" (modules-core-boundary.md); spec "Requirement: Async Function Failures Reject Promises" (modules-core-boundary.md); test CanceledTaskRejectsWithoutCode; test DecodeArityAndEncodeFailuresRejectWithoutCode -->
+Any other exception gives an `Error` without a `code` property and with the
+same message rules. So do argument-count, argument-decode and result-encode
+failures. A canceled `Task` rejects with an `Error` without a `code`, whose
+message is the `OperationCanceledException` message.
+
+### The cause chain
+
+<!-- backed-by: spec "Requirement: Module Failures Become JavaScript Errors" (modules-core-boundary.md); test ConverterBuildsAnErrorWithTheCodeAndTheCauseChain; test SyncThrowAndAsyncRejectionCarryTheSameError -->
+`error.message` is the thrown exception's `Message`, followed by the message
+of each inner exception, from the direct inner exception to the root, each
+after a line feed and `→ Caused by: `. This is the iOS format. Only the thrown
+exception gives the `code`; the .NET type name and the stack trace never reach
+JavaScript.
+
+<!-- backed-by: test ConverterBuildsAnErrorWithTheCodeAndTheCauseChain -->
+```csharp
+throw new CodedException(
+    "ERR_SAVE",
+    "outer",
+    new InvalidOperationException("middle", new IOException("root")));
+// error.code === 'ERR_SAVE'
+// error.message === 'outer\n→ Caused by: middle\n→ Caused by: root'
+```
+
+The bridge does not filter or shorten the chain. Every inner exception's
+`Message` reaches JavaScript, so a module that must keep data (for example a
+local path) out of JavaScript throws without an inner exception that carries
+it, or with a cause whose message the module wrote.
 
 ## Lifecycle and runtime context
 
@@ -1139,7 +1246,6 @@ subset works. `Not yet` means it is not built.
 Each later roadmap item changes one row or section of this guide. These items
 are open:
 
-- EMC-18 coded JavaScript errors: `## Errors` (no upstream row).
 - EMC-30 TypeScript types: `## Tooling` (no row).
 - EMC-62 constants read once: Constants.
 - EMC-63 trailing nullable arguments are optional: Synchronous functions.
@@ -1159,7 +1265,7 @@ are open:
 ## Syntax mapping: C# and Swift and Kotlin
 
 <!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/; expo/expo#53039 docs/pages/modules/v2/migrate/from-v1.mdx -->
-<!-- backed-by: source ExpoModuleAttribute; source JSAttribute; source EventAttribute; source OnCreateAttribute; source OnDestroyAttribute; source OnStartObservingAttribute; source OnStopObservingAttribute; source ExpoSharedObjectAttribute; source JSEnumAttribute; source Either; source JavaScriptCallback; source DotnetRuntimeContext -->
+<!-- backed-by: source ExpoModuleAttribute; source JSAttribute; source EventAttribute; source OnCreateAttribute; source OnDestroyAttribute; source OnStartObservingAttribute; source OnStopObservingAttribute; source ExpoSharedObjectAttribute; source JSEnumAttribute; source Either; source JavaScriptCallback; source DotnetRuntimeContext; source CodedException -->
 | Concept | C# | Swift | Kotlin |
 | --- | --- | --- | --- |
 | Module | `[ExpoModule("Name")]` on a `partial` class; the `Module` base class is optional | `@ExpoModule("Name")` on a `public final class` that subclasses `Module` | `@ExpoModule("Name")` on a class |
@@ -1177,6 +1283,7 @@ are open:
 | Shared object | `[ExpoSharedObject]` on a `sealed partial` class | `@SharedObject` | `@ExpoSharedObject` |
 | Shared object constructor | `[JS]` constructor | `@JS init` | `@JS constructor` |
 | Shared object release | override `OnRelease()` | override `sharedObjectDidRelease()` | override `sharedObjectDidRelease()` |
+| Coded error | subclass `CodedException` | subclass `Exception` | subclass `CodedException` |
 | Record | positional `record` | `@Record` on a struct | `@Record` on a data class |
 | Enum | `enum`, `[JSEnum]` for numbers | enum that implements `Enumerable` | enum class that implements `Enumerable` |
 | Union | `Either<TFirst, TSecond>` | `@Union` on an enum | Not supported yet |
