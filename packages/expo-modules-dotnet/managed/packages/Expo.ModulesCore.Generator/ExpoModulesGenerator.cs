@@ -69,6 +69,17 @@ public sealed partial class ExpoModulesGenerator : IIncrementalGenerator
         }
     );
 
+    var foreignUnionCases = context.SyntaxProvider.CreateSyntaxProvider(
+        static (node, _) => node is RecordDeclarationSyntax { BaseList: not null },
+        static (syntaxContext, cancellationToken) =>
+            CreateForeignUnionCaseDiagnostic(syntaxContext, cancellationToken)
+    ).Where(static diagnostic => diagnostic is not null);
+
+    context.RegisterSourceOutput(
+        foreignUnionCases,
+        static (sourceContext, diagnostic) => sourceContext.ReportDiagnostic(ToDiagnostic(diagnostic!))
+    );
+
     var compilationModulesAndSharedObjects = context.CompilationProvider
         .Combine(modules.Collect())
         .Combine(sharedObjects.Collect());

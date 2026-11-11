@@ -264,4 +264,13 @@ internal static class ExpoModulesDiagnostics
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true
   );
+
+  public static readonly DiagnosticDescriptor InvalidUnionCase = new(
+      id: "EXPOJSI030",
+      title: "Invalid union case",
+      messageFormat: "Type '{0}' is not a valid case of union '{1}': {2}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
 }
