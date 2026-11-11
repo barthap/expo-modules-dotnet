@@ -49,12 +49,13 @@ matches it, even if existing C# modules must change.
   `ArrayBuffer`, and `Uint8Array`
 - Autolinking of .NET modules on all four platforms
 - expo-desktop 1.0 prebuild for the desktop example app, on macOS and Windows
-- `expo-asset-dotnet`, `expo-constants-dotnet`, and the local-file core of
+- `expo-asset-dotnet`, `expo-constants-dotnet`, `expo-crypto-dotnet` (digests,
+  random values, and UUIDs), and the local-file core of
   `expo-file-system-dotnet`
 
 ## Planned
 
-- `expo-crypto-dotnet`
+- `expo-crypto-dotnet`: AES-GCM encryption (EMC-78)
 - `expo-file-system-dotnet`: write, bytes, copy, and move
 - Windows apps can opt in to `*-dotnet` modules in place of the expo-desktop
   stubs
