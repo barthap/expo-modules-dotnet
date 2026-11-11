@@ -123,4 +123,75 @@ public sealed partial class ExpoModulesGeneratorTests
         "its payload type 'Expo.TestModules.Node' contains itself, which generated codecs do not support",
         diagnostic.GetMessage());
   }
+
+  private const string UnionRecords =
+      "public sealed record Point(double X, double Y); " +
+      "public sealed record Circle(double X, double Y, double Radius); " +
+      "public sealed record Line(string X, double Y); " +
+      "public sealed record Wide(double X, double? Y); " +
+      "public sealed record Soft(double X, double Y = 0); " +
+      "public sealed record Partial(double X, double Y = 0, double Z = 0); " +
+      "public sealed record Narrow(double X, double? Y, double Z); " +
+      "public sealed record Loose(JavaScriptValue A); ";
+
+  private static string ChoiceOf(string cases) =>
+      UnionRecords + "[Union] public abstract record Choice { " + cases + " }";
+
+  [Theory]
+  [InlineData("public sealed record A(string Value) : Choice; public sealed record B(string Value) : Choice;", "A", "B", "string")]
+  [InlineData("public sealed record A(Uint8Array Value) : Choice; public sealed record B(Uint8Array Value) : Choice;", "A", "B", "Expo.ModulesCore.Uint8Array")]
+  public void GeneratorReportsDuplicateUnionPayload(string cases, string first, string second, string payload)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(ChoiceOf(cases), "[JS] public int Ok() => 0;"));
+
+    AssertNoCompilerErrors(result);
+    Assert.Equal(new[] { "EXPOJSI031" }, GeneratorDiagnosticIds(result));
+    Assert.Equal(
+        $"Union 'Expo.TestModules.Choice' cases '{first}' and '{second}' have the same payload type '{payload}'",
+        result.GeneratorDiagnostics!.Single().GetMessage());
+  }
+
+  // Only provable overlap is an error: each row is a later case that the earlier case always takes
+  // first under the matching rules, so the later case can never be chosen.
+  [Theory]
+  [InlineData("public sealed record Raw(JavaScriptValue Value) : Choice; public sealed record Text(string Value) : Choice;", "Text", "Raw")]
+  [InlineData("public sealed record Amount(double Value) : Choice; public sealed record Count(int Value) : Choice;", "Count", "Amount")]
+  [InlineData("public sealed record Big(long Value) : Choice; public sealed record Count(int Value) : Choice; public sealed record Amount(double Value) : Choice;", "Count", "Big")]
+  [InlineData("public sealed record Text(string Value) : Choice; public sealed record Address(Uri Value) : Choice;", "Address", "Text")]
+  [InlineData("public sealed record Buffer(ArrayBuffer Value) : Choice; public sealed record Bytes(byte[] Value) : Choice;", "Bytes", "Buffer")]
+  [InlineData("public sealed record Bag(Dictionary<string, JavaScriptValue> Value) : Choice; public sealed record Dot(Point Value) : Choice;", "Dot", "Bag")]
+  [InlineData("public sealed record Any(Loose Value) : Choice; public sealed record Dot(Point Value) : Choice;", "Dot", "Any")]
+  [InlineData("public sealed record Anything(IReadOnlyList<JavaScriptValue> Value) : Choice; public sealed record Numbers(IReadOnlyList<int> Value) : Choice;", "Numbers", "Anything")]
+  [InlineData("public sealed record Dot(Point Value) : Choice; public sealed record Round(Circle Value) : Choice;", "Round", "Dot")]
+  [InlineData("public sealed record Spread(Wide Value) : Choice; public sealed record Dot(Point Value) : Choice;", "Dot", "Spread")]
+  [InlineData("public sealed record Lenient(Soft Value) : Choice; public sealed record Dot(Point Value) : Choice;", "Dot", "Lenient")]
+  public void GeneratorReportsUnreachableUnionCases(string cases, string later, string earlier)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(ChoiceOf(cases), "[JS] public int Ok() => 0;"));
+
+    AssertNoCompilerErrors(result);
+    Assert.Equal(new[] { "EXPOJSI032" }, GeneratorDiagnosticIds(result));
+    Assert.Equal(
+        $"Union 'Expo.TestModules.Choice' case '{later}' is unreachable: case '{earlier}' declared before it always takes its values first",
+        result.GeneratorDiagnostics!.Single().GetMessage());
+  }
+
+  // Each later case here is reachable for some JavaScript value, so reporting it would reject a
+  // working union. The Partial and Narrow rows are reachable only because of record field kinds.
+  [Theory]
+  [InlineData("public sealed record Count(int Value) : Choice; public sealed record Amount(double Value) : Choice;")]
+  [InlineData("public sealed record Address(Uri Value) : Choice; public sealed record Text(string Value) : Choice;")]
+  [InlineData("public sealed record Round(Circle Value) : Choice; public sealed record Dot(Point Value) : Choice;")]
+  [InlineData("public sealed record Map(Dictionary<string, int> Value) : Choice; public sealed record Numbers(IReadOnlyList<int> Value) : Choice;")]
+  [InlineData("public sealed record Dot(Point Value) : Choice; public sealed record Spread(Line Value) : Choice;")]
+  [InlineData("public sealed record Big(long Value) : Choice; public sealed record Count(int Value) : Choice;")]
+  [InlineData("public sealed record Dot(Point Value) : Choice; public sealed record Relaxed(Partial Value) : Choice;")]
+  [InlineData("public sealed record Dot(Point Value) : Choice; public sealed record Sparse(Narrow Value) : Choice;")]
+  public void GeneratorAcceptsReachableUnionCaseOrders(string cases)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(ChoiceOf(cases), "[JS] public int Ok() => 0;"));
+
+    AssertNoCompilerErrors(result);
+    Assert.Empty(GeneratorDiagnosticIds(result));
+  }
 }

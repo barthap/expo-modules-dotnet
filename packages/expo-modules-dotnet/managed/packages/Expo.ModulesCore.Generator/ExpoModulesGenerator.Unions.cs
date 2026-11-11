@@ -164,15 +164,251 @@ public sealed partial class ExpoModulesGenerator
       return analysis;
     }
 
+    for (var later = 1; later < cases.Count; later++)
+    {
+      var earlier = cases.Take(later).FirstOrDefault(item =>
+          SymbolEqualityComparer.Default.Equals(item.Payload.Type, cases[later].Payload.Type));
+      if (earlier is not null)
+      {
+        analysis.Diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.DuplicateUnionPayload.Id,
+            cases[later].CaseType.Locations.FirstOrDefault(),
+            new EquatableArray<string>(new[]
+            {
+                union.ToDisplayString(),
+                earlier.CaseType.Name,
+                cases[later].CaseType.Name,
+                cases[later].Payload.Type.ToDisplayString(),
+            })
+        ));
+      }
+    }
+
+    if (analysis.Diagnostics.Count > 0)
+    {
+      return analysis;
+    }
+
+    var lastNumber = cases.FindLastIndex(item => (item.Kinds & ExpoJavaScriptKinds.Number) != 0);
+    for (var later = 1; later < cases.Count; later++)
+    {
+      var laterIsGatedInteger = GetIntegerRange(cases[later].Payload.Type) is not null && later != lastNumber;
+      var earlier = cases.Take(later).FirstOrDefault(item =>
+          AlwaysTakesFirst(item, cases[later], laterIsGatedInteger, scratch));
+      if (earlier is not null)
+      {
+        analysis.Diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.UnreachableUnionCase.Id,
+            cases[later].CaseType.Locations.FirstOrDefault(),
+            new EquatableArray<string>(new[]
+            {
+                union.ToDisplayString(),
+                cases[later].CaseType.Name,
+                earlier.CaseType.Name,
+            })
+        ));
+      }
+    }
+
+    if (analysis.Diagnostics.Count > 0)
+    {
+      return analysis;
+    }
+
     // Later tasks continue here with `cases` and `scratch`.
     return analysis;
+  }
+
+  // The JavaScript kinds a payload type decodes. None means the type is not a union payload.
+  private static ExpoJavaScriptKinds GetUnionPayloadKinds(ITypeSymbol payloadType, ExpoCodecCollector codecs)
+  {
+    var name = payloadType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    if (name == JavaScriptValueMetadataName)
+    {
+      return ExpoJavaScriptKinds.All;
+    }
+
+    if (IsUnionType(payloadType))
+    {
+      // Nested unions are resolved in Task 6.
+      return ExpoJavaScriptKinds.None;
+    }
+
+    if (payloadType.TypeKind == TypeKind.Enum)
+    {
+      return UsesNumberEnumRepresentation(payloadType, null) ? ExpoJavaScriptKinds.Number : ExpoJavaScriptKinds.String;
+    }
+
+    if (payloadType.SpecialType == SpecialType.System_String || TryGetConvertibleCodec(payloadType) is not null)
+    {
+      return ExpoJavaScriptKinds.String;
+    }
+
+    if (payloadType.SpecialType == SpecialType.System_Boolean)
+    {
+      return ExpoJavaScriptKinds.Bool;
+    }
+
+    if (IsNumberSpecialType(payloadType.SpecialType))
+    {
+      return ExpoJavaScriptKinds.Number;
+    }
+
+    if (payloadType is IArrayTypeSymbol { Rank: 1, ElementType.SpecialType: SpecialType.System_Byte } ||
+        name is ArrayBufferMetadataName or "global::System.Memory<byte>" or "global::System.ReadOnlyMemory<byte>")
+    {
+      return ExpoJavaScriptKinds.ArrayBuffer;
+    }
+
+    if (name == Uint8ArrayMetadataName || payloadType is INamedTypeSymbol { IsRecord: true })
+    {
+      return ExpoJavaScriptKinds.Object;
+    }
+
+    if (payloadType is INamedTypeSymbol namedType &&
+        namedType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) is
+            "global::System.Collections.Generic.IReadOnlyList<T>" or
+            "global::System.Collections.Generic.Dictionary<TKey, TValue>" or
+            "global::System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>")
+    {
+      return ExpoJavaScriptKinds.Object;
+    }
+
+    return ExpoJavaScriptKinds.None;
+  }
+
+  private sealed record IntegerRange(string Min, string Max, bool ExclusiveMax, decimal Low, decimal High);
+
+  // The range of an integer payload, or of a number enum through its underlying type. The literals
+  // are emitted verbatim into the integer gate. long and ulong use an exclusive upper bound because
+  // (double)long.MaxValue is 2^63, which long cannot hold.
+  private static IntegerRange? GetIntegerRange(ITypeSymbol payloadType)
+  {
+    var type = payloadType;
+    if (payloadType is INamedTypeSymbol { TypeKind: TypeKind.Enum, EnumUnderlyingType: { } underlying })
+    {
+      if (!UsesNumberEnumRepresentation(payloadType, null))
+      {
+        return null;
+      }
+
+      type = underlying;
+    }
+
+    return type.SpecialType switch
+    {
+      SpecialType.System_SByte => new IntegerRange("-128d", "127d", false, sbyte.MinValue, sbyte.MaxValue),
+      SpecialType.System_Byte => new IntegerRange("0d", "255d", false, byte.MinValue, byte.MaxValue),
+      SpecialType.System_Int16 => new IntegerRange("-32768d", "32767d", false, short.MinValue, short.MaxValue),
+      SpecialType.System_UInt16 => new IntegerRange("0d", "65535d", false, ushort.MinValue, ushort.MaxValue),
+      SpecialType.System_Int32 => new IntegerRange("-2147483648d", "2147483647d", false, int.MinValue, int.MaxValue),
+      SpecialType.System_UInt32 => new IntegerRange("0d", "4294967295d", false, uint.MinValue, uint.MaxValue),
+      SpecialType.System_Int64 => new IntegerRange("-9223372036854775808d", "9223372036854775808d", true, long.MinValue, long.MaxValue),
+      SpecialType.System_UInt64 => new IntegerRange("0d", "18446744073709551616d", true, ulong.MinValue, ulong.MaxValue),
+      _ => null,
+    };
+  }
+
+  private const string JavaScriptValueDictionaryName =
+      "global::System.Collections.Generic.Dictionary<string, global::Expo.JSI.JavaScriptValue>";
+  private const string JavaScriptValueReadOnlyDictionaryName =
+      "global::System.Collections.Generic.IReadOnlyDictionary<string, global::Expo.JSI.JavaScriptValue>";
+  private const string JavaScriptValueListName =
+      "global::System.Collections.Generic.IReadOnlyList<global::Expo.JSI.JavaScriptValue>";
+
+  // True when `earlier` always takes every value that `later` could take, so `later` is never
+  // chosen. Rules 1 to 8 of the delta spec; rule 8 also reads the record field kind, because a
+  // defaulted or optional earlier field does not make the earlier record fail where a later one
+  // would decode.
+  private static bool AlwaysTakesFirst(
+      UnionCaseCandidate earlier,
+      UnionCaseCandidate later,
+      bool laterIsGatedInteger,
+      ExpoCodecCollector codecs)
+  {
+    var earlierType = earlier.Payload.Type;
+    var earlierName = earlierType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    var laterType = later.Payload.Type;
+
+    // 1. JavaScriptValue takes every value.
+    if (earlierName == JavaScriptValueMetadataName)
+    {
+      return true;
+    }
+
+    // 2. double and float take every number.
+    if (later.Kinds == ExpoJavaScriptKinds.Number &&
+        earlierType.SpecialType is SpecialType.System_Double or SpecialType.System_Single)
+    {
+      return true;
+    }
+
+    // 3. A gated integer case is taken by an earlier (so also gated) integer type whose range holds it.
+    if (laterIsGatedInteger &&
+        earlierType.TypeKind != TypeKind.Enum &&
+        GetIntegerRange(earlierType) is { } outer &&
+        GetIntegerRange(laterType) is { } inner &&
+        outer.Low <= inner.Low &&
+        inner.High <= outer.High)
+    {
+      return true;
+    }
+
+    // 4. string takes every string.
+    if (later.Kinds == ExpoJavaScriptKinds.String && earlierType.SpecialType == SpecialType.System_String)
+    {
+      return true;
+    }
+
+    // 5. A binary payload takes every ArrayBuffer.
+    if (later.Kinds == ExpoJavaScriptKinds.ArrayBuffer &&
+        earlier.Kinds == ExpoJavaScriptKinds.ArrayBuffer &&
+        earlierName is ArrayBufferMetadataName or "byte[]" or "global::System.Memory<byte>" or "global::System.ReadOnlyMemory<byte>")
+    {
+      return true;
+    }
+
+    // 6. A JavaScriptValue dictionary, or a record of JavaScriptValue fields only, takes every object.
+    var earlierRecord = codecs.Records.FirstOrDefault(model => model.RecordTypeName == earlierName);
+    if (later.Kinds == ExpoJavaScriptKinds.Object &&
+        (earlierName is JavaScriptValueDictionaryName or JavaScriptValueReadOnlyDictionaryName ||
+         earlierRecord is not null &&
+         earlierRecord.Fields.Values.All(field => field.Codec.ValueTypeName == JavaScriptValueMetadataName)))
+    {
+      return true;
+    }
+
+    // 7. A JavaScriptValue list takes every array.
+    if (earlierName == JavaScriptValueListName &&
+        laterType is INamedTypeSymbol laterNamed &&
+        laterNamed.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ==
+        "global::System.Collections.Generic.IReadOnlyList<T>")
+    {
+      return true;
+    }
+
+    // 8. A record takes a later record when every non-JavaScriptValue field of the earlier record
+    //    has a later field with the same JavaScript name, the same type or a type it is the nullable
+    //    form of, and, when the earlier field is required, a required later field.
+    var laterRecord = codecs.Records.FirstOrDefault(model =>
+        model.RecordTypeName == laterType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+    return earlierRecord is not null &&
+        laterRecord is not null &&
+        earlierRecord.Fields.Values
+            .Where(field => field.Codec.ValueTypeName != JavaScriptValueMetadataName)
+            .All(field => laterRecord.Fields.Values.Any(other =>
+                other.JavaScriptName == field.JavaScriptName &&
+                (other.Codec.ValueTypeName == field.Codec.ValueTypeName ||
+                 field.Codec.ValueTypeName == other.Codec.ValueTypeName + "?") &&
+                (field.Kind != ExpoRecordFieldKind.Required || other.Kind == ExpoRecordFieldKind.Required)));
   }
 
   private sealed record UnionCaseCandidate(
       INamedTypeSymbol CaseType,
       IParameterSymbol Payload,
       IPropertySymbol Property,
-      ExpoCodecDescriptor Codec);
+      ExpoCodecDescriptor Codec,
+      ExpoJavaScriptKinds Kinds);
 
   private static ExpoDiagnosticModel CreateInvalidUnionCase(INamedTypeSymbol type, INamedTypeSymbol union, string reason) =>
       new(
@@ -250,13 +486,19 @@ public sealed partial class ExpoModulesGenerator
       return $"its payload type '{payloadType.ToDisplayString()}' has no union codec";
     }
 
+    var kinds = GetUnionPayloadKinds(payloadType, scratch);
+    if (kinds == ExpoJavaScriptKinds.None)
+    {
+      return $"its payload type '{payloadType.ToDisplayString()}' has no union codec";
+    }
+
     var property = caseType.GetMembers(payload.Name).OfType<IPropertySymbol>().FirstOrDefault();
     if (property?.GetMethod is not { DeclaredAccessibility: Accessibility.Public or Accessibility.Internal })
     {
       return "its payload property is not readable by generated code";
     }
 
-    candidate = new UnionCaseCandidate(caseType, payload, property, codec);
+    candidate = new UnionCaseCandidate(caseType, payload, property, codec, kinds);
     return null;
   }
 

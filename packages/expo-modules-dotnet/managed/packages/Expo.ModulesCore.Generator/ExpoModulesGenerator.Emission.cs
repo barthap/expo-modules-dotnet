@@ -761,6 +761,8 @@ public sealed partial class ExpoModulesGenerator
       "EXPOJSI028" => ExpoModulesDiagnostics.DuplicateSharedObjectEventName,
       "EXPOJSI029" => ExpoModulesDiagnostics.InvalidUnionDeclaration,
       "EXPOJSI030" => ExpoModulesDiagnostics.InvalidUnionCase,
+      "EXPOJSI031" => ExpoModulesDiagnostics.DuplicateUnionPayload,
+      "EXPOJSI032" => ExpoModulesDiagnostics.UnreachableUnionCase,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());

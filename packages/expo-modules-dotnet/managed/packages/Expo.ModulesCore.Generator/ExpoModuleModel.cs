@@ -158,6 +158,23 @@ internal enum ExpoRecordFieldKind
   Defaulted,
 }
 
+// The JavaScript kinds a union payload decodes. Member names equal the JavaScriptValueKind names, so
+// emission writes global::Expo.JSI.JavaScriptValueKind.<Name>.
+[Flags]
+internal enum ExpoJavaScriptKinds
+{
+  None = 0,
+  Undefined = 1,
+  Null = 2,
+  Bool = 4,
+  Number = 8,
+  String = 16,
+  Object = 32,
+  Function = 64,
+  ArrayBuffer = 128,
+  All = 255,
+}
+
 internal sealed record ExpoGeneratedRecordFieldModel(
     string ParameterName,
     string CSharpPropertyName,

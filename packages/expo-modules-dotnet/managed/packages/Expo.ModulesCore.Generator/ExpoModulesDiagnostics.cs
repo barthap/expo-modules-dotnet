@@ -273,4 +273,22 @@ internal static class ExpoModulesDiagnostics
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true
   );
+
+  public static readonly DiagnosticDescriptor DuplicateUnionPayload = new(
+      id: "EXPOJSI031",
+      title: "Duplicate union payload",
+      messageFormat: "Union '{0}' cases '{1}' and '{2}' have the same payload type '{3}'",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor UnreachableUnionCase = new(
+      id: "EXPOJSI032",
+      title: "Unreachable union case",
+      messageFormat: "Union '{0}' case '{1}' is unreachable: case '{2}' declared before it always takes its values first",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
 }
