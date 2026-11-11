@@ -144,6 +144,90 @@ public sealed class EnumModuleTests
     Assert.Equal("\"SHA1\"", await ReadAsync(host, "m.hashAsync('SHA-1')"));
   }
 
+  // A record field, a list element, a nullable value, and a dictionary value decode and encode
+  // through the same codec, and a bad string inside them fails with the same message.
+  [Fact]
+  public async Task DeclaredStringsInCompositePositions()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal("{\"algorithm\":\"SHA-1\"}", await ReadAsync(host, "m.echoOptions({ algorithm: 'SHA-1' })"));
+    Assert.Equal("[\"SHA-1\",\"MD5\"]", await ReadAsync(host, "m.echoList(['SHA-1', 'MD5'])"));
+    Assert.Equal("[\"SHA-1\",null,null]", await ReadAsync(host, "[m.echoNullable('SHA-1'), m.echoNullable(null), m.echoNullable(undefined)]"));
+    Assert.Equal("{\"a\":\"SHA-1\",\"b\":\"SHA-256\"}", await ReadAsync(host, "m.echoMap({ a: 'SHA-1', b: 'SHA-256' })"));
+    var expected = $"'sha-1' is not a valid {Ns}.DigestAlgorithm value. It must be one of: 'MD5', 'SHA-1', 'SHA-256'";
+    Assert.Equal(expected, (await CatchAsync(host, "m.echoList(['SHA-1', 'sha-1'])")).Message);
+    Assert.Equal(expected, (await CatchAsync(host, "m.echoOptions({ algorithm: 'sha-1' })")).Message);
+  }
+
+  [Fact]
+  public async Task DeclaredStringsInOtherPositions()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal(
+        "[\"SHA-1\",\"MD5\",\"SHA-256\"]",
+        await ReadAsync(host, "[m.preferred, (m.preferred = 'MD5', m.preferred), m.strongest]"));
+    Assert.Equal("\"SHA-1\"", await ReadAsync(host, "m.echoLater('SHA-1')"));
+    // The callback receives SHA1 as 'SHA-1' with its tuple partner, and its 'SHA-256' result decodes.
+    Assert.Equal(
+        "\"SHA-256\"",
+        await ReadAsync(host, "m.callWith((algorithm, count) => algorithm === 'SHA-1' && count === 2 ? 'SHA-256' : 'MD5')"));
+    Assert.Equal(
+        "[\"SHA-1\",\"SHA-1\",\"SHA-256\",\"SHA-256\",\"MD5\"]",
+        await ReadAsync(
+            host,
+            "(() => { const h = new m.DigestHasher('SHA-1'); const first = h.algorithm; const previous = h.swap('SHA-256'); " +
+            "return [first, previous, h.algorithm, new m.DigestHasher().algorithm, (h.algorithm = 'MD5', h.algorithm)]; })()"));
+  }
+
+  [Fact]
+  public async Task EventPayloadsCarryDeclaredStrings()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal(
+        "[\"SHA-1\",\"SHA-1\"]",
+        await ReadAsync(
+            host,
+            "(() => { const seen = []; m.addListener('onAlgorithm', value => seen.push(value)); " +
+            "m.addListener('onOptions', value => seen.push(value.algorithm)); return m.emitDigest('SHA-1').then(() => seen); })()"));
+  }
+
+  // A default is the member itself (a cast of its number), so an omitted argument or field is the
+  // default member and goes back through its declared string.
+  [Fact]
+  public async Task DefaultsAreMembersNotStrings()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal("[\"SHA-1\",\"SHA-1\",\"MD5\"]", await ReadAsync(host, "[m.pickDefault(), m.pickDefault(undefined), m.pickDefault('MD5')]"));
+    Assert.Equal("{\"label\":\"a\",\"algorithm\":\"SHA-1\"}", await ReadAsync(host, "m.echoSettings({ label: 'a' })"));
+    Assert.Equal("{\"label\":\"b\",\"algorithm\":\"SHA-256\"}", await ReadAsync(host, "m.echoSettings({ label: 'b', algorithm: 'SHA-256' })"));
+  }
+
+  // Each [Flags] member crosses as its name; a combination names no member, so it fails to encode.
+  [Fact]
+  public async Task FlagsMembersCrossButCombinationsDoNotEncode()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal("\"Spaced\"", await ReadAsync(host, "m.echoFlags('Spaced')"));
+    var outcome = await CatchAsync(host, "m.combinedFlags()");
+    AssertUncodedError(outcome, "sync");
+    Assert.Equal($"3 is not a member of {Ns}.DigestFlags, so it has no JavaScript value.", outcome.Message);
+  }
+
+  // Number enums do not change, also when a member carries [EnumMember] without Value.
+  [Fact]
+  public async Task NumberEnumsKeepCrossingAsNumbers()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal("[1,2]", await ReadAsync(host, "[m.echoNumberMode(1), m.echoQuiet(2)]"));
+    Assert.True((await CatchAsync(host, "m.echoQuiet('High')")).IsError);
+  }
+
   private static ExpoModuleTestHost CreateHost() =>
       ExpoModuleTestHost.Create(ExpoModulesProvider_Expo_ModulesCore_Tests.Register);
 

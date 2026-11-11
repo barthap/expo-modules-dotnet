@@ -347,4 +347,31 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.Contains("((sbyte)value).ToString(global::System.Globalization.CultureInfo.InvariantCulture) + \" is not a member of Expo.TestModules.Signed,", EnumCodecText(text, "Signed"), StringComparison.Ordinal);
     Assert.Contains("is not a valid Expo.TestModules.Outer.Mode value. It must be one of: 'Slow'", EnumCodecText(text, "Mode"), StringComparison.Ordinal);
   }
+
+  // The default of a parameter and of a record field is a cast of the member's number; it never goes
+  // through a string, so a declared value cannot change which member is the default.
+  [Fact]
+  public void GeneratorRendersDefaultsOfRawValueEnumsAsCasts()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        DigestAlgorithmSource + " public sealed record Settings(DigestAlgorithm Algorithm = DigestAlgorithm.SHA1);",
+        "[JS] public int M(Settings settings, DigestAlgorithm algorithm = DigestAlgorithm.SHA1) => 0;"));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    // Both record Decode overloads and the host function render the default.
+    Assert.Equal(
+        3,
+        CountOccurrences(GeneratedText(result), $"Undefined ? (global::Expo.TestModules.DigestAlgorithm)(1) : {DigestAlgorithmCodec}.Decode("));
+  }
+
+  // Dictionary keys are strings only, here and upstream, so an enum key stays unsupported.
+  [Fact]
+  public void GeneratorRejectsEnumDictionaryKeys()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(DigestAlgorithmSource, "[JS] public int M(Dictionary<DigestAlgorithm, int> values) => 0;"));
+
+    AssertNoCompilerErrors(result);
+    Assert.Equal(new[] { "EXPOJSI001" }, GeneratorDiagnosticIds(result));
+  }
 }

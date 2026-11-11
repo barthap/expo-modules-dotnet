@@ -29,7 +29,58 @@ public enum NumberMode
 
 public sealed record NumberModeHolder(NumberMode Mode);
 
-[ExpoModule("EnumScenarios")]
+public enum DigestEncoding
+{
+  [EnumMember(Value = "hex")]
+  Hex,
+  [EnumMember(Value = "base64")]
+  Base64,
+}
+
+public sealed record DigestOptions(DigestAlgorithm Algorithm);
+
+// The default is rendered as a cast of the member's number, so it never goes through a string.
+public sealed record DigestSettings(string Label, DigestAlgorithm Algorithm = DigestAlgorithm.SHA1);
+
+[Flags]
+public enum DigestFlags
+{
+  None = 0,
+  Upper = 1,
+  Spaced = 2,
+}
+
+// [EnumMember] without Value names no string, so a number enum keeps crossing as its number.
+[JSEnum(EnumRepresentation.Number)]
+public enum QuietLevel
+{
+  [EnumMember]
+  Low = 1,
+  High = 2,
+}
+
+[ExpoSharedObject]
+public sealed partial class DigestHasher : SharedObject
+{
+  [JS]
+  public DigestHasher(DigestAlgorithm algorithm = DigestAlgorithm.SHA256)
+  {
+    Algorithm = algorithm;
+  }
+
+  [JS]
+  public DigestAlgorithm Algorithm { get; set; }
+
+  [JS]
+  public DigestAlgorithm Swap(DigestAlgorithm next)
+  {
+    var previous = Algorithm;
+    Algorithm = next;
+    return previous;
+  }
+}
+
+[ExpoModule("EnumScenarios", Classes = new[] { typeof(DigestHasher) })]
 public sealed partial class EnumScenariosModule : Module
 {
   public EnumScenariosModule(DotnetRuntimeContext context)
@@ -70,4 +121,58 @@ public sealed partial class EnumScenariosModule : Module
 
   [JS]
   public Task<string> HashAsync(DigestAlgorithm algorithm) => Task.FromResult(algorithm.ToString());
+
+  [JS]
+  public DigestAlgorithm? EchoNullable(DigestAlgorithm? algorithm) => algorithm;
+
+  [JS]
+  public DigestOptions EchoOptions(DigestOptions options) => options;
+
+  [JS]
+  public IReadOnlyList<DigestAlgorithm> EchoList(IReadOnlyList<DigestAlgorithm> algorithms) => algorithms;
+
+  [JS]
+  public Dictionary<string, DigestAlgorithm> EchoMap(Dictionary<string, DigestAlgorithm> algorithms) => algorithms;
+
+  [JS]
+  public DigestAlgorithm Preferred { get; set; } = DigestAlgorithm.SHA1;
+
+  // A constant is a getter-only property.
+  [JS]
+  public DigestAlgorithm Strongest => DigestAlgorithm.SHA256;
+
+  [JS]
+  public Task<DigestAlgorithm> EchoLater(DigestAlgorithm algorithm) => Task.FromResult(algorithm);
+
+  [JS]
+  public DigestAlgorithm CallWith(JavaScriptCallback<(DigestAlgorithm, int), DigestAlgorithm> callback) =>
+      callback.Invoke((DigestAlgorithm.SHA1, 2));
+
+  [Event]
+  public partial Func<DigestAlgorithm, Task> OnAlgorithm { get; }
+
+  [Event]
+  public partial Func<DigestOptions, Task> OnOptions { get; }
+
+  [JS]
+  public Task EmitDigest(DigestAlgorithm algorithm) =>
+      Task.WhenAll(OnAlgorithm(algorithm), OnOptions(new DigestOptions(algorithm)));
+
+  [JS]
+  public DigestAlgorithm PickDefault(DigestAlgorithm algorithm = DigestAlgorithm.SHA1) => algorithm;
+
+  [JS]
+  public DigestSettings EchoSettings(DigestSettings settings) => settings;
+
+  [JS]
+  public DigestFlags EchoFlags(DigestFlags flags) => flags;
+
+  [JS]
+  public DigestFlags CombinedFlags() => DigestFlags.Upper | DigestFlags.Spaced;
+
+  [JS]
+  public NumberMode EchoNumberMode(NumberMode mode) => mode;
+
+  [JS]
+  public QuietLevel EchoQuiet(QuietLevel level) => level;
 }
