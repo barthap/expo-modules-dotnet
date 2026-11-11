@@ -1,10 +1,12 @@
 #include <expo_jsi.h>
 #include <jsi/jsilib.h>
 
+#include <chrono>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 #include "ExpoJsiBridge.h"
 #include "HermesConsoleRuntimeConnector.h"
@@ -169,7 +171,9 @@ void start_showcase_checks(jsi::Runtime &rt)
       callbackResult: null,
       eventDone: false,
       eventPayload: null,
-      recordSummary: null
+      recordSummary: null,
+      syncError: null,
+      asyncError: 'pending'
     };
 
     const showcase = global._expoDotnet.modules.Showcase;
@@ -194,9 +198,47 @@ void start_showcase_checks(jsi::Runtime &rt)
       },
       error => { global.__consoleShowcase.eventPayload = error && error.message; }
     );
+
+    try {
+      showcase.failWithCode('blank');
+      global.__consoleShowcase.syncError = 'no error';
+    } catch (error) {
+      global.__consoleShowcase.syncError = `${error instanceof Error}:${error.code}:${error.message}`;
+    }
+    showcase.failWithCodeAsync('blank').then(
+      () => { global.__consoleShowcase.asyncError = 'no error'; },
+      error => {
+        global.__consoleShowcase.asyncError = `${error instanceof Error}:${error.code}:${error.message}`;
+      }
+    );
     true;
   )"),
                         "showcase-start.js");
+}
+
+// The async showcase calls finish on managed threads, which waitUntilIdle does not track. An
+// exception thrown on a cold thread can take longer than the idle wait, so poll until every async
+// promise has settled instead of reading the outcome right after the idle wait.
+void wait_for_showcase_settlement(expo::dotnet::HermesConsoleRuntimeConnector &connector)
+{
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+  for (;;) {
+    bool settled = false;
+    connector.runtimeExecutor().executeSync([&](jsi::Runtime &rt) {
+      auto outcome = rt.global().getPropertyAsObject(rt, "__consoleShowcase");
+      settled = outcome.getProperty(rt, "asyncMessage").isString() &&
+                outcome.getProperty(rt, "eventDone").getBool() &&
+                outcome.getProperty(rt, "asyncError").asString(rt).utf8(rt) != "pending";
+    });
+    if (settled) {
+      return;
+    }
+    if (std::chrono::steady_clock::now() > deadline) {
+      throw std::runtime_error("Showcase promises did not settle.");
+    }
+    connector.waitUntilIdle();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
 }
 
 void verify_showcase_checks(jsi::Runtime &rt)
@@ -228,7 +270,19 @@ void verify_showcase_checks(jsi::Runtime &rt)
     throw std::runtime_error("Event showcase promise did not complete.");
   }
 
-  std::cout << "Showcased async functions, records, callbacks, and events" << std::endl;
+  // The same code under HostFXR and NativeAOT proves the derivation needs no runtime metadata.
+  const auto expected_error = std::string("true:ERR_INVALID_LABEL:Invalid label: blank");
+  auto sync_error = outcome.getProperty(rt, "syncError").asString(rt).utf8(rt);
+  if (sync_error != expected_error) {
+    throw std::runtime_error("Sync coded error showcase failed: " + sync_error);
+  }
+  auto async_error = outcome.getProperty(rt, "asyncError").asString(rt).utf8(rt);
+  if (async_error != expected_error) {
+    throw std::runtime_error("Async coded error showcase failed: " + async_error);
+  }
+
+  std::cout << "Showcased async functions, records, callbacks, events, and coded errors"
+            << std::endl;
 }
 
 } // namespace
@@ -260,6 +314,7 @@ int main()
       start_showcase_checks(rt);
     });
     connector.waitUntilIdle();
+    wait_for_showcase_settlement(connector);
     connector.runtimeExecutor().executeSync([&](jsi::Runtime &rt) { verify_showcase_checks(rt); });
 
     connector.runtimeExecutor().executeSync(
@@ -272,14 +327,14 @@ int main()
 
     auto value_release_count = release_counter.value_release_count;
     std::cout << "Released owned value handles: " << value_release_count << std::endl;
-    if (value_release_count != 138) {
-      throw std::runtime_error("Expected exactly 138 counted owned value handle releases.");
+    if (value_release_count != 150) {
+      throw std::runtime_error("Expected exactly 150 counted owned value handle releases.");
     }
 
     auto string_release_count = release_counter.string_release_count;
     std::cout << "Released string result buffers: " << string_release_count << std::endl;
-    if (string_release_count != 10) {
-      throw std::runtime_error("Expected exactly ten counted string result buffer releases.");
+    if (string_release_count != 12) {
+      throw std::runtime_error("Expected exactly 12 counted string result buffer releases.");
     }
 
     expo::dotnet::releaseRuntimeHandle(runtime_handle);

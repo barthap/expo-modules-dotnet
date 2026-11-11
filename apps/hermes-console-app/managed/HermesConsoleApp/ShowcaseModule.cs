@@ -50,7 +50,24 @@ internal sealed partial class ShowcaseModule : Module
   {
     return SendEventAsync<StringCodec, string>("onStatus", $"C# event: {label}");
   }
+
+  [JS("failWithCode")]
+  public void FailWithCode(string label)
+  {
+    throw new InvalidLabelException(label);
+  }
+
+  [JS("failWithCodeAsync")]
+  public async Task FailWithCodeAsync(string label)
+  {
+    await Task.Yield();
+    throw new InvalidLabelException(label);
+  }
 }
+
+// JavaScript reads error.code === 'ERR_INVALID_LABEL', derived from the class name.
+internal sealed class InvalidLabelException(string label)
+    : CodedException($"Invalid label: {label}");
 
 internal readonly record struct ConsoleUser(string Name, int Age);
 
