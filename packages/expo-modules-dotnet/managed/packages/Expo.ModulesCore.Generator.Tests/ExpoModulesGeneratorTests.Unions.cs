@@ -194,4 +194,175 @@ public sealed partial class ExpoModulesGeneratorTests
     AssertNoCompilerErrors(result);
     Assert.Empty(GeneratorDiagnosticIds(result));
   }
+
+  private const string PayloadUnion =
+      "[Union] public abstract record Payload { " +
+      "public sealed record Count(int Value) : Payload; " +
+      "public sealed record Amount(double Value) : Payload; " +
+      "public sealed record Buffer(ArrayBuffer Value) : Payload; }";
+
+  // The union codec struct of one union, from its declaration to its closing brace.
+  private static string UnionCodecText(string text, string unionName)
+  {
+    var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal);
+    var start = normalized.IndexOf($"private readonly struct {unionName}UnionCodec_", StringComparison.Ordinal);
+    Assert.True(start >= 0);
+    return normalized[start..normalized.IndexOf("\n  }\n", start, StringComparison.Ordinal)];
+  }
+
+  [Fact]
+  public void GeneratorEmitsUnionCodecForThreeCases()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        PayloadUnion,
+        "[JS] public string Describe(Payload value) => \"\"; [JS] public Payload Make() => new Payload.Count(1);"));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var text = GeneratedText(result);
+    var codec = UnionCodecText(text, "Payload");
+    Assert.Contains("var __expoNumber = __expoKind == global::Expo.JSI.JavaScriptValueKind.Number ? value.AsDouble() : 0d;", codec, StringComparison.Ordinal);
+    // int is not the last number case, so it takes only whole numbers that int holds.
+    Assert.Contains("if (__expoKind == global::Expo.JSI.JavaScriptValueKind.Number && global::System.Double.IsInteger(__expoNumber) && __expoNumber >= -2147483648d && __expoNumber <= 2147483647d)", codec, StringComparison.Ordinal);
+    Assert.Contains("__expoPayload0 = NumberCodec<int>.Decode(value, runtime);", codec, StringComparison.Ordinal);
+    Assert.Contains("return new global::Expo.TestModules.Payload.Count(__expoPayload0);", codec, StringComparison.Ordinal);
+    Assert.Contains("throw new global::Expo.ModulesCore.UnionCaseMismatchException(\"Payload\", new[] { \"int\", \"double\", \"ArrayBuffer\" }, __expoKind, __expoFailure);", codec, StringComparison.Ordinal);
+    // Each attempt lets a release failure propagate before it moves to the next case.
+    Assert.Equal(3, CountOccurrences(codec, "catch (global::System.AggregateException)"));
+    Assert.True(codec.IndexOf("catch (global::System.AggregateException)", StringComparison.Ordinal) <
+        codec.IndexOf("catch (global::System.Exception __expoAttemptFailure)", StringComparison.Ordinal));
+    // A buffer payload whose case construction throws is released before the rethrow.
+    Assert.Contains("CodecRelease.Release<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>(__expoPayload2, ref __expoReleaseFailures);", codec, StringComparison.Ordinal);
+    // Encode ends with the not-a-case throw; Release releases only the case it holds.
+    Assert.True(codec.IndexOf("global::Expo.TestModules.Payload.Buffer __expoCase2 => ArrayBufferCodec.Encode(__expoCase2.Value, runtime),", StringComparison.Ordinal) <
+        codec.IndexOf("_ => throw global::Expo.ModulesCore.Codecs.UnionCodecErrors.NotACase(value, \"Expo.TestModules.Payload\"),", StringComparison.Ordinal));
+    Assert.Contains("CodecRelease.Release<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>(__expoCase2.Value, ref __expoReleaseFailures);", codec, StringComparison.Ordinal);
+    Assert.DoesNotContain("__expoCase0.Value, ref", codec, StringComparison.Ordinal);
+    // The glue releases a decoded argument and a returned value through the union codec.
+    Assert.Contains("CodecRelease.Release<global::Expo.TestModules.Payload, PayloadUnionCodec_", text, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void GeneratorKeepsLeafFreeUnionGlueWithoutRelease()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        "[Union] public abstract record Choice { public sealed record Number(double Value) : Choice; public sealed record Flag(bool Value) : Choice; }",
+        "[JS] public int Pick(Choice value) => 0;"));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var text = GeneratedText(result);
+    Assert.DoesNotContain("CodecRelease", text, StringComparison.Ordinal);
+    Assert.DoesNotContain("public static void Release(global::Expo.TestModules.Choice", text, StringComparison.Ordinal);
+    Assert.Contains("var __expoArg0 = ChoiceUnionCodec_", text, StringComparison.Ordinal);
+  }
+
+  // Spec scenario "A release failure in an attempt propagates": a leaf-bearing record attempt
+  // releases what it decoded, and if that release fails, the AggregateException is not swallowed
+  // as a failed attempt. Generated glue has no hook to make a real release fail, so the generated
+  // text is the test.
+  [Fact]
+  public void GeneratorRethrowsReleaseFailuresFromUnionAttempts()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        "public sealed record Pair(ArrayBuffer Data, int Count); " +
+        "[Union] public abstract record Fallback { public sealed record Packed(Pair Value) : Fallback; public sealed record Raw(JavaScriptValue Value) : Fallback; }",
+        "[JS] public string M(Fallback value) => \"\";"));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var codec = UnionCodecText(GeneratedText(result), "Fallback");
+    var attempt = codec.IndexOf("__expoPayload0 = PairCodec_", StringComparison.Ordinal);
+    var rethrow = codec.IndexOf("catch (global::System.AggregateException)\n        {\n          throw;\n        }", attempt, StringComparison.Ordinal);
+    var fallThrough = codec.IndexOf("catch (global::System.Exception __expoAttemptFailure)", attempt, StringComparison.Ordinal);
+    Assert.True(attempt >= 0 && rethrow > attempt && fallThrough > rethrow);
+    // The JavaScriptValue case takes every kind, so it is attempted without a kind check.
+    Assert.DoesNotContain("JavaScriptValueKind.Undefined", codec, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void GeneratorUnionCodecsAvoidReflection()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(PayloadUnion, "[JS] public Payload Echo(Payload value) => value;"));
+
+    var codec = UnionCodecText(GeneratedText(result), "Payload");
+    foreach (var forbidden in new[] { "GetType(", "typeof(", "MethodInfo", "Activator", "DynamicInvoke", "object?[]", "(object)" })
+    {
+      Assert.DoesNotContain(forbidden, codec, StringComparison.Ordinal);
+    }
+  }
+
+  // An integer case before a later number case takes only whole numbers its type holds; the last
+  // number case decodes like its plain codec, so a lone int still truncates a fraction.
+  [Theory]
+  [InlineData("public sealed record Count(int Value) : Choice; public sealed record Amount(double Value) : Choice;", "__expoNumber >= -2147483648d && __expoNumber <= 2147483647d")]
+  [InlineData("public sealed record Small(sbyte Value) : Choice; public sealed record Amount(double Value) : Choice;", "__expoNumber >= -128d && __expoNumber <= 127d")]
+  [InlineData("public sealed record Big(long Value) : Choice; public sealed record Amount(double Value) : Choice;", "__expoNumber >= -9223372036854775808d && __expoNumber < 9223372036854775808d")]
+  [InlineData("public sealed record Wide(ulong Value) : Choice; public sealed record Amount(double Value) : Choice;", "__expoNumber >= 0d && __expoNumber < 18446744073709551616d")]
+  [InlineData("public sealed record Level(ByteLevel Value) : Choice; public sealed record Amount(double Value) : Choice;", "__expoNumber >= 0d && __expoNumber <= 255d")]
+  [InlineData("public sealed record Text(string Value) : Choice; public sealed record Count(int Value) : Choice;", null)]
+  public void GeneratorGatesIntegerCasesOnlyBeforeALaterNumberCase(string cases, string? gate)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        "[JSEnum(EnumRepresentation.Number)] public enum ByteLevel : byte { Low = 1 } " +
+        "[Union] public abstract record Choice { " + cases + " }",
+        "[JS] public int M(Choice value) => 0;"));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var codec = UnionCodecText(GeneratedText(result), "Choice");
+    if (gate is null)
+    {
+      Assert.DoesNotContain("IsInteger", codec, StringComparison.Ordinal);
+      Assert.DoesNotContain("__expoNumber", codec, StringComparison.Ordinal);
+    }
+    else
+    {
+      Assert.Contains("global::System.Double.IsInteger(__expoNumber) && " + gate, codec, StringComparison.Ordinal);
+    }
+  }
+
+  [Fact]
+  public void GeneratorComposesNestedUnions()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        "[Union] public abstract record Inner { public sealed record Text(string Value) : Inner; public sealed record Count(int Value) : Inner; } " +
+        "[Union] public abstract record Outer { public sealed record Flag(bool Value) : Outer; public sealed record Nested(Inner Value) : Outer; }",
+        "[JS] public int M(Outer value) => 0;"));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var text = GeneratedText(result);
+    var outer = UnionCodecText(text, "Outer");
+    // A nested union is attempted for every kind of its own cases, in JavaScriptValueKind order.
+    Assert.Contains("if (__expoKind == global::Expo.JSI.JavaScriptValueKind.Number || __expoKind == global::Expo.JSI.JavaScriptValueKind.String)", outer, StringComparison.Ordinal);
+    Assert.Contains("new[] { \"bool\", \"Inner\" }", outer, StringComparison.Ordinal);
+    Assert.True(text.IndexOf("private readonly struct InnerUnionCodec_", StringComparison.Ordinal) <
+        text.IndexOf("private readonly struct OuterUnionCodec_", StringComparison.Ordinal));
+  }
+
+  [Fact]
+  public void GeneratorRejectsUnionCaseTypesUsedDirectly()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        "[Union] public abstract record NonceInput { public sealed record Base64(string Value) : NonceInput; public sealed record Bytes(byte[] Value) : NonceInput; public sealed record Length(int Value) : NonceInput; }",
+        "[JS] public int M(NonceInput.Bytes bytes) => 0;"));
+
+    AssertNoCompilerErrors(result);
+    Assert.Equal(new[] { "EXPOJSI001" }, GeneratorDiagnosticIds(result));
+    Assert.Contains("'global::Expo.TestModules.NonceInput.Bytes'", result.GeneratorDiagnostics!.Single().GetMessage(), StringComparison.Ordinal);
+    Assert.DoesNotContain("BytesCodec_", GeneratedText(result), StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void GeneratorEmitsEachUnionCodecOncePerProvider()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        PayloadUnion + " public sealed record Holder(Payload Content);",
+        "[JS] public Payload A(Payload value) => value; [JS] public int B(IReadOnlyList<Payload> values) => 0; [JS] public int C(Holder holder) => 0;"));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    Assert.Equal(1, CountOccurrences(GeneratedText(result), "private readonly struct PayloadUnionCodec_"));
+  }
 }

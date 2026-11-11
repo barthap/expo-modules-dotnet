@@ -16,11 +16,14 @@ internal sealed class ExpoCodecCollector
 
   public List<ExpoGeneratedRecordCodecModel> Records { get; } = new();
 
+  public List<ExpoGeneratedUnionCodecModel> Unions { get; } = new();
+
   // A copy that resolution can fill and drop, so a rejected codec adds no model.
   public ExpoCodecCollector Fork()
   {
     var fork = new ExpoCodecCollector(Assembly);
     fork.Records.AddRange(Records);
+    fork.Unions.AddRange(Unions);
     return fork;
   }
 
@@ -29,5 +32,7 @@ internal sealed class ExpoCodecCollector
   {
     Records.Clear();
     Records.AddRange(fork.Records);
+    Unions.Clear();
+    Unions.AddRange(fork.Unions);
   }
 }

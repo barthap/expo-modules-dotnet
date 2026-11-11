@@ -129,6 +129,12 @@ public sealed partial class ExpoModulesGenerator
   private sealed class ExpoUnionAnalysis
   {
     public List<ExpoDiagnosticModel> Diagnostics { get; } = new();
+
+    // Set when the union is valid. Codecs is the scratch collector that holds the payload codec
+    // models the union resolved, so a caller adopts it with the union model.
+    public ExpoGeneratedUnionCodecModel? Model { get; set; }
+
+    public ExpoCodecCollector? Codecs { get; set; }
   }
 
   private static ExpoUnionAnalysis AnalyzeUnion(INamedTypeSymbol union, ExpoCodecCollector codecs)
@@ -215,8 +221,61 @@ public sealed partial class ExpoModulesGenerator
       return analysis;
     }
 
-    // Later tasks continue here with `cases` and `scratch`.
+    var unionTypeName = union.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    var lastNumberCase = cases.FindLastIndex(item => (item.Kinds & ExpoJavaScriptKinds.Number) != 0);
+    var caseModels = cases.Select((item, index) =>
+    {
+      var range = GetIntegerRange(item.Payload.Type);
+      var gate = range is not null && index != lastNumberCase
+          ? $"global::System.Double.IsInteger(__expoNumber) && __expoNumber >= {range.Min} && __expoNumber {(range.ExclusiveMax ? "<" : "<=")} {range.Max}"
+          : string.Empty;
+      return new ExpoGeneratedUnionCaseModel(
+          item.CaseType.Name,
+          item.CaseType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+          item.Property.Name,
+          item.Payload.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
+          item.Codec,
+          item.Kinds,
+          gate);
+    }).ToArray();
+    analysis.Model = new ExpoGeneratedUnionCodecModel(
+        $"{SanitizeIdentifier(union.Name)}UnionCodec_{EncodeTypeIdentity(unionTypeName)}",
+        unionTypeName,
+        union.Name,
+        new EquatableArray<ExpoGeneratedUnionCaseModel>(caseModels),
+        caseModels.Any(item => HoldsLeaves(item.PayloadCodec)) ? ExpoResourceOwnership.HoldsLeaves : ExpoResourceOwnership.Borrowed,
+        union.Locations.FirstOrDefault());
+    analysis.Codecs = scratch;
     return analysis;
+  }
+
+  private static ExpoCodecDescriptor UnionCodecDescriptor(ExpoGeneratedUnionCodecModel codec) =>
+      OrdinaryCodec(codec.CodecTypeName) with { ResourceOwnership = codec.ResourceOwnership };
+
+  // A valid union resolves to one ordinary codec. An invalid union resolves to no codec and adds
+  // no diagnostic here: the declaration pipeline reports it once, and the using position reports
+  // its own unsupported-type diagnostic.
+  private static ExpoCodecDescriptor? TryGetUnionCodec(
+      INamedTypeSymbol union,
+      List<ExpoDiagnosticModel> diagnostics,
+      ExpoCodecCollector codecs)
+  {
+    var unionTypeName = union.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    var existing = codecs.Unions.FirstOrDefault(model => model.UnionTypeName == unionTypeName);
+    if (existing is not null)
+    {
+      return UnionCodecDescriptor(existing);
+    }
+
+    var analysis = AnalyzeUnion(union, codecs);
+    if (analysis.Model is null)
+    {
+      return null;
+    }
+
+    codecs.Adopt(analysis.Codecs!);
+    codecs.Unions.Add(analysis.Model);
+    return UnionCodecDescriptor(analysis.Model);
   }
 
   // The JavaScript kinds a payload type decodes. None means the type is not a union payload.
@@ -230,8 +289,10 @@ public sealed partial class ExpoModulesGenerator
 
     if (IsUnionType(payloadType))
     {
-      // Nested unions are resolved in Task 6.
-      return ExpoJavaScriptKinds.None;
+      // The nested union resolved first, so its model is in the collector.
+      return codecs.Unions
+          .FirstOrDefault(model => model.UnionTypeName == name)?.Cases.Values
+          .Aggregate(ExpoJavaScriptKinds.None, (kinds, item) => kinds | item.Kinds) ?? ExpoJavaScriptKinds.None;
     }
 
     if (payloadType.TypeKind == TypeKind.Enum)

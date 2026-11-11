@@ -20,6 +20,7 @@ internal sealed record ExpoModuleModel(
     EquatableArray<ExpoPropertyModel> Properties,
     EquatableArray<ExpoSharedObjectClassModel> SharedObjectClasses,
     EquatableArray<ExpoGeneratedRecordCodecModel> RecordCodecs,
+    EquatableArray<ExpoGeneratedUnionCodecModel> UnionCodecs,
     EquatableArray<ExpoDiagnosticModel> Diagnostics);
 
 internal sealed record ExpoSharedObjectClassModel(
@@ -157,6 +158,27 @@ internal enum ExpoRecordFieldKind
   OptionalByType,
   Defaulted,
 }
+
+// One generated union codec. A cache hit rebuilds the same descriptor from ResourceOwnership. The
+// codec type name is deduplicated by UnionTypeName, like record codecs.
+internal sealed record ExpoGeneratedUnionCodecModel(
+    string CodecTypeName,
+    string UnionTypeName,
+    string UnionName,
+    EquatableArray<ExpoGeneratedUnionCaseModel> Cases,
+    ExpoResourceOwnership ResourceOwnership,
+    Location? Location);
+
+// IntegerGate is the C# condition over __expoNumber that an integer case that is not the last
+// number case needs, or the empty string.
+internal sealed record ExpoGeneratedUnionCaseModel(
+    string CaseName,
+    string CaseTypeName,
+    string PayloadPropertyName,
+    string PayloadMessageName,
+    ExpoCodecDescriptor PayloadCodec,
+    ExpoJavaScriptKinds Kinds,
+    string IntegerGate);
 
 // The JavaScript kinds a union payload decodes. Member names equal the JavaScriptValueKind names, so
 // emission writes global::Expo.JSI.JavaScriptValueKind.<Name>.

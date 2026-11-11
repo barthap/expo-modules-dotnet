@@ -732,6 +732,18 @@ public sealed partial class ExpoModulesGenerator
       };
     }
 
+    // A union is classified before the record branch: it is an abstract record, and its cases are
+    // positional records that must never become record codecs.
+    if (typeSymbol is INamedTypeSymbol unionType && IsUnionType(unionType))
+    {
+      return TryGetUnionCodec(unionType, diagnostics, codecs);
+    }
+
+    if (IsUnionCaseType(typeSymbol))
+    {
+      return null;
+    }
+
     // A union never reaches the later branches, even when it is rejected. Either<,>? reaches this
     // branch through TryGetNullableCodec.
     if (typeSymbol is INamedTypeSymbol eitherType &&

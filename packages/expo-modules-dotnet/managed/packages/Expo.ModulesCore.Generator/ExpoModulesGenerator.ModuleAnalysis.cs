@@ -128,6 +128,7 @@ public sealed partial class ExpoModulesGenerator
         new EquatableArray<ExpoPropertyModel>(properties),
         new EquatableArray<ExpoSharedObjectClassModel>(sharedObjectClasses),
         new EquatableArray<ExpoGeneratedRecordCodecModel>(codecs.Records),
+        new EquatableArray<ExpoGeneratedUnionCodecModel>(codecs.Unions),
         new EquatableArray<ExpoDiagnosticModel>(diagnostics)
     );
   }
