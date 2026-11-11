@@ -1035,3 +1035,55 @@ public sealed partial class UnionThingsModule
 }
 
 public sealed record UnionHolder(Either<string, ArrayBuffer> Content, int Count);
+
+public enum ParameterDefaultMode
+{
+  Slow,
+  Fast,
+}
+
+[ExpoSharedObject]
+public sealed partial class ParameterDefaultPicker : SharedObject
+{
+  [JS]
+  public ParameterDefaultPicker(ParameterDefaultMode mode = ParameterDefaultMode.Fast)
+  {
+    Picked = mode.ToString();
+  }
+
+  [JS]
+  public string Picked { get; }
+}
+
+[ExpoModule("GeneratedParameterDefaults", Classes = new[] { typeof(ParameterDefaultPicker) })]
+public sealed partial class GeneratedParameterDefaultsModule
+{
+  [JS]
+  public string Pick(ParameterDefaultMode mode = ParameterDefaultMode.Fast) => mode.ToString();
+
+  [JS]
+  public string PickNullable(ParameterDefaultMode? mode = ParameterDefaultMode.Slow) =>
+      mode?.ToString() ?? "null";
+
+  [JS]
+  public double Wait(TimeSpan delay = default) => delay.Ticks;
+
+  [JS]
+  public double Edge(
+      int which,
+      double nan = double.NaN,
+      double low = double.NegativeInfinity,
+      double zero = -0.0) =>
+      which switch
+      {
+        0 => nan,
+        1 => low,
+        _ => zero,
+      };
+
+  [JS]
+  public int Small(byte value = 5) => value;
+
+  [JS]
+  public string Escaped(string value = "q\"b\\n\n\t\u2028\u00e9\U0001F600") => value;
+}

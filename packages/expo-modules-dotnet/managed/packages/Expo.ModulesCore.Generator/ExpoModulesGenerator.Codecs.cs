@@ -5,37 +5,80 @@ namespace Expo.ModulesCore.Generator;
 
 public sealed partial class ExpoModulesGenerator
 {
+  // Renders a parameter default as a C# expression of the parameter's own type, so a conditional
+  // `undefined ? <default> : <decode>` has that type. The text depends only on the constant, not
+  // on the culture or the runtime that hosts the compiler. Codec resolution rejects every type
+  // whose constant this does not cover (char, decimal, nint) before a default is rendered.
   private static string GetDefaultValueExpression(ITypeSymbol typeSymbol, object? value)
   {
+    var isNullableValueType = typeSymbol is INamedTypeSymbol
+    {
+      ConstructedFrom.SpecialType: SpecialType.System_Nullable_T,
+    };
     if (value is null)
     {
-      return "null";
+      return typeSymbol.IsValueType && !isNullableValueType
+          ? $"default({typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})"
+          : "null";
     }
 
-    if (typeSymbol is INamedTypeSymbol namedType &&
-        namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
+    if (isNullableValueType)
     {
-      typeSymbol = namedType.TypeArguments.Single();
+      typeSymbol = ((INamedTypeSymbol)typeSymbol).TypeArguments.Single();
+    }
+
+    if (typeSymbol is INamedTypeSymbol { TypeKind: TypeKind.Enum, EnumUnderlyingType: { } underlyingType })
+    {
+      return $"({typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})({GetEnumUnderlyingLiteral(underlyingType.SpecialType, value)})";
     }
 
     return typeSymbol.SpecialType switch
     {
       SpecialType.System_Boolean => (bool)value ? "true" : "false",
       SpecialType.System_String => $"\"{EscapeString((string)value)}\"",
-      SpecialType.System_SByte => ((sbyte)value).ToString(CultureInfo.InvariantCulture),
-      SpecialType.System_Byte => ((byte)value).ToString(CultureInfo.InvariantCulture),
-      SpecialType.System_Int16 => ((short)value).ToString(CultureInfo.InvariantCulture),
-      SpecialType.System_UInt16 => ((ushort)value).ToString(CultureInfo.InvariantCulture),
+      SpecialType.System_SByte => $"(sbyte)({((sbyte)value).ToString(CultureInfo.InvariantCulture)})",
+      SpecialType.System_Byte => $"(byte)({((byte)value).ToString(CultureInfo.InvariantCulture)})",
+      SpecialType.System_Int16 => $"(short)({((short)value).ToString(CultureInfo.InvariantCulture)})",
+      SpecialType.System_UInt16 => $"(ushort)({((ushort)value).ToString(CultureInfo.InvariantCulture)})",
       SpecialType.System_Int32 => ((int)value).ToString(CultureInfo.InvariantCulture),
-      SpecialType.System_UInt32 => ((uint)value).ToString(CultureInfo.InvariantCulture),
+      SpecialType.System_UInt32 => ((uint)value).ToString(CultureInfo.InvariantCulture) + "U",
       SpecialType.System_Int64 => ((long)value).ToString(CultureInfo.InvariantCulture) + "L",
       SpecialType.System_UInt64 => ((ulong)value).ToString(CultureInfo.InvariantCulture) + "UL",
-      SpecialType.System_Single => ((float)value).ToString("R", CultureInfo.InvariantCulture) + "F",
-      SpecialType.System_Double => ((double)value).ToString("R", CultureInfo.InvariantCulture),
+      SpecialType.System_Single => GetSingleLiteral((float)value),
+      SpecialType.System_Double => GetDoubleLiteral((double)value),
+      // Unreachable: a type outside this table has no codec, and the caller reports that first.
       _ => throw new InvalidOperationException(
           $"Unsupported default value type: {typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}"
       ),
     };
+  }
+
+  // An enum value of any underlying type fits the literal of that type, and an explicit enum cast
+  // from it always compiles, also for a [Flags] combination or a value that names no member.
+  private static string GetEnumUnderlyingLiteral(SpecialType underlyingType, object value) => underlyingType switch
+  {
+    SpecialType.System_UInt32 => ((uint)value).ToString(CultureInfo.InvariantCulture) + "U",
+    SpecialType.System_Int64 => ((long)value).ToString(CultureInfo.InvariantCulture) + "L",
+    SpecialType.System_UInt64 => ((ulong)value).ToString(CultureInfo.InvariantCulture) + "UL",
+    _ => Convert.ToInt32(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture),
+  };
+
+  private static string GetDoubleLiteral(double value)
+  {
+    if (double.IsNaN(value)) return "global::System.Double.NaN";
+    if (double.IsPositiveInfinity(value)) return "global::System.Double.PositiveInfinity";
+    if (double.IsNegativeInfinity(value)) return "global::System.Double.NegativeInfinity";
+    if (value == 0 && double.IsNegativeInfinity(1 / value)) return "-0.0";
+    return value.ToString("G17", CultureInfo.InvariantCulture);
+  }
+
+  private static string GetSingleLiteral(float value)
+  {
+    if (float.IsNaN(value)) return "global::System.Single.NaN";
+    if (float.IsPositiveInfinity(value)) return "global::System.Single.PositiveInfinity";
+    if (float.IsNegativeInfinity(value)) return "global::System.Single.NegativeInfinity";
+    if (value == 0 && float.IsNegativeInfinity(1 / value)) return "-0.0F";
+    return value.ToString("G9", CultureInfo.InvariantCulture) + "F";
   }
 
   // Codec type arguments keep their nullable reference annotations. A nullable inner codec

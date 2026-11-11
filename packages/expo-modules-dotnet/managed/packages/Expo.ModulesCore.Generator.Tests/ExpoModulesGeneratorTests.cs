@@ -1304,6 +1304,188 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Contains("System.Decimal", diagnostic.GetMessage());
   }
 
+  // Each case was a generator crash (enum), a compile error (struct default, NaN, small integers),
+  // or a silent sign change (-0.0). Generated glue must compile clean and keep the constant.
+  [Fact]
+  public void GeneratorRendersEnumParameterDefaultsAsCasts()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        #nullable enable
+        using System;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        public enum Mode { Slow, Fast }
+        [Flags] public enum Access { None = 0, Read = 1, Write = 2 }
+        public enum Wide : ulong { Max = ulong.MaxValue }
+        public enum Signed : sbyte { Minus = -1 }
+
+        [ExpoSharedObject]
+        public sealed partial class Picker : SharedObject
+        {
+          [JS] public Picker(Mode mode = Mode.Fast, TimeSpan delay = default, double nan = double.NaN, double low = double.NegativeInfinity, double zero = -0.0) { }
+          [JS] public string Again(Mode mode = Mode.Slow) => "";
+        }
+
+        [ExpoModule("Defaults", Classes = new[] { typeof(Picker) })]
+        public sealed partial class DefaultsModule
+        {
+          [JS] public string Pick(Mode mode = Mode.Fast) => "";
+          [JS] public string PickNullable(Mode? mode = Mode.Slow) => "";
+          [JS] public string PickFlags(Access access = Access.Read | Access.Write) => "";
+          [JS] public string PickUnnamed(Mode mode = (Mode)7) => "";
+          [JS] public string PickWide(Wide wide = Wide.Max) => "";
+          [JS] public string PickSigned(Signed signed = Signed.Minus) => "";
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, item => item.Id == "CS8785");
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var source = GeneratedText(result);
+    Assert.Contains("? (global::Expo.TestModules.Mode)(1) :", source, StringComparison.Ordinal);
+    Assert.Contains("? (global::Expo.TestModules.Mode)(0) :", source, StringComparison.Ordinal);
+    Assert.Contains("? (global::Expo.TestModules.Access)(3) :", source, StringComparison.Ordinal);
+    Assert.Contains("? (global::Expo.TestModules.Mode)(7) :", source, StringComparison.Ordinal);
+    Assert.Contains("? (global::Expo.TestModules.Wide)(18446744073709551615UL) :", source, StringComparison.Ordinal);
+    Assert.Contains("? (global::Expo.TestModules.Signed)(-1) :", source, StringComparison.Ordinal);
+    // The shared-object constructor path renders through the same function.
+    Assert.Contains("? default(global::System.TimeSpan) :", source, StringComparison.Ordinal);
+    Assert.Contains("? global::System.Double.NaN :", source, StringComparison.Ordinal);
+    Assert.Contains("? global::System.Double.NegativeInfinity :", source, StringComparison.Ordinal);
+    Assert.Contains("? -0.0 :", source, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void GeneratorRendersValueTypeDefaultsAsDefaultExpressions()
+  {
+    var result = GeneratorTestHost.Run(
+        ModuleSource(
+            "",
+            """
+            [JS] public string Wait(TimeSpan delay = default) => "";
+            [JS] public string Id(Guid id = new()) => "";
+            [JS] public string At(DateTimeOffset at = default) => "";
+            [JS] public int Mem(Memory<byte> bytes = default) => 0;
+            [JS] public string Union(Either<string, double> value = default) => "";
+            [JS] public string Maybe(TimeSpan? delay = default) => "";
+            """
+        )
+    );
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var source = GeneratedText(result);
+    Assert.Contains("? default(global::System.TimeSpan) :", source, StringComparison.Ordinal);
+    Assert.Contains("? default(global::System.Guid) :", source, StringComparison.Ordinal);
+    Assert.Contains("? default(global::System.DateTimeOffset) :", source, StringComparison.Ordinal);
+    Assert.Contains("? default(global::System.Memory<byte>) :", source, StringComparison.Ordinal);
+    Assert.Contains("? default(global::Expo.ModulesCore.Either<string, double>) :", source, StringComparison.Ordinal);
+    // A nullable value type keeps null, which is its default.
+    Assert.Contains("? null : NullableCodec<global::System.TimeSpan, TimeSpanCodec>.Decode(", source, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void GeneratorRendersFloatingPointEdgeDefaults()
+  {
+    var result = GeneratorTestHost.Run(
+        ModuleSource(
+            "",
+            """
+            [JS] public double D(double nan = double.NaN, double low = double.NegativeInfinity, double high = double.PositiveInfinity, double zero = -0.0, double tenth = 0.1, double tiny = double.Epsilon, double max = double.MaxValue) => 0;
+            [JS] public float F(float nan = float.NaN, float low = float.NegativeInfinity, float zero = -0.0F, float tenth = 0.1F, float max = float.MaxValue) => 0;
+            """
+        )
+    );
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var source = GeneratedText(result);
+    Assert.Contains("? global::System.Double.NaN :", source, StringComparison.Ordinal);
+    Assert.Contains("? global::System.Double.NegativeInfinity :", source, StringComparison.Ordinal);
+    Assert.Contains("? global::System.Double.PositiveInfinity :", source, StringComparison.Ordinal);
+    Assert.Contains("? -0.0 :", source, StringComparison.Ordinal);
+    Assert.Contains("? 0.10000000000000001 :", source, StringComparison.Ordinal);
+    Assert.Contains("? 4.9406564584124654E-324 :", source, StringComparison.Ordinal);
+    Assert.Contains("? 1.7976931348623157E+308 :", source, StringComparison.Ordinal);
+    Assert.Contains("? global::System.Single.NaN :", source, StringComparison.Ordinal);
+    Assert.Contains("? global::System.Single.NegativeInfinity :", source, StringComparison.Ordinal);
+    Assert.Contains("? -0.0F :", source, StringComparison.Ordinal);
+    Assert.Contains("? 0.100000001F :", source, StringComparison.Ordinal);
+    Assert.Contains("? 3.40282347E+38F :", source, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void GeneratorRendersIntegerDefaultsWithTheirOwnType()
+  {
+    var result = GeneratorTestHost.Run(
+        ModuleSource(
+            "",
+            """
+            [JS] public int Small(sbyte a = -5, byte b = 5, short c = -300, ushort d = 300, byte? e = 6) => 0;
+            [JS] public int Wide(int a = int.MinValue, uint b = 7, long c = long.MinValue, ulong d = ulong.MaxValue) => 0;
+            """
+        )
+    );
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var source = GeneratedText(result);
+    Assert.Contains("? (sbyte)(-5) :", source, StringComparison.Ordinal);
+    Assert.Contains("? (byte)(5) :", source, StringComparison.Ordinal);
+    Assert.Contains("? (short)(-300) :", source, StringComparison.Ordinal);
+    Assert.Contains("? (ushort)(300) :", source, StringComparison.Ordinal);
+    Assert.Contains("? (byte)(6) :", source, StringComparison.Ordinal);
+    Assert.Contains("? -2147483648 :", source, StringComparison.Ordinal);
+    Assert.Contains("? 7U :", source, StringComparison.Ordinal);
+    Assert.Contains("? -9223372036854775808L :", source, StringComparison.Ordinal);
+    Assert.Contains("? 18446744073709551615UL :", source, StringComparison.Ordinal);
+  }
+
+  // Guard: string escapes already work; this pins them so the renderer rewrite keeps them.
+  [Fact]
+  public void GeneratorRendersStringDefaultsWithEscapes()
+  {
+    var result = GeneratorTestHost.Run(
+        ModuleSource(
+            "",
+            """
+            [JS] public string Text(string value = "q\"b\\n\n\t\u2028\u00e9\U0001F600") => value;
+            """
+        )
+    );
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    Assert.Contains(
+        """? "q\"b\\n\n\t\u2028é\uD83D\uDE00" :""",
+        GeneratedText(result),
+        StringComparison.Ordinal
+    );
+  }
+
+  // Guard: char and decimal have no codec, so they are rejected before any default is rendered,
+  // and the generator does not throw.
+  [Fact]
+  public void GeneratorReportsCharAndDecimalDefaultsAsUnsupportedTypes()
+  {
+    var result = GeneratorTestHost.Run(
+        ModuleSource(
+            "",
+            """
+            [JS] public string Letter(char c = 'a') => "";
+            [JS] public string Amount(decimal d = 1.5m) => "";
+            """
+        )
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, item => item.Id == "CS8785");
+    Assert.Equal(new[] { "EXPOJSI001", "EXPOJSI001" }, GeneratorDiagnosticIds(result));
+  }
+
   [Fact]
   public void GeneratorEmitsNativeModuleRegistrationForEventModule()
   {

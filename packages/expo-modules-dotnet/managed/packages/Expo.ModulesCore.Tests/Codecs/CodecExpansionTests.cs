@@ -129,6 +129,42 @@ public sealed class GeneratedCodecExpansionModuleTests
     });
   }
 
+  // The defaults reach authored code with their exact value: the enum member, TimeSpan.Zero, NaN,
+  // -Infinity, negative zero (which `-0` used to lose), a byte, and an escaped string.
+  [Fact]
+  public void GeneratedProviderAppliesEnumValueTypeAndEdgeParameterDefaults()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+      using var result = fixture.Evaluate(
+          """
+          const m = globalThis._expoDotnet.modules.GeneratedParameterDefaults;
+          [
+            m.pick(),
+            m.pick(undefined),
+            m.pickNullable(),
+            m.pickNullable(null),
+            m.wait(),
+            Number.isNaN(m.edge(0)),
+            m.edge(1) === -Infinity,
+            Object.is(m.edge(2), -0),
+            m.small(),
+            m.escaped() === 'q"b\\n\n\t\u2028\u00e9\u{1F600}',
+            new m.ParameterDefaultPicker().picked,
+          ].join(':')
+          """,
+          "parameter-defaults.js"
+      );
+
+      Assert.Equal("Fast:Fast:Slow:null:0:true:true:true:5:true:Fast", result.AsString());
+      return true;
+    });
+  }
+
   [Fact]
   public void GeneratedProviderRejectsStalePascalCaseForRequiredRecordField()
   {
