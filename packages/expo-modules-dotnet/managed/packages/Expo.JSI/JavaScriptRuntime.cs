@@ -362,11 +362,15 @@ public sealed unsafe class JavaScriptRuntime
   /// </summary>
   /// <remarks>
   /// The returned <see cref="JavaScriptPromiseValue" /> owns the promise value and must be disposed
-  /// by the caller. The internal promise capability is released after the operation settles.
+  /// by the caller. The internal promise capability is released after the operation settles. When
+  /// <paramref name="createError" /> is set, a failed operation or result factory rejects with the
+  /// factory's value; without it, or when it fails, the promise rejects with an <c>Error</c> whose
+  /// message is the exception's <see cref="Exception.Message" />.
   /// </remarks>
   public JavaScriptPromiseValue CreatePromise(
       Func<CancellationToken, Task<JavaScriptPromiseResult>> operation,
-      CancellationToken cancellationToken = default
+      CancellationToken cancellationToken = default,
+      JavaScriptErrorFactory? createError = null
   )
   {
     ArgumentNullException.ThrowIfNull(operation);
@@ -375,7 +379,7 @@ public sealed unsafe class JavaScriptRuntime
     try
     {
       var promiseValue = promise.AsValue();
-      _ = JavaScriptPromiseScheduler.SettleAsync(this, promise, operation, cancellationToken);
+      _ = JavaScriptPromiseScheduler.SettleAsync(this, promise, operation, createError, cancellationToken);
       return new JavaScriptPromiseValue(promiseValue);
     }
     catch

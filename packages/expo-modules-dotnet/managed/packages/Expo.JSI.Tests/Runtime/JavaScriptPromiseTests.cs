@@ -1378,6 +1378,119 @@ public sealed class JavaScriptPromiseTests
     });
   }
 
+  // A promise with an error factory rejects with the factory's value and disposes it after Reject.
+  [Fact]
+  public async Task CreatePromiseWithErrorFactoryRejectsWithTheFactoryValue()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var failure = new InvalidOperationException("operation failed");
+    var calls = 0;
+    Exception? received = null;
+
+    StartFactoryPromise(
+        fixture,
+        _ => Task.FromException<JavaScriptPromiseResult>(failure),
+        (runtime, exception) =>
+        {
+          calls++;
+          received = exception;
+          using var global = runtime.Global();
+          return global.GetProperty("marker");
+        }
+    );
+
+    Assert.Equal("marker", await ReadFactoryRejectionAsync(fixture));
+    Assert.Equal(1, calls);
+    Assert.Same(failure, received);
+    Assert.Equal(0u, fixture.Counters.OwnedValuesTracked);
+  }
+
+  // A failing result factory (for example result encoding) also goes through the error factory.
+  [Fact]
+  public async Task CreatePromiseResultFactoryFailureUsesTheErrorFactory()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    var encodeFailure = new InvalidOperationException("encode failed");
+    Exception? received = null;
+
+    StartFactoryPromise(
+        fixture,
+        _ => Task.FromResult(JavaScriptPromiseResult.Resolve(_ => throw encodeFailure)),
+        (runtime, exception) =>
+        {
+          received = exception;
+          using var global = runtime.Global();
+          return global.GetProperty("marker");
+        }
+    );
+
+    Assert.Equal("marker", await ReadFactoryRejectionAsync(fixture));
+    Assert.Same(encodeFailure, received);
+    Assert.Equal(0u, fixture.Counters.OwnedValuesTracked);
+  }
+
+  // A throwing factory falls back to an Error from the original Message, with no chain.
+  [Fact]
+  public async Task CreatePromiseThrowingErrorFactoryRejectsWithTheOriginalMessage()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    StartFactoryPromise(
+        fixture,
+        _ => Task.FromException<JavaScriptPromiseResult>(
+            new InvalidOperationException("operation failed", new InvalidOperationException("inner"))
+        ),
+        (runtime, _) =>
+        {
+          using var partial = runtime.CreateObject();
+          throw new InvalidOperationException("factory failed");
+        }
+    );
+
+    Assert.Equal("Error:operation failed", await ReadFactoryRejectionAsync(fixture));
+    Assert.Equal(0u, fixture.Counters.OwnedValuesTracked);
+  }
+
+  private static void StartFactoryPromise(
+      HermesRuntimeFixture fixture,
+      Func<CancellationToken, Task<JavaScriptPromiseResult>> operation,
+      JavaScriptErrorFactory createError
+  )
+  {
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var global = runtime.Global();
+      using var promise = runtime.CreatePromise(operation, createError: createError);
+      using var promiseValue = promise.AsValue();
+      global.SetProperty("factoryPromise", promiseValue);
+      using var setup = fixture.Evaluate(
+          """
+          globalThis.marker = { tag: 'rejection' };
+          globalThis.factoryRejection = 'pending';
+          globalThis.factoryPromise.catch(reason => {
+            globalThis.factoryRejection = reason === globalThis.marker
+              ? 'marker'
+              : `${reason instanceof Error ? 'Error' : typeof reason}:${reason && reason.message}`;
+          });
+          true;
+          """,
+          "promise-factory-setup.js"
+      );
+      return true;
+    });
+  }
+
+  private static async Task<string> ReadFactoryRejectionAsync(HermesRuntimeFixture fixture)
+  {
+    await EventuallyAsync(fixture, "globalThis.factoryRejection !== 'pending'", value => value.AsBool());
+    fixture.WaitUntilIdle();
+    return fixture.Runtime.Execute(_ =>
+    {
+      using var value = fixture.Evaluate("globalThis.factoryRejection", "promise-factory-read.js");
+      return value.AsString();
+    });
+  }
+
   [Fact]
   public void CreateErrorObjectCreatesJavaScriptErrorObject()
   {
