@@ -359,7 +359,9 @@ public static class GeneratedSharedObjectClass
             $"{name} construct",
             3,
             GeneratedFunction.InvokeGeneratedHostFunction,
-            constructRegistration
+            constructRegistration,
+            null,
+            GeneratedFunction.CreateJavaScriptError
         );
         using var constructTrapValue = constructTrap.AsValue();
         handler.SetProperty("construct", constructTrapValue);
@@ -368,7 +370,9 @@ public static class GeneratedSharedObjectClass
             $"{name} apply",
             3,
             GeneratedFunction.InvokeGeneratedHostFunction,
-            applyRegistration
+            applyRegistration,
+            null,
+            GeneratedFunction.CreateJavaScriptError
         );
         using var applyTrapValue = applyTrap.AsValue();
         handler.SetProperty("apply", applyTrapValue);

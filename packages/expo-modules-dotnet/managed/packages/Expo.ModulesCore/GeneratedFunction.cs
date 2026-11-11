@@ -39,7 +39,9 @@ public static class GeneratedFunction
         name,
         parameterCount,
         InvokeGeneratedHostFunction,
-        registration
+        registration,
+        null,
+        CreateJavaScriptError
     );
     using var functionValue = function.AsValue();
     module.SetProperty(name, functionValue);
@@ -64,7 +66,9 @@ public static class GeneratedFunction
         name,
         parameterCount,
         InvokeGeneratedHostFunction,
-        registration
+        registration,
+        null,
+        CreateJavaScriptError
     );
     using var functionValue = function.AsValue();
     module.SetProperty(name, functionValue);
@@ -84,7 +88,7 @@ public static class GeneratedFunction
     ArgumentNullException.ThrowIfNull(callback);
     ArgumentNullException.ThrowIfNull(context);
 
-    using var function = runtime.CreateHostFunction(name, parameterCount, callback, context);
+    using var function = runtime.CreateHostFunction(name, parameterCount, callback, context, null, CreateJavaScriptError);
     using var functionValue = function.AsValue();
     module.SetProperty(name, functionValue);
   }
@@ -94,14 +98,11 @@ public static class GeneratedFunction
     ArgumentNullException.ThrowIfNull(runtime);
     ArgumentNullException.ThrowIfNull(exception);
 
+    // The scheduler converts the exception, so a failing converter falls back to the original
+    // exception's Message (spec: "Converter itself fails").
     using var promiseValue = runtime.CreatePromise(
-        _ => global::System.Threading.Tasks.Task.FromResult(
-            JavaScriptPromiseResult.Reject(jsRuntime =>
-            {
-              using var error = jsRuntime.CreateErrorObject(exception.Message);
-              return error.AsValue();
-            })
-        )
+        _ => global::System.Threading.Tasks.Task.FromException<JavaScriptPromiseResult>(exception),
+        createError: CreateJavaScriptError
     );
     return promiseValue.AsValue();
   }

@@ -326,6 +326,34 @@ public sealed class SharedObjectRegistryTests
     Assert.Equal(0u, fixture.Counters.LongLivedObjectsRemaining);
   }
 
+  // The release function of an internal registry instance (SharedObjectPrototype.CreateInstance)
+  // converts a failure like every other module-created function.
+  [Fact]
+  public void InternalInstanceReleaseThrowsAConvertedError()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var registry = new SharedObjectRegistry(runtime);
+      using var instance = registry.GetOrCreateJavaScriptObject(new TestSharedObject());
+      using var instanceValue = instance.AsValue();
+      using (var global = runtime.Global())
+      {
+        global.SetProperty("__internalShared", instanceValue);
+      }
+      using var message = fixture.Evaluate(
+          "try { Object.getPrototypeOf(globalThis.__internalShared).release.call({}); 'no error'; } " +
+          "catch (e) { `${e instanceof Error}:${'code' in e}:${e.message}`; }",
+          "internal-release-error.js"
+      );
+      Assert.Equal(
+          "true:false:NativeState entry for SharedObjectNativeState is missing.",
+          message.AsString()
+      );
+      return true;
+    });
+  }
+
   private sealed class TestSharedObject(bool throwOnRelease = false) : ISharedObjectLifetime
   {
     public int ReleaseCount { get; private set; }
