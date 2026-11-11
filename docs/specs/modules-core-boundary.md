@@ -813,25 +813,60 @@ partial class. The generated implementation SHALL return one cached delegate
 per module instance. `Action`, `Action<T>`, and other delegate shapes SHALL
 not be supported because they would discard the dispatch task.
 
-The implicit JavaScript event name SHALL lowercase only the first C# property
-character. `[Event(name)]` SHALL use its explicit name verbatim, and the
-generator SHALL NOT strip an `On` prefix.
+The implicit JavaScript event name SHALL be derived from the C# property name.
+When the property name starts with exactly `On` or `on`, has more than two
+characters, and its third character is an uppercase letter, the generator SHALL
+drop that two-character prefix and lowercase only the first character of the
+remainder invariantly. Otherwise it SHALL lowercase only the first character
+invariantly, as for generated members. `[Event(name)]` SHALL use its explicit
+name verbatim, including names that start with `on`. Each typed event SHALL be
+declared under exactly one JavaScript name. The generator SHALL NOT also declare
+the C# property name, the lower-camel property name, or the name without the
+prefix as an alias. One generator helper SHALL derive the implicit name for
+both module and shared-object events.
 
 #### Scenario: Typed payload and payload-less events are generated
 - **GIVEN** a module declares `[Event] public partial Func<Task> OnReady { get; }`
   and `[Event] public partial Func<ProgressEvent, Task> OnProgress { get; }`
 - **WHEN** generated registration creates the module
 - **THEN** each property SHALL return a cached delegate
-- **AND** awaiting `OnReady()` SHALL dispatch `onReady` without a payload
-- **AND** awaiting `OnProgress(value)` SHALL dispatch `onProgress` with its
+- **AND** awaiting `OnReady()` SHALL dispatch `ready` without a payload
+- **AND** awaiting `OnProgress(value)` SHALL dispatch `progress` with its
   generated `ProgressEvent` codec
 
 #### Scenario: Explicit typed event name is preserved
 - **GIVEN** a module declares
   `[Event("StatusChanged")] public partial Func<string, Task> OnStatus { get; }`
-- **WHEN** generated registration declares the event
-- **THEN** JavaScript SHALL observe `StatusChanged` verbatim
-- **AND** it SHALL NOT receive `onStatus` as an alias
+  and
+  `[Event("onDatabaseChange")] public partial Func<string, Task> OnDatabaseChange { get; }`
+- **WHEN** generated registration declares the events
+- **THEN** JavaScript SHALL observe `StatusChanged` and `onDatabaseChange`
+  verbatim
+- **AND** it SHALL NOT receive `status`, `onStatus`, or `databaseChange` as
+  aliases
+
+#### Scenario: Implicit typed event names drop the On prefix
+- **GIVEN** modules declare bare `[Event]` properties named `OnProgress`,
+  `OnStatusChange`, `onFoo`, `OnX`, `OnURLChange`, `Online`, `On`, `On1Thing`,
+  `On_Foo`, `ONLine`, and `Changed`
+- **WHEN** the generator derives their JavaScript names
+- **THEN** the names SHALL be `progress`, `statusChange`, `foo`, `x`,
+  `uRLChange`, `online`, `on`, `on1Thing`, `on_Foo`, `oNLine`, and `changed`
+
+#### Scenario: Listener on the old prefixed name receives nothing
+- **GIVEN** a module declares `[Event] public partial Func<string, Task> OnProgress { get; }`
+- **AND** JavaScript adds one listener for `progress` and one for `onProgress`
+- **WHEN** C# awaits `OnProgress("50%")`
+- **THEN** the `progress` listener SHALL receive `"50%"` once
+- **AND** the `onProgress` listener SHALL NOT be called
+
+#### Scenario: Event and member names are separate namespaces
+- **GIVEN** a module declares `[Event] public partial Func<string, Task> OnStatus { get; }`
+  and `[JS] public string Status => ...`
+- **WHEN** the generator analyzes the module
+- **THEN** it SHALL report no diagnostic
+- **AND** JavaScript SHALL read the `status` property and SHALL also receive
+  `status` events through `addListener`
 
 ### Requirement: Typed Event Tasks Carry Dispatch Outcomes
 
@@ -989,6 +1024,8 @@ delegate types; and file-local, nested, generic, or non-partial containers.
 codec, or a nullable annotation on a `JavaScriptValue` at any depth.
 Legacy-only invalid or duplicate `[Events]` declarations SHALL continue to use
 `EXPOJSI009`.
+Duplicate detection SHALL compare derived and explicit JavaScript names, not C#
+property names.
 
 When a rejected member's partial-property declaration can be reproduced safely,
 the generator SHALL emit an inert matching implementation so the consuming
@@ -1011,11 +1048,22 @@ safely.
   source, or a secondary compiler error
 
 #### Scenario: Typed and legacy event names collide
-- **GIVEN** `[Events("onStatus")]` and `[Event] ... OnStatus` occur on one
-  module
+- **GIVEN** `[Events("status")]` and `[Event] ... OnStatus` occur on one module
 - **WHEN** the generator analyzes the module
-- **THEN** it SHALL report `EXPOJSI020`
+- **THEN** it SHALL report `EXPOJSI020` for the derived name `status`
 - **AND** it SHALL not silently merge the duplicate declarations
+
+#### Scenario: Derived typed event names collide
+- **GIVEN** a module declares `[Event] public partial Func<Task> OnReady { get; }`
+  and `[Event] public partial Func<Task> Ready { get; }`
+- **WHEN** the generator analyzes the module
+- **THEN** it SHALL report `EXPOJSI020` for the duplicate name `ready`
+
+#### Scenario: Legacy prefixed name and typed event coexist
+- **GIVEN** `[Events("onStatus")]` and `[Event] ... OnStatus` occur on one module
+- **WHEN** the generator analyzes the module
+- **THEN** it SHALL report no duplicate-name diagnostic
+- **AND** the module SHALL declare both `onStatus` and `status`
 
 ### Requirement: Event Observing Hooks Use Module Object Functions
 
@@ -1042,6 +1090,20 @@ those functions when listener counts transition for an event.
 - **WHEN** listener counts change for another event
 - **THEN** generated glue SHALL ignore that transition for the event-specific
   hook
+
+#### Scenario: Event-specific hook names the derived event name
+- **GIVEN** a module declares `[Event] public partial Func<string, Task> OnChange { get; }`
+- **AND** a hook declares `[OnStopObserving("change")]`
+- **WHEN** JavaScript removes the last `change` listener
+- **THEN** generated glue SHALL invoke the hook
+
+#### Scenario: Event-specific hook names the old prefixed name
+- **GIVEN** a module declares `[Event] public partial Func<string, Task> OnChange { get; }`
+  and no legacy `onChange` event
+- **AND** a hook declares `[OnStopObserving("onChange")]`
+- **WHEN** the generator analyzes the module
+- **THEN** it SHALL report `EXPOJSI010` because `onChange` is not a declared
+  event
 
 #### Scenario: Observing hook shape is invalid
 - **GIVEN** an authored observing hook is static, generic, returns a value, uses
@@ -3019,10 +3081,12 @@ release is idempotent and that any later native member access fails.
 `[Event]` SHALL be valid on an `[ExpoSharedObject]` class only when it is an
 instance, getter-only partial property of exactly `Func<Task>` or
 `Func<T, Task>`, and `T` has an event-safe compile-time codec. Implicit names
-SHALL lowercase only the first C# property character; explicit non-empty names
-SHALL be preserved verbatim. The generator SHALL cache one delegate per
-managed instance and initialize it during the first exact registered-class
-pairing. Reading it before pairing SHALL fail clearly.
+SHALL follow the module rule in "Typed Event Members Are Awaitable Generated
+Properties", which drops an `On` or `on` prefix that an uppercase letter
+follows. Explicit non-empty names SHALL be preserved verbatim. The generator
+SHALL cache one delegate per managed instance and initialize it during the
+first exact registered-class pairing. Reading it before pairing SHALL fail
+clearly.
 
 #### Scenario: Shared-object event is generated
 
@@ -3030,8 +3094,10 @@ pairing. Reading it before pairing SHALL fail clearly.
   `[Event] public partial Func<ProgressEvent, Task> OnProgress { get; }`
 - **WHEN** its instance first pairs with its generated JavaScript class
 - **THEN** the property SHALL return a cached awaitable delegate
-- **AND** awaiting it SHALL dispatch `onProgress` with the generated payload
+- **AND** awaiting it SHALL dispatch `progress` with the generated payload
   codec
+- **AND** a listener that the instance registers for `onProgress` SHALL NOT be
+  called
 
 ### Requirement: Shared-Object Listeners Are JavaScript-Owned And Instance Scoped
 
@@ -3165,6 +3231,16 @@ source order SHALL NOT select one declaration for dispatch glue.
 - **THEN** it SHALL report `EXPOJSI027`
 - **AND** it SHALL not emit reflection, dynamic conversion, or callback encode
   source
+
+#### Scenario: Derived shared-object event names collide
+
+- **GIVEN** a shared object declares
+  `[Event] public partial Func<Task> OnReady { get; }` and
+  `[Event] public partial Func<Task> Ready { get; }`
+- **WHEN** the generator analyzes it
+- **THEN** it SHALL report `EXPOJSI028` on both declarations for the duplicate
+  name `ready`
+- **AND** neither declaration SHALL receive dispatch glue
 
 ### Requirement: Shared-Object TypeScript Facades Type Event Maps
 
