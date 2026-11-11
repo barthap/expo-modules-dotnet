@@ -255,4 +255,13 @@ internal static class ExpoModulesDiagnostics
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true
   );
+
+  public static readonly DiagnosticDescriptor InvalidUnionDeclaration = new(
+      id: "EXPOJSI029",
+      title: "Invalid union declaration",
+      messageFormat: "Union '{0}' is invalid: {1}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
 }

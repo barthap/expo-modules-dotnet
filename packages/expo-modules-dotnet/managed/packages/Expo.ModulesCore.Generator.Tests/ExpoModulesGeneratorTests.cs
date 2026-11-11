@@ -4,7 +4,7 @@ using Xunit;
 
 namespace Expo.ModulesCore.Generator.Tests;
 
-public sealed class ExpoModulesGeneratorTests
+public sealed partial class ExpoModulesGeneratorTests
 {
   [Theory]
   [InlineData("[JS] public JavaScriptCallback<string> Direct { get; } = null!;", "Direct")]
