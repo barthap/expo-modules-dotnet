@@ -230,14 +230,68 @@ with the returned subscription's `remove()` method.
 
 ## Modules
 
+### Declare a module
+
+<!-- backed-by: test GeneratorEmitsDeterministicProviderForAssembly; source ExpoModulesGenerator.CreateModuleModel -->
+<!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/modules.mdx -->
+`[ExpoModule("Name")]` on a `partial` class declares a module. `[ExpoModule]`
+without an argument strips a trailing `Module` from the class name, so
+`MathModule` registers as `Math`. Upstream uses the class name verbatim. EMC-75
+changes this.
+
+<!-- backed-by: spec "Requirement: Runtime Context Owns Module Instances" (modules-core-boundary.md); source Module; test GeneratorReportsUnsupportedModuleConstructor -->
+The `Module` base class is optional. A module without it declares a
+parameterless constructor or a constructor that takes `DotnetRuntimeContext`.
+Another constructor shape is build error `EXPOJSI003`. `V2MathModule` has no
+base class and no constructor.
+
+```csharp
+// apps/hermes-console-app/managed/HermesConsoleApp/V2MathModule.cs
+using Expo.ModulesCore;
+
+namespace HermesConsoleApp;
+
+[ExpoModule("V2Math")]
+internal sealed partial class V2MathModule
+{
+  [JS("add")]
+  public double Add(double a, double b)
+  {
+    return a + b;
+  }
+}
+```
+
 ### Functions
 
+<!-- backed-by: spec "Requirement: Generated JavaScript Member Names Are Lower Camel" (modules-core-boundary.md); test GeneratorEmitsDefaultAndExplicitFunctionNames -->
+`[JS]` exports a method. The default JavaScript name lowercases the first
+character. `[JS("name")]` sets the name.
+
+<!-- backed-by: test GeneratorReportsDuplicateJavaScriptFunctionName; test GeneratorRejectsPropertyThatCollidesWithDuplicateMethodName -->
+Two `[JS]` members that resolve to one JavaScript name are build errors
+(`EXPOJSI005` for functions, `EXPOJSI016` for members). A C# overload
+therefore cannot export one JavaScript function with several shapes.
+
+<!-- backed-by: spec "Requirement: Optional Nullable Reference Arguments Preserve Authored Defaults" (modules-core-boundary.md); test GeneratedProviderUsesDefaultForMissingOrUndefinedOptionalNullableArguments; test GeneratorPreservesLeafFreeCodecPolicyModuleOutputContract; source ExpoModulesGenerator.GetDefaultValueExpression -->
+Omitting a parameter that has a C# default value, or passing `undefined`, uses
+the default value. Defaults work for `bool`, `string`, numeric types and
+`null`, for nullable and non-nullable parameters.
+
+<!-- backed-by: source ExpoModulesGenerator.GetRequiredParameterCount; source GeneratedFunction.RequireArgumentCount; test GeneratedAsyncArgumentCountFailureRejectsPromise -->
+The generated function checks the argument count. The minimum is the number of
+parameters without a default. The maximum is the number of parameters. A call
+outside that range throws, and an async function rejects its Promise. A
+trailing nullable parameter without a default is required (EMC-63).
+
+<!-- backed-by: spec "Requirement: Unsupported Signatures Are Build Diagnostics" (modules-core-boundary.md) -->
 Unsupported parameter, return, constructor, method, and property shapes and
 duplicate exported names are reported as generator build diagnostics, not
 runtime failures.
 
 ### Asynchronous functions
 
+<!-- backed-by: spec "Requirement: Async Function Generation Returns Promises" (modules-core-boundary.md); spec "Requirement: Async Function Failures Reject Promises" (modules-core-boundary.md) -->
 A `[JS]` method returning `Task` or `Task<T>` is generated as a
 promise-returning JavaScript function instead of a direct-call one:
 
@@ -251,6 +305,7 @@ promise-returning JavaScript function instead of a direct-call one:
   }
 ```
 
+<!-- backed-by: spec "Requirement: Async Function Generation Returns Promises" (modules-core-boundary.md); spec "Requirement: Async Function Failures Reject Promises" (modules-core-boundary.md) -->
 Arguments are decoded and captured before the authored method is awaited.
 Argument validation/decoding failures, an authored method throwing
 synchronously, and a faulted or canceled task all reject the returned
@@ -258,6 +313,7 @@ JavaScript Promise instead of throwing synchronously.
 
 ### Properties
 
+<!-- backed-by: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md) -->
 Annotate an instance property with `[JS]` to expose an own JavaScript accessor:
 
 <!-- backed-by: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md) -->
@@ -272,6 +328,7 @@ public bool IsReadOnly => true;
 public bool ReadyWithExplicitName => Ready;
 ```
 
+<!-- backed-by: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md) -->
 JavaScript reads and writes these as properties, not functions:
 
 <!-- backed-by: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md) -->
@@ -281,6 +338,7 @@ console.log(nativeModule.ready);
 console.log(nativeModule.isReadOnly);
 ```
 
+<!-- backed-by: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md) -->
 The property must be an instance, non-indexed property with a public or
 internal getter and a supported codec. `init` accessors are not supported. A
 public or internal ordinary setter makes it writable; no setter or an
@@ -288,6 +346,7 @@ inaccessible setter makes it read-only. In strict-mode JavaScript, assigning a
 getter-only property throws `TypeError`. Getter exceptions and setter codec
 failures surface as catchable JavaScript errors.
 
+<!-- backed-by: spec "Requirement: Generated Module Value Ownership" (managed-jsi-wrappers.md) -->
 `JavaScriptValue` properties use the same explicit ownership rule as methods.
 The setter receives an invocation-owned wrapper: do not dispose or store that
 wrapper. Call `Retain()` if the module needs a copy after the setter returns,
@@ -301,6 +360,47 @@ returns a record, list, or dictionary holding a stored wrapper returns a new
 value built from `Retain()` copies. `JavaScriptObject` may become an optional
 advanced module convertible in a separate future change, but it does not have a
 generated module codec today.
+
+### Constants
+
+<!-- backed-by: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md); spec "Requirement: Expo Constants Dotnet Exposes Typed Host Values" (modules-core-boundary.md) -->
+<!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/modules.mdx -->
+There is no `[Constant]` attribute. A constant is a getter-only `[JS]` property,
+and its getter runs on every JavaScript read. Upstream reads a constant once:
+Kotlin `@Constant` and a Swift `lazy var` store the value on the JavaScript
+object on the first read. EMC-62 changes this. `ExpoConstantsModule` exposes
+its values this way:
+
+```csharp
+// packages/expo-constants-dotnet/dotnet/ExpoConstantsDotnet/ExpoConstantsModule.cs
+  [JS]
+  public string Platform => RequireSupportedPlatform(OperatingSystem.IsWindows(), OperatingSystem.IsMacOS());
+
+  [JS]
+  public string ExecutionEnvironment => RequireSupportedHostValue("bare");
+
+  [JS]
+  public string SessionId => RequireSupportedHostValue(sessionId);
+
+  [JS]
+  public string? NativeAppVersion => RequireSupportedHostValue(metadata.NativeAppVersion);
+
+  [JS]
+  public string? NativeBuildVersion => RequireSupportedHostValue(metadata.NativeBuildVersion);
+```
+
+### Naming conventions
+
+<!-- upstream: expo/expo packages/expo-sqlite/ios/SQLiteModule.swift; expo/expo packages/expo-crypto/ios/CryptoModule.swift; expo/expo#53016 docs/pages/modules/v2/reference/concurrency.mdx -->
+<!-- backed-by: spec "Requirement: Generated JavaScript Member Names Are Lower Camel" (modules-core-boundary.md); test GeneratorEmitsDefaultAndExplicitFunctionNames -->
+Upstream names an asynchronous function with an Async suffix
+(`deleteDatabaseAsync`) and its synchronous twin with a `Sync` suffix
+(`deleteDatabaseSync`). Upstream module names carry an `Expo` prefix
+(`ExpoCrypto`). In C#, a `Task` method named `GetMessageAsync` already crosses
+as `getMessageAsync`, so the .NET and upstream conventions give the same
+JavaScript name. New modules follow both conventions. Existing repo modules
+keep their names: `ExpoAsset`, `ExponentConstants`, `FileSystem` and
+`ExampleModule`.
 
 ## Types
 
