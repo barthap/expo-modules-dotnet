@@ -647,8 +647,10 @@ directly, and encode return values through typed helpers.
 The effective representation of an enum at a codec position SHALL be the
 usage-level `[JSEnum]` on the parameter or return value when present, else the
 enum type's `[JSEnum]` when present, else `String`. The usage-level attribute
-SHALL apply to the enum inside `Nullable<TEnum>` at that position and SHALL NOT
-reach into a collection, record, callback, event, or union.
+SHALL apply to the enum inside `Nullable<TEnum>` at that position, and a
+return attribute SHALL apply to the result of a `Task<T>` return value, with or
+without `Nullable<TEnum>` inside it. It SHALL NOT reach into a collection,
+record, callback, event, or union.
 
 Each member of a string enum SHALL have one JavaScript string: the `Value` of
 its `System.Runtime.Serialization.EnumMemberAttribute` when the attribute sets

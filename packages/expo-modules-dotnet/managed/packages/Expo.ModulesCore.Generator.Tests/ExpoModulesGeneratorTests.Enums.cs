@@ -27,6 +27,25 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.Contains("NullableCodec<global::Expo.TestModules.PlainMode, NumberEnumCodec<global::Expo.TestModules.PlainMode>>.Encode(", text, StringComparison.Ordinal);
   }
 
+  // A return attribute reaches the result of a Task, also inside Nullable<TEnum>, and not a
+  // collection of enums.
+  [Fact]
+  public void GeneratorAppliesAReturnLevelEnumRepresentationToAnAsyncResult()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        "public enum PlainMode { Slow, Fast }",
+        "[JS] [return: JSEnum(EnumRepresentation.Number)] public Task<PlainMode> A() => Task.FromResult(PlainMode.Slow); " +
+        "[JS] [return: JSEnum(EnumRepresentation.Number)] public Task<PlainMode?> B() => Task.FromResult<PlainMode?>(null); " +
+        "[JS] [return: JSEnum(EnumRepresentation.Number)] public Task<IReadOnlyList<PlainMode>> C() => Task.FromResult<IReadOnlyList<PlainMode>>(new List<PlainMode>());"));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var text = GeneratedText(result);
+    Assert.Contains("NumberEnumCodec<global::Expo.TestModules.PlainMode>.Encode(", text, StringComparison.Ordinal);
+    Assert.Contains("NullableCodec<global::Expo.TestModules.PlainMode, NumberEnumCodec<global::Expo.TestModules.PlainMode>>.Encode(", text, StringComparison.Ordinal);
+    Assert.Contains($"JavaScriptArrayCodec<global::Expo.TestModules.PlainMode, {EnumCodecName("PlainMode", "global::Expo.TestModules.PlainMode")}>", text, StringComparison.Ordinal);
+  }
+
   private const string EM = "System.Runtime.Serialization.EnumMember";
 
   private static string SpanText(string source, Diagnostic diagnostic) =>
