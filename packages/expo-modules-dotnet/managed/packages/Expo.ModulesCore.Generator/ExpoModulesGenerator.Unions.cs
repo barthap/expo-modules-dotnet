@@ -147,6 +147,10 @@ public sealed partial class ExpoModulesGenerator
     public ExpoGeneratedUnionCodecModel? Model { get; set; }
 
     public ExpoCodecCollector? Codecs { get; set; }
+
+    // EXPOJSI033 to 035 of enums that the payloads use. They are reported where the union is used, by
+    // the provider, never by the declaration pipeline, so a bad enum used in many places reports once.
+    public List<ExpoDiagnosticModel> EnumDiagnostics { get; } = new();
   }
 
   // Analysing a union resolves its payload codecs, which can resolve the union again. The
@@ -207,7 +211,7 @@ public sealed partial class ExpoModulesGenerator
     var cases = new List<UnionCaseCandidate>();
     foreach (var caseType in candidates)
     {
-      var rejection = GetUnionCaseRejection(union, caseType, scratch, out var candidate);
+      var rejection = GetUnionCaseRejection(union, caseType, scratch, analysis.EnumDiagnostics, out var candidate);
       if (rejection is not null)
       {
         analysis.Diagnostics.Add(CreateInvalidUnionCase(caseType, union, rejection));
@@ -337,6 +341,9 @@ public sealed partial class ExpoModulesGenerator
     }
 
     var analysis = AnalyzeUnion(union, codecs);
+
+    // The provider dedupes these, so a bad enum used here and elsewhere reports once.
+    diagnostics.AddRange(analysis.EnumDiagnostics);
     if (analysis.Model is null)
     {
       return null;
@@ -551,6 +558,7 @@ public sealed partial class ExpoModulesGenerator
       INamedTypeSymbol union,
       INamedTypeSymbol caseType,
       ExpoCodecCollector scratch,
+      List<ExpoDiagnosticModel> enumDiagnostics,
       out UnionCaseCandidate? candidate)
   {
     candidate = null;
@@ -603,9 +611,17 @@ public sealed partial class ExpoModulesGenerator
 
     // The record-field rule: the union codec calls the payload codec directly with Decode and
     // Encode, and has no runtime context to pass. Usage-level [JSEnum] is not read.
+    var payloadDiagnostics = new List<ExpoDiagnosticModel>();
     var codec = IsUnionCaseType(payloadType)
         ? null
-        : GetCodec(payloadType, new List<ExpoDiagnosticModel>(), scratch);
+        : GetCodec(payloadType, payloadDiagnostics, scratch);
+    var enumErrors = payloadDiagnostics.Where(item => IsEnumDeclarationDiagnostic(item.DescriptorId)).ToArray();
+    enumDiagnostics.AddRange(enumErrors);
+    if (codec is null && payloadType.TypeKind == TypeKind.Enum && enumErrors.Length > 0)
+    {
+      var ids = enumErrors.Select(item => item.DescriptorId).Distinct().OrderBy(id => id, StringComparer.Ordinal);
+      return $"its payload enum '{payloadType.ToDisplayString()}' has an invalid declaration ({string.Join(", ", ids)})";
+    }
     if (codec is not
       {
         Shape: ExpoCodecShape.JavaScriptCodec,

@@ -228,6 +228,38 @@ public sealed class EnumModuleTests
     Assert.True((await CatchAsync(host, "m.echoQuiet('High')")).IsError);
   }
 
+  // A string enum case takes only its declared strings. Any other string fails that attempt and
+  // moves on, so the C# name of a member that has a value reaches the later string case.
+  [Fact]
+  public async Task RawValueEnumsAsUnionCases()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal(
+        "[\"algorithm:SHA1\",\"algorithm:MD5\",\"output:Hex\",\"output:Base64\",\"text:SHA1\",\"text:sha-1\"]",
+        await ReadAsync(host, "['SHA-1', 'MD5', 'hex', 'base64', 'SHA1', 'sha-1'].map(value => m.describeInput(value))"));
+    Assert.Equal("[\"SHA-1\",\"hex\",\"x\"]", await ReadAsync(host, "['algorithm', 'output', 'x'].map(which => m.makeInput(which))"));
+  }
+
+  // With no string case, an undeclared string fails both enum attempts, and the mismatch shows the
+  // last attempt's error as the cause.
+  [Fact]
+  public async Task UnionOfEnumsShowsTheLastAttemptForAnUndeclaredString()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal("[\"algorithm:SHA256\",\"output:Hex\"]", await ReadAsync(host, "[m.describeChoice('SHA-256'), m.describeChoice('hex')]"));
+    var outcome = await CatchAsync(host, "m.describeChoice('nope')");
+    Assert.Equal("sync", outcome.Mode);
+    Assert.Equal("ERR_UNION_CASE_MISMATCH", outcome.Code);
+    Assert.Equal(
+        $"'DigestChoice' expected DigestAlgorithm or DigestEncoding, but received string\n→ Caused by: 'nope' is not a valid {Ns}.DigestEncoding value. It must be one of: 'hex', 'base64'",
+        outcome.Message);
+    Assert.Equal(
+        "'DigestChoice' expected DigestAlgorithm or DigestEncoding, but received number",
+        (await CatchAsync(host, "m.describeChoice(1)")).Message);
+  }
+
   private static ExpoModuleTestHost CreateHost() =>
       ExpoModuleTestHost.Create(ExpoModulesProvider_Expo_ModulesCore_Tests.Register);
 

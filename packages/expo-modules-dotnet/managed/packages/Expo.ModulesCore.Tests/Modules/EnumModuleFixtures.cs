@@ -80,6 +80,22 @@ public sealed partial class DigestHasher : SharedObject
   }
 }
 
+// Two string enum cases, then a string case.
+[Union]
+public abstract record DigestInput
+{
+  public sealed record Algorithm(DigestAlgorithm Value) : DigestInput;
+  public sealed record Output(DigestEncoding Value) : DigestInput;
+  public sealed record Text(string Value) : DigestInput;
+}
+
+[Union]
+public abstract record DigestChoice
+{
+  public sealed record Algorithm(DigestAlgorithm Value) : DigestChoice;
+  public sealed record Output(DigestEncoding Value) : DigestChoice;
+}
+
 [ExpoModule("EnumScenarios", Classes = new[] { typeof(DigestHasher) })]
 public sealed partial class EnumScenariosModule : Module
 {
@@ -175,4 +191,29 @@ public sealed partial class EnumScenariosModule : Module
 
   [JS]
   public QuietLevel EchoQuiet(QuietLevel level) => level;
+
+  [JS]
+  public string DescribeInput(DigestInput input) => input switch
+  {
+    DigestInput.Algorithm(var algorithm) => $"algorithm:{algorithm}",
+    DigestInput.Output(var output) => $"output:{output}",
+    DigestInput.Text(var text) => $"text:{text}",
+    _ => throw new ArgumentOutOfRangeException(nameof(input)),
+  };
+
+  [JS]
+  public string DescribeChoice(DigestChoice choice) => choice switch
+  {
+    DigestChoice.Algorithm(var algorithm) => $"algorithm:{algorithm}",
+    DigestChoice.Output(var output) => $"output:{output}",
+    _ => throw new ArgumentOutOfRangeException(nameof(choice)),
+  };
+
+  [JS]
+  public DigestInput MakeInput(string which) => which switch
+  {
+    "algorithm" => new DigestInput.Algorithm(DigestAlgorithm.SHA1),
+    "output" => new DigestInput.Output(DigestEncoding.Hex),
+    _ => new DigestInput.Text(which),
+  };
 }

@@ -374,4 +374,96 @@ public sealed partial class ExpoModulesGeneratorTests
     AssertNoCompilerErrors(result);
     Assert.Equal(new[] { "EXPOJSI001" }, GeneratorDiagnosticIds(result));
   }
+
+  private const string BadEnumSource = "public enum Bad { [" + EM + "(Value = \"B\")] A, B }";
+
+  private const string BadChoiceSource =
+      "[Union] public abstract record Choice { public sealed record Pick(Bad Value) : Choice; public sealed record Text(string Value) : Choice; }";
+
+  // The union case names the enum as the reason, and the enum's own error is reported once where the
+  // union is used, by the provider.
+  [Fact]
+  public void GeneratorReportsAnInvalidEnumUsedOnlyAsAUnionPayload()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(BadEnumSource + " " + BadChoiceSource, "[JS] public int M(Choice value) => 0;"));
+
+    AssertNoCompilerErrors(result);
+    var ids = GeneratorDiagnosticIds(result);
+    Assert.Single(ids, id => id == "EXPOJSI034");
+    Assert.Contains("EXPOJSI001", ids);
+    var unionCase = Assert.Single(result.GeneratorDiagnostics!, item => item.Id == "EXPOJSI030");
+    Assert.Equal(
+        "Type 'Expo.TestModules.Choice.Pick' is not a valid case of union 'Expo.TestModules.Choice': its payload enum 'Expo.TestModules.Bad' has an invalid declaration (EXPOJSI034)",
+        unionCase.GetMessage());
+  }
+
+  // The [Union] declaration pipeline reports outside the provider, so it never reports the enum's
+  // own diagnostics; an unused union still names the enum in its case reason.
+  [Fact]
+  public void GeneratorNamesTheInvalidEnumOfAnUnusedUnion()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(BadEnumSource + " " + BadChoiceSource, "[JS] public int Ok() => 0;"));
+
+    Assert.Equal(new[] { "EXPOJSI030" }, GeneratorDiagnosticIds(result));
+    Assert.EndsWith(
+        "its payload enum 'Expo.TestModules.Bad' has an invalid declaration (EXPOJSI034)",
+        result.GeneratorDiagnostics!.Single().GetMessage());
+  }
+
+  [Fact]
+  public void GeneratorReportsAnInvalidEnumOnceAcrossAUnionAndAParameter()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        BadEnumSource + " " + BadChoiceSource,
+        "[JS] public int M(Choice value) => 0; [JS] public int N(Bad value) => 0;"));
+
+    Assert.Single(GeneratorDiagnosticIds(result), id => id == "EXPOJSI034");
+  }
+
+  [Fact]
+  public void GeneratorReportsAnInvalidEnumUsedOnlyAsAnEventPayload()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(BadEnumSource, "[Event] public partial Func<Bad, Task> OnBad { get; }"));
+
+    AssertNoCompilerErrors(result);
+    var ids = GeneratorDiagnosticIds(result);
+    Assert.Single(ids, id => id == "EXPOJSI034");
+    Assert.Contains("EXPOJSI019", ids);
+  }
+
+  // A string enum is kind String: each enum case is attempted on a string, and the generated enum
+  // codec is the payload codec.
+  [Fact]
+  public void GeneratorGatesStringEnumUnionCasesOnStrings()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        DigestAlgorithmSource + " public enum DigestEncoding { [" + EM + "(Value = \"hex\")] Hex } " +
+        "[Union] public abstract record Choice { public sealed record Pick(DigestAlgorithm Value) : Choice; public sealed record Output(DigestEncoding Value) : Choice; public sealed record Text(string Value) : Choice; }",
+        "[JS] public int M(Choice value) => 0; [JS] public Choice N() => null!;"));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var codec = UnionCodecText(GeneratedText(result), "Choice");
+    Assert.Equal(3, CountOccurrences(codec, "if (__expoKind == global::Expo.JSI.JavaScriptValueKind.String)"));
+    Assert.Contains($"__expoPayload0 = {DigestAlgorithmCodec}.Decode(value, runtime);", codec, StringComparison.Ordinal);
+    Assert.Contains("new[] { \"DigestAlgorithm\", \"DigestEncoding\", \"string\" }", codec, StringComparison.Ordinal);
+  }
+
+  // EMC-64 rule 4: a string case takes every string, so a later enum case is unreachable. The other
+  // order is reachable: a string the enum does not declare fails the enum attempt and moves on.
+  [Fact]
+  public void GeneratorReportsAnEnumCaseAfterAStringCaseAsUnreachable()
+  {
+    var unreachable = GeneratorTestHost.Run(ModuleSource(
+        DigestAlgorithmSource + " [Union] public abstract record Choice { public sealed record Text(string Value) : Choice; public sealed record Pick(DigestAlgorithm Value) : Choice; }",
+        "[JS] public int M(Choice value) => 0;"));
+    var reachable = GeneratorTestHost.Run(ModuleSource(
+        DigestAlgorithmSource + " [Union] public abstract record Choice { public sealed record Pick(DigestAlgorithm Value) : Choice; public sealed record Text(string Value) : Choice; }",
+        "[JS] public int M(Choice value) => 0;"));
+
+    Assert.Equal(
+        "Union 'Expo.TestModules.Choice' case 'Pick' is unreachable: case 'Text' declared before it always takes its values first",
+        Assert.Single(unreachable.GeneratorDiagnostics!, item => item.Id == "EXPOJSI032").GetMessage());
+    Assert.Empty(GeneratorDiagnosticIds(reachable));
+  }
 }
