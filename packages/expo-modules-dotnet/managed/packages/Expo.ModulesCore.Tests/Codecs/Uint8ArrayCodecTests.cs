@@ -2,16 +2,6 @@ using Expo.JSI;
 using Expo.ModulesCore.Codecs;
 using Expo.ModulesCore.Tests.Fixtures;
 using Xunit;
-using StringOrView = Expo.ModulesCore.Codecs.EitherCodec<
-    string,
-    Expo.ModulesCore.Codecs.StringCodec,
-    Expo.ModulesCore.Uint8Array,
-    Expo.ModulesCore.Codecs.Uint8ArrayCodec>;
-using BufferOrView = Expo.ModulesCore.Codecs.EitherCodec<
-    Expo.ModulesCore.ArrayBuffer,
-    Expo.ModulesCore.Codecs.ArrayBufferCodec,
-    Expo.ModulesCore.Uint8Array,
-    Expo.ModulesCore.Codecs.Uint8ArrayCodec>;
 
 namespace Expo.ModulesCore.Tests.Codecs;
 
@@ -292,70 +282,6 @@ public sealed class Uint8ArrayCodecTests
     Uint8ArrayCodec.Release(view);
     fixture.WaitUntilIdle();
 
-    Assert.Equal(1u, fixture.Counters.LongLivedArrayBuffersReleased);
-  }
-
-  [Fact]
-  public void UnionSendsObjectKindToTheView()
-  {
-    using var fixture = HermesRuntimeFixture.Create();
-    Assert.Equal(JavaScriptValueKind.Object, Uint8ArrayCodec.Kind);
-
-    var bytes = fixture.Runtime.Execute(runtime =>
-    {
-      using var text = fixture.Evaluate("'x'", "u8-union-text.js");
-      Assert.Equal("x", StringOrView.Decode(text.Ref, runtime).First);
-
-      using var arrayBuffer = fixture.Evaluate("new ArrayBuffer(2)", "u8-union-buffer.js");
-      Assert.Equal(
-          "Value kind 'ArrayBuffer' is not one of 'String' or 'Object'.",
-          Assert.Throws<InvalidOperationException>(() => StringOrView.Decode(arrayBuffer.Ref, runtime)).Message);
-
-      using var plain = fixture.Evaluate("({})", "u8-union-object.js");
-      AssertNotUint8Array(Assert.Throws<InvalidOperationException>(
-          () => StringOrView.Decode(plain.Ref, runtime)));
-
-      using var source = fixture.Evaluate("new Uint8Array([7, 8])", "u8-union-view.js");
-      var decoded = StringOrView.Decode(source.Ref, runtime);
-      Assert.False(decoded.IsFirst);
-      Assert.Equal(new byte[] { 7, 8 }, decoded.Second.ToArray());
-      return decoded;
-    });
-
-    fixture.ResetCounters();
-    StringOrView.Release(bytes);
-    fixture.WaitUntilIdle();
-
-    Assert.Equal(1u, fixture.Counters.LongLivedArrayBuffersReleased);
-  }
-
-  [Fact]
-  public void BufferOrViewUnionReleasesTheLeafItHolds()
-  {
-    using var fixture = HermesRuntimeFixture.Create();
-
-    var (buffer, view) = fixture.Runtime.Execute(runtime =>
-    {
-      using var bufferSource = fixture.Evaluate("new ArrayBuffer(2)", "u8-union-either-buffer.js");
-      var buffer = BufferOrView.Decode(bufferSource.Ref, runtime);
-      Assert.True(buffer.IsFirst);
-      Assert.Equal(2, buffer.First.ByteLength);
-
-      using var viewSource = fixture.Evaluate("new Uint8Array([7, 8, 9])", "u8-union-either-view.js");
-      var view = BufferOrView.Decode(viewSource.Ref, runtime);
-      Assert.False(view.IsFirst);
-      Assert.Equal(new byte[] { 7, 8, 9 }, view.Second.ToArray());
-      return (buffer, view);
-    });
-
-    fixture.ResetCounters();
-    BufferOrView.Release(buffer);
-    fixture.WaitUntilIdle();
-    Assert.Equal(1u, fixture.Counters.LongLivedArrayBuffersReleased);
-
-    fixture.ResetCounters();
-    BufferOrView.Release(view);
-    fixture.WaitUntilIdle();
     Assert.Equal(1u, fixture.Counters.LongLivedArrayBuffersReleased);
   }
 

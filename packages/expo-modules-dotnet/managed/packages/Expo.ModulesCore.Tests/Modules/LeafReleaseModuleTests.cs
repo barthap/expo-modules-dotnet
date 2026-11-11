@@ -1965,10 +1965,28 @@ public sealed partial class LeafReleaseModuleTests
     );
     var parts = result.Split('|');
     Assert.Equal(3, parts.Length);
-    Assert.Contains("Value kind 'ArrayBuffer' is not one of 'String' or 'Object'.", parts[0]);
-    Assert.Contains(NotU8, parts[1]);
-    Assert.Contains(NotU8, parts[2]);
+    Assert.Equal("'StringOrView' expected string or Uint8Array, but received ArrayBuffer", parts[0]);
+    Assert.Equal("'StringOrView' expected string or Uint8Array, but received object\n→ Caused by: " + NotU8, parts[1]);
+    Assert.Equal("'StringOrView' expected string or Uint8Array, but received object\n→ Caused by: " + NotU8, parts[2]);
     Assert.Equal(1, TypedArrayThingsModule.Calls);
+  }
+
+  // The union holds one leaf, the one of its case, and releases exactly that lease.
+  [Fact]
+  public void BufferOrViewUnionReleasesTheLeafItHolds()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(TypedArraySetup);
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("buffer:2", leaf.ReadString("t.describeBufferOrView(new ArrayBuffer(2))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("view:3", leaf.ReadString("t.describeBufferOrView(new Uint8Array([7, 8, 9]))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
   [Fact]
