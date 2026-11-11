@@ -17,8 +17,15 @@ public sealed partial class ExpoModulesGenerator
     };
     if (value is null)
     {
-      return typeSymbol.IsValueType && !isNullableValueType
-          ? $"default({typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})"
+      if (typeSymbol.IsValueType && !isNullableValueType)
+      {
+        return $"default({typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})";
+      }
+
+      // `string Name = null` is accepted (the author gets CS8625). The null-forgiving operator keeps
+      // CS8604 out of the generated glue, where the default reaches a non-nullable parameter.
+      return typeSymbol.IsReferenceType && typeSymbol.NullableAnnotation != NullableAnnotation.Annotated
+          ? "null!"
           : "null";
     }
 

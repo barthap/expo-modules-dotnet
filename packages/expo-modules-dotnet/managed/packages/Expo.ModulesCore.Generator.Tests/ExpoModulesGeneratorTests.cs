@@ -1602,6 +1602,32 @@ public sealed class ExpoModulesGeneratorTests
     Assert.DoesNotContain("System.Reflection", source, StringComparison.Ordinal);
   }
 
+  // `string Name = null` is accepted. The author gets CS8625 on the declaration, as for a method
+  // parameter, but the generated glue must add no compiler diagnostic of its own.
+  [Fact]
+  public void GeneratorAcceptsNullDefaultOnNonNullableReferenceWithoutGeneratedWarnings()
+  {
+    var result = GeneratorTestHost.Run(
+        ModuleSource(
+            "public sealed record Options(string Name = null, int Count = 5);",
+            "[JS] public string M(Options options) => \"\"; [JS] public string P(string name = null) => \"\";"
+        )
+    );
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    var compilerDiagnostics = result.Diagnostics
+        .Where(item =>
+            item.Id.StartsWith("CS", StringComparison.Ordinal) &&
+            item.Severity is DiagnosticSeverity.Error or DiagnosticSeverity.Warning)
+        .ToArray();
+    // Only the author's own declarations may warn, and only with CS8625.
+    Assert.All(compilerDiagnostics, item => Assert.Equal("CS8625", item.Id));
+    var source = GeneratedText(result);
+    // The record field path and the method parameter path both forgive the null default.
+    Assert.Contains("nameValue.Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? null! :", source, StringComparison.Ordinal);
+    Assert.Contains("Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? null! : StringCodec.Decode(arguments.GetValue(0)", source, StringComparison.Ordinal);
+  }
+
   [Fact]
   public void GeneratorRendersRecordFieldDefaultsOfEveryConstantKind()
   {
