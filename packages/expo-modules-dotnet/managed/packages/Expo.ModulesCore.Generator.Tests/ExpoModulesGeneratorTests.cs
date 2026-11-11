@@ -5303,6 +5303,30 @@ public sealed class ExpoModulesGeneratorTests
     }
   }
 
+  // A faulted, canceled or encode-failing task rejects through the scheduler, so every async
+  // settlement shape must hand the converter to CreatePromise.
+  [Theory]
+  [InlineData("[JS] public Task<int> M() => Task.FromResult(0);")]
+  [InlineData("[JS] public Task M(JavaScriptValue value) => Task.CompletedTask;")]
+  [InlineData("[JS] public Task<JavaScriptValue> M() => throw new NotImplementedException();")]
+  public void GeneratorPassesTheErrorConverterToEveryAsyncSettlementShape(string member)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(string.Empty, member));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var body = HostFunctionBody(GeneratedText(result), "Rejects_m_HostFunction")
+        .Replace("\r\n", "\n", StringComparison.Ordinal);
+    const string argument = "          createError: GeneratedFunction.CreateJavaScriptError\n      );";
+    Assert.Equal(1, CountOccurrences(body, argument));
+    var create = body.IndexOf(".CreatePromise(", StringComparison.Ordinal);
+    var factory = body.IndexOf(argument, StringComparison.Ordinal);
+    var outerCatch = body.IndexOf("catch (global::System.Exception exception)", StringComparison.Ordinal);
+    Assert.True(create >= 0 && create < factory && factory < outerCatch);
+    // A throw before the task still rejects through CreateRejectedPromise, never synchronously.
+    Assert.Contains("return GeneratedFunction.CreateRejectedPromise(jsRuntime, exception);", body);
+  }
+
   [Fact]
   public void GeneratorEmitsNoReleaseForLeafFreeMembers()
   {

@@ -17,6 +17,10 @@ public sealed class CodedErrorModuleTests
     ["sharedMethod"] = ("entry().fail(KIND)", "sync"),
     ["constructor"] = ("new m.CodedErrorEntry(KIND)", "sync"),
     ["beforeTask"] = ("m.failBeforeTask(KIND)", "async"),
+    ["afterAwait"] = ("m.failAfterAwait(KIND)", "async"),
+    ["leafArgument"] = ("m.failWithLeafArgument({}, KIND)", "async"),
+    ["leafResult"] = ("m.failValueAfterAwait(KIND)", "async"),
+    ["sharedAsync"] = ("entry().failAfterAwait(KIND)", "async"),
   };
 
   public static TheoryData<string, string> PointsAndKinds()
@@ -162,6 +166,91 @@ public sealed class CodedErrorModuleTests
     Assert.True(outcome.IsError);
     Assert.StartsWith("Expo.ModulesCore.CodedException: outer", outcome.Message);
     Assert.Contains("System.IO.IOException: inner", outcome.Message);
+    Assert.Equal(tracked, host.TestRuntime.Counters.OwnedValuesTracked);
+  }
+
+  [Fact]
+  public async Task SyncThrowAndAsyncRejectionCarryTheSameError()
+  {
+    using var host = CreateHost();
+
+    var thrown = await CatchAsync(host, "m.fail('codedOuter')");
+    var rejected = await CatchAsync(host, "m.failAfterAwait('codedOuter')");
+
+    Assert.Equal("sync", thrown.Mode);
+    Assert.Equal("async", rejected.Mode);
+    Assert.Equal(thrown with { Mode = "async" }, rejected);
+  }
+
+  [Fact]
+  public async Task JavaScriptBranchesOnTheCode()
+  {
+    using var host = CreateHost();
+
+    var value = await host.EvaluatePromiseAsync(
+        """
+        (() => {
+          const m = globalThis._expoDotnet.modules.CodedErrors;
+          const branch = e => e.code === 'ERR_INVALID_PATH' ? 'invalid path' : 'other';
+          let thrown;
+          try { m.fail('derived'); } catch (e) { thrown = branch(e); }
+          return Promise.all([
+            m.failAfterAwait('derived').catch(branch),
+            m.failAfterAwait('plain').catch(branch)
+          ]).then(results => [thrown].concat(results).join(','));
+        })()
+        """,
+        TestContext.Current.CancellationToken
+    );
+
+    Assert.Equal("invalid path,invalid path,other", ReadString(host, value));
+  }
+
+  [Fact]
+  public async Task CanceledTaskRejectsWithoutCode()
+  {
+    using var host = CreateHost();
+
+    var outcome = await CatchAsync(host, "m.cancel()");
+
+    Assert.Equal("async", outcome.Mode);
+    Assert.True(outcome.IsError);
+    Assert.False(outcome.HasCode);
+    Assert.Equal(new TaskCanceledException().Message, outcome.Message);
+  }
+
+  [Theory]
+  [InlineData("m.failAfterAwait(42)")]
+  [InlineData("m.failAfterAwait()")]
+  [InlineData("m.brokenRecord()")]
+  public async Task DecodeArityAndEncodeFailuresRejectWithoutCode(string expression)
+  {
+    using var host = CreateHost();
+
+    var outcome = await CatchAsync(host, expression);
+
+    Assert.Equal("async", outcome.Mode);
+    Assert.True(outcome.IsError);
+    Assert.False(outcome.HasCode);
+    Assert.DoesNotContain("   at ", outcome.Message);
+  }
+
+  // If the converter fails, the async path rejects with the original Message and no chain.
+  [Fact]
+  public async Task ConverterFailureOnAsyncPathRejectsWithTheMessage()
+  {
+    using var host = CreateHost();
+    await CatchAsync(host, "m.failAfterAwait('plain')");
+    BreakCodeProperty(host);
+    host.TestRuntime.WaitUntilIdle();
+    var tracked = host.TestRuntime.Counters.OwnedValuesTracked;
+
+    var outcome = await CatchAsync(host, "m.failAfterAwait('chain')");
+    host.TestRuntime.WaitUntilIdle();
+
+    Assert.Equal("async", outcome.Mode);
+    Assert.True(outcome.IsError);
+    Assert.Equal("outer", outcome.Message);
     Assert.Equal(tracked, host.TestRuntime.Counters.OwnedValuesTracked);
   }
 

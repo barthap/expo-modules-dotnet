@@ -31,6 +31,34 @@ public sealed partial class CodedErrorsModule : Module
   [JS]
   public Task FailBeforeTask(string kind) => throw CodedErrorCases.Create(kind);
 
+  [JS]
+  public async Task FailAfterAwait(string kind)
+  {
+    await Task.Yield();
+    throw CodedErrorCases.Create(kind);
+  }
+
+  [JS]
+  public async Task FailWithLeafArgument(Expo.JSI.JavaScriptValue value, string kind)
+  {
+    await Task.Yield();
+    throw CodedErrorCases.Create(kind);
+  }
+
+  [JS]
+  public async Task<Expo.JSI.JavaScriptValue> FailValueAfterAwait(string kind)
+  {
+    await Task.Yield();
+    throw CodedErrorCases.Create(kind);
+  }
+
+  [JS]
+  public Task Cancel() => Task.FromCanceled(new System.Threading.CancellationToken(canceled: true));
+
+  // Encoding the null non-nullable field throws on the runtime path.
+  [JS]
+  public Task<CodedErrorRecord> BrokenRecord() => Task.FromResult(new CodedErrorRecord(null!));
+
   [OnStopObserving("onPing")]
   public void StopObservingPing() => throw new InvalidPathException("observing stopped");
 }
@@ -49,4 +77,13 @@ public sealed partial class CodedErrorEntry : SharedObject
 
   [JS]
   public void Fail(string kind) => throw CodedErrorCases.Create(kind);
+
+  [JS]
+  public async Task FailAfterAwait(string kind)
+  {
+    await Task.Yield();
+    throw CodedErrorCases.Create(kind);
+  }
 }
+
+public sealed record CodedErrorRecord(string Label);

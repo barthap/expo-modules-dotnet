@@ -903,7 +903,8 @@ public sealed partial class ExpoModulesGenerator
     {
       EmitAsyncSettlement(builder, "            ", function);
     }
-    builder.AppendLine("          }");
+    builder.AppendLine("          },");
+    builder.AppendLine("          createError: GeneratedFunction.CreateJavaScriptError");
     builder.AppendLine("      );");
     if (!hasLeafArguments)
     {
