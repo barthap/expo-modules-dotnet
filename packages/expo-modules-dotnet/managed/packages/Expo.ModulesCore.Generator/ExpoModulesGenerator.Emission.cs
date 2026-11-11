@@ -1305,7 +1305,7 @@ public sealed partial class ExpoModulesGenerator
       foreach (var field in codec.Fields.Values)
       {
         var read = $"obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\")";
-        if (field.Kind != ExpoRecordFieldKind.Defaulted)
+        if (field.Kind == ExpoRecordFieldKind.OptionalByType)
         {
           builder.AppendLine($"{indent}{GetLocalDeclaration(field.Codec, GetRecordFieldLocalName(field), $"{field.Codec.Expression}.Decode({read}, runtime)")}");
           continue;
@@ -1420,9 +1420,10 @@ public sealed partial class ExpoModulesGenerator
   private static string GetRecordFieldLocalName(ExpoGeneratedRecordFieldModel field) =>
       field.ParameterName == "value" ? "__expoValue" : field.ParameterName;
 
-  // Decodes one record field from its property local, read once. A defaulted field yields its
-  // inlined default for JavaScript undefined without calling the codec. Explicit null and every
-  // other value go to the field codec.
+  // Decodes one record field from its property local, read once. A required field throws a named
+  // ArgumentException for JavaScript undefined before the codec runs; a defaulted field yields its
+  // inlined default without calling the codec. Explicit null and every other value go to the
+  // field codec.
   private static void EmitRecordFieldDecode(
       StringBuilder builder,
       string indent,
@@ -1430,9 +1431,15 @@ public sealed partial class ExpoModulesGenerator
   {
     var propertyLocal = GetRecordFieldPropertyLocalName(field);
     var decode = $"{field.Codec.Expression}.Decode({propertyLocal}, runtime)";
-    if (field.Kind == ExpoRecordFieldKind.Defaulted)
+    var undefinedCheck = $"{propertyLocal}.Kind == global::Expo.JSI.JavaScriptValueKind.Undefined";
+    if (field.Kind == ExpoRecordFieldKind.Required)
     {
-      decode = $"{propertyLocal}.Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? {field.DefaultValueExpression} : {decode}";
+      // Thrown inside the decode try, so leaves of earlier fields are released by its catch.
+      builder.AppendLine($"{indent}if ({undefinedCheck}) throw new global::System.ArgumentException(\"Value for property '{EscapeString(field.JavaScriptName)}' is required, got undefined\");");
+    }
+    else if (field.Kind == ExpoRecordFieldKind.Defaulted)
+    {
+      decode = $"{undefinedCheck} ? {field.DefaultValueExpression} : {decode}";
     }
 
     builder.AppendLine($"{indent}{GetLocalDeclaration(field.Codec, GetRecordFieldLocalName(field), decode)}");

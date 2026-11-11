@@ -336,7 +336,7 @@ public sealed class GeneratedCodecExpansionModuleTests
             globalThis._expoDotnet.modules.GeneratedRecords.rename({ Name: 'Ada', Age: 37 });
             false;
           } catch (error) {
-            error instanceof Error;
+            error instanceof Error && error.message.includes("Value for property 'name' is required, got undefined");
           }
           """,
           "record-stale-pascal-required.js"
@@ -345,6 +345,146 @@ public sealed class GeneratedCodecExpansionModuleTests
       Assert.True(result.AsBool());
       return true;
     });
+  }
+
+  private const string RequiredNameMessage = "Value for property 'name' is required, got undefined";
+
+  // Before this item the error came from StringCodec and did not name the field.
+  [Fact]
+  public void GeneratedProviderNamesMissingRequiredRecordField()
+  {
+    Assert.Equal(
+        "true:true:0",
+        EvaluateRecordDefaults(
+            $$"""
+            const records = globalThis._expoDotnet.modules.GeneratedRecords;
+            let renamed;
+            try { records.rename({ age: 37 }); renamed = 'no error'; }
+            catch (error) { renamed = String(error instanceof Error && error.message.includes("{{RequiredNameMessage}}")); }
+            const before = m.calls;
+            let described;
+            try { m.describe({ count: 1 }); described = 'no error'; }
+            catch (error) { described = String(error instanceof Error && error.message.includes("{{RequiredNameMessage}}")); }
+            [renamed, described, m.calls - before].join(':')
+            """,
+            "record-required-missing.js"
+        )
+    );
+  }
+
+  // Null is a value: it reaches StringCodec, which fails with its own error, not the
+  // required-field error.
+  [Fact]
+  public void ExplicitNullOnRequiredRecordFieldFailsThroughItsCodec()
+  {
+    Assert.Equal(
+        "true:false",
+        EvaluateRecordDefaults(
+            """
+            let outcome;
+            try { m.describe({ name: null }); outcome = 'no error'; }
+            catch (error) { outcome = (error instanceof Error) + ':' + error.message.includes('is required'); }
+            outcome
+            """,
+            "record-required-null.js"
+        )
+    );
+  }
+
+  // The owned Decode overload (callback result) applies the same check; Invoke() throws and the
+  // failure reaches JavaScript through the sync host function.
+  [Fact]
+  public void CallbackResultMissingRequiredRecordFieldFailsInvoke()
+  {
+    Assert.Equal(
+        "true",
+        EvaluateRecordDefaults(
+            $$"""
+            let outcome;
+            try { m.takeOptions(() => ({ count: 1 })); outcome = 'no error'; }
+            catch (error) { outcome = String(error instanceof Error && error.message.includes("{{RequiredNameMessage}}")); }
+            outcome
+            """,
+            "record-required-callback.js"
+        )
+    );
+  }
+
+  // Guard: fields that are optional by type do not get the required check.
+  [Fact]
+  public void NullableAndJavaScriptValueRecordFieldsStayOptional()
+  {
+    Assert.Equal(
+        "true:Undefined",
+        EvaluateRecordDefaults(
+            """
+            const records = globalThis._expoDotnet.modules.GeneratedRecords;
+            [records.renameNullable({ name: 'a' }).luckyNumber === null, m.valueKind({ name: 'a' })].join(':')
+            """,
+            "record-optional-by-type.js"
+        )
+    );
+  }
+
+  // An async method decodes arguments inside its outer try, so the failure rejects the Promise
+  // and the call does not throw synchronously.
+  [Fact]
+  public async Task AsyncMethodRejectsWhenRequiredRecordFieldIsMissing()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+      using var setup = fixture.Evaluate(
+          $$"""
+          const m = globalThis._expoDotnet.modules.GeneratedRecordDefaults;
+          globalThis.__requiredOutcome = 'pending';
+          const before = m.calls;
+          try {
+            m.describeAsync({ count: 1 }).then(
+              () => { globalThis.__requiredOutcome = 'fulfilled'; },
+              error => {
+                globalThis.__requiredOutcome = 'rejected:' +
+                  (error instanceof Error && error.message.includes("{{RequiredNameMessage}}"));
+              }
+            );
+          } catch (error) {
+            globalThis.__requiredOutcome = 'sync-thrown';
+          }
+          // Read now: the runtime context is disposed when this Execute returns, and the decode
+          // failure happens before authored code runs, so a count change here would mean it ran.
+          globalThis.__requiredCalls = m.calls - before;
+          true
+          """,
+          "record-required-async.js"
+      );
+      return true;
+    });
+
+    var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+    string outcome;
+    while (true)
+    {
+      fixture.DrainTasks();
+      outcome = fixture.Runtime.Execute(_ =>
+      {
+        using var value = fixture.Evaluate(
+            "globalThis.__requiredOutcome + ':' + globalThis.__requiredCalls",
+            "record-required-async-read.js"
+        );
+        return value.AsString();
+      });
+      if (!outcome.StartsWith("pending", StringComparison.Ordinal) || DateTime.UtcNow > deadline)
+      {
+        break;
+      }
+
+      await Task.Delay(10, TestContext.Current.CancellationToken);
+    }
+
+    Assert.Equal("rejected:true:0", outcome);
   }
 
   [Fact]

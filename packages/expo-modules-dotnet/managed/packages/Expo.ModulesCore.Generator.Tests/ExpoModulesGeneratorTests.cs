@@ -1227,7 +1227,7 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Contains("return new global::Expo.TestModules.User(name, age);", source);
     Assert.Contains("return new global::Expo.TestModules.UserClass(name, age);", source);
     Assert.Contains("return new global::Expo.TestModules.UserStruct(name, age);", source);
-    Assert.Contains("StringCodec.Decode(obj.GetProperty(\"name\"), runtime)", source);
+    Assert.Contains("StringCodec.Decode(nameValue, runtime)", source);
     Assert.Contains("StringCodec.Encode(value.Name, runtime)", source);
     Assert.Contains("obj.SetProperty(\"name\", name);", source);
     Assert.Contains("obj.GetProperty(\"luckyNumber\")", source);
@@ -1269,8 +1269,8 @@ public sealed class ExpoModulesGeneratorTests
     var userCodec = RecordCodecName("User", "global::Expo.TestModules.User");
     Assert.Contains($"private readonly struct {addressCodec} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.Address>", source);
     Assert.Contains($"private readonly struct {userCodec} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.User>", source);
-    Assert.Contains($"var address = {addressCodec}.Decode(obj.GetProperty(\"address\"), runtime);", source);
-    Assert.Contains("var status = StringEnumCodec<global::Expo.TestModules.Status>.Decode(obj.GetProperty(\"status\"), runtime);", source);
+    Assert.Contains($"var address = {addressCodec}.Decode(addressValue, runtime);", source);
+    Assert.Contains("var status = StringEnumCodec<global::Expo.TestModules.Status>.Decode(statusValue, runtime);", source);
     Assert.Contains($"using var address = {addressCodec}.Encode(value.Address, runtime);", source);
     Assert.Contains("using var status = StringEnumCodec<global::Expo.TestModules.Status>.Encode(value.Status, runtime);", source);
     Assert.Contains("obj.SetProperty(\"address\", address);", source);
@@ -1563,6 +1563,40 @@ public sealed class ExpoModulesGeneratorTests
     // The leaf local is declared before the try and only assigned here.
     Assert.Contains("data = dataValue.Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? null : ", source, StringComparison.Ordinal);
     Assert.Contains("? default(global::Expo.TestModules.Pair) :", source, StringComparison.Ordinal);
+  }
+  private static string RequiredFieldCheck(string javaScriptName) =>
+      $"if ({javaScriptName}Value.Kind == global::Expo.JSI.JavaScriptValueKind.Undefined) throw new global::System.ArgumentException(\"Value for property '{javaScriptName}' is required, got undefined\");";
+
+  // Required fields throw a named error before their codec runs, in both overloads. Fields that
+  // are optional by type keep today's text and get no check.
+  [Fact]
+  public void GeneratorEmitsRequiredRecordFieldCheckInBothOverloads()
+  {
+    var result = GeneratorTestHost.Run(
+        ModuleSource(
+            "public sealed record Person(string Name, int? Lucky, JavaScriptValue Extra, ArrayBuffer Buffer);",
+            "[JS] public int M(Person person) => 0;"
+        )
+    );
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var source = GeneratedText(result);
+    Assert.Equal(2, CountOccurrences(source, RequiredFieldCheck("name")));
+    Assert.Equal(2, CountOccurrences(source, RequiredFieldCheck("buffer")));
+    Assert.Equal(0, CountOccurrences(source, RequiredFieldCheck("lucky")));
+    Assert.Equal(0, CountOccurrences(source, RequiredFieldCheck("extra")));
+    Assert.True(
+        source.IndexOf(RequiredFieldCheck("name"), StringComparison.Ordinal) <
+        source.IndexOf("var name = StringCodec.Decode(nameValue, runtime);", StringComparison.Ordinal)
+    );
+    Assert.Contains("buffer = ArrayBufferCodec.Decode(bufferValue, runtime);", source, StringComparison.Ordinal);
+    Assert.Contains(
+        "var lucky = NullableCodec<int, NumberCodec<int>>.Decode(obj.GetProperty(\"lucky\"), runtime);",
+        source,
+        StringComparison.Ordinal
+    );
+    Assert.DoesNotContain("StringCodec.Decode(obj.GetProperty(\"name\"), runtime)", source, StringComparison.Ordinal);
   }
 
   [Fact]
@@ -4262,7 +4296,7 @@ public sealed class ExpoModulesGeneratorTests
         "var tags = NullableReadOnlyListCodec<string, StringCodec>.Decode(obj.GetProperty(\"tags\"), runtime)",
         source
     );
-    Assert.Contains("var name = StringCodec.Decode(obj.GetProperty(\"name\"), runtime)", source);
+    Assert.Contains("var name = StringCodec.Decode(nameValue, runtime)", source);
   }
 
   [Fact]
@@ -5294,8 +5328,8 @@ public sealed class ExpoModulesGeneratorTests
     Assert.Equal(1, CountOccurrences(release, "CodecRelease.Release<"));
     Assert.DoesNotContain("value.Label", release, StringComparison.Ordinal);
     // Decode and Encode call the ordinary codecs of both fields.
-    Assert.Contains("buffer = ArrayBufferCodec.Decode(obj.GetProperty(\"buffer\"), runtime);", source, StringComparison.Ordinal);
-    Assert.Contains("var label = StringCodec.Decode(obj.GetProperty(\"label\"), runtime);", source, StringComparison.Ordinal);
+    Assert.Contains("buffer = ArrayBufferCodec.Decode(bufferValue, runtime);", source, StringComparison.Ordinal);
+    Assert.Contains("var label = StringCodec.Decode(labelValue, runtime);", source, StringComparison.Ordinal);
     Assert.Contains("using var buffer = ArrayBufferCodec.Encode(value.Buffer, runtime);", source, StringComparison.Ordinal);
     Assert.Contains("using var label = StringCodec.Encode(value.Label, runtime);", source, StringComparison.Ordinal);
   }
@@ -5541,7 +5575,7 @@ public sealed class ExpoModulesGeneratorTests
   [InlineData("", "[JS] public int M(IReadOnlyList<Uint8Array> values) => 0;", "JavaScriptArrayCodec<" + U8 + ", Uint8ArrayCodec>.DecodeToArray(arguments.GetValue(0), runtime)")]
   [InlineData("", "[JS] public int M(Dictionary<string, Uint8Array> values) => 0;", "JavaScriptDictionaryCodec<" + U8 + ", Uint8ArrayCodec>.DecodeToDictionary(")]
   [InlineData("", "[JS] public IReadOnlyDictionary<string, Uint8Array> M() => new Dictionary<string, Uint8Array>();", "CodecRelease.Release<global::System.Collections.Generic.IReadOnlyDictionary<string, " + U8 + ">, JavaScriptDictionaryCodec<" + U8 + ", Uint8ArrayCodec>>(__expoResult, ref __expoReleaseFailures);")]
-  [InlineData("public sealed record Holder(Uint8Array Bytes, string Label);", "[JS] public Holder M(Holder holder) => holder;", "bytes = Uint8ArrayCodec.Decode(obj.GetProperty(\"bytes\"), runtime);")]
+  [InlineData("public sealed record Holder(Uint8Array Bytes, string Label);", "[JS] public Holder M(Holder holder) => holder;", "bytes = Uint8ArrayCodec.Decode(bytesValue, runtime);")]
   [InlineData("public sealed record Holder(Uint8Array Bytes, string Label);", "[JS] public Holder M(Holder holder) => holder;", U8Release + "value.Bytes, ref __expoReleaseFailures);")]
   [InlineData("public sealed record Holder(Uint8Array Bytes, string Label);", "[JS] public Holder M(Holder holder) => holder;", "using var bytes = Uint8ArrayCodec.Encode(value.Bytes, runtime);")]
   public void GeneratorAcceptsUint8ArrayAtArrayBufferPositions(
@@ -5796,7 +5830,7 @@ public sealed class ExpoModulesGeneratorTests
   [InlineData(false, "", "[JS] public Either<string, double> Value { get; set; }", "value", UnionTextCodec + ".Decode(arguments.GetValue(0), runtime)")]
   [InlineData(false, "", "[JS] public Either<string, ArrayBuffer> Content => default;", "content", "CodecRelease.Release<" + UnionBufferType + ", " + UnionBufferCodec + ">(__expoResult, ref __expoReleaseFailures);")]
   [InlineData(false, "", "[JS] public Either<double, bool>? Value { get; set; }", "value", "NullableCodec<" + UnionValueType + ", " + UnionValueCodec + ">.Decode(arguments.GetValue(0), runtime)")]
-  [InlineData(false, "public sealed record Holder(Either<string, double> Content);", "[JS] public int M(Holder holder) => 0;", "m", UnionTextCodec + ".Decode(obj.GetProperty(\"content\"), runtime)")]
+  [InlineData(false, "public sealed record Holder(Either<string, double> Content);", "[JS] public int M(Holder holder) => 0;", "m", UnionTextCodec + ".Decode(contentValue, runtime)")]
   [InlineData(false, "public sealed record Holder(Either<string, double> Content);", "[JS] public Holder M() => null!;", "m", UnionTextCodec + ".Encode(")]
   [InlineData(false, "public sealed record Shelf(IReadOnlyList<Either<string, ArrayBuffer>> Parts);", "[JS] public int M(Shelf shelf) => 0;", "m", "(value.Parts, ref __expoReleaseFailures);")]
   [InlineData(false, "", "[JS] public int M(JavaScriptCallback<Either<string, double>> callback) => 0;", "m", "JavaScriptCallbackCodec<" + UnionTextType + ", " + UnionTextCodec + ">.Decode(")]
