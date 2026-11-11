@@ -514,4 +514,85 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.Equal(useSite, SpanText(source, diagnostic));
     Assert.DoesNotContain("BadEnumCodec_", GeneratedText(result), StringComparison.Ordinal);
   }
+
+  // A record from a referenced project (source symbols of another compilation) holds a field that
+  // cannot cross. Its declaration is not in this compilation, so the diagnostics land where the
+  // record is used. Roslyn rejects a diagnostic located in another compilation's file.
+  private const string UnionHolderCases =
+      "[Union] public abstract record Choice { public sealed record Pick(External.Holder Value) : Choice; public sealed record Text(string Value) : Choice; }";
+
+  [Theory]
+  [InlineData("enum Bad { [" + EM + "(Value = \"B\")] A, B }", "Bad", "", "[JS] public int M(External.Holder holder) => 0;", "holder", "EXPOJSI034")]
+  [InlineData("enum Bad { [" + EM + "(Value = \"B\")] A, B }", "Bad", "", "[Event] public partial Func<External.Holder, Task> OnHolder { get; }", "OnHolder", "EXPOJSI034")]
+  [InlineData("enum Bad { [" + EM + "(Value = \"B\")] A, B }", "Bad", UnionHolderCases, "[JS] public int M(Choice value) => 0;", "value", "EXPOJSI034")]
+  [InlineData("class Unsupported { }", "object", "", "[JS] public int M(External.Holder holder) => 0;", "holder", "EXPOJSI007")]
+  [InlineData("class Unsupported { }", "object", "", "[Event] public partial Func<External.Holder, Task> OnHolder { get; }", "OnHolder", "EXPOJSI019")]
+  [InlineData("class Unsupported { }", "object", UnionHolderCases, "[JS] public int M(Choice value) => 0;", "Pick", "EXPOJSI030")]
+  public void GeneratorReportsADiagnosticOfAReferencedProjectRecordAtTheUseSite(
+      string referencedDeclaration,
+      string contentType,
+      string declarations,
+      string member,
+      string useSite,
+      string expectedDiagnostic)
+  {
+    var reference = GeneratorTestHost.CompileSourceReference(
+        "using System.Runtime.Serialization; namespace External; public " + referencedDeclaration + " public sealed record Holder(" +
+        (contentType == "object" ? "object" : "Bad") + " Content);",
+        "External.Project");
+    var source = ModuleSource(declarations, member);
+    var result = GeneratorTestHost.Run(source, additionalReferences: new[] { reference });
+
+    Assert.DoesNotContain(result.GeneratorDiagnostics!, item => item.Id.StartsWith("CS", StringComparison.Ordinal));
+    var diagnostic = Assert.Single(result.GeneratorDiagnostics!, item => item.Id == expectedDiagnostic);
+    Assert.NotNull(diagnostic.Location.SourceTree);
+    Assert.Equal(source, diagnostic.Location.SourceTree!.ToString());
+    Assert.Equal(useSite, SpanText(source, diagnostic));
+  }
+
+  // From a PE reference the enum's members have no location either, so the diagnostic lands at the
+  // position that uses the record.
+  [Fact]
+  public void GeneratorReportsAnInvalidEnumInAPeRecordAtTheUseSite()
+  {
+    var reference = GeneratorTestHost.CompileReference(
+        "using System.Runtime.Serialization; namespace External; public enum Bad { [" + EM + "(Value = \"B\")] A, B } public sealed record Holder(Bad Content);",
+        "External.Pe");
+    var source = ModuleSource("", "[JS] public int M(External.Holder holder) => 0;");
+    var result = GeneratorTestHost.Run(source, additionalReferences: new[] { reference });
+
+    var diagnostic = Assert.Single(result.GeneratorDiagnostics!, item => item.Id == "EXPOJSI034");
+    Assert.Equal("holder", SpanText(source, diagnostic));
+  }
+
+  // The same holds for a type used directly at a boundary position: a parameter, a result, an
+  // async result, a property, an event payload or a union case payload.
+  [Theory]
+  [InlineData("", "[JS] public int M(External.Bad value) => 0;")]
+  [InlineData("", "[JS] public External.Bad N() => default;")]
+  [InlineData("", "[JS] public Task<External.Bad> N() => default!;")]
+  [InlineData("", "[JS] public External.Bad Value { get; set; }")]
+  [InlineData("", "[Event] public partial Func<External.Bad, Task> OnBad { get; }")]
+  [InlineData("[Union] public abstract record Choice { public sealed record Pick(External.Bad Value) : Choice; public sealed record Text(string Value) : Choice; }", "[JS] public int M(Choice value) => 0;")]
+  [InlineData("[Union] public abstract record Choice { public sealed record Pick(External.Bad Value) : Choice; public sealed record Text(string Value) : Choice; }", "[Event] public partial Func<Choice, Task> OnBad { get; }")]
+  [InlineData("", "[JS] public int M(External.Shared value) => 0;")]
+  [InlineData("", "[JS] public External.Shared N() => null!;")]
+  [InlineData("", "[JS] public External.Shared Value { get; set; } = null!;")]
+  [InlineData("", "[Event] public partial Func<External.Shared, Task> OnBad { get; }")]
+  [InlineData("[Union] public abstract record Choice { public sealed record Pick(External.Shared Value) : Choice; public sealed record Text(string Value) : Choice; }", "[JS] public int M(Choice value) => 0;")]
+  [InlineData("[Union] public abstract record Choice { public sealed record Pick(External.Bad Value) : Choice; public sealed record Text(string Value) : Choice; }", "[JS] public Choice M() => null!;")]
+  public void GeneratorLocatesEveryDiagnosticOfAReferencedProjectTypeInThisCompilation(string declarations, string member)
+  {
+    var reference = GeneratorTestHost.CompileSourceReference(
+        "using System.Runtime.Serialization; namespace External; public enum Bad { [System.Runtime.Serialization.EnumMember(Value = \"B\")] A, B } [Expo.ModulesCore.Union] public abstract record Shared { public sealed record Text(string Value) : Shared; public sealed record Count(int Value) : Shared; }",
+        "External.Project");
+    var source = ModuleSource(declarations, member);
+    var result = GeneratorTestHost.Run(source, additionalReferences: new[] { reference });
+
+    Assert.DoesNotContain(result.GeneratorDiagnostics!, item => item.Id.StartsWith("CS", StringComparison.Ordinal));
+    Assert.NotEmpty(result.GeneratorDiagnostics!);
+    Assert.All(
+        result.GeneratorDiagnostics!.Where(item => item.Location.IsInSource),
+        item => Assert.Equal(source, item.Location.SourceTree!.ToString()));
+  }
 }

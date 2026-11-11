@@ -178,6 +178,14 @@ public sealed partial class ExpoModulesGenerator
     return null;
   }
 
+  // The type's declaration, else the member. A type that is a source symbol of another compilation,
+  // as an IDE project reference yields, has a location Roslyn rejects in a diagnostic.
+  private static Location? GetTypeLocationOrMember(ITypeSymbol type, ISymbol member) =>
+      type.Locations.FirstOrDefault() is { } location &&
+      (!location.IsInSource || SymbolEqualityComparer.Default.Equals(type.ContainingAssembly, member.ContainingAssembly))
+          ? location
+          : member.Locations.FirstOrDefault();
+
   private static string GetDiagnosticTypeName(ITypeSymbol typeSymbol)
   {
     return typeSymbol.SpecialType switch
@@ -421,16 +429,20 @@ public sealed partial class ExpoModulesGenerator
       return null;
     }
 
+    // A record from a referenced assembly has no location in this compilation, and Roslyn rejects a
+    // diagnostic located in another compilation's file, so its diagnostics land at the use site.
+    var declaredHere = SymbolEqualityComparer.Default.Equals(typeSymbol.ContainingAssembly, codecs.Assembly);
     var fields = new List<ExpoGeneratedRecordFieldModel>();
     foreach (var parameter in constructor.Parameters)
     {
+      var parameterLocation = declaredHere ? parameter.Locations.FirstOrDefault() : codecs.UseSite;
       // Checked from the symbol before the field codec resolves, so a rejected record adds no
       // codec for the struct it holds.
       if (GetRecordFieldDefaultRejection(parameter) is { } rejection)
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedRecordField.Id,
-            parameter.Locations.FirstOrDefault(),
+            parameterLocation,
             new EquatableArray<string>(new[] { typeSymbol.Name, parameter.Name, rejection })
         ));
         return null;
@@ -438,7 +450,7 @@ public sealed partial class ExpoModulesGenerator
 
       var property = typeSymbol.GetMembers().OfType<IPropertySymbol>()
           .FirstOrDefault(item => item.Name == parameter.Name);
-      var fieldCodec = GetCodecAt(parameter.Locations.FirstOrDefault(), parameter.Type, diagnostics, codecs);
+      var fieldCodec = GetCodecAt(parameterLocation, parameter.Type, diagnostics, codecs);
       // Composition rule: generated record codecs call field codecs directly with Decode and
       // Encode. A field needs both, and a context-bearing codec has no runtime context there.
       if (property is null ||
@@ -450,7 +462,7 @@ public sealed partial class ExpoModulesGenerator
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedRecordField.Id,
-            parameter.Locations.FirstOrDefault(),
+            parameterLocation,
             new EquatableArray<string>(new[]
             {
                 typeSymbol.Name,

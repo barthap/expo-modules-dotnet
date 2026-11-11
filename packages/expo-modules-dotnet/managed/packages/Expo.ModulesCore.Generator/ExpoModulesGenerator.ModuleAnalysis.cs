@@ -521,7 +521,7 @@ public sealed partial class ExpoModulesGenerator
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedReturnType.Id,
-            asyncResultType?.Locations.FirstOrDefault() ?? member.ReturnType.Locations.FirstOrDefault(),
+            GetTypeLocationOrMember(asyncResultType ?? member.ReturnType, member),
             new EquatableArray<string>(
                 new[]
                 {
@@ -578,7 +578,7 @@ public sealed partial class ExpoModulesGenerator
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedReturnType.Id,
-            member.ReturnType.Locations.FirstOrDefault(),
+            GetTypeLocationOrMember(member.ReturnType, member),
             new EquatableArray<string>(
                 new[]
                 {
@@ -785,7 +785,7 @@ public sealed partial class ExpoModulesGenerator
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedJSPropertyType.Id,
-            member.Type.Locations.FirstOrDefault() ?? member.Locations.FirstOrDefault(),
+            GetTypeLocationOrMember(member.Type, member),
             new EquatableArray<string>(new[] { member.Name, GetDiagnosticTypeName(member.Type) })
         ));
         continue;
@@ -815,7 +815,7 @@ public sealed partial class ExpoModulesGenerator
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedJSPropertyType.Id,
-            member.Type.Locations.FirstOrDefault() ?? member.Locations.FirstOrDefault(),
+            GetTypeLocationOrMember(member.Type, member),
             new EquatableArray<string>(new[] { member.Name, GetDiagnosticTypeName(member.Type) })
         ));
         continue;

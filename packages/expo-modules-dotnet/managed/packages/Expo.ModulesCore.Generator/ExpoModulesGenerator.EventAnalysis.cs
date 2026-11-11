@@ -325,7 +325,10 @@ public sealed partial class ExpoModulesGenerator
       string diagnosticId = "EXPOJSI019") =>
       new(
           diagnosticId,
-          payloadType.Locations.FirstOrDefault() ?? property.Locations.FirstOrDefault(),
+          // A payload declared in another assembly has no location in this compilation.
+          SymbolEqualityComparer.Default.Equals(payloadType.ContainingAssembly, property.ContainingAssembly)
+              ? payloadType.Locations.FirstOrDefault() ?? property.Locations.FirstOrDefault()
+              : property.Locations.FirstOrDefault(),
           new EquatableArray<string>(new[] { moduleName, property.Name, GetDiagnosticTypeName(payloadType), reason })
       );
 
