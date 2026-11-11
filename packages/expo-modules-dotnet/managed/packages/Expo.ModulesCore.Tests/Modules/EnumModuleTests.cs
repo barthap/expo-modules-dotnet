@@ -260,6 +260,17 @@ public sealed class EnumModuleTests
         (await CatchAsync(host, "m.describeChoice(1)")).Message);
   }
 
+  [Fact]
+  public async Task EnumFromAReferencedAssemblyUsesItsDeclaredStrings()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal("[\"SHA-1\",\"MD5\"]", await ReadAsync(host, "[m.echoExternal('SHA-1'), m.echoExternal('MD5')]"));
+    Assert.Equal(
+        "'SHA1' is not a valid Expo.ModulesCore.Tests.ExternalTypes.ExternalAlgorithm value. It must be one of: 'MD5', 'SHA-1'",
+        (await CatchAsync(host, "m.echoExternal('SHA1')")).Message);
+  }
+
   private static ExpoModuleTestHost CreateHost() =>
       ExpoModuleTestHost.Create(ExpoModulesProvider_Expo_ModulesCore_Tests.Register);
 

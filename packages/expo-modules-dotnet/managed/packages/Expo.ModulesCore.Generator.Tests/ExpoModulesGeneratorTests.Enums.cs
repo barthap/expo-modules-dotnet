@@ -466,4 +466,52 @@ public sealed partial class ExpoModulesGeneratorTests
         Assert.Single(unreachable.GeneratorDiagnostics!, item => item.Id == "EXPOJSI032").GetMessage());
     Assert.Empty(GeneratorDiagnosticIds(reachable));
   }
+
+  // Member attributes come from metadata, so a referenced enum crosses as its declared strings.
+  [Fact]
+  public void GeneratorReadsEnumMemberValuesFromReferencedAssemblies()
+  {
+    var reference = GeneratorTestHost.CompileReference(
+        "namespace External; public enum ExternalAlgorithm { MD5, [" + EM + "(Value = \"SHA-1\")] SHA1 }",
+        "External.Enums");
+    var result = GeneratorTestHost.Run(
+        ModuleSource("", "[JS] public External.ExternalAlgorithm Echo(External.ExternalAlgorithm algorithm) => algorithm;"),
+        additionalReferences: new[] { reference });
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var codec = EnumCodecText(GeneratedText(result), "ExternalAlgorithm");
+    Assert.Contains("\"SHA-1\" => global::External.ExternalAlgorithm.SHA1,", codec, StringComparison.Ordinal);
+    Assert.Contains("global::External.ExternalAlgorithm.SHA1 => \"SHA-1\",", codec, StringComparison.Ordinal);
+  }
+
+  // A member of a referenced enum has no location in this compilation, so the error is reported
+  // where the enum is used and names the enum's assembly; the position reports its own diagnostic.
+  [Theory]
+  [InlineData("", "[JS] public int M(External.Bad value) => 0;", "value", "EXPOJSI001")]
+  [InlineData("", "[JS] public External.Bad N() => default;", "N", "EXPOJSI002")]
+  [InlineData("", "[JS] public External.Bad Value { get; set; }", "Value", "EXPOJSI015")]
+  [InlineData("public sealed record Holder(External.Bad Content);", "[JS] public int M(Holder holder) => 0;", "Content", "EXPOJSI007")]
+  [InlineData("", "[Event] public partial Func<External.Bad, Task> OnBad { get; }", "OnBad", "EXPOJSI019")]
+  public void GeneratorReportsAnInvalidEnumFromAReferencedAssemblyAtTheUseSite(
+      string declarations,
+      string member,
+      string useSite,
+      string positionDiagnostic)
+  {
+    var reference = GeneratorTestHost.CompileReference(
+        "namespace External; public enum Bad { [" + EM + "(Value = \"B\")] A, B }",
+        "External.Enums");
+    var source = ModuleSource(declarations, member);
+    var result = GeneratorTestHost.Run(source, additionalReferences: new[] { reference });
+
+    AssertNoCompilerErrors(result);
+    Assert.Contains(positionDiagnostic, GeneratorDiagnosticIds(result));
+    var diagnostic = Assert.Single(result.GeneratorDiagnostics!, item => item.Id == "EXPOJSI034");
+    Assert.Equal(
+        "Enum 'External.Bad' members 'A' and 'B' both cross to JavaScript as \"B\" (declared in referenced assembly 'External.Enums')",
+        diagnostic.GetMessage());
+    Assert.Equal(useSite, SpanText(source, diagnostic));
+    Assert.DoesNotContain("BadEnumCodec_", GeneratedText(result), StringComparison.Ordinal);
+  }
 }

@@ -94,18 +94,27 @@ public sealed partial class ExpoModulesGenerator
   }
 
   // Builds an EXPOJSI033 to 035 diagnostic: the enum's name first, then the arguments, then the
-  // declaration suffix.
+  // declaration suffix. A member of an enum declared in this compilation is reported at the member.
+  // An enum from a referenced assembly is reported where it is used, and the message names the
+  // assembly. The test compares assembly symbols, never location kinds: an IDE project reference
+  // yields source symbols of another compilation, and Roslyn rejects a diagnostic located there.
   private static ExpoDiagnosticModel CreateEnumDiagnostic(
       DiagnosticDescriptor descriptor,
       INamedTypeSymbol enumType,
       Location? memberLocation,
       ExpoCodecCollector codecs,
-      params string[] arguments) =>
-      new(
-          descriptor.Id,
-          memberLocation,
-          new EquatableArray<string>(
-              new[] { enumType.ToDisplayString() }.Concat(arguments).Concat(new[] { string.Empty })));
+      params string[] arguments)
+  {
+    var declaredHere = SymbolEqualityComparer.Default.Equals(enumType.ContainingAssembly, codecs.Assembly);
+    var suffix = declaredHere
+        ? string.Empty
+        : $" (declared in referenced assembly '{enumType.ContainingAssembly.Name}')";
+    return new ExpoDiagnosticModel(
+        descriptor.Id,
+        declaredHere ? memberLocation : codecs.UseSite,
+        new EquatableArray<string>(
+            new[] { enumType.ToDisplayString() }.Concat(arguments).Concat(new[] { suffix })));
+  }
 
   // EXPOJSI033 for each invalid value, then at most one pair diagnostic per later member: EXPOJSI035
   // when it has the value of an earlier member, else EXPOJSI034 when it crosses as the string of an

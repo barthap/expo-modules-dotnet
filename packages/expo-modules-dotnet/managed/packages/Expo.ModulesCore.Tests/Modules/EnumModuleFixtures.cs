@@ -1,4 +1,5 @@
 using System.Runtime.Serialization;
+using Expo.ModulesCore.Tests.ExternalTypes;
 
 namespace Expo.ModulesCore.Tests.Modules;
 
@@ -216,4 +217,7 @@ public sealed partial class EnumScenariosModule : Module
     "output" => new DigestInput.Output(DigestEncoding.Hex),
     _ => new DigestInput.Text(which),
   };
+
+  [JS]
+  public ExternalAlgorithm EchoExternal(ExternalAlgorithm algorithm) => algorithm;
 }
