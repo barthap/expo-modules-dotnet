@@ -1,3 +1,4 @@
+using Expo.ModulesCore.Generated;
 using Expo.ModulesCore.Testing;
 using Xunit;
 
@@ -124,6 +125,7 @@ public sealed partial class ExpoModuleTestHostTests
     Assert.Equal("TypeError", exception.JavaScriptName);
     Assert.Equal("bad input", exception.Message);
     Assert.False(string.IsNullOrWhiteSpace(exception.JavaScriptStack));
+    Assert.Null(exception.JavaScriptCode);
     Assert.Equal(0, host.ActivePromiseEvaluationCount);
   }
 
@@ -141,8 +143,43 @@ public sealed partial class ExpoModuleTestHostTests
 
     Assert.Null(exception.JavaScriptName);
     Assert.Equal("plain failure", exception.Message);
+    Assert.Null(exception.JavaScriptCode);
     Assert.Null(exception.JavaScriptStack);
     Assert.Equal(0, host.ActivePromiseEvaluationCount);
+  }
+
+  [Fact]
+  public async Task PromiseRejectionExposesTheErrorCode()
+  {
+    using var host = ExpoModuleTestHost.Create((_, _) => { });
+
+    var exception = await Assert.ThrowsAsync<JavaScriptPromiseRejectedException>(
+        () => host.EvaluatePromiseAsync(
+            "Promise.reject(Object.assign(new Error('coded failure'), { code: 'ERR_TEST' }))",
+            TestContext.Current.CancellationToken
+        )
+    );
+
+    Assert.Equal("ERR_TEST", exception.JavaScriptCode);
+    Assert.Equal("coded failure", exception.Message);
+  }
+
+  // Authored-package tests assert a module's code through the test host.
+  [Fact]
+  public async Task ModuleRejectionCodeReachesTheTestHost()
+  {
+    using var host = ExpoModuleTestHost.Create(ExpoModulesProvider_Expo_ModulesCore_Tests.Register);
+
+    var exception = await Assert.ThrowsAsync<JavaScriptPromiseRejectedException>(
+        () => host.EvaluatePromiseAsync(
+            "globalThis._expoDotnet.modules.CodedErrors.failAfterAwait('derived')",
+            TestContext.Current.CancellationToken
+        )
+    );
+
+    Assert.Equal("Error", exception.JavaScriptName);
+    Assert.Equal("ERR_INVALID_PATH", exception.JavaScriptCode);
+    Assert.Equal("bad path", exception.Message);
   }
 
   [Fact]

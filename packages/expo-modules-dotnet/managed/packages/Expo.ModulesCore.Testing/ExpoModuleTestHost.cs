@@ -306,13 +306,14 @@ public sealed class ExpoModuleTestHost : IDisposable
     try
     {
       rejection = arguments.Count == 0
-          ? new JavaScriptPromiseRejectedException("undefined", null, null)
+          ? new JavaScriptPromiseRejectedException("undefined", null, null, null)
           : CreateRejectionException(arguments.GetValue(0));
     }
     catch (Exception exception)
     {
       rejection = new JavaScriptPromiseRejectedException(
           $"Failed to extract JavaScript Promise rejection: {exception.Message}",
+          null,
           null,
           null
       );
@@ -331,6 +332,7 @@ public sealed class ExpoModuleTestHost : IDisposable
       return new JavaScriptPromiseRejectedException(
           rejection.CoerceToString(),
           null,
+          null,
           null
       );
     }
@@ -339,8 +341,16 @@ public sealed class ExpoModuleTestHost : IDisposable
     return new JavaScriptPromiseRejectedException(
         ExtractErrorField(() => error.Message, "message") ?? string.Empty,
         ExtractErrorField(() => error.Name, "name"),
-        ExtractErrorField(() => error.Stack, "stack")
+        ExtractErrorField(() => error.Stack, "stack"),
+        ExtractErrorField(() => ReadCode(retainedRejection), "code")
     );
+  }
+
+  // Runs inside the rejection callback, so the scoped refs stay valid until it returns.
+  private static string? ReadCode(JavaScriptValue rejection)
+  {
+    var code = rejection.Ref.AsObject().GetProperty("code");
+    return code.IsNullish ? null : code.CoerceToString();
   }
 
   private static string? ExtractErrorField(Func<string?> extract, string fieldName)
