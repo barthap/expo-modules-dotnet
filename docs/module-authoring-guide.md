@@ -6,10 +6,17 @@ exposed to JavaScript through a TypeScript facade), but have never seen this
 repo's C# module layer before.
 
 The reference implementation used throughout is `packages/example-module`.
-Open it alongside this guide; every numbered section below points at the
+Open it alongside this guide; every section below points at the
 concrete file that demonstrates it.
 
-## 1. Project setup
+## Get started
+
+### Requirements
+
+A module project targets .NET `net10.0`, as the `<TargetFramework>` element in the
+project file below shows.
+
+### Project layout
 
 > **Note**: This section describes the current repo-local workflow — module
 > packages living inside this monorepo. Authoring modules as standalone
@@ -36,19 +43,23 @@ a plain SDK-style csproj that references `Expo.ModulesCore` (which pulls in
       Include="../../../expo-modules-dotnet/managed/packages/Expo.ModulesCore.Generator/bin/Debug/netstandard2.0/Expo.ModulesCore.Generator.dll"
       Condition="'$(PublishAot)' == 'true'" />
   </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
+    <AssemblyName>ExampleModule</AssemblyName>
+    <RootNamespace>ExampleModule</RootNamespace>
   </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PublishAot)' == 'true'">
+    <NativeLib>Shared</NativeLib>
+  </PropertyGroup>
+
 </Project>
 ```
-
-The snippet shows the references and core properties. The real
-`ExampleModule.csproj` also sets `AssemblyName`, `RootNamespace` and
-`GenerateRuntimeConfigurationFiles`, and sets `NativeLib` to `Shared` when
-`PublishAot` is true. Copy the whole file when you start a new module.
 
 The generator reference is conditioned on `PublishAot`: normal builds pull in
 the generator as a live analyzer project, while NativeAOT publishes use the
@@ -56,7 +67,7 @@ generator's prebuilt DLL so the analyzer itself does not need to be
 AOT-compiled. See `docs/specs/dotnet-autolinking.md` for why the aggregator
 build (not this csproj) is the actual NativeAOT publish unit.
 
-## 2. Autolinking metadata
+### Autolinking metadata
 
 `expo-module.config.json` at the package root declares the dotnet platform and
 points at the csproj(s):
@@ -67,7 +78,10 @@ points at the csproj(s):
   "platforms": ["dotnet"],
   "dotnet": {
     "projects": [
-      { "path": "dotnet/ExampleModule/ExampleModule.csproj", "assemblyName": "ExampleModule" }
+      {
+        "path": "dotnet/ExampleModule/ExampleModule.csproj",
+        "assemblyName": "ExampleModule"
+      }
     ]
   }
 }
@@ -82,30 +96,44 @@ disk fails `resolve`/`generate` with an error naming the package and path. See
 `packages/expo-modules-dotnet-autolinking/README.md` and
 `docs/specs/dotnet-autolinking.md` for the full contract.
 
-## 3. Module definition
+### First module
 
 A module is a class attributed with `[ExpoModule("Name")]`. Methods exposed to
 JavaScript are attributed with `[JS]` (optionally `[JS("jsName")]` to rename):
 
 ```csharp
 // packages/example-module/dotnet/ExampleModule/ExampleMathModule.cs
-[ExpoModule("ExampleModule")]
+using Expo.ModulesCore;
+
+namespace ExampleModule;
+
+[ExpoModule("ExampleModule", Classes = new[] { typeof(ExampleCounter) })]
 public sealed partial class ExampleMathModule : Module
 {
-  public ExampleMathModule(DotnetRuntimeContext context) : base(context) { }
-
+  public ExampleMathModule(DotnetRuntimeContext context)
+      : base(context)
+  {
+  }
+// ...
   [JS]
-  public double Add(double a, double b) => a + b;
-
-  [JS]
-  public ExampleUserSummary DescribeUser(ExampleUser user) =>
-      new(user.Name, user.Age, $"{user.Name} is {user.Age}");
+  public double Add(double a, double b)
+  {
+    return a + b;
+  }
 
   [JS]
   public bool Ready => true;
+// ...
+  [JS]
+  public ExampleUserSummary DescribeUser(ExampleUser user)
+  {
+    return new ExampleUserSummary(user.Name, user.Age, $"{user.Name} is {user.Age}");
+  }
+// ...
 }
 
 public readonly record struct ExampleUser(string Name, int Age);
+
 public readonly record struct ExampleUserSummary(string Name, int Age, string Summary);
 ```
 
@@ -117,111 +145,122 @@ JavaScript name lowercases the first C# character: `Add` becomes `add`,
 `DescribeUser` becomes `describeUser`, and `Ready` becomes `ready`. Use
 `[JS("ExactName")]` only when JavaScript should receive that exact name.
 
-Supported parameter and return types, decoded/encoded through generated
-compile-time codecs (`Expo.ModulesCore.Codecs`):
+### TypeScript facade
 
-- CLR numeric primitives (`int`, `double`, `float`, unsigned integers, and
-  friends), including their nullable forms.
-- `string`, `bool`.
-- String-backed convertible types: `Guid`, `Uri`, `DateTimeOffset`,
-  `TimeSpan` — encoded/decoded as JavaScript strings; invalid input throws a
-  managed exception that surfaces to JavaScript as a catchable `Error`.
-- Positional `record` / `record class` / `record struct` types (including
-  simple nested records), mapped to/from plain JavaScript objects with
-  lower-camel field names. For example, `ExampleUser.Name` and
-  `ExampleUser.Age` map to `name` and `age`. Decode reads only those
-  lower-camel names; there is no PascalCase compatibility fallback. A missing
-  field follows its existing codec's `undefined` behavior.
-- `Dictionary<string, T>` / `IReadOnlyDictionary<string, T>` where `T` has a
-  generated codec, mapped to/from a plain JavaScript object.
-- `IReadOnlyList<T>` where `T` has a generated codec, mapped to/from a
-  JavaScript array. `List<T>` is not supported. Lists and dictionaries nest in
-  each other, in records, in callback types, and in typed event payloads. They
-  can hold `JavaScriptValue`, `ArrayBuffer`, and `Uint8Array`.
-- Binary data: `ArrayBuffer`, plus `byte[]`, `Memory<byte>` and
-  `ReadOnlyMemory<byte>` as convenience types. These copy in both directions.
-  `Span<byte>` and `ReadOnlySpan<byte>` borrow one synchronous input parameter,
-  and a returned span is copied. `ArrayBuffer` and `ArrayBuffer?` work in every
-  position. `Uint8Array` is a view over a JavaScript buffer with its offset and
-  length, and nothing is copied: your writes are visible to JavaScript after
-  the call. `Uint8Array` and `Uint8Array?` work in every position too, and any
-  `Uint8Array` instance, including a subclass such as a `Buffer` polyfill, is
-  accepted. `byte[]` and `ArrayBuffer` parameters do not accept a
-  `Uint8Array`; declare `Uint8Array` when JavaScript sends one. See the
-  "Module-facing ArrayBuffer And Binary Codecs" requirement in
-  `docs/specs/modules-core-boundary.md`.
-- `Either<TFirst, TSecond>` for a value that JavaScript passes as one of
-  two kinds, such as `string | ArrayBuffer`. Each member is `string`, `bool`,
-  a numeric type, a binary type (`ArrayBuffer`, `byte[]`, `Memory<byte>`,
-  `ReadOnlyMemory<byte>`), or `Uint8Array` (an object), and the two members
-  must have different JavaScript kinds: `Either<double, bool>` works,
-  `Either<double, int>` does not. Read
-  `IsFirst`, then `First` or `Second`, or call `Match`. Create one with
-  `Either<TFirst, TSecond>.FromFirst` or `FromSecond`. A union works in every
-  position. JavaScript `null`, `undefined`, and any other kind fail with a
-  JavaScript error: a parameter fails before your code runs, and a callback
-  result fails inside `Invoke()`. `Either<TFirst, TSecond>?` turns `null` and
-  `undefined` into C# `null`. An `ArrayBuffer` or `Uint8Array` member is a leaf
-  and follows the leaf rules below.
-- Shared objects, declared as described in section 8.
-- C# `enum` values — encoded as JavaScript strings by default; annotate with
-  `[JSEnum(EnumRepresentation.Number)]` for integer-backed representation.
-- `JavaScriptValue` directly, for cases the typed codecs don't cover. See
-  "Leaf ownership" below and `docs/specs/managed-jsi-wrappers.md`.
-- `JavaScriptCallback<TResult>` / `JavaScriptCallback<TArgs, TResult>` for
-  JS function arguments (see Callbacks below). A callback is a parameter type
-  only: it cannot be a return value, a collection element, or a record field.
-  `JavaScriptCallback<...>?` is accepted as a method or shared-object
-  constructor parameter, including with `= null`. JavaScript `null` and
-  `undefined` arrive as C# `null`, and a function is retained like a non-null
-  callback. Its result and argument types can hold `JavaScriptValue`,
-  `ArrayBuffer`, and `Uint8Array` at any depth.
+The TypeScript side in `packages/<name>/src/` declares the native module shape
+and wraps it in an ergonomic public API:
 
-**Leaf ownership.** A `JavaScriptValue`, `ArrayBuffer`, or `Uint8Array` is a
-leaf. These rules apply at any depth, also inside records, lists, and
-dictionaries:
+```ts
+// packages/example-module/src/index.ts
+import {
+  DotnetModule,
+  DotnetSharedObject,
+  requireDotnetModule,
+  type EventSubscription,
+} from 'expo-modules-dotnet';
 
-1. A leaf parameter is valid until the call ends (async: until the returned
-   `Task` completes). To keep it, call `Retain()`.
-2. A leaf you return is no longer yours.
-3. A leaf you pass to a callback or an event stays yours. Keep it alive until
-   the call or the returned `Task` completes.
-4. A leaf you get back from a callback is yours. Dispose it.
+export type { EventSubscription } from 'expo-modules-dotnet';
 
-Call `JavaScriptValue.Retain()` on the JavaScript runtime thread. In an async
-method, call it before the first `await`. See
-`docs/specs/ownership-and-scoped-refs.md`.
+const nativeModule = requireDotnetModule<ExampleModule>('ExampleModule');
 
-Nullable reference types work for `ArrayBuffer?`, `Uint8Array?`, and for the
-codecs that carry no JSI ownership: `string?`, `Uri?`, `byte[]?`, positional
-reference records, and the `IReadOnlyList<T>?`, `Dictionary<string, T>?`, and
-`IReadOnlyDictionary<string, T>?` containers. Nullable elements and dictionary
-values work wherever the nested type is supported, so `IReadOnlyList<string?>?`
-composes. `List<T>` stays unsupported in both forms, because its non-nullable
-form has no codec either.
+export type ExampleUser = {
+  age: number;
+  name: string;
+};
 
-`JavaScriptValue?`, `SharedObject?`, and `SharedRef<T>?` are build
-diagnostics. `JavaScriptValue` already represents JavaScript `null` and
-`undefined`. The others carry shared-object identity, and a null axis
-multiplies those states. A nullable concrete `[ExpoSharedObject]` class is
-supported; see [Shared objects](#8-shared-objects).
+export type ExampleUserSummary = ExampleUser & {
+  summary: string;
+};
 
-Decoding treats JavaScript `null` and `undefined` alike as C# `null`, and C#
-`null` encodes as JavaScript `null`, never `undefined`. A non-nullable reference
-stays strict: JavaScript `null` fails the argument decode before your code runs.
-For an optional nullable parameter, omission or explicit `undefined` uses your
-C# default, while explicit `null` arrives as `null`. Only an explicit `?`
-annotation turns any of this on. In a file with `#nullable disable`, an
-unannotated reference keeps its strict codec.
+type ExampleModuleEvents = {
+  onStatus(payload: string): void;
+};
+
+type ExampleCounterEvents = {
+  onChange(value: number): void;
+};
+
+/**
+ * Shared counter handle: the same instance is visible to C# and JavaScript. Call `release()`
+ * when done; using a released counter throws a catchable error.
+ */
+export declare class ExampleCounter extends DotnetSharedObject<ExampleCounterEvents> {
+  constructor(start: number);
+  readonly count: number;
+  increment(by: number): number;
+  incrementAndEmitAsync(by: number): Promise<number>;
+}
+
+declare class ExampleModuleType extends DotnetModule<ExampleModuleEvents> {
+  ExampleCounter: typeof ExampleCounter;
+  add(a: number, b: number): number;
+  echoCounter(counter: ExampleCounter): ExampleCounter;
+  makeCounter(start: number): ExampleCounter;
+  describeUser(user: ExampleUser): ExampleUserSummary;
+  emitStatusAsync(label: string): Promise<void>;
+  getMessageAsync(): Promise<string>;
+  readonly ready: boolean;
+  transformWithCallback(value: string, callback: (value: string) => string): string;
+}
+
+export type ExampleModule = ExampleModuleType;
+
+export function add(a: number, b: number): number {
+  return nativeModule.add(a, b);
+}
+
+export function addStatusListener(listener: (payload: string) => void): EventSubscription {
+  return nativeModule.addListener('onStatus', listener);
+}
+```
+
+`requireDotnetModule` is the dotnet-backed counterpart of Expo's
+`requireNativeModule` — it looks up the module by the name passed to
+`[ExpoModule("...")]`. Record fields already cross the boundary with
+lower-camel JavaScript names, so the facade should declare `name`, `age`, and
+`summary` directly. Do not add a PascalCase translation object or rely on a
+PascalCase decode fallback.
+
+`DotnetModule` and `DotnetEventEmitter` are type bases, not usable JavaScript
+module constructors. Obtain module objects through `requireDotnetModule`, and
+do not use `instanceof` with either base because native registry objects do not
+inherit their JavaScript prototypes. The event map is explicit until generated
+event declarations provide a different authoring input. Release a listener
+with the returned subscription's `remove()` method.
+
+## Modules
+
+### Functions
 
 Unsupported parameter, return, constructor, method, and property shapes and
 duplicate exported names are reported as generator build diagnostics, not
 runtime failures.
 
+### Asynchronous functions
+
+A `[JS]` method returning `Task` or `Task<T>` is generated as a
+promise-returning JavaScript function instead of a direct-call one:
+
+```csharp
+// packages/example-module/dotnet/ExampleModule/ExampleMathModule.cs
+  [JS]
+  public async Task<string> GetMessageAsync()
+  {
+    await Task.Yield();
+    return "Hello from async C#";
+  }
+```
+
+Arguments are decoded and captured before the authored method is awaited.
+Argument validation/decoding failures, an authored method throwing
+synchronously, and a faulted or canceled task all reject the returned
+JavaScript Promise instead of throwing synchronously.
+
 ### Properties
 
 Annotate an instance property with `[JS]` to expose an own JavaScript accessor:
 
+<!-- backed-by: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md) -->
 ```csharp
 [JS]
 public bool Ready { get; set; }
@@ -235,6 +274,7 @@ public bool ReadyWithExplicitName => Ready;
 
 JavaScript reads and writes these as properties, not functions:
 
+<!-- backed-by: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md) -->
 ```ts
 nativeModule.ready = true;
 console.log(nativeModule.ready);
@@ -262,182 +302,95 @@ value built from `Retain()` copies. `JavaScriptObject` may become an optional
 advanced module convertible in a separate future change, but it does not have a
 generated module codec today.
 
-## 4. Async methods
+## Types
 
-A `[JS]` method returning `Task` or `Task<T>` is generated as a
-promise-returning JavaScript function instead of a direct-call one:
+### Supported types
 
-```csharp
-[JS]
-public async Task<string> GetMessageAsync()
-{
-  await Task.Yield();
-  return "Hello from async C#";
-}
-```
+Supported parameter and return types, decoded/encoded through generated
+compile-time codecs (`Expo.ModulesCore.Codecs`):
 
-Arguments are decoded and captured before the authored method is awaited.
-Argument validation/decoding failures, an authored method throwing
-synchronously, and a faulted or canceled task all reject the returned
-JavaScript Promise instead of throwing synchronously.
+- CLR numeric primitives (`int`, `double`, `float`, unsigned integers, and
+  friends), including their nullable forms.
+- `string`, `bool`.
+- String-backed convertible types: `Guid`, `Uri`, `DateTimeOffset`,
+  `TimeSpan` — encoded/decoded as JavaScript strings; invalid input throws a
+  managed exception that surfaces to JavaScript as a catchable `Error`.
+- `Dictionary<string, T>` / `IReadOnlyDictionary<string, T>` where `T` has a
+  generated codec, mapped to/from a plain JavaScript object.
+- `IReadOnlyList<T>` where `T` has a generated codec, mapped to/from a
+  JavaScript array. `List<T>` is not supported. Lists and dictionaries nest in
+  each other, in records, in callback types, and in typed event payloads. They
+  can hold `JavaScriptValue`, `ArrayBuffer`, and `Uint8Array`.
+- Shared objects, declared as described in `## Shared objects`.
+- C# `enum` values — encoded as JavaScript strings by default; annotate with
+  `[JSEnum(EnumRepresentation.Number)]` for integer-backed representation.
+- `JavaScriptValue` directly, for cases the typed codecs don't cover. See
+  "Leaf ownership" below and `docs/specs/managed-jsi-wrappers.md`.
+- `JavaScriptCallback<TResult>` / `JavaScriptCallback<TArgs, TResult>` for
+  JS function arguments (see Closure arguments below). A callback is a parameter type
+  only: it cannot be a return value, a collection element, or a record field.
+  `JavaScriptCallback<...>?` is accepted as a method or shared-object
+  constructor parameter, including with `= null`. JavaScript `null` and
+  `undefined` arrive as C# `null`, and a function is retained like a non-null
+  callback. Its result and argument types can hold `JavaScriptValue`,
+  `ArrayBuffer`, and `Uint8Array` at any depth.
 
-Threading: a synchronous `[JS]` function runs as a direct JSI host function
-inside the current JavaScript call — it does not hop threads. Async work
-scheduled through `DotnetRuntimeContext` (for example inside a `Task`-returning
-method, or when emitting an event) is routed back onto the owning JavaScript
-runtime by the runtime scheduler; see `docs/specs/runtime-scheduling.md` for
-how each platform host (React Native, headless Hermes testhost) executes that
-scheduled work, and `docs/specs/promises.md` for how the underlying promise
-capability is settled.
+### Leaf ownership
 
-## 5. Events
+**Leaf ownership.** A `JavaScriptValue`, `ArrayBuffer`, or `Uint8Array` is a
+leaf. These rules apply at any depth, also inside records, lists, and
+dictionaries:
 
-Use a typed `[Event]` member for new events. It declares both the JavaScript
-event name and its one payload type, then the generator supplies one cached,
-awaitable delegate per module instance. Declare a payload-less event as
-`Func<Task>` and a one-payload event as `Func<T, Task>`:
+1. A leaf parameter is valid until the call ends (async: until the returned
+   `Task` completes). To keep it, call `Retain()`.
+2. A leaf you return is no longer yours.
+3. A leaf you pass to a callback or an event stays yours. Keep it alive until
+   the call or the returned `Task` completes.
+4. A leaf you get back from a callback is yours. Dispose it.
 
-```csharp
-[ExpoModule("ExampleModule")]
-public sealed partial class ExampleMathModule : Module
-{
-  [Event]
-  public partial Func<string, Task> OnStatus { get; }
+Call `JavaScriptValue.Retain()` on the JavaScript runtime thread. In an async
+method, call it before the first `await`. See
+`docs/specs/ownership-and-scoped-refs.md`.
 
-  [JS]
-  public Task EmitStatusAsync(string label) =>
-      OnStatus($"C# event: {label}");
-}
-```
+### Nullable values
 
-`[Event]` lowercases only the first character of the C# property name, so
-`OnStatus` emits `onStatus`; it does not strip the `On` prefix. Use
-`[Event("StatusChanged")]` when JavaScript must receive an explicit name
-verbatim. The delegate returns the real dispatch task. Await it when the
-calling code needs to observe target lookup, payload encoding, scheduling, or
-teardown failures; a `[JS]` method returning that task exposes the result as a
-JavaScript Promise.
+Nullable reference types work for `ArrayBuffer?`, `Uint8Array?`, and for the
+codecs that carry no JSI ownership: `string?`, `Uri?`, `byte[]?`, positional
+reference records, and the `IReadOnlyList<T>?`, `Dictionary<string, T>?`, and
+`IReadOnlyDictionary<string, T>?` containers. Nullable elements and dictionary
+values work wherever the nested type is supported, so `IReadOnlyList<string?>?`
+composes. `List<T>` stays unsupported in both forms, because its non-nullable
+form has no codec either.
 
-Generated registration initializes typed event members before `[OnCreate]`
-runs. Reading one from an authored constructor fails with a clear
-`InvalidOperationException`, because registration has not initialized it yet.
-`[OnCreate]` can read and invoke the member, although dispatch there can still
-fail if JavaScript has not attached the event target yet.
+`JavaScriptValue?`, `SharedObject?`, and `SharedRef<T>?` are build
+diagnostics. `JavaScriptValue` already represents JavaScript `null` and
+`undefined`. The others carry shared-object identity, and a null axis
+multiplies those states. A nullable concrete `[ExpoSharedObject]` class is
+supported; see [Shared objects](#shared-objects).
 
-### Event payload ownership
+Decoding treats JavaScript `null` and `undefined` alike as C# `null`, and C#
+`null` encodes as JavaScript `null`, never `undefined`. A non-nullable reference
+stays strict: JavaScript `null` fails the argument decode before your code runs.
+For an optional nullable parameter, omission or explicit `undefined` uses your
+C# default, while explicit `null` arrives as `null`. Only an explicit `?`
+annotation turns any of this on. In a file with `#nullable disable`, an
+unannotated reference keeps its strict codec.
 
-For ordinary payloads, keep mutable payload state stable until the event task
-completes. Direct `ArrayBuffer` and `JavaScriptValue` payloads have different
-lifetime rules:
-
-- An `ArrayBuffer` original may be disposed after event invocation returns, but
-  it must not race that invocation. The dispatcher retains its own lease before
-  returning the task.
-- A `JavaScriptValue` original stays alive until the event task completes. Its
-  invocation copy can only be retained while running on the owning JavaScript
-  runtime.
-- A `Func<ArrayBuffer?, Task>` event delivers C# `null` as one JavaScript `null`
-  argument and retains no lease. A non-null buffer follows the `ArrayBuffer`
-  rule.
-- A direct `Uint8Array` or `Uint8Array?` gets no lease; keep it alive until the
-  task completes.
-
-Records, lists, and dictionaries that hold `JavaScriptValue`, `ArrayBuffer`,
-`ArrayBuffer?`, or `Uint8Array` are valid payloads, and so is a direct
-`Uint8Array` or `Uint8Array?`. These leaves stay yours (rule 3 in section 3):
-keep them alive until the event task completes. Callback payloads
-and a nullable `JavaScriptValue` are build diagnostics. `JavaScriptObject` is
-not currently a generated module codec, but remains a possible future advanced
-convertible.
-
-To react when JavaScript adds or removes listeners, declare hook methods with
-`[OnStartObserving]` / `[OnStopObserving]` (optionally naming a specific event,
-for example `[OnStopObserving("onChange")]`):
-
-```csharp
-[OnStartObserving]
-public void Start(string eventName) { /* first listener for eventName added */ }
-
-[OnStopObserving("onChange")]
-public void Stop() { /* last listener for onChange removed */ }
-```
-
-Typed events are registered as `_expoDotnet.NativeModule` instances, so the
-inherited `EventEmitter`/`addListener` JavaScript methods work through the
-prototype chain. You don't need (and can't declare) `[JS]` members named
-`startObserving` or `stopObserving` — those names are reserved for generated
-observing hooks.
-
-On the JS facade side, subscribe with `addListener`:
-
-```ts
-// packages/example-module/src/index.ts
-export function addStatusListener(listener: (payload: string) => void) {
-  return nativeModule.addListener('onStatus', listener);
-}
-```
-
-The JavaScript listener facade and its event map do not change when moving to a
-typed C# event member.
-
-### Legacy `[Events]` and `SendEventAsync`
-
-`[Events("name1", "name2", ...)]` and the inherited `SendEventAsync` methods
-remain supported for migration and interop. The event list must be non-empty
-and non-duplicated:
-
-```csharp
-[ExpoModule("ExampleModule")]
-[Events("onStatus")]
-public sealed partial class ExampleMathModule : Module
-{
-  [JS]
-  public Task EmitStatusAsync(string label) =>
-      SendEventAsync<StringCodec, string>("onStatus", $"C# event: {label}");
-}
-```
-
-Emitting a name outside the declared list fails loudly; an async `[JS]` caller
-observes that failure as a rejected Promise. Prefer typed `[Event]` members for
-new events so the name and payload type are checked at compile time.
-
-## 6. Lifecycle
-
-`[OnCreate]` and `[OnDestroy]` mark parameterless instance methods called once
-per module instance:
-
-```csharp
-[OnCreate]
-public void OnCreate() { Console.WriteLine("ExampleModule created"); }
-
-[OnDestroy]
-public void OnDestroy() { Console.WriteLine("ExampleModule destroyed"); }
-```
-
-`OnCreate` runs once, right after the module instance is stored in the owning
-`DotnetRuntimeContext`'s module registry. `OnDestroy` runs once when that
-runtime context is disposed, before `IDisposable.Dispose`; all modules'
-destroy/dispose callbacks run even if one throws, with failures aggregated
-into a single `AggregateException` after cleanup finishes. Neither hook is
-exposed as a JavaScript-visible module property.
-
-A module instance is scoped to one `DotnetRuntimeContext` (one JavaScript
-runtime); a second runtime gets its own instance.
-
-## 7. Callbacks
+### Closure arguments
 
 `JavaScriptCallback<TResult>` (zero arguments) and
 `JavaScriptCallback<TArgs, TResult>` (one to eight arguments via `ValueTuple`)
 let a `[JS]` method accept a JavaScript function and call back into it:
 
 ```csharp
-[JS]
-public string TransformWithCallback(
-    string value,
-    JavaScriptCallback<ValueTuple<string>, string> callback)
-{
-  return callback.Invoke(ValueTuple.Create($"C# sent {value}"));
-}
+// packages/example-module/dotnet/ExampleModule/ExampleMathModule.cs
+  [JS]
+  public string TransformWithCallback(
+      string value,
+      JavaScriptCallback<ValueTuple<string>, string> callback)
+  {
+    return callback.Invoke(ValueTuple.Create($"C# sent {value}"));
+  }
 ```
 
 The callback is retained and owned by the current `DotnetRuntimeContext`.
@@ -447,11 +400,11 @@ event-style use. Invoking a callback after its runtime context has torn down
 fails loudly instead of touching released native state — don't cache a
 callback past the lifetime of the module/runtime that received it.
 
-Leaves follow rules 3 and 4 in section 3. A leaf you pass as an argument stays
-yours. With `InvokeAsync`, keep it alive until the returned task completes. A
-leaf in the callback result is yours, so dispose it.
+Leaves follow rules 3 and 4 in Leaf ownership above. A leaf you pass as an
+argument stays yours. With `InvokeAsync`, keep it alive until the returned task
+completes. A leaf in the callback result is yours, so dispose it.
 
-## 8. Shared objects
+## Shared objects
 
 A shared object is an expensive native resource (file handle, image, crypto
 key) held by JavaScript as a class instance while C# keeps the original
@@ -462,9 +415,12 @@ JavaScript object back into C# returns the original managed instance.
 ### Declaring a class
 
 ```csharp
+// packages/example-module/dotnet/ExampleModule/ExampleCounter.cs
 [ExpoSharedObject]
 public sealed partial class ExampleCounter : SharedObject
 {
+  private bool resourcesReleased;
+
   [JS]
   public ExampleCounter(double start)
   {
@@ -473,17 +429,23 @@ public sealed partial class ExampleCounter : SharedObject
 
   [JS]
   public double Count { get; private set; }
-
+// ...
   [JS("increment")]
   public double Increment(double by)
   {
     Count += by;
     return Count;
   }
-
+// ...
   protected override void OnRelease()
   {
-    // Idempotent resource cleanup. Called exactly once.
+    if (resourcesReleased)
+    {
+      return;
+    }
+
+    resourcesReleased = true;
+    Count = 0;
   }
 }
 ```
@@ -509,16 +471,17 @@ events. The generated delegate becomes available when the object first pairs
 with its JavaScript instance:
 
 ```csharp
-[Event]
-public partial Func<double, Task> OnChange { get; }
-
-[JS]
-public async Task<double> IncrementAndEmitAsync(double by)
-{
-  Count += by;
-  await OnChange(Count);
-  return Count;
-}
+// packages/example-module/dotnet/ExampleModule/ExampleCounter.cs
+  [Event]
+  public partial Func<double, Task> OnChange { get; }
+// ...
+  [JS]
+  public async Task<double> IncrementAndEmitAsync(double by)
+  {
+    Count += by;
+    await OnChange(Count);
+    return Count;
+  }
 ```
 
 Listeners belong to one JavaScript shared-object instance. A listener on one
@@ -534,9 +497,11 @@ Exactly one module owns each shared class through the retained
 `[ExpoModule(Classes = ...)]` shape:
 
 ```csharp
+// packages/example-module/dotnet/ExampleModule/ExampleMathModule.cs
 [ExpoModule("ExampleModule", Classes = new[] { typeof(ExampleCounter) })]
 public sealed partial class ExampleMathModule : Module
 {
+// ...
   [JS]
   public ExampleCounter MakeCounter(double start) => new(start);
 
@@ -579,26 +544,12 @@ cleanup in `OnRelease` only if your subclass owns the resource.
 
 ### TypeScript facade and cleanup recipe
 
-Extend `DotnetSharedObject` for the facade class and type the module's class
-property:
-
-```ts
-import { DotnetSharedObject } from 'expo-modules-dotnet';
-
-type ExampleCounterEvents = {
-  onChange(value: number): void;
-};
-
-export declare class ExampleCounter extends DotnetSharedObject<ExampleCounterEvents> {
-  constructor(start: number);
-  readonly count: number;
-  increment(by: number): number;
-  incrementAndEmitAsync(by: number): Promise<number>;
-}
-```
+The facade class extends `DotnetSharedObject` and types the module's class
+property, as the `ExampleCounter` declaration in `## Get started` shows.
 
 Release deterministically with `try`/`finally`:
 
+<!-- backed-by: spec "Requirement: TypeScript Facades Expose Explicit Release" (modules-core-boundary.md) -->
 ```ts
 const counter = new module.ExampleCounter(40);
 const subscription = counter.addListener('onChange', value => {
@@ -615,59 +566,214 @@ try {
 `Symbol.dispose` / `using` support is deferred pending a TypeScript/runtime
 compatibility review; use explicit `release()`.
 
-## 9. JS facade
+## Records
 
-The TypeScript side in `packages/<name>/src/` declares the native module shape
-and wraps it in an ergonomic public API:
+Positional `record`, `record class` and `record struct` types (including simple
+nested records) map to and from plain JavaScript objects with lower-camel field
+names. For example, `ExampleUser.Name` and `ExampleUser.Age` map to `name` and
+`age`. Decode reads only those lower-camel names; there is no PascalCase
+compatibility fallback. A missing field follows its existing codec's
+`undefined` behavior.
+
+## Unions
+
+`Either<TFirst, TSecond>` is for a value that JavaScript passes as one of
+two kinds, such as `string | ArrayBuffer`. Each member is `string`, `bool`,
+a numeric type, a binary type (`ArrayBuffer`, `byte[]`, `Memory<byte>`,
+`ReadOnlyMemory<byte>`), or `Uint8Array` (an object), and the two members
+must have different JavaScript kinds: `Either<double, bool>` works,
+`Either<double, int>` does not. Read
+`IsFirst`, then `First` or `Second`, or call `Match`. Create one with
+`Either<TFirst, TSecond>.FromFirst` or `FromSecond`. A union works in every
+position. JavaScript `null`, `undefined`, and any other kind fail with a
+JavaScript error: a parameter fails before your code runs, and a callback
+result fails inside `Invoke()`. `Either<TFirst, TSecond>?` turns `null` and
+`undefined` into C# `null`. An `ArrayBuffer` or `Uint8Array` member is a leaf
+and follows the leaf rules in `## Types`.
+
+## Binary data
+
+The binary types are `ArrayBuffer`, plus `byte[]`, `Memory<byte>` and
+`ReadOnlyMemory<byte>` as convenience types. These copy in both directions.
+`Span<byte>` and `ReadOnlySpan<byte>` borrow one synchronous input parameter,
+and a returned span is copied. `ArrayBuffer` and `ArrayBuffer?` work in every
+position. `Uint8Array` is a view over a JavaScript buffer with its offset and
+length, and nothing is copied: your writes are visible to JavaScript after
+the call. `Uint8Array` and `Uint8Array?` work in every position too, and any
+`Uint8Array` instance, including a subclass such as a `Buffer` polyfill, is
+accepted. `byte[]` and `ArrayBuffer` parameters do not accept a
+`Uint8Array`; declare `Uint8Array` when JavaScript sends one. See the
+"Module-facing ArrayBuffer And Binary Codecs" requirement in
+`docs/specs/modules-core-boundary.md`.
+
+## Events
+
+Use a typed `[Event]` member for new events. It declares both the JavaScript
+event name and its one payload type, then the generator supplies one cached,
+awaitable delegate per module instance. Declare a payload-less event as
+`Func<Task>` and a one-payload event as `Func<T, Task>`:
+
+```csharp
+// packages/example-module/dotnet/ExampleModule/ExampleMathModule.cs
+[ExpoModule("ExampleModule", Classes = new[] { typeof(ExampleCounter) })]
+public sealed partial class ExampleMathModule : Module
+{
+// ...
+  [JS]
+  public Task EmitStatusAsync(string label) => OnStatus($"C# event: {label}");
+
+  [Event]
+  public partial Func<string, Task> OnStatus { get; }
+// ...
+}
+```
+
+`[Event]` lowercases only the first character of the C# property name, so
+`OnStatus` emits `onStatus`; it does not strip the `On` prefix. Use
+`[Event("StatusChanged")]` when JavaScript must receive an explicit name
+verbatim. The delegate returns the real dispatch task. Await it when the
+calling code needs to observe target lookup, payload encoding, scheduling, or
+teardown failures; a `[JS]` method returning that task exposes the result as a
+JavaScript Promise.
+
+Generated registration initializes typed event members before `[OnCreate]`
+runs. Reading one from an authored constructor fails with a clear
+`InvalidOperationException`, because registration has not initialized it yet.
+`[OnCreate]` can read and invoke the member, although dispatch there can still
+fail if JavaScript has not attached the event target yet.
+
+### Event payload ownership
+
+For ordinary payloads, keep mutable payload state stable until the event task
+completes. Direct `ArrayBuffer` and `JavaScriptValue` payloads have different
+lifetime rules:
+
+- An `ArrayBuffer` original may be disposed after event invocation returns, but
+  it must not race that invocation. The dispatcher retains its own lease before
+  returning the task.
+- A `JavaScriptValue` original stays alive until the event task completes. Its
+  invocation copy can only be retained while running on the owning JavaScript
+  runtime.
+- A `Func<ArrayBuffer?, Task>` event delivers C# `null` as one JavaScript `null`
+  argument and retains no lease. A non-null buffer follows the `ArrayBuffer`
+  rule.
+- A direct `Uint8Array` or `Uint8Array?` gets no lease; keep it alive until the
+  task completes.
+
+Records, lists, and dictionaries that hold `JavaScriptValue`, `ArrayBuffer`,
+`ArrayBuffer?`, or `Uint8Array` are valid payloads, and so is a direct
+`Uint8Array` or `Uint8Array?`. These leaves stay yours (rule 3 in Leaf ownership under `## Types`):
+keep them alive until the event task completes. Callback payloads
+and a nullable `JavaScriptValue` are build diagnostics. `JavaScriptObject` is
+not currently a generated module codec, but remains a possible future advanced
+convertible.
+
+### Observing hooks
+
+To react when JavaScript adds or removes listeners, declare hook methods with
+`[OnStartObserving]` / `[OnStopObserving]` (optionally naming a specific event,
+for example `[OnStopObserving("onChange")]`):
+
+<!-- backed-by: spec "Requirement: Event Observing Hooks Use Module Object Functions" (modules-core-boundary.md) -->
+```csharp
+[OnStartObserving]
+public void Start(string eventName) { /* first listener for eventName added */ }
+
+[OnStopObserving("onChange")]
+public void Stop() { /* last listener for onChange removed */ }
+```
+
+Typed events are registered as `_expoDotnet.NativeModule` instances, so the
+inherited `EventEmitter`/`addListener` JavaScript methods work through the
+prototype chain. You don't need (and can't declare) `[JS]` members named
+`startObserving` or `stopObserving` — those names are reserved for generated
+observing hooks.
+
+On the JS facade side, subscribe with `addListener`:
 
 ```ts
 // packages/example-module/src/index.ts
-import {
-  DotnetModule,
-  requireDotnetModule,
-  type EventSubscription,
-} from 'expo-modules-dotnet';
-
-type ExampleModuleEvents = {
-  onStatus(payload: string): void;
-};
-
-declare class ExampleModuleType extends DotnetModule<ExampleModuleEvents> {
-  add(a: number, b: number): number;
-  describeUser(user: ExampleUser): ExampleUserSummary;
-  getMessageAsync(): Promise<string>;
-  readonly ready: boolean;
-}
-
-export type ExampleModule = ExampleModuleType;
-export type { EventSubscription } from 'expo-modules-dotnet';
-
-const nativeModule = requireDotnetModule<ExampleModuleType>('ExampleModule');
-
-export function add(a: number, b: number): number {
-  return nativeModule.add(a, b);
-}
-
 export function addStatusListener(listener: (payload: string) => void): EventSubscription {
   return nativeModule.addListener('onStatus', listener);
 }
 ```
 
-`requireDotnetModule` is the dotnet-backed counterpart of Expo's
-`requireNativeModule` — it looks up the module by the name passed to
-`[ExpoModule("...")]`. Record fields already cross the boundary with
-lower-camel JavaScript names, so the facade should declare `name`, `age`, and
-`summary` directly. Do not add a PascalCase translation object or rely on a
-PascalCase decode fallback.
+The JavaScript listener facade and its event map do not change when moving to a
+typed C# event member.
 
-`DotnetModule` and `DotnetEventEmitter` are type bases, not usable JavaScript
-module constructors. Obtain module objects through `requireDotnetModule`, and
-do not use `instanceof` with either base because native registry objects do not
-inherit their JavaScript prototypes. The event map is explicit until generated
-event declarations provide a different authoring input. Release a listener
-with the returned subscription's `remove()` method.
+### Legacy `[Events]` and `SendEventAsync`
 
-## 10. Platform matrix
+`[Events("name1", "name2", ...)]` and the inherited `SendEventAsync` methods
+remain supported for migration and interop. The event list must be non-empty
+and non-duplicated:
+
+```csharp
+// apps/hermes-console-app/managed/HermesConsoleApp/ShowcaseModule.cs
+[ExpoModule("Showcase")]
+[Events("onStatus")]
+internal sealed partial class ShowcaseModule : Module
+{
+  public ShowcaseModule(DotnetRuntimeContext context)
+      : base(context)
+  {
+  }
+// ...
+  [JS("emitStatusAsync")]
+  public Task EmitStatusAsync(string label)
+  {
+    return SendEventAsync<StringCodec, string>("onStatus", $"C# event: {label}");
+  }
+}
+```
+
+Emitting a name outside the declared list fails loudly; an async `[JS]` caller
+observes that failure as a rejected Promise. Prefer typed `[Event]` members for
+new events so the name and payload type are checked at compile time.
+
+## Lifecycle and runtime context
+
+### Lifecycle hooks
+
+`[OnCreate]` and `[OnDestroy]` mark parameterless instance methods called once
+per module instance:
+
+```csharp
+// packages/example-module/dotnet/ExampleModule/ExampleMathModule.cs
+  [OnCreate]
+  public void OnCreate()
+  {
+    Console.WriteLine("ExampleModule created");
+  }
+
+  [OnDestroy]
+  public void OnDestroy()
+  {
+    Console.WriteLine("ExampleModule destroyed");
+  }
+```
+
+`OnCreate` runs once, right after the module instance is stored in the owning
+`DotnetRuntimeContext`'s module registry. `OnDestroy` runs once when that
+runtime context is disposed, before `IDisposable.Dispose`; all modules'
+destroy/dispose callbacks run even if one throws, with failures aggregated
+into a single `AggregateException` after cleanup finishes. Neither hook is
+exposed as a JavaScript-visible module property.
+
+A module instance is scoped to one `DotnetRuntimeContext` (one JavaScript
+runtime); a second runtime gets its own instance.
+
+## Threading
+
+A synchronous `[JS]` function runs as a direct JSI host function
+inside the current JavaScript call — it does not hop threads. Async work
+scheduled through `DotnetRuntimeContext` (for example inside a `Task`-returning
+method, or when emitting an event) is routed back onto the owning JavaScript
+runtime by the runtime scheduler; see `docs/specs/runtime-scheduling.md` for
+how each platform host (React Native, headless Hermes testhost) executes that
+scheduled work, and `docs/specs/promises.md` for how the underlying promise
+capability is settled.
+
+## Platform matrix
 
 | Platform | HostFXR (dev loader) | NativeAOT | Mono AOT |
 |---|---|---|---|
@@ -683,33 +789,35 @@ mobile platforms. NativeAOT constraints that affect module authors:
 - No runtime reflection in generated bindings or module code on the hot
   path — the generator and codecs are all compile-time.
 - The `Expo.ModulesCore.Generator` project reference itself is excluded from
-  NativeAOT builds (see the csproj snippet in section 1); only its generator
+  NativeAOT builds (see the csproj snippet in `## Get started`); only its generator
   output participates in the AOT-published binary.
 
 See the root `README.md`'s "Platform support" section and
 `docs/specs/runtime-and-abi.md` for how HostFXR and NativeAOT loaders differ.
 
-## 11. Verification
+## Verification
 
 Each repo-local authored package owns a non-packable `.Tests` project. Follow
 the `ExampleModule.Tests.csproj` reference shape:
 
 ```xml
-<ItemGroup>
-  <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.0" />
-  <PackageReference Include="xunit.v3" Version="3.2.0" />
-  <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
-</ItemGroup>
+<!-- packages/example-module/dotnet/ExampleModule.Tests/ExampleModule.Tests.csproj -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.0" />
+    <PackageReference Include="xunit.v3" Version="3.2.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
 
-<ItemGroup>
-  <ProjectReference Include="../ExampleModule/ExampleModule.csproj" />
-  <ProjectReference Include="../../../expo-modules-dotnet/managed/packages/Expo.ModulesCore.Testing/Expo.ModulesCore.Testing.csproj" />
-</ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ExampleModule/ExampleModule.csproj" />
+    <ProjectReference Include="../../../expo-modules-dotnet/managed/packages/Expo.ModulesCore.Testing/Expo.ModulesCore.Testing.csproj" />
+  </ItemGroup>
 ```
 
 Disable xUnit parallel execution for an authored module test project in v1:
 
 ```csharp
+// packages/example-module/dotnet/ExampleModule.Tests/AssemblyInfo.cs
 using Xunit;
 
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
@@ -721,9 +829,10 @@ generated module surface. Register the generated provider explicitly; TestCore
 does not scan assemblies for providers:
 
 ```csharp
-using var host = ExpoModuleTestHost.Create(
-    ExpoModulesProvider_ExampleModule.Register
-);
+// packages/example-module/dotnet/ExampleModule.Tests/ExampleModuleShowcaseTests.cs
+    using var host = ExpoModuleTestHost.Create(
+        ExpoModulesProvider_ExampleModule.Register
+    );
 ```
 
 `ExpoModuleTestHost` owns the Hermes runtime and module context. Keep it in a
@@ -735,41 +844,51 @@ executor.
 For synchronous evaluation:
 
 ```csharp
-using var host = ExpoModuleTestHost.Create(
-    ExpoModulesProvider_ExampleModule.Register
-);
-var sum = host.Runtime.Execute(_ =>
-{
-  using var value = host.Evaluate(
-      "globalThis._expoDotnet.modules.ExampleModule.add(20, 22)",
-      "example-module-test.js"
-  );
-  return checked((int)value.AsDouble());
-});
-
-Assert.Equal(42, sum);
+// packages/example-module/dotnet/ExampleModule.Tests/ExampleModuleShowcaseTests.cs
+    using var host = ExpoModuleTestHost.Create(
+        ExpoModulesProvider_ExampleModule.Register
+    );
+    var result = host.Runtime.Execute(_ =>
+    {
+      using var value = host.Evaluate(
+          "const module = globalThis._expoDotnet.modules.ExampleModule; " +
+          "const owned = new module.ExampleCounter(10); " +
+          "const fromNative = module.makeCounter(5); " +
+          "const echoed = module.echoCounter(fromNative); " +
+          "const identity = fromNative === echoed && Object.getPrototypeOf(owned) === module.ExampleCounter.prototype; " +
+          "const values = [owned.increment(2), owned.count, fromNative.increment(1), identity]; " +
+          "owned.release(); fromNative.release(); " +
+          "const afterRelease = (() => { try { owned.increment(1); return 'no error'; } " +
+          "catch (error) { return error.message.includes('not an active shared object'); } })(); " +
+          "values.concat([afterRelease]).join(':')",
+          "example-counter-shared-object.js"
+      );
+      return value.AsString();
+    });
+    Assert.Equal("12:12:6:true:true", result);
 ```
 
 For a Promise-returning method, await settlement first, then consume and
 dispose the owned fulfillment value on the executor:
 
 ```csharp
-using var host = ExpoModuleTestHost.Create(
-    ExpoModulesProvider_ExampleModule.Register
-);
-var fulfilled = await host.EvaluatePromiseAsync(
-    "globalThis._expoDotnet.modules.ExampleModule.getMessageAsync()",
-    TestContext.Current.CancellationToken
-);
-var message = host.Runtime.Execute(_ =>
-{
-  using (fulfilled)
-  {
-    return fulfilled.AsString();
-  }
-});
-
-Assert.Equal("Hello from async C#", message);
+// packages/example-module/dotnet/ExampleModule.Tests/ExampleModuleShowcaseTests.cs
+    var value = await host.EvaluatePromiseAsync(
+        """
+        Promise.resolve().then(function () {
+// ...
+        })
+        """,
+        TestContext.Current.CancellationToken
+    );
+    var outcome = host.Runtime.Execute(_ =>
+    {
+      using (value)
+      {
+        using var obj = value.AsObject();
+        return ReadOutcome(obj);
+      }
+    });
 ```
 
 Run the canonical runners for the full suite or a selected mixed project:
@@ -789,7 +908,7 @@ for a pure-test filter in a project that also contains Hermes-backed tests. An
 unfiltered mixed project requires the canonical runner so it can build and
 provide the native testhost.
 
-## 12. Troubleshooting
+## Troubleshooting
 
 - **A new module doesn't show up in the app**: confirm
   `expo-module.config.json` lists `"dotnet"` in `platforms` and the
@@ -821,10 +940,11 @@ provide the native testhost.
 
 ## Further reading
 
-- `docs/specs/modules-core-boundary.md` — the normative spec behind sections
-  3–7 above (attributes, codecs, lifecycle, events, callbacks).
-- `docs/specs/dotnet-autolinking.md` — the normative spec behind sections 1,
-  2, 10 and 12 above.
+- `docs/specs/modules-core-boundary.md` — the normative spec behind
+  `## Modules` to `## Lifecycle and runtime context` above (attributes, codecs,
+  lifecycle, events, callbacks).
+- `docs/specs/dotnet-autolinking.md` — the normative spec behind
+  `## Get started`, `## Platform matrix` and `## Troubleshooting` above.
 - `docs/specs/promises.md`, `docs/specs/runtime-scheduling.md` — the async/
-  threading model behind section 4.
+  threading model behind `## Threading`.
 - `docs/roadmap.md` — direction and what's still planned.
