@@ -141,6 +141,56 @@ public sealed class ExpoCryptoModuleTests
     Assert.EndsWith(messageEnd, outcome, StringComparison.Ordinal);
   }
 
+  // A 32-byte zero buffer with a view over bytes 8 to 23. The chance that 16 random bytes are all
+  // zero is 2^-128.
+  [Fact]
+  public void GetRandomValuesFillsOnlyTheView()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal(
+        "undefined,true,true,true",
+        Run(host, """
+            const buffer = new ArrayBuffer(32);
+            const result = m.getRandomValues(new Uint8Array(buffer, 8, 16));
+            const all = new Uint8Array(buffer);
+            return [
+              String(result),
+              all.slice(0, 8).every(x => x === 0),
+              all.slice(24).every(x => x === 0),
+              all.slice(8, 24).some(x => x !== 0),
+            ].join(',');
+            """));
+  }
+
+  // Upstream native code has no size limit; only the facade's getRandomBytes caps at 1024.
+  [Fact]
+  public void GetRandomValuesAcceptsZeroLengthAndLargeViews()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal(
+        "true",
+        Run(host, """
+            m.getRandomValues(new Uint8Array(0));
+            const large = new Uint8Array(70000);
+            m.getRandomValues(large);
+            return String(large.some(x => x !== 0));
+            """));
+  }
+
+  [Theory]
+  [InlineData("new Int32Array(2)")]
+  [InlineData("new DataView(new ArrayBuffer(2))")]
+  [InlineData("new ArrayBuffer(2)")]
+  [InlineData("5")]
+  public void GetRandomValuesRejectsValuesThatAreNotUint8Arrays(string value)
+  {
+    using var host = CreateHost();
+
+    Assert.Equal("true|false|Value is not a Uint8Array.", Catch(host, $"m.getRandomValues({value})"));
+  }
+
   private static ExpoModuleTestHost CreateHost() =>
       ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoCryptoDotnet.Register);
 

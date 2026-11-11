@@ -28,6 +28,12 @@ public sealed partial class ExpoCryptoModule : Module
     return Task.Run(() => ComputeDigestString(algorithm, data, encoding));
   }
 
+  // Fills exactly the bytes of the view, in place, with no size limit. Returns nothing, like
+  // Android; the facade returns the caller's object.
+  [JS]
+  public void GetRandomValues(Uint8Array typedArray) =>
+      typedArray.WithBytes(bytes => RandomNumberGenerator.Fill(bytes));
+
   // Hex is lowercase. Base64 is standard and padded, with no line breaks.
   private static string ComputeDigestString(DigestAlgorithm algorithm, string data, CryptoEncoding encoding)
   {
