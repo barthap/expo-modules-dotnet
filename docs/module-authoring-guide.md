@@ -214,11 +214,11 @@ export type ExampleUserSummary = ExampleUser & {
 };
 
 type ExampleModuleEvents = {
-  onStatus(payload: string): void;
+  status(payload: string): void;
 };
 
 type ExampleCounterEvents = {
-  onChange(value: number): void;
+  change(value: number): void;
 };
 
 /**
@@ -251,7 +251,7 @@ export function add(a: number, b: number): number {
 }
 
 export function addStatusListener(listener: (payload: string) => void): EventSubscription {
-  return nativeModule.addListener('onStatus', listener);
+  return nativeModule.addListener('status', listener);
 }
 ```
 
@@ -889,7 +889,7 @@ On the JS facade side, subscribe with `addListener`:
 ```ts
 // packages/example-module/src/index.ts
 export function addStatusListener(listener: (payload: string) => void): EventSubscription {
-  return nativeModule.addListener('onStatus', listener);
+  return nativeModule.addListener('status', listener);
 }
 ```
 
