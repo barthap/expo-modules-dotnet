@@ -20,18 +20,21 @@ internal sealed unsafe class HostFunctionContext
       JsiContext jsiContext,
       JavaScriptHostFunction callback,
       object context,
-      Action<object>? disposeCallbackState
+      Action<object>? disposeCallbackState,
+      JavaScriptErrorFactory? createError = null
   )
   {
     JsiContext = jsiContext;
     Callback = callback;
     Context = context;
     this.disposeCallbackState = disposeCallbackState;
+    CreateError = createError;
   }
 
   public JsiContext JsiContext { get; }
   public JavaScriptHostFunction Callback { get; }
   public object Context { get; }
+  public JavaScriptErrorFactory? CreateError { get; }
 
   public ExpoJsiError CaptureException(Exception exception)
   {

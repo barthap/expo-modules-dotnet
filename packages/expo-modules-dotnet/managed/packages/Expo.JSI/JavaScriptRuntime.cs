@@ -434,6 +434,27 @@ public sealed unsafe class JavaScriptRuntime
       JavaScriptHostFunction callback,
       object callbackState,
       Action<object>? disposeCallbackState
+  ) => CreateHostFunction(name, parameterCount, callback, callbackState, disposeCallbackState, null);
+
+  /// <summary>
+  /// Creates an owned JavaScript host function with managed callback-state disposal and an error factory.
+  /// </summary>
+  /// <remarks>
+  /// The returned <see cref="JavaScriptFunction" /> must be disposed by the caller. During callback
+  /// invocation, <see cref="JavaScriptHostFunction" /> receives scoped refs for <c>this</c> and
+  /// arguments; retain those refs before storing them beyond the callback. When provided,
+  /// <paramref name="disposeCallbackState" /> runs at most once on the thread that releases the
+  /// callback context and must not call into JSI or require a runtime access frame. When
+  /// <paramref name="createError" /> is set and the callback throws, the function throws the
+  /// factory's value to JavaScript instead of an error built from <see cref="Exception.ToString" />.
+  /// </remarks>
+  public JavaScriptFunction CreateHostFunction(
+      string name,
+      uint parameterCount,
+      JavaScriptHostFunction callback,
+      object callbackState,
+      Action<object>? disposeCallbackState,
+      JavaScriptErrorFactory? createError
   )
   {
     ArgumentNullException.ThrowIfNull(name);
@@ -445,7 +466,8 @@ public sealed unsafe class JavaScriptRuntime
         context,
         callback,
         callbackState,
-        disposeCallbackState
+        disposeCallbackState,
+        createError
     ).ToIntPtr();
 
     var result = context.Api->CreateHostFunctionValue(
@@ -735,8 +757,34 @@ public sealed unsafe class JavaScriptRuntime
     catch (Exception ex)
     {
       Console.Error.WriteLine(ex);
+      if (context?.CreateError is { } createError)
+      {
+        try
+        {
+          return new ExpoJsiValueResult(0, CreateThrownValue(context, createError, ex), default);
+        }
+        catch (Exception factoryException)
+        {
+          HostFunctionContext.ReportException(factoryException);
+        }
+      }
       return new ExpoJsiValueResult(0, 0, context?.CaptureException(ex) ?? default);
     }
+  }
+
+  // The callback's handle scope was disposed when the try block unwound, so this scope sits
+  // directly above the caller's frame and keeps scopes in stack order.
+  private static ExpoJsiValueHandle CreateThrownValue(
+      HostFunctionContext context,
+      JavaScriptErrorFactory createError,
+      Exception exception
+  )
+  {
+    var jsiContext = context.JsiContext;
+    using var scope = JavaScriptHandleScope.Enter(jsiContext);
+    using var error = createError(new JavaScriptRuntime(jsiContext), exception)
+        ?? throw new InvalidOperationException("The JavaScript error factory returned null.");
+    return error.Detach();
   }
 
   [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
