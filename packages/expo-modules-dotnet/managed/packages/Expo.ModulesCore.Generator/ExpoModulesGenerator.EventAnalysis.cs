@@ -400,6 +400,16 @@ public sealed partial class ExpoModulesGenerator
         return namedType.TypeArguments[0].SpecialType == SpecialType.System_String
             ? GetUnsupportedEventPayload(namedType.TypeArguments[1], visitedTypes)
             : null;
+      if (IsUnionType(namedType))
+      {
+        // A union is an abstract record with no record constructor; walk its case payloads.
+        return GetUnionCaseCandidates(namedType)
+            .Select(candidate => GetRecordCodecConstructor(candidate))
+            .Where(constructor => constructor is not null)
+            .SelectMany(constructor => constructor!.Parameters)
+            .Select(parameter => GetUnsupportedEventPayload(parameter.Type, visitedTypes))
+            .FirstOrDefault(reason => reason is not null);
+      }
       if (!namedType.IsRecord) return null;
       var constructor = GetRecordCodecConstructor(namedType);
       return constructor is null

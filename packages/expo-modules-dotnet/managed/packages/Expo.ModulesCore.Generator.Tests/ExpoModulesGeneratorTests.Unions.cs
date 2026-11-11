@@ -365,4 +365,75 @@ public sealed partial class ExpoModulesGeneratorTests
     AssertNoCompilerDiagnostics(result);
     Assert.Equal(1, CountOccurrences(GeneratedText(result), "private readonly struct PayloadUnionCodec_"));
   }
+
+  private const string ContentUnion =
+      "[Union] public abstract record Content { public sealed record Text(string Value) : Content; public sealed record Buffer(ArrayBuffer Value) : Content; } " +
+      "public sealed record Holder(Content Content, int Count);";
+
+  private const string ContentType = "global::Expo.TestModules.Content";
+
+  // A union composes like any ordinary codec, so every position works with no rule of its own, and
+  // a leaf-bearing union follows the leaf release rules of that position.
+  [Theory]
+  [InlineData(false, "[JS] public string M(Content content) => \"\";", "m", "__expoArg0 = ContentUnionCodec_")]
+  [InlineData(false, "[JS] public Task<string> M(Content content) => Task.FromResult(\"\");", "m", ".Decode(arguments.GetValue(0), jsRuntime);")]
+  [InlineData(false, "[JS] public string M(Content? content) => \"\";", "m", "NullableReferenceCodec<" + ContentType + ", ContentUnionCodec_")]
+  [InlineData(false, "[JS] public string M(Content? content = null) => \"\";", "m", "Undefined ? null : NullableReferenceCodec<" + ContentType + ", ContentUnionCodec_")]
+  [InlineData(false, "[JS] public int M(IReadOnlyList<Content> parts) => 0;", "m", "JavaScriptArrayCodec<" + ContentType + ", ContentUnionCodec_")]
+  [InlineData(false, "[JS] public int M(IReadOnlyDictionary<string, Content> parts) => 0;", "m", "JavaScriptDictionaryCodec<" + ContentType + ", ContentUnionCodec_")]
+  [InlineData(false, "[JS] public Content M() => null!;", "m", "CodecRelease.Release<" + ContentType + ", ContentUnionCodec_")]
+  [InlineData(false, "[JS] public Task<Content> M() => Task.FromResult<Content>(null!);", "m", "StrongBox<" + ContentType + ">(__expoResult)")]
+  [InlineData(false, "[JS] public Content? M() => null;", "m", "NullableReferenceCodec<" + ContentType + ", ContentUnionCodec_")]
+  [InlineData(false, "[JS] public Content Value { get; set; } = null!;", "value", "__expoValue = ContentUnionCodec_")]
+  [InlineData(false, "[JS] public int M(Holder holder) => 0;", "m", ".Decode(contentValue, runtime)")]
+  [InlineData(false, "[JS] public int M(JavaScriptCallback<ValueTuple<Content>, int> callback) => 0;", "m", "ValueTupleCodec<" + ContentType + ", ContentUnionCodec_")]
+  [InlineData(false, "[JS] public int M(JavaScriptCallback<Content> callback) => 0;", "m", "JavaScriptCallbackCodec<" + ContentType + ", ContentUnionCodec_")]
+  [InlineData(false, "[Event] public partial Func<Content, Task> OnContent { get; }", "onContent", "EmitAsync<ContentUnionCodec_")]
+  [InlineData(true, "[JS] public Entry(Content seed) { }", "Entry", "__expoArg0 = ContentUnionCodec_")]
+  [InlineData(true, "[JS] public string Write(Content content) => \"\";", "write", "__expoArg0 = ContentUnionCodec_")]
+  [InlineData(true, "[JS] public Content Value { get; set; } = null!;", "value", "__expoValue = ContentUnionCodec_")]
+  [InlineData(true, "[Event] public partial Func<Content, Task> OnContent { get; }", "onContent", "EmitAsync<ContentUnionCodec_")]
+  public void GeneratorAcceptsNamedUnionsInEveryPosition(bool onSharedObject, string member, string jsName, string expectedFragment)
+  {
+    var result = GeneratorTestHost.Run(
+        onSharedObject ? SharedObjectMemberSource(member, ContentUnion) : ModuleSource(ContentUnion, member));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerErrors(result);
+    Assert.DoesNotContain(result.Diagnostics, item => item.Id is "CS8604" or "CS8625" or "CS8631");
+    var text = GeneratedText(result);
+    Assert.Contains($"\"{jsName}\"", text, StringComparison.Ordinal);
+    Assert.Contains(expectedFragment, text, StringComparison.Ordinal);
+  }
+
+  // An event payload is encoded, so a decode-only callback inside a union case is named as the
+  // reason, not hidden behind "no encode-capable codec".
+  [Fact]
+  public void GeneratorNamesTheCallbackInsideAUnionEventPayload()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        "[Union] public abstract record Runner { public sealed record Run(JavaScriptCallback<int> Value) : Runner; public sealed record Text(string Value) : Runner; }",
+        "[Event] public partial Func<Runner, Task> OnRun { get; }"));
+
+    AssertNoCompilerErrors(result);
+    var ids = GeneratorDiagnosticIds(result);
+    Assert.Contains("EXPOJSI030", ids);
+    var payload = Assert.Single(result.GeneratorDiagnostics!, item => item.Id == "EXPOJSI019");
+    Assert.Contains("it contains JavaScriptCallback, which is decode-only", payload.GetMessage(), StringComparison.Ordinal);
+  }
+
+  // A property cannot hold a callback at any depth, also inside a union case.
+  [Fact]
+  public void GeneratorRejectsAUnionPropertyThatHoldsACallback()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        "[Union] public abstract record Runner { public sealed record Run(JavaScriptCallback<int> Value) : Runner; public sealed record Text(string Value) : Runner; }",
+        "[JS] public Runner Value { get; set; } = null!;"));
+
+    AssertNoCompilerErrors(result);
+    var ids = GeneratorDiagnosticIds(result);
+    Assert.Contains("EXPOJSI030", ids);
+    Assert.Contains("EXPOJSI015", ids);
+    Assert.DoesNotContain("\"value\"", GeneratedText(result), StringComparison.Ordinal);
+  }
 }

@@ -885,6 +885,16 @@ public sealed partial class ExpoModulesGenerator
           ContainsJavaScriptCallback(namedType.TypeArguments[1], visitedTypes);
     }
 
+    if (IsUnionType(namedType))
+    {
+      // A union is an abstract record with no record constructor; walk its case payloads.
+      return GetUnionCaseCandidates(namedType)
+          .Select(candidate => GetRecordCodecConstructor(candidate))
+          .Where(caseConstructor => caseConstructor is not null)
+          .SelectMany(caseConstructor => caseConstructor!.Parameters)
+          .Any(parameter => ContainsJavaScriptCallback(parameter.Type, visitedTypes));
+    }
+
     if (!namedType.IsRecord)
     {
       return false;
