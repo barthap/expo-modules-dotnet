@@ -191,8 +191,107 @@ public sealed class ExpoCryptoModuleTests
     Assert.Equal("true|false|Value is not a Uint8Array.", Catch(host, $"m.getRandomValues({value})"));
   }
 
+  // The UTF-8 bytes of "Expo" give the upstream vectors, so digest and digestString agree.
+  [Theory]
+  [MemberData(nameof(UpstreamVectors))]
+  public void DigestWritesTheHashOfTheDataView(string algorithm, string hex, string base64)
+  {
+    using var host = CreateHost();
+
+    var result = Run(host, $$"""
+        const output = new Uint8Array({{hex.Length / 2}});
+        const result = m.digest('{{algorithm}}', output, new Uint8Array([0x45, 0x78, 0x70, 0x6f]));
+        return String(result) + ':' + {{Hex("output")}};
+        """);
+
+    Assert.Equal("undefined:" + hex, result);
+    Assert.Equal(base64, Convert.ToBase64String(Convert.FromHexString(hex)));
+  }
+
+  // Bytes 4 to 11 of a 16-byte buffer that holds 0 to 15.
+  [Fact]
+  public void DigestHashesOnlyTheBytesOfASubview()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal(
+        "3fc77626f4c70d9e28aa4c1cd901fcf28a7a6a690788342dcb45884f5dc3acb0",
+        Run(host, $$"""
+            const buffer = new Uint8Array(16).map((_, i) => i).buffer;
+            const output = new Uint8Array(32);
+            m.digest('SHA-256', output, new Uint8Array(buffer, 4, 8));
+            return {{Hex("output")}};
+            """));
+  }
+
+  // SHA-256 of bytes 1 to 8 is 66840dda154e8a11 3c31...6f72. A short output gets the first bytes;
+  // a long one keeps its bytes after the hash.
+  [Fact]
+  public void DigestCopiesAsManyHashBytesAsTheOutputHolds()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal(
+        "66840dda154e8a11|66840dda154e8a113c31dd0ad32f7f3a366a80e8136979d8f5a101d3d29d6f72aaaaaaaaaaaaaaaa",
+        Run(host, $$"""
+            const data = () => new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+            const short = new Uint8Array(8);
+            m.digest('SHA-256', short, data());
+            const long = new Uint8Array(40).fill(0xaa);
+            m.digest('SHA-256', long, data());
+            return {{Hex("short")}} + '|' + {{Hex("long")}};
+            """));
+  }
+
+  // The hash is complete before any output byte is written, so output may overlap data. The result
+  // is SHA-256 of bytes 1 to 32.
+  [Fact]
+  public void DigestAllowsOutputToOverlapData()
+  {
+    using var host = CreateHost();
+
+    Assert.Equal(
+        "ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9",
+        Run(host, $$"""
+            const buffer = new Uint8Array(32).map((_, i) => i + 1).buffer;
+            const view = new Uint8Array(buffer);
+            m.digest('SHA-256', view, new Uint8Array(buffer));
+            return {{Hex("view")}};
+            """));
+  }
+
+  [Theory]
+  [InlineData("MD2")]
+  [InlineData("SHA-224")]
+  public void DigestRejectsAlgorithmsOutsideTheNativeEnumBeforeWriting(string algorithm)
+  {
+    using var host = CreateHost();
+
+    Assert.Equal(
+        $"true|false|'{algorithm}' is not a valid ExpoCryptoDotnet.DigestAlgorithm value. {AlgorithmChoices}|true",
+        Run(host, $$"""
+            const output = new Uint8Array(32).fill(0xaa);
+            try { m.digest('{{algorithm}}', output, new Uint8Array(1)); return 'no error'; }
+            catch (e) { return [e instanceof Error, 'code' in e, e.message, output.every(x => x === 0xaa)].join('|'); }
+            """));
+  }
+
+  [Fact]
+  public void DigestRejectsNonStringAlgorithmsAndNonUint8ArrayViews()
+  {
+    using var host = CreateHost();
+
+    Assert.EndsWith("Value is not a string.", Catch(host, "m.digest(1, new Uint8Array(32), new Uint8Array(1))"), StringComparison.Ordinal);
+    Assert.Equal("true|false|Value is not a Uint8Array.", Catch(host, "m.digest('SHA-256', new ArrayBuffer(32), new Uint8Array(1))"));
+    Assert.Equal("true|false|Value is not a Uint8Array.", Catch(host, "m.digest('SHA-256', new Uint8Array(32), new Int8Array(1))"));
+  }
+
   private static ExpoModuleTestHost CreateHost() =>
       ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoCryptoDotnet.Register);
+
+  // A JavaScript expression that renders the bytes of the named Uint8Array as lowercase hex.
+  private static string Hex(string view) =>
+      $"Array.from({view}, x => x.toString(16).padStart(2, '0')).join('')";
 
   // Runs body as a function body with m bound to the ExpoCrypto module; body returns a string.
   private static string Run(ExpoModuleTestHost host, string body) =>

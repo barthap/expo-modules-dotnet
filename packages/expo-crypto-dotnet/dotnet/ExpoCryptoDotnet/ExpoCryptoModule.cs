@@ -34,6 +34,20 @@ public sealed partial class ExpoCryptoModule : Module
   public void GetRandomValues(Uint8Array typedArray) =>
       typedArray.WithBytes(bytes => RandomNumberGenerator.Fill(bytes));
 
+  // Hashes exactly the bytes of data into a managed array, then copies min(hash length, output
+  // length) bytes to the start of output, like Android. The data borrow ends before the output
+  // borrow starts, so output and data may share bytes.
+  [JS]
+  public void Digest(DigestAlgorithm algorithm, Uint8Array output, Uint8Array data)
+  {
+    var hash = data.WithReadOnlyBytes(bytes => Hash(algorithm, bytes));
+    output.WithBytes(bytes =>
+    {
+      var count = Math.Min(hash.Length, bytes.Length);
+      hash.AsSpan(0, count).CopyTo(bytes);
+    });
+  }
+
   // Hex is lowercase. Base64 is standard and padded, with no line breaks.
   private static string ComputeDigestString(DigestAlgorithm algorithm, string data, CryptoEncoding encoding)
   {
