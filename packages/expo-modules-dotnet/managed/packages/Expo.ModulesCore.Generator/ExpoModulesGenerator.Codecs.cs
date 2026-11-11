@@ -708,15 +708,9 @@ public sealed partial class ExpoModulesGenerator
     {
       return OrdinaryCodec(convertibleCodec);
     }
-    if (typeSymbol.TypeKind == TypeKind.Enum)
+    if (typeSymbol is INamedTypeSymbol { TypeKind: TypeKind.Enum } enumType)
     {
-      // The effective representation decides the codec; see UsesNumberEnumRepresentation.
-      var enumTypeName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-      return OrdinaryCodec(
-          UsesNumberEnumRepresentation(typeSymbol, usageAttributes)
-              ? $"NumberEnumCodec<{enumTypeName}>"
-              : $"StringEnumCodec<{enumTypeName}>"
-      );
+      return TryGetEnumCodec(enumType, diagnostics, codecs, usageAttributes);
     }
     if (typeSymbol is INamedTypeSymbol { IsRecord: true } recordType)
     {

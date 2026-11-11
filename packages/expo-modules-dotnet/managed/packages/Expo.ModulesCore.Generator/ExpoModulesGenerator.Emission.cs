@@ -14,9 +14,24 @@ public sealed partial class ExpoModulesGenerator
       IEnumerable<ExpoSharedObjectModel> sharedObjects)
   {
     var sharedObjectModels = sharedObjects.ToArray();
+
+    // EXPOJSI033 to 035 describe an enum declaration, and every position that uses the enum finds the
+    // same error, so an equal one (same ID, location, and arguments) is reported once. Other IDs keep
+    // their reporting.
+    var reportedEnumDiagnostics = new HashSet<ExpoDiagnosticModel>();
+    void Report(ExpoDiagnosticModel diagnostic)
+    {
+      if (IsEnumDeclarationDiagnostic(diagnostic.DescriptorId) && !reportedEnumDiagnostics.Add(diagnostic))
+      {
+        return;
+      }
+
+      context.ReportDiagnostic(ToDiagnostic(diagnostic));
+    }
+
     foreach (var diagnostic in sharedObjectModels.SelectMany(sharedObject => sharedObject.Diagnostics.Values))
     {
-      context.ReportDiagnostic(ToDiagnostic(diagnostic));
+      Report(diagnostic);
     }
 
     var moduleModels = modules.ToArray();
@@ -30,7 +45,7 @@ public sealed partial class ExpoModulesGenerator
 
     foreach (var diagnostic in moduleModels.SelectMany(module => module.Diagnostics.Values))
     {
-      context.ReportDiagnostic(ToDiagnostic(diagnostic));
+      Report(diagnostic);
     }
 
     // The owning module's full JavaScript namespace is validated across the whole
@@ -775,6 +790,9 @@ public sealed partial class ExpoModulesGenerator
       "EXPOJSI030" => ExpoModulesDiagnostics.InvalidUnionCase,
       "EXPOJSI031" => ExpoModulesDiagnostics.DuplicateUnionPayload,
       "EXPOJSI032" => ExpoModulesDiagnostics.UnreachableUnionCase,
+      "EXPOJSI033" => ExpoModulesDiagnostics.InvalidEnumJavaScriptValue,
+      "EXPOJSI034" => ExpoModulesDiagnostics.DuplicateEnumJavaScriptValue,
+      "EXPOJSI035" => ExpoModulesDiagnostics.AliasedStringEnumMember,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());
