@@ -1,5 +1,7 @@
 # Module Authoring Guide
 
+## Overview
+
 This guide walks through writing a .NET-backed Expo module in this repo. It
 assumes you know C# and the basic Expo Modules API shape (a native module
 exposed to JavaScript through a TypeScript facade), but have never seen this
@@ -8,6 +10,38 @@ repo's C# module layer before.
 The reference implementation used throughout is `packages/example-module`.
 Open it alongside this guide; every section below points at the
 concrete file that demonstrates it.
+
+### How it works
+
+<!-- backed-by: spec "Requirement: Generated Bindings Avoid Hot-Path Reflection" (modules-core-boundary.md); spec "Requirement: Sync Function Generation Uses Direct Calls" (modules-core-boundary.md) -->
+The Roslyn generator reads `[ExpoModule]`, `[JS]` and the other attributes at
+build time and emits direct-call glue with no runtime reflection. C++ owns JSI,
+C# owns module logic, and a C ABI with opaque handles connects them. This guide
+describes only the repo-local workflow.
+
+### Differences from upstream
+
+<!-- upstream: expo/expo#53014 docs/pages/modules/v2/overview.mdx -->
+Upstream Expo Modules API 2.0 is in beta from SDK 58. This guide follows the
+page order of the upstream docs. These parts of the C# API differ from
+upstream:
+
+- Default module name: `[ExpoModule]` strips a trailing `Module`. See
+  `### Declare a module` under `## Modules`.
+- Lower-camel `[JS]` names. See `### Functions` and `### Naming conventions`
+  under `## Modules`.
+- Enum casing: a string enum crosses as the C# member name. See `### Enums`
+  under `## Types`.
+- Constants: a constant is a getter-only `[JS]` property. See `### Constants`
+  under `## Modules`.
+- Event names keep the `On` prefix. See `## Events`.
+- Unions use `Either<TFirst, TSecond>`. See `## Unions`.
+- Attributes (`[OnCreate]`, `[OnDestroy]`) take the place of overridable
+  methods. See `## Syntax mapping: C# and Swift and Kotlin`.
+- There are no generated TypeScript types. See `## Tooling`.
+
+`## Feature support` lists every upstream feature with its Swift, Kotlin and C#
+status.
 
 ## Get started
 
@@ -1033,6 +1067,109 @@ reference. The "Inspecting Generated Output" section of
 `docs/assorted/modules-core-generator-authoring.md` shows how to read the
 generator output. TypeScript type generation is not built yet (EMC-30).
 
+## Feature support
+
+The C# column uses four values. `Supported` means the feature works as upstream
+does. `Differs` means it works with the stated difference. `Partial` means a
+subset works. `Not yet` means it is not built.
+
+<!-- upstream: expo/expo#53014 and expo/expo#53016 docs/components/plugins/modules-v2-support/data.ts -->
+| Feature | Swift macros (`expo-modules-macros` 0.33.0) | Kotlin (`expo-modules-v2-react` 0.2.7) | C# | Later item |
+| --- | --- | --- | --- | --- |
+| Modules | Supported | Supported | Differs: `[ExpoModule]` without a name strips a trailing `Module` | EMC-75 |
+| Synchronous functions | Supported | Supported | Differs: a trailing nullable parameter without a default is required; overloads are build errors; the argument count is checked | EMC-63 |
+| Asynchronous functions | Supported | Supported | Supported: `Task` and `Task<T>` | none |
+| Properties | Supported | Supported | Supported | none |
+| Constants | Supported | Supported | Differs: getter-only `[JS]` property, the getter runs on every read | EMC-62 |
+| Functions that run off the JavaScript thread | Supported | Supported | Differs: no option; `await Task.Run(...)` in a `Task` method moves the work, and the Promise settles on the runtime | none |
+| Asynchronous variants of synchronous functions | Supported | Not supported yet | Not yet | EMC-73 |
+| Events | Supported | Supported | Differs: a bare `[Event]` keeps the `On` prefix | EMC-74 |
+| Inline and blocking events | Supported | Not supported yet | Not yet: no opt-in mode like Swift `@Event(.inline)` or `@Event(.blocking)`; typed events already dispatch inline when invoked with runtime access | none (deferred, not planned) |
+| Shared objects | Supported | Supported | Supported | none |
+| Static members of shared objects | Supported | Not supported yet | Not yet | EMC-66 |
+| Records | Supported | Supported | Partial: positional records only; a field with a default is still required | EMC-61 |
+| Enums | Supported | Supported | Differs: the member name crosses verbatim; `[JSEnum]` selects numbers | none |
+| Unions | Supported | Not supported yet | Partial: `Either<TFirst, TSecond>`, two members of different kinds | EMC-64 |
+| Byte arrays | Supported | Supported | Differs: `byte[]` decodes from and encodes to `ArrayBuffer` only | none |
+| Array buffers | Supported | Not supported yet (in Kotlin, use a byte array) | Supported: `ArrayBuffer` | none |
+| Typed arrays | Supported | Supported | Partial: `Uint8Array` only | EMC-65 |
+| Tuples | Supported | Not supported yet | Not yet: `ValueTuple` is only a callback argument list | EMC-70 |
+| Closure arguments | Supported | Not supported yet | Partial: `JavaScriptCallback` as a parameter only | EMC-67 |
+| JavaScript values as arguments | Supported | Supported | Partial: `JavaScriptValue` only | EMC-72 |
+
+<!-- backed-by: Modules: test GeneratorEmitsDeterministicProviderForAssembly; source ExpoModulesGenerator.CreateModuleModel -->
+<!-- backed-by: Synchronous functions: source ExpoModulesGenerator.GetRequiredParameterCount; source GeneratedFunction.RequireArgumentCount; spec "Requirement: Optional Nullable Reference Arguments Preserve Authored Defaults" (modules-core-boundary.md); test GeneratorReportsDuplicateJavaScriptFunctionName; test GeneratedProviderUsesDefaultForMissingOrUndefinedOptionalNullableArguments; test GeneratedAsyncArgumentCountFailureRejectsPromise; test GeneratorPreservesLeafFreeCodecPolicyModuleOutputContract -->
+<!-- backed-by: Asynchronous functions: spec "Requirement: Async Function Generation Returns Promises" (modules-core-boundary.md) -->
+<!-- backed-by: Properties: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md) -->
+<!-- backed-by: Constants: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md); spec "Requirement: Expo Constants Dotnet Exposes Typed Host Values" (modules-core-boundary.md) -->
+<!-- backed-by: Functions that run off the JavaScript thread: test AsyncSharedResultCompletedOnAnotherThreadPreservesIdentity; spec "Requirement: Async Managed Promise Helper" (promises.md); source ExpoModulesGenerator.EmitAsyncHostFunctionBody -->
+<!-- backed-by: Events: spec "Requirement: Typed Event Members Are Awaitable Generated Properties" (modules-core-boundary.md) -->
+<!-- backed-by: Inline and blocking events: spec "Requirement: Typed Event Tasks Carry Dispatch Outcomes" (modules-core-boundary.md) -->
+<!-- backed-by: Shared objects: spec "Requirement: Public SharedObject Authoring Is Explicit" (modules-core-boundary.md) -->
+<!-- backed-by: Static members of shared objects: source ExpoModulesGenerator.GetFunctions -->
+<!-- backed-by: Records: spec "Requirement: Generated Record Codecs Use Lower-Camel JavaScript Fields" (modules-core-boundary.md) -->
+<!-- backed-by: Enums: source StringEnumCodec; test GeneratedLookingCodeUsesStringEnumByDefault -->
+<!-- backed-by: Unions: spec "Requirement: Two-Member Unions Decode By Value Kind" (modules-core-boundary.md); source Either -->
+<!-- backed-by: Byte arrays: source ByteArrayCodec -->
+<!-- backed-by: Array buffers: spec "Requirement: Module-facing ArrayBuffer And Binary Codecs" (modules-core-boundary.md) -->
+<!-- backed-by: Typed arrays: spec "Requirement: Uint8Array Is A Byte View" (modules-core-boundary.md) -->
+<!-- backed-by: Tuples: source ValueTupleCodec -->
+<!-- backed-by: Closure arguments: source JavaScriptCallback -->
+<!-- backed-by: JavaScript values as arguments: spec "Requirement: Generated Module Value Ownership" (managed-jsi-wrappers.md) -->
+
+Each later roadmap item changes one row or section of this guide. These items
+are open:
+
+- EMC-18 coded JavaScript errors: `## Errors` (no upstream row).
+- EMC-30 TypeScript types: `## Tooling` (no row).
+- EMC-61 record fields with defaults are optional: Records.
+- EMC-62 constants read once: Constants.
+- EMC-63 trailing nullable arguments are optional: Synchronous functions.
+- EMC-64 `[Union]` replaces `Either`: Unions.
+- EMC-65 typed array kinds: Typed arrays.
+- EMC-66 static members of shared objects: Static members of shared objects.
+- EMC-67 callbacks as delegate parameters: Closure arguments.
+- EMC-68 additional memory pressure: Shared objects (note), and `## Lifecycle and runtime context` if a hook is added.
+- EMC-69 modules find other modules: `## Lifecycle and runtime context` (no row).
+- EMC-70 tuples: Tuples.
+- EMC-71 dates and durations: `## Types` (no row).
+- EMC-72 `JavaScriptObject` and dynamic values: JavaScript values as arguments.
+- EMC-73 one method as both sync and async: Asynchronous variants of synchronous functions.
+- EMC-74 event names drop `On`: Events.
+- EMC-75 default module name is the class name: Modules.
+
+## Syntax mapping: C# and Swift and Kotlin
+
+<!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/; expo/expo#53039 docs/pages/modules/v2/migrate/from-v1.mdx -->
+<!-- backed-by: source ExpoModuleAttribute; source JSAttribute; source EventAttribute; source OnCreateAttribute; source OnDestroyAttribute; source OnStartObservingAttribute; source OnStopObservingAttribute; source ExpoSharedObjectAttribute; source JSEnumAttribute; source Either; source JavaScriptCallback; source DotnetRuntimeContext -->
+| Concept | C# | Swift | Kotlin |
+| --- | --- | --- | --- |
+| Module | `[ExpoModule("Name")]` on a `partial` class; the `Module` base class is optional | `@ExpoModule("Name")` on a `public final class` that subclasses `Module` | `@ExpoModule("Name")` on a class |
+| Exported shared classes | `Classes = new[] { typeof(X) }` | `classes: [X.self]` | `classes = [X::class]` |
+| Function | `[JS]` method, `[JS("name")]` | `@JS func`, `@JS("name")` | `@JS fun`, `@JS("name")` |
+| Asynchronous function | `Task` or `Task<T>` result | `async` function or `Task` result | `suspend fun` or `Promise<T>` result |
+| Run off the JavaScript thread | `await Task.Run(...)` in a `Task` method | `@JS(.concurrent)` | `withContext(Dispatchers.IO)` in a `suspend fun` |
+| Async variant of a sync function | Not yet (EMC-73) | `@JS("textSync", .withAsync("text"))` | Not supported yet |
+| Property | `[JS]` property | `@JS var` | `@JS val` or `@JS var` |
+| Constant | getter-only `[JS]` property | `@JS lazy var` | `@JS @Constant val` |
+| Event | `[Event] public partial Func<T, Task> OnX { get; }` | `@Event var onX: (T) -> Void` | `@Event` on a property created with `event<T>()` |
+| First or last listener | `[OnStartObserving]`, `[OnStopObserving]` | `didStartListening(event:)`, `didStopListening(event:)` | `onStartObserving` and `onStopObserving` of `event<T>()` |
+| After create | `[OnCreate]` method | `didCreate()` | Not available, use `by lazy` properties |
+| Before destroy | `[OnDestroy]` method | `willDestroy()` | `override fun onDestroy()` |
+| Shared object | `[ExpoSharedObject]` on a `sealed partial` class | `@SharedObject` | `@ExpoSharedObject` |
+| Shared object constructor | `[JS]` constructor | `@JS init` | `@JS constructor` |
+| Shared object release | override `OnRelease()` | override `sharedObjectDidRelease()` | override `sharedObjectDidRelease()` |
+| Record | positional `record` | `@Record` on a struct | `@Record` on a data class |
+| Enum | `enum`, `[JSEnum]` for numbers | enum that implements `Enumerable` | enum class that implements `Enumerable` |
+| Union | `Either<TFirst, TSecond>` | `@Union` on an enum | Not supported yet |
+| Closure argument | `JavaScriptCallback<TArgs, TResult>` parameter | closure | Not supported yet |
+| App context | `DotnetRuntimeContext` | `appContext` | `androidContext`, `reactContext`, `context` |
+| Another module | Not yet (EMC-69) | `appContext?.moduleRegistry.get(moduleWithName:)` | `context.module<T>()` |
+
+C# uses attributes (`[OnCreate]`, `[OnDestroy]`, `[OnStartObserving]`,
+`[OnStopObserving]`) where Swift and Kotlin override methods (`didCreate()`,
+`willDestroy()`, `onDestroy()`).
+
 ## Platform matrix
 
 <!-- backed-by: spec "Requirement: Aggregator Is The Single NativeAOT Publish Unit" (dotnet-autolinking.md); spec "Requirement: Generated Bindings Avoid Hot-Path Reflection" (modules-core-boundary.md) -->
@@ -1212,4 +1349,7 @@ provide the native testhost.
   `## Get started`, `## Platform matrix` and `## Troubleshooting` above.
 - `docs/specs/promises.md`, `docs/specs/runtime-scheduling.md` — the async/
   threading model behind `## Threading`.
+- `## Feature support` — which upstream features exist in C#, with the roadmap item
+  that changes each row.
+- `## Syntax mapping: C# and Swift and Kotlin` — the same concept in each language.
 - `docs/roadmap.md` — direction and what's still planned.
