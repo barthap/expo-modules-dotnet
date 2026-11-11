@@ -14,7 +14,7 @@ namespace Expo.ModulesCore.Tests.Modules;
 // JS-created buffers, whose release reaches LongLivedArrayBuffersReleased after the runtime goes
 // idle. ReleasedValues also counts traversal temporaries, so JavaScriptValue assertions compare
 // against a leaf-free twin call.
-public sealed class LeafReleaseModuleTests
+public sealed partial class LeafReleaseModuleTests
 {
   [Fact]
   public void SyncLeafParameterReleasesOnceOnSuccessAndThrow()
