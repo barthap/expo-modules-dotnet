@@ -2019,8 +2019,8 @@ The generator SHALL report, once per declaration and at error severity:
 declared in a referenced assembly (at the using parameter, member, or record
 field); `EXPOJSI030` for an invalid case, a type that derives from a union and
 is not a valid case, a nullable or defaulted payload, a payload that contains
-itself through records, lists, dictionaries, or unions, or a payload with no
-union codec; `EXPOJSI031` for two cases with the same payload type; and
+itself through records, lists, dictionaries, callbacks, or unions, or a payload
+with no union codec; `EXPOJSI031` for two cases with the same payload type; and
 `EXPOJSI032` for a case that an earlier case always takes first. A case type
 used directly, and every invalid union, SHALL make the using position report
 its existing unsupported-type diagnostic. No Roslyn dependency on source file
