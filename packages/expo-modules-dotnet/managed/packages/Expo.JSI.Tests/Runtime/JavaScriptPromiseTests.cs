@@ -1451,6 +1451,22 @@ public sealed class JavaScriptPromiseTests
     Assert.Equal(0u, fixture.Counters.OwnedValuesTracked);
   }
 
+  // A factory that returns null owns nothing, so the promise rejects with the plain message.
+  [Fact]
+  public async Task CreatePromiseNullErrorFactoryResultRejectsWithTheOriginalMessage()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    StartFactoryPromise(
+        fixture,
+        _ => Task.FromException<JavaScriptPromiseResult>(new InvalidOperationException("operation failed")),
+        (_, _) => null!
+    );
+
+    Assert.Equal("Error:operation failed", await ReadFactoryRejectionAsync(fixture));
+    Assert.Equal(0u, fixture.Counters.OwnedValuesTracked);
+  }
+
   private static void StartFactoryPromise(
       HermesRuntimeFixture fixture,
       Func<CancellationToken, Task<JavaScriptPromiseResult>> operation,

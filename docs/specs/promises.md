@@ -75,6 +75,9 @@ operation.
 - **WHEN** the scheduler rejects the promise
 - **THEN** it SHALL reject with an `Error` whose message is the original
   exception's `Message`
+- **AND** it SHALL report the factory exception to stderr, as a host-function
+  error factory failure does
+- **AND** a factory that returns `null` SHALL give the same rejection
 
 #### Scenario: Async promise capability is released
 - **GIVEN** an asynchronous managed operation created a native promise

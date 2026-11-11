@@ -1,3 +1,5 @@
+using Expo.JSI.Interop;
+
 namespace Expo.JSI;
 
 internal static class JavaScriptPromiseScheduler
@@ -122,7 +124,8 @@ internal static class JavaScriptPromiseScheduler
 
   // The factory's value is owned here until Reject returns. A failing factory has already released
   // what it created, and a null result owns nothing; the caller falls back to an Error built from
-  // the original Message, so the promise always settles.
+  // the original Message, so the promise always settles. A failing factory is reported the same way
+  // as on the host-function path.
   private static JavaScriptValue? TryCreateReason(
       JavaScriptRuntime runtime,
       Exception exception,
@@ -133,8 +136,9 @@ internal static class JavaScriptPromiseScheduler
     {
       return createError(runtime, exception);
     }
-    catch
+    catch (Exception factoryException)
     {
+      HostFunctionContext.ReportException(factoryException);
       return null;
     }
   }
