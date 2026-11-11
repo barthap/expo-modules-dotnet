@@ -1,24 +1,48 @@
-import type { Directory, File } from "./index";
+import type {
+  Directory,
+  DirectoryCreateOptions,
+  File,
+  FileCreateOptions,
+  FileDigestAlgorithm,
+  FileWriteOptions,
+  RelocationOptions,
+} from "./index";
+import { EncodingType } from "./index";
+// @ts-expect-error The upstream package exports no CreateOptions.
+import type { CreateOptions } from "./index";
 
 type Assert<T extends true> = T;
 type Absent<T, K extends PropertyKey> = K extends keyof T ? false : true;
+type Present<T, K extends PropertyKey> = K extends keyof T ? true : false;
 
-type FileHasNoWrite = Assert<Absent<File, "write">>;
-type FileHasNoBytes = Assert<Absent<File, "bytes">>;
-type FileHasNoCopy = Assert<Absent<File, "copy">>;
-type FileHasNoMove = Assert<Absent<File, "move">>;
 type FileHasNoType = Assert<Absent<File, "type">>;
-type DirectoryHasNoCopy = Assert<Absent<Directory, "copy">>;
-type FileHasText = Assert<"text" extends keyof File ? true : false>;
-type DirectoryHasList = Assert<"list" extends keyof Directory ? true : false>;
+type FileHasNoOpen = Assert<Absent<File, "open">>;
+type FileHasText = Assert<Present<File, "text">>;
+type DirectoryHasList = Assert<Present<Directory, "list">>;
+type FileHasWrite = Assert<Present<File, "write" | "writeSync">>;
+type FileHasBytes = Assert<Present<File, "bytes" | "bytesSync">>;
+type FileHasCopyAndMove = Assert<Present<File, "copy" | "copySync" | "move" | "moveSync">>;
+type DirectoryHasCopyAndMove = Assert<Present<Directory, "copy" | "copySync" | "move" | "moveSync">>;
+type FileCreateHasNoIdempotent = Assert<Absent<FileCreateOptions, "idempotent">>;
+type DirectoryCreateHasIdempotent = Assert<Present<DirectoryCreateOptions, "idempotent">>;
+type DigestAlgorithms = Assert<
+  FileDigestAlgorithm extends "MD5" | "SHA-1" | "SHA-256" | "SHA-384" | "SHA-512" ? true : false
+>;
+type WriteEncoding = Assert<EncodingType.Base64 extends FileWriteOptions["encoding"] ? true : false>;
+type RelocationOverwrite = Assert<Present<RelocationOptions, "overwrite">>;
 
 export type PublicApiChecks = [
-  FileHasNoWrite,
-  FileHasNoBytes,
-  FileHasNoCopy,
-  FileHasNoMove,
   FileHasNoType,
-  DirectoryHasNoCopy,
+  FileHasNoOpen,
   FileHasText,
   DirectoryHasList,
+  FileHasWrite,
+  FileHasBytes,
+  FileHasCopyAndMove,
+  DirectoryHasCopyAndMove,
+  FileCreateHasNoIdempotent,
+  DirectoryCreateHasIdempotent,
+  DigestAlgorithms,
+  WriteEncoding,
+  RelocationOverwrite,
 ];

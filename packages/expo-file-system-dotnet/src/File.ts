@@ -1,6 +1,6 @@
 // Ported from expo-file-system@58.0.7 (MIT).
 import { Directory } from "./Directory";
-import ExpoFileSystem from "./ExpoFileSystem";
+import ExpoFileSystem, { type FileWriteOptions } from "./ExpoFileSystem";
 import { Paths } from "./Paths";
 
 /**
@@ -51,4 +51,32 @@ export class File extends ExpoFileSystem.FileSystemFile {
   get name() {
     return Paths.basename(this.uri);
   }
+
+  /**
+   * Writes content to the file.
+   * @param content The content to write into the file.
+   */
+  write(content: string | Uint8Array | ArrayBuffer, options?: FileWriteOptions): Promise<void> {
+    return super.write(toNativeContent(content), options);
+  }
+
+  /**
+   * Writes content to the file.
+   * @param content The content to write into the file.
+   */
+  writeSync(content: string | Uint8Array | ArrayBuffer, options?: FileWriteOptions): void {
+    super.writeSync(toNativeContent(content), options);
+  }
+}
+
+// Upstream native code takes any typed array. The .NET module takes a `Uint8Array`, so another
+// typed array crosses as a `Uint8Array` over the same bytes. Nothing is copied.
+function toNativeContent(
+  content: string | Uint8Array | ArrayBuffer,
+): string | Uint8Array | ArrayBuffer {
+  const value: unknown = content;
+  if (ArrayBuffer.isView(value) && !(value instanceof Uint8Array) && !(value instanceof DataView)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  return content;
 }
