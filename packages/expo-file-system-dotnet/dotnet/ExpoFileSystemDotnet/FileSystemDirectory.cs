@@ -41,7 +41,7 @@ internal sealed partial class FileSystemDirectory : FileSystemPath
   {
     if (!Location.HasDirectoryPath)
     {
-      throw FileSystemErrors.WrongTypeDirectory();
+      throw WrongTypeException.ForDirectory();
     }
   }
 
@@ -60,7 +60,7 @@ internal sealed partial class FileSystemDirectory : FileSystemPath
       }
       if (options?.Overwrite != true)
       {
-        throw FileSystemErrors.AlreadyExists(target.Uri);
+        throw new FileAlreadyExistsException(target.Uri);
       }
     }
     try
@@ -71,13 +71,13 @@ internal sealed partial class FileSystemDirectory : FileSystemPath
       }
       if (options?.Intermediates != true && !Directory.Exists(target.Parent.NativePath))
       {
-        throw FileSystemErrors.UnableToCreate("parent directory does not exist");
+        throw new UnableToCreateException("parent directory does not exist");
       }
       Directory.CreateDirectory(path);
     }
     catch (Exception error) when (error is IOException or UnauthorizedAccessException)
     {
-      throw FileSystemErrors.UnableToCreate(error.Message, error);
+      throw new UnableToCreateException(error.Message);
     }
   }
 
@@ -171,7 +171,7 @@ internal sealed partial class FileSystemDirectory : FileSystemPath
   {
     if (File.Exists(nativePath))
     {
-      throw FileSystemErrors.FileAtDirectoryLocation();
+      throw new InvalidTypeDirectoryException();
     }
   }
 

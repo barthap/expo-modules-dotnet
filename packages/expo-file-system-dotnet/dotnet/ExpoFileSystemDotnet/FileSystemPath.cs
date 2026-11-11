@@ -29,7 +29,7 @@ internal abstract class FileSystemPath : SharedObject
   {
     if (target.IsWithin(FileSystemRoots.BundleLocation))
     {
-      throw FileSystemErrors.MissingPermission(target.Uri);
+      throw new MissingPermissionException(target.Uri);
     }
   }
 
@@ -41,7 +41,7 @@ internal abstract class FileSystemPath : SharedObject
     var path = target.NativePath;
     if (!File.Exists(path) && !Directory.Exists(path))
     {
-      throw FileSystemErrors.UnableToDelete("path does not exist");
+      throw new UnableToDeleteException("path does not exist");
     }
     try
     {
@@ -56,7 +56,7 @@ internal abstract class FileSystemPath : SharedObject
     }
     catch (Exception error) when (error is IOException or UnauthorizedAccessException)
     {
-      throw FileSystemErrors.UnableToDelete(error.Message, error);
+      throw new UnableToDeleteException(error.Message);
     }
   }
 
@@ -66,7 +66,7 @@ internal abstract class FileSystemPath : SharedObject
     {
       if (location.IsRoot)
       {
-        throw FileSystemErrors.InvalidName(newName);
+        throw new InvalidNameException(newName);
       }
       var target = location.WithName(newName);
       EnsureWritable(location);

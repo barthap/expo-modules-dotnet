@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Expo.ModulesCore;
 using Expo.ModulesCore.Generated;
 using Expo.ModulesCore.Testing;
@@ -14,8 +15,41 @@ public sealed class FileSystemBindingTests
         return value.AsString();
       });
 
+  // Evaluates code that returns JSON.stringify of a string array.
+  private static string[] EvalList(ExpoModuleTestHost host, string code) =>
+      JsonSerializer.Deserialize<string[]>(Eval(host, code))!;
+
+  // Evaluates code that returns a Promise of JSON.stringify of a string array.
+  private static async Task<string[]> EvalListAsync(ExpoModuleTestHost host, string code)
+  {
+    var value = await host.EvaluatePromiseAsync(code, TestContext.Current.CancellationToken);
+    var json = host.Runtime.Execute(_ =>
+    {
+      using (value)
+      {
+        return value.AsString();
+      }
+    });
+    return JsonSerializer.Deserialize<string[]>(json)!;
+  }
+
   private static string DirUri(string path) =>
       FileSystemLocation.Parse(path, isDirectory: true, PathFlavors.Current).Uri;
+
+  // JavaScript helpers: `m` is the module, `dir` the directory URI, `err(fn)` gives
+  // `code|message` of what `fn` throws (`(none)` when the error has no code), `rejection(p)` the
+  // same for a Promise, and `hex(bytes)` the bytes as lowercase hex.
+  private static string Prelude(string dir) =>
+      $$"""
+      const m = _expoDotnet.modules.FileSystem;
+      const dir = '{{dir}}';
+      const describe = (e) => ('code' in e ? e.code : '(none)') + '|' + e.message;
+      const err = (fn) => { try { fn(); return 'no error'; } catch (e) { return describe(e); } };
+      const rejection = (p) => p.then(() => 'no error', describe);
+      const hex = (bytes) => Array.prototype.map
+        .call(bytes, (b) => (b < 16 ? '0' : '') + b.toString(16))
+        .join('');
+      """;
 
   [Fact]
   public void JavaScriptSubclassKeepsItsPrototype()
@@ -102,6 +136,7 @@ public sealed class FileSystemBindingTests
     );
 
     Assert.Contains("Unsupported digest algorithm: SHA-3", error.Message);
+    Assert.Equal("ERR_UNSUPPORTED_DIGEST_ALGORITHM", error.JavaScriptCode);
   }
 
   [Fact]
@@ -258,5 +293,48 @@ public sealed class FileSystemBindingTests
 
     Assert.Equal("true,true,true,true,true|true|true|true|true|true|true|true|true|true|string", result);
     Assert.Equal("keep", File.ReadAllText(Path.Combine(temp.Path, "a.txt")));
+  }
+
+  [Fact]
+  public async Task ErrorsCarryUpstreamCodes()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    File.WriteAllText(Path.Combine(temp.Path, "a.txt"), "x");
+    Directory.CreateDirectory(Path.Combine(temp.Path, "folder"));
+    using var host = ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoFileSystemDotnet.Register);
+    var dir = DirUri(temp.Path);
+
+    var sync = EvalList(
+        host,
+        $$"""
+        (() => {
+          {{Prelude(dir)}}
+          return JSON.stringify([
+            err(() => new m.FileSystemFile(dir + 'a.txt').create()),
+            err(() => new m.FileSystemFile(dir + 'folder').textSync()),
+            err(() => new m.FileSystemFile(dir + 'x/y/a.txt').create()),
+          ]);
+        })()
+        """
+    );
+    var rejected = await EvalListAsync(
+        host,
+        $$"""
+        (() => {
+          {{Prelude(dir)}}
+          return rejection(new m.FileSystemFile(dir + 'folder').text())
+            .then((text) => JSON.stringify([text]));
+        })()
+        """
+    );
+
+    Assert.Equal($"ERR_FILE_ALREADY_EXISTS|File '{dir}a.txt' already exists", sync[0]);
+    Assert.Equal("ERR_INVALID_TYPE_FILE|A folder with the same name already exists in the file location", sync[1]);
+    Assert.Equal(sync[1], rejected[0]);
+    // FileSystemFile.Create wraps the .NET failure and keeps no cause, so the reason shows once.
+    Assert.StartsWith("ERR_UNABLE_TO_CREATE|Unable to create file or directory: ", sync[2]);
+    Assert.Contains(Path.Combine(temp.Path, "x", "y", "a.txt"), sync[2]);
+    Assert.DoesNotContain("→ Caused by:", sync[2]);
   }
 }

@@ -77,7 +77,8 @@ public sealed class FileSystemFileTests
     var (temp, _, file) = Fixture([1]);
     using (temp)
     {
-      var error = await Assert.ThrowsAsync<FileSystemException>(() => file.Digest("SHA-3"));
+      var error = await Assert.ThrowsAsync<UnsupportedDigestAlgorithmException>(() => file.Digest("SHA-3"));
+      Assert.Equal("ERR_UNSUPPORTED_DIGEST_ALGORITHM", error.Code);
       Assert.Equal("Unsupported digest algorithm: SHA-3", error.Message);
     }
   }

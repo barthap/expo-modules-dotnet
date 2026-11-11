@@ -32,8 +32,9 @@ public sealed class FileSystemPathTests
     File.WriteAllText(path, "keep");
     var file = NewFile(path);
 
-    var error = Assert.Throws<FileSystemException>(() => file.Create());
+    var error = Assert.Throws<FileAlreadyExistsException>(() => file.Create());
 
+    Assert.Equal("ERR_FILE_ALREADY_EXISTS", error.Code);
     Assert.Equal($"File '{file.Uri}' already exists", error.Message);
     Assert.Equal("keep", File.ReadAllText(path));
   }
@@ -58,8 +59,10 @@ public sealed class FileSystemPathTests
     using var temp = new TemporaryDirectory();
     var path = Path.Combine(temp.Path, "x", "y", "a.txt");
 
-    var error = Assert.Throws<FileSystemException>(() => NewFile(path).Create());
+    var error = Assert.Throws<UnableToCreateException>(() => NewFile(path).Create());
     Assert.StartsWith("Unable to create file or directory: ", error.Message);
+    Assert.Equal("ERR_UNABLE_TO_CREATE", error.Code);
+    Assert.Null(error.InnerException);
     Assert.False(Directory.Exists(Path.Combine(temp.Path, "x")));
 
     NewFile(path).Create(new CreateOptions(true, null, null));
@@ -77,7 +80,7 @@ public sealed class FileSystemPathTests
     directory.Create();
     File.WriteAllText(Path.Combine(path, "child.txt"), "x");
 
-    var error = Assert.Throws<FileSystemException>(() => directory.Create());
+    var error = Assert.Throws<FileAlreadyExistsException>(() => directory.Create());
     Assert.Equal($"File '{directory.Uri}' already exists", error.Message);
 
     directory.Create(new CreateOptions(null, null, true));
@@ -94,8 +97,8 @@ public sealed class FileSystemPathTests
     using var temp = new TemporaryDirectory();
     var path = Path.Combine(temp.Path, "x", "d");
 
-    var error = Assert.Throws<FileSystemException>(() => NewDirectory(path).Create());
-    Assert.StartsWith("Unable to create file or directory: ", error.Message);
+    var error = Assert.Throws<UnableToCreateException>(() => NewDirectory(path).Create());
+    Assert.Equal("Unable to create file or directory: parent directory does not exist", error.Message);
     Assert.False(Directory.Exists(Path.Combine(temp.Path, "x")));
 
     NewDirectory(path).Create(new CreateOptions(true, null, null));
@@ -112,9 +115,11 @@ public sealed class FileSystemPathTests
     var filePath = Path.Combine(temp.Path, "f");
     File.WriteAllText(filePath, "x");
 
-    var fileError = Assert.Throws<FileSystemException>(() => NewFile(dirPath).Delete());
+    var fileError = Assert.Throws<InvalidTypeFileException>(() => NewFile(dirPath).Delete());
+    Assert.Equal("ERR_INVALID_TYPE_FILE", fileError.Code);
     Assert.Equal("A folder with the same name already exists in the file location", fileError.Message);
-    var dirError = Assert.Throws<FileSystemException>(() => NewDirectory(filePath).Delete());
+    var dirError = Assert.Throws<InvalidTypeDirectoryException>(() => NewDirectory(filePath).Delete());
+    Assert.Equal("ERR_INVALID_TYPE_DIRECTORY", dirError.Code);
     Assert.Equal("A file with the same name already exists in the directory location", dirError.Message);
     Assert.True(Directory.Exists(dirPath));
     Assert.True(File.Exists(filePath));
@@ -134,7 +139,8 @@ public sealed class FileSystemPathTests
     NewDirectory(path).Delete();
     Assert.False(Directory.Exists(path));
 
-    var error = Assert.Throws<FileSystemException>(() => NewDirectory(path).Delete());
+    var error = Assert.Throws<UnableToDeleteException>(() => NewDirectory(path).Delete());
+    Assert.Equal("ERR_UNABLE_TO_DELETE", error.Code);
     Assert.Equal("Unable to delete file or directory: path does not exist", error.Message);
   }
 
@@ -152,7 +158,7 @@ public sealed class FileSystemPathTests
     Assert.EndsWith("/b.txt", file.Uri);
     Assert.True(File.Exists(Path.Combine(temp.Path, "b.txt")));
     Assert.False(File.Exists(path));
-    Assert.Throws<FileSystemException>(() => file.Rename("../c.txt"));
+    Assert.Throws<InvalidNameException>(() => file.Rename("../c.txt"));
   }
 
   [Fact]
@@ -165,10 +171,11 @@ public sealed class FileSystemPathTests
     File.WriteAllText(path, "x");
     var file = NewFile(path);
 
-    var error = Assert.Throws<FileSystemException>(() => file.Delete());
+    var error = Assert.Throws<MissingPermissionException>(() => file.Delete());
+    Assert.Equal("ERR_MISSING_PERMISSION", error.Code);
     Assert.Equal($"Missing permission for uri: {file.Uri}", error.Message);
-    Assert.Throws<FileSystemException>(() => file.Rename("b.txt"));
-    Assert.Throws<FileSystemException>(() => NewFile(Path.Combine(temp.Path, "n.txt")).Create());
+    Assert.Throws<MissingPermissionException>(() => file.Rename("b.txt"));
+    Assert.Throws<MissingPermissionException>(() => NewFile(Path.Combine(temp.Path, "n.txt")).Create());
     Assert.True(File.Exists(path));
     Assert.False(File.Exists(Path.Combine(temp.Path, "n.txt")));
   }
@@ -186,7 +193,7 @@ public sealed class FileSystemPathTests
 
     void AssertDenied(string uri, Action action)
     {
-      var error = Assert.Throws<FileSystemException>(action);
+      var error = Assert.Throws<MissingPermissionException>(action);
       Assert.Equal($"Missing permission for uri: {uri}", error.Message);
       Assert.True(File.Exists(childPath));
       Assert.Equal("x", File.ReadAllText(childPath));
@@ -245,7 +252,7 @@ public sealed class FileSystemPathTests
     using var platform = PlatformScope.Supported();
     var root = Path.GetPathRoot(Path.GetTempPath())!;
 
-    var error = Assert.Throws<FileSystemException>(() => NewDirectory(root).Rename("x"));
+    var error = Assert.Throws<InvalidNameException>(() => NewDirectory(root).Rename("x"));
     Assert.Equal("Invalid file name: 'x'", error.Message);
   }
 
@@ -254,8 +261,40 @@ public sealed class FileSystemPathTests
   {
     using var platform = PlatformScope.Supported();
     var root = Path.GetPathRoot(Path.GetTempPath())!;
-    var error = Assert.Throws<FileSystemException>(() => NewFile(root).ValidatePath());
+    var error = Assert.Throws<WrongTypeException>(() => NewFile(root).ValidatePath());
+    Assert.Equal("ERR_WRONG TYPE", error.Code);
     Assert.Equal("tried to create a file with a directory path", error.Message);
     NewDirectory(root).ValidatePath();
+  }
+
+  [Fact]
+  public void CreateAndDeleteFailuresKeepTheReasonAndHaveNoCause()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    var stuck = Path.Combine(temp.Path, "d", "z", "stuck.txt");
+    Directory.CreateDirectory(Path.GetDirectoryName(stuck)!);
+    File.WriteAllText(stuck, "S");
+    var directory = NewDirectory(Path.Combine(temp.Path, "d"));
+    var stuckFile = NewFile(stuck);
+
+    UnableToCreateException createError;
+    UnableToDeleteException deleteError;
+    using (FileLocks.BlockDelete(stuck))
+    {
+      createError = Assert.Throws<UnableToCreateException>(
+          () => directory.Create(new CreateOptions(null, true, null)));
+      deleteError = Assert.Throws<UnableToDeleteException>(() => stuckFile.Delete());
+    }
+
+    Assert.Equal("ERR_UNABLE_TO_CREATE", createError.Code);
+    Assert.StartsWith("Unable to create file or directory: ", createError.Message);
+    Assert.True(createError.Message.Length > "Unable to create file or directory: ".Length);
+    Assert.Null(createError.InnerException);
+    Assert.Equal("ERR_UNABLE_TO_DELETE", deleteError.Code);
+    Assert.StartsWith("Unable to delete file or directory: ", deleteError.Message);
+    Assert.True(deleteError.Message.Length > "Unable to delete file or directory: ".Length);
+    Assert.Null(deleteError.InnerException);
+    Assert.True(File.Exists(stuck));
   }
 }

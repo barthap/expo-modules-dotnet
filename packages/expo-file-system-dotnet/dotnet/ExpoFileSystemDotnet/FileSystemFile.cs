@@ -27,7 +27,7 @@ internal sealed partial class FileSystemFile : FileSystemPath
   {
     if (Location.HasDirectoryPath)
     {
-      throw FileSystemErrors.WrongTypeFile();
+      throw WrongTypeException.ForFile();
     }
   }
 
@@ -40,7 +40,7 @@ internal sealed partial class FileSystemFile : FileSystemPath
     var path = target.NativePath;
     if (File.Exists(path) && options?.Overwrite != true)
     {
-      throw FileSystemErrors.AlreadyExists(target.Uri);
+      throw new FileAlreadyExistsException(target.Uri);
     }
     try
     {
@@ -57,7 +57,7 @@ internal sealed partial class FileSystemFile : FileSystemPath
     }
     catch (Exception error) when (error is IOException or UnauthorizedAccessException)
     {
-      throw FileSystemErrors.UnableToCreate(error.Message, error);
+      throw new UnableToCreateException(error.Message);
     }
   }
 
@@ -173,7 +173,7 @@ internal sealed partial class FileSystemFile : FileSystemPath
   {
     if (Directory.Exists(nativePath))
     {
-      throw FileSystemErrors.FolderAtFileLocation();
+      throw new InvalidTypeFileException();
     }
   }
 
