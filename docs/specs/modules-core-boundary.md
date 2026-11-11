@@ -1677,17 +1677,20 @@ with an empty default body. There SHALL be no second codec protocol.
 dispose the leaf.
 `JavaScriptValueCodec.Encode` SHALL return `value.Retain()`.
 
-Every list, dictionary, nullable, union, and generated record codec whose
-content holds a leaf SHALL release each child through the child codec. A union
-codec SHALL release only the member that the union holds. A dictionary
-codec SHALL do this through both dictionary interfaces. A composite with more
-than one child SHALL attempt every child. It SHALL throw one
+Every list, dictionary, nullable, generated union, and generated record codec
+whose content holds a leaf SHALL release each child through the child codec. A
+generated union codec SHALL release only the payload of the case it holds. A
+dictionary codec SHALL do this through both dictionary interfaces. A composite
+with more than one child SHALL attempt every child. It SHALL throw one
 `AggregateException` with every failure, through the public `CodecRelease`
 helper.
 
 A list, dictionary, or record decode that fails at a child SHALL release the
 children it already decoded and rethrow. If that cleanup throws, its
-`AggregateException` SHALL replace the decode error.
+`AggregateException` SHALL replace the decode error. A generated union decode
+SHALL rely on this rule for each failed attempt, SHALL propagate an
+`AggregateException` from an attempt, and SHALL release a decoded payload whose
+case construction throws.
 
 No codec SHALL use finalizers, reflection, or ambient state to release.
 
@@ -1698,13 +1701,6 @@ Encoding a null class record SHALL fail with a catchable JavaScript error.
 `NullableSharedObjectCodec<T>`, and `SharedObjectBaseCodec<TBase>` are static
 classes with no `Release`: the runtime context retains callbacks and the
 registry owns shared objects.
-
-`IJavaScriptValueKindCodec` declares a static abstract `Kind`. `StringCodec`,
-`BoolCodec`, `NumberCodec<T>`, `ArrayBufferCodec`, `ByteArrayCodec`,
-`MemoryByteCodec`, `ReadOnlyMemoryByteCodec`, and `Uint8ArrayCodec` (kind
-`Object`) implement it, and
-`EitherCodec<TFirst, TFirstCodec, TSecond, TSecondCodec>` compares it with the
-value's kind.
 
 #### Scenario: A missing override leaks
 - **GIVEN** a composite codec over `ArrayBufferCodec`, holding JS-created
@@ -1772,14 +1768,16 @@ local declarations and helper type arguments.
 | --- | --- | --- |
 | Leaf-free types | as before | `Borrowed` |
 | `JavaScriptValue`, `ArrayBuffer`, `Uint8Array` | `JavaScriptCodec` | `HoldsLeaves` |
-| List, dictionary, nullable, or `Either<TFirst, TSecond>` over a `HoldsLeaves` child | `JavaScriptCodec` | `HoldsLeaves` |
+| List, dictionary, or nullable over a `HoldsLeaves` child | `JavaScriptCodec` | `HoldsLeaves` |
+| `[Union]` type with any `HoldsLeaves` payload | `JavaScriptCodec` | `HoldsLeaves` |
 | Record with any `HoldsLeaves` field | `JavaScriptCodec` | `HoldsLeaves` |
 | `JavaScriptCallback<...>` and `JavaScriptCallback<...>?` | `StaticHelper` | `ContextRetained` |
 | Direct `[ExpoSharedObject]` class `T` and `T?` | `StaticHelper` | `Borrowed` |
 | Authored abstract base `TBase` (parameter only; decode-only `SharedObjectBaseCodec<TBase>`) | `StaticHelper` | `Borrowed` |
 
 A record codec model SHALL store whether the record holds leaves and whether it
-is a value type, so a cache hit rebuilds the same descriptor.
+is a value type, and a union codec model SHALL store whether the union holds
+leaves, so a cache hit rebuilds the same descriptor.
 
 #### Scenario: Leaf-free member text is unchanged
 - **GIVEN** the leaf-free output contract sources
@@ -1912,7 +1910,7 @@ additional backing kinds.
 | CLR type | Boundary behavior | Generated-binding constraints |
 | --- | --- | --- |
 | `ArrayBuffer` | Preserves wrapper ownership semantics | Every codec position, including list elements, dictionary values, callback types, and nested typed-event payloads, each also as `ArrayBuffer?` |
-| `Uint8Array` | A view over one retained buffer lease with its offset and length; no byte copy in either direction | Every `ArrayBuffer` position, each also as `Uint8Array?`, and a union member of kind `Object` |
+| `Uint8Array` | A view over one retained buffer lease with its offset and length; no byte copy in either direction | Every `ArrayBuffer` position, each also as `Uint8Array?`, and a union payload |
 | `byte[]` | Copies in both directions | Rank-one arrays only |
 | `Memory<byte>` / `ReadOnlyMemory<byte>` | Copies in both directions, encoding exactly the current logical slice | Ordinary codecs |
 | `Span<byte>` / `ReadOnlySpan<byte>` | Borrows an input slice or copies a return value | One synchronous parameter only |
@@ -1959,79 +1957,358 @@ additional backing kinds.
 - **AND** the one-span limit SHALL not restrict `ArrayBuffer`, `byte[]`,
   `Memory<byte>`, or `ReadOnlyMemory<byte>` arity
 
-### Requirement: Two-Member Unions Decode By Value Kind
+### Requirement: Named Unions Decode Cases In Declaration Order
 
-`Either<TFirst, TSecond>` SHALL be accepted in every codec position when each
-member type maps to one of the JavaScript value kinds `String`, `Bool`,
-`Number`, `ArrayBuffer`, or `Object`, and the two kinds differ. `string` maps
-to `String`, `bool` to `Bool`, the types of `NumberCodec<T>` to `Number`,
-`ArrayBuffer`, `byte[]`, `Memory<byte>`, and `ReadOnlyMemory<byte>` to
-`ArrayBuffer`, and `Uint8Array` to `Object`. The positions are parameters,
-returns, async results, properties, record fields, list elements, dictionary
-values, the `Nullable<T>` inner type, callback type arguments, typed event
-payloads, and shared-object constructors and members.
+A type with `[Union]` SHALL be a non-generic `abstract record` class with no
+parameter list, accessible to generated code, with no generic containing type.
+Its cases SHALL be the nested `sealed record` types that derive from it
+directly, each with exactly one positional parameter, the payload, which SHALL
+have no default value and SHALL NOT be nullable. Case order SHALL be the source
+order of the case declarations, which SHALL all be in one partial declaration.
+A payload SHALL be a type whose codec is an ordinary `JavaScriptCodec` with
+`DecodeAndEncode` and no runtime context, or another `[Union]` declared in the
+same assembly. A payload type MAY be declared in a referenced assembly, and
+then SHALL decode and encode through the same codec as when that type is a
+method parameter: a positional record, an enum, or a list or dictionary of
+them. A union SHALL be accepted in every codec position: parameters, returns,
+async results, properties, record fields, list elements, dictionary values,
+nullable references, callback arguments and results, typed event payloads, and
+shared-object constructors and members.
 
-`EitherCodec<TFirst, TFirstCodec, TSecond, TSecondCodec>` SHALL read the value
-kind once and decode through that member's codec. It SHALL NOT try one member
-and fall back to the other. A value of any other kind, `null` and `undefined`
-included, SHALL throw `InvalidOperationException` with the message
-`Value kind '<kind>' is not one of '<first>' or '<second>'.` `Encode` and
-`Release` SHALL use the member that the union holds. The union holds leaves
-when a member does: `Either<string, ArrayBuffer>` follows the `ArrayBuffer`
-leaf rules, and `Either<double, bool>` keeps leaf-free generated text.
+The generator SHALL emit one private codec per used union in each provider. Its
+`Decode` SHALL read the value kind once and visit the cases in declaration
+order. It SHALL skip a case whose payload kinds do not contain the kind. The
+payload kinds are: `String` for `string`, `Guid`, `Uri`, `DateTimeOffset`,
+`TimeSpan`, and string-represented enums; `Bool` for `bool`; `Number` for the
+`NumberCodec<T>` types and number-represented enums; `ArrayBuffer` for
+`ArrayBuffer`, `byte[]`, `Memory<byte>`, and `ReadOnlyMemory<byte>`; `Object`
+for records, lists, dictionaries, and `Uint8Array`; every kind for
+`JavaScriptValue`; and the kinds of all cases for a nested union. An integer
+case that is not the last case whose kinds contain `Number` SHALL take only a
+whole number that its type holds exactly. Any other case SHALL be attempted
+through its payload codec. The first successful attempt SHALL win. An
+`AggregateException` from an attempt SHALL propagate. Any other exception SHALL
+fail the attempt and move to the next case. If constructing the case throws,
+the codec SHALL release the decoded payload and rethrow. A typed event payload
+is only encoded, so it attempts no case.
 
-A member type outside the table, an annotated member, or two members of the
-same kind SHALL report the position's existing diagnostic, which names the
-full union type.
+When no case takes the value, `Decode` SHALL throw
+`UnionCaseMismatchException` with the message
+`'<Union>' expected <T1> or <T2> or ..., but received <kind>`: the union's
+simple name, the payload types in declaration order in C# minimal form, and one
+of `undefined`, `null`, `boolean`, `number`, `string`, `object`, `function`, or
+`ArrayBuffer`. `UnionCaseMismatchException` SHALL derive from
+`CodedException`, and its `Code` SHALL be the derived `ERR_UNION_CASE_MISMATCH`,
+the code of upstream iOS `UnionCaseMismatch`. JavaScript SHALL receive it as an
+`Error` whose `message` is that text followed by the cause chain of
+`### Requirement: Module Failures Become JavaScript Errors`. It SHALL expose
+`UnionName`, `Received`, and `Expected`, and its `InnerException` SHALL be the
+failure of the last attempted case, or `null` when no case was attempted.
 
-#### Scenario: String or ArrayBuffer parameter
-- **GIVEN** a method `string Write(Either<string, ArrayBuffer> content)`
-  on a module and on a shared object
+`Encode` SHALL encode the payload of the case it holds through the payload
+codec. A `null` union SHALL throw `ArgumentNullException`, and a type that is
+not a case SHALL throw `InvalidOperationException` with the message
+`Type '<type>' is not a case of union '<Union>'.`, built by
+`UnionCodecErrors.NotACase`, so generated union text uses no `GetType` or
+`typeof`. A union SHALL hold leaves when a payload does. Its `Release` SHALL
+release only the payload of the case it holds and SHALL skip `null`. A
+leaf-free union SHALL keep leaf-free generated text.
+
+The generator SHALL report, once per declaration and at error severity:
+`EXPOJSI029` for an invalid union declaration, a recursive union, or a union
+declared in a referenced assembly (at the using parameter, member, or record
+field); `EXPOJSI030` for an invalid case, a type that derives from a union and
+is not a valid case, a nullable or defaulted payload, a payload that contains
+itself through records, lists, dictionaries, or unions, or a payload with no
+union codec; `EXPOJSI031` for two cases with the same payload type; and
+`EXPOJSI032` for a case that an earlier case always takes first. A case type
+used directly, and every invalid union, SHALL make the using position report
+its existing unsupported-type diagnostic. No Roslyn dependency on source file
+order, no reflection, and no ABI surface SHALL be added.
+
+A later case is unreachable when:
+
+1. An earlier case has a `JavaScriptValue` payload.
+2. Its kinds are only `Number`, and an earlier case has a `double` or `float`
+   payload.
+3. It is an integer case that is not the last case whose kinds contain
+   `Number`, and an earlier integer case's type range contains its type range.
+4. Its kinds are only `String`, and an earlier case has a `string` payload.
+5. Its kinds are only `ArrayBuffer`, and an earlier case has an `ArrayBuffer`,
+   `byte[]`, `Memory<byte>`, or `ReadOnlyMemory<byte>` payload.
+6. Its kinds are only `Object`, and an earlier case has a
+   `Dictionary<string, JavaScriptValue>` or
+   `IReadOnlyDictionary<string, JavaScriptValue>` payload, or a record payload
+   whose every field is `JavaScriptValue`.
+7. It has an `IReadOnlyList<T>` payload, and an earlier case has an
+   `IReadOnlyList<JavaScriptValue>` payload.
+8. It has a record payload, an earlier case has a record payload, and every
+   field of the earlier record that is not `JavaScriptValue` has a field in the
+   later record with the same JavaScript name and either the same C# type or
+   the C# type of which the earlier field's type is the nullable form, and,
+   when the earlier field is required, the later field is required too.
+
+#### Scenario: Three cases decode by kind
+- **GIVEN** `[Union] abstract record NonceInput` with cases `Base64(string)`,
+  `Bytes(byte[])`, and `Length(int)`, and a method
+  `string Describe(NonceInput nonce)`
+- **WHEN** JavaScript passes `'AAEC'`, an `ArrayBuffer` of 3 bytes, and `12`
+- **THEN** authored code SHALL receive `Base64("AAEC")`, `Bytes` with the 3
+  bytes, and `Length(12)`
+
+#### Scenario: Integer before double
+- **GIVEN** a union with cases `Whole(int)` and then `Fraction(double)`
+- **WHEN** JavaScript passes `3`, `2.5`, and `3e9`
+- **THEN** `3` SHALL decode as `Whole(3)`, and `2.5` and `3e9` SHALL decode as
+  `Fraction`
+
+#### Scenario: A lone integer case decodes like its codec
+- **GIVEN** a union with cases `Text(string)` and `Count(int)`
+- **WHEN** JavaScript passes `2.5`
+- **THEN** it SHALL decode as `Count(2)`, as `NumberCodec<int>` decodes `2.5`
+  outside a union
+
+#### Scenario: A failed attempt moves to the next case
+- **GIVEN** a union with cases `Address(Uri)` and then `Text(string)`
+- **WHEN** JavaScript passes `'https://expo.dev/x'` and `'hello'`
+- **THEN** the first SHALL decode as `Address` and the second as `Text`
+
+#### Scenario: Records are picked by their fields
+- **GIVEN** a union with cases `Round(Circle)` and then `Dot(Point)`, where
+  `record Circle(double X, double Y, double Radius)` and
+  `record Point(double X, double Y)` are declared outside the union
+- **WHEN** JavaScript passes `{ x: 1, y: 1, radius: 2 }`, `{ x: 1, y: 2 }`, and
+  `{ x: 1 }`
+- **THEN** the first SHALL decode as `Round`, the second as `Dot`
+- **AND** the third SHALL throw `UnionCaseMismatchException` whose
+  `InnerException` is the `Point` decode failure
+- **AND** the mismatch message SHALL end with
+  `\n→ Caused by: Value for property 'y' is required, got undefined`
+
+#### Scenario: A list and a record in one union
+- **GIVEN** a union with cases `Items(IReadOnlyList<int>)` and `Named(Entry)`,
+  where `record Entry(string Name)`
+- **WHEN** JavaScript passes `[1, 2]` and `{ name: 'a' }`
+- **THEN** the first SHALL decode as `Items` and the second as `Named`
+
+#### Scenario: Nested union
+- **GIVEN** a union `Outer` with cases `Flag(bool)` and `Nested(Inner)`, where
+  `Inner` is a union declared outside `Outer` with cases `Text(string)` and
+  `Count(int)`
+- **WHEN** JavaScript passes `true`, `'a'`, `3`, and `{}`
+- **THEN** they SHALL decode as `Flag`, `Nested(Text)`, `Nested(Count)`, and
+  throw `'Outer' expected bool or Inner, but received object`
+
+#### Scenario: Kind gating skips without decoding
+- **GIVEN** a union with cases `Text(string)` and `View(Uint8Array)`
+- **WHEN** JavaScript passes an `ArrayBuffer`
+- **THEN** it SHALL throw
+  `'<Union>' expected string or Uint8Array, but received ArrayBuffer`
+- **AND** `InnerException` SHALL be `null`, because no case was attempted
+
+#### Scenario: Mismatch message and nullish input
+- **GIVEN** `[Union] abstract record UnionSource` with cases `Text(string)` and
+  `Options(UnionSourceOptions)` and a non-nullable parameter
+- **WHEN** JavaScript passes `42`, `null`, and `undefined`
+- **THEN** the call SHALL fail with a catchable JavaScript `Error` whose
+  message contains
+  `'UnionSource' expected string or UnionSourceOptions, but received number`,
+  then `received null`, then `received undefined`
+- **AND** authored code SHALL NOT run
+
+#### Scenario: Mismatch has the upstream code
+- **GIVEN** any union
+- **WHEN** no case takes the value
+- **THEN** JavaScript SHALL catch an `Error` with
+  `code === 'ERR_UNION_CASE_MISMATCH'`
+- **AND** when a case was attempted, its failure SHALL follow the message as
+  `\n→ Caused by: <failure>`
+
+#### Scenario: Nullable union
+- **GIVEN** a `UnionSource?` parameter and a `UnionSource?` return
+- **WHEN** JavaScript passes `null` and `undefined`, and authored code returns
+  `null`
+- **THEN** authored code SHALL receive C# `null` for both inputs, and
+  JavaScript SHALL receive `null`
+
+#### Scenario: Encode each case
+- **GIVEN** methods that return `Base64("a")`, `Bytes([1, 2])`, `Length(3)`,
+  and a `null` non-nullable union
+- **WHEN** JavaScript calls them
+- **THEN** JavaScript SHALL receive `'a'`, an `ArrayBuffer` with bytes `1, 2`,
+  and `3`
+- **AND** the `null` call SHALL fail with a catchable JavaScript error
+- **AND** the generated `Encode` SHALL end with the `InvalidOperationException`
+  throw for a type that is not a case
+
+#### Scenario: Union in every position
+- **GIVEN** a union with cases `Text(string)` and `Buffer(ArrayBuffer)`, used
+  as a record field, a list element, a dictionary value, a sync return, a
+  `Task` result, a property, a typed event payload on a module and on a shared
+  object, a callback argument, a callback result, a shared-object constructor
+  parameter, and a shared-object method parameter
+- **WHEN** JavaScript passes and receives values through each position
+- **THEN** each SHALL decode and encode the case that matches the value
+- **AND** a returned buffer SHALL keep its JavaScript identity and release
+  exactly once
+- **AND** an event payload or callback argument SHALL stay with the author, and
+  a callback result SHALL belong to the author
+
+#### Scenario: Leaf payload releases once
+- **GIVEN** `string Write(Content content)` where `Content` has cases
+  `Text(string)` and `Buffer(ArrayBuffer)`, on a module and on a shared object
 - **WHEN** JavaScript passes a string and then an `ArrayBuffer`
-- **THEN** authored code SHALL receive `IsFirst` with the string, then
-  `IsFirst == false` with a buffer whose bytes match
-- **AND** the buffer lease SHALL release once at invocation end, and the
-  string call SHALL hold no lease
+- **THEN** the buffer lease SHALL release exactly once at invocation end
+- **AND** the string call SHALL hold no lease
 
-#### Scenario: Third kind and nullish are rejected
-- **GIVEN** the same parameter and an `Either<string, ArrayBuffer>?` parameter
-- **WHEN** JavaScript passes `5`, `{}`, `null`, or `undefined`
-- **THEN** the non-nullable parameter SHALL throw the union codec's kind
-  message for every input before authored code runs
-- **AND** the nullable parameter SHALL pass C# `null` for `null` and
-  `undefined` and SHALL throw for `5` and `{}`
+#### Scenario: A failed attempt releases what it decoded
+- **GIVEN** a union with cases `Packed(Pair)` and then `Raw(JavaScriptValue)`,
+  where `record Pair(ArrayBuffer Data, int Count)` is declared outside the
+  union
+- **WHEN** JavaScript passes `{ data: buffer, count: 'x' }`
+- **THEN** the `Packed` attempt SHALL release its `Data` lease exactly once
+- **AND** the value SHALL decode as `Raw`, whose leaf SHALL release exactly
+  once at invocation end
+
+#### Scenario: Case construction fails after its payload decoded
+- **GIVEN** a case whose constructor throws for a decoded `ArrayBuffer`, before
+  a `Raw(JavaScriptValue)` case
+- **WHEN** JavaScript passes a buffer that the constructor rejects
+- **THEN** the lease SHALL release exactly once
+- **AND** the call SHALL fail with the constructor's error, and the `Raw` case
+  SHALL NOT be attempted
+
+#### Scenario: A release failure in an attempt propagates
+- **GIVEN** the generated codec of a union whose first case has a leaf-bearing
+  record payload
+- **WHEN** the generator runs
+- **THEN** each attempt SHALL catch `AggregateException` and rethrow it before
+  the catch that moves to the next case
+- **AND** a release failure during a failed attempt SHALL therefore propagate,
+  and the later case SHALL NOT be attempted
 
 #### Scenario: Leaf-free union keeps leaf-free glue
-- **GIVEN** `int Pick(Either<double, bool> value)`
-- **WHEN** the generator runs and JavaScript passes `0`, `1.5`, `false`,
-  `true`, `''`
-- **THEN** the generated text SHALL NOT contain `CodecRelease`
-- **AND** `0` and `1.5` SHALL arrive as `IsFirst`, `false` and `true` as
-  the second member, and `''` SHALL throw
-
-#### Scenario: Union in encode positions
-- **GIVEN** a sync or async method that returns a `Retain()` copy of its
-  `Either<string, ArrayBuffer>` input, the same in a record field and a list, a
-  property that stores `Retain()` copies, an event payload, a callback
-  argument, and a callback result of that type
-- **WHEN** JavaScript passes an `ArrayBuffer`
-- **THEN** a returned buffer SHALL keep its JavaScript identity and release
-  exactly once
-- **AND** an event payload or callback argument SHALL stay with the author,
-  and a callback result SHALL belong to the author
-
-#### Scenario: Unsupported members report a diagnostic
-- **GIVEN** `Either<string, Uri>`, `Either<string, Holder>` for a record
-  `Holder`, `Either<string, Entry>` for a shared-object class `Entry`,
-  `Either<string?, double>`, and `Either<double, int>`
+- **GIVEN** `int Pick(Choice value)` where `Choice` has cases `Number(double)`
+  and `Flag(bool)`
 - **WHEN** the generator runs
-- **THEN** it SHALL report the position's existing diagnostic, naming the
-  union type, and SHALL NOT emit the member
+- **THEN** the generated text SHALL NOT contain `CodecRelease`, and the union
+  codec SHALL have no `Release`
+
+#### Scenario: Invalid declarations report EXPOJSI029
+- **GIVEN** `[Union]` on a non-record class, on a generic abstract record, on
+  an abstract record with a parameter list, on a private nested union, on a
+  union with no cases, on a union whose cases are in two partial declarations,
+  and on a union with a case `Many(IReadOnlyList<Self>)` that contains the
+  union itself
+- **WHEN** the generator runs, with or without a member that uses each union
+- **THEN** it SHALL report `EXPOJSI029` once per declaration, naming the union
+  and the reason
+
+#### Scenario: Payload record from a referenced assembly
+- **GIVEN** an assembly that declares
+  `public record ExternalRecord(string Name, int Count)`, and a project that
+  references it and declares `[Union] abstract record Sth` with cases
+  `Foo(ExternalRecord Bar)` and `Text(string Value)`, and a method
+  `string Describe(Sth value)`
+- **WHEN** JavaScript passes `{ name: 'a', count: 2 }` and `'x'`
+- **THEN** the generator SHALL report no diagnostic
+- **AND** the first value SHALL decode as `Foo` whose `Bar` is
+  `ExternalRecord("a", 2)`, and the second as `Text("x")`
+- **AND** a method that returns `new Sth.Foo(new ExternalRecord("a", 2))` SHALL
+  give JavaScript the object `{ name: 'a', count: 2 }`
+
+#### Scenario: A union from a referenced assembly reports EXPOJSI029
+- **GIVEN** a `[Union]` declared in a referenced assembly and a method
+  parameter of that type
+- **WHEN** the generator runs
+- **THEN** it SHALL report `EXPOJSI029` at the parameter, naming the union and
+  its assembly
+- **AND** the parameter SHALL report `EXPOJSI001`, and no binding SHALL be
+  emitted for the method
+
+#### Scenario: Invalid cases report EXPOJSI030
+- **GIVEN** a union with a case that has no positional parameter, a case with
+  two, a non-sealed case, a case with `string Value = ""`, a case with
+  `string? Value`, a case with a shared-object payload, a case with a
+  `JavaScriptCallback<int>` payload, a case `Address(Uri Value)` declared next
+  to a case named `Uri`, and a top-level record that derives from the union
+- **WHEN** the generator runs
+- **THEN** it SHALL report `EXPOJSI030` for each, naming the case or type, the
+  union, and the reason
+- **AND** the no-parameter message SHALL point to an `enum` payload, the
+  two-parameter message SHALL point to a record payload, and the nullable
+  message SHALL point to a nullable union at the use site
+- **AND** a case declared as `Uri(Uri Value)` SHALL also report `EXPOJSI030`,
+  next to the C# error CS8910
+
+#### Scenario: A payload that contains itself is rejected
+- **GIVEN** a case `Tree(Node)` where
+  `record Node(string Name, IReadOnlyList<Node> Children)`
+- **WHEN** the generator runs
+- **THEN** it SHALL report `EXPOJSI030` for the case before any payload codec
+  resolves, and the build SHALL NOT crash
+
+#### Scenario: Duplicate payloads report EXPOJSI031
+- **GIVEN** a union with cases `A(string)` and `B(string)`
+- **WHEN** the generator runs
+- **THEN** it SHALL report `EXPOJSI031` naming the union, the payload type, and
+  both cases
+
+#### Scenario: Unreachable cases report EXPOJSI032
+- **GIVEN** unions where a case follows a `JavaScriptValue` case; an `int` case
+  follows a `double` case; an `int` case followed by a `double` case follows a
+  `long` case; a `Uri` case follows a `string` case; a `byte[]` case follows an
+  `ArrayBuffer` case; a record case follows a
+  `Dictionary<string, JavaScriptValue>` case; an `IReadOnlyList<int>` case
+  follows an `IReadOnlyList<JavaScriptValue>` case; and a case with record
+  payload `Circle(double X, double Y, double Radius)` follows a case with
+  record payload `Point(double X, double Y)`
+- **WHEN** the generator runs
+- **THEN** it SHALL report `EXPOJSI032` for each later case, naming it, the
+  union, and the earlier case
+- **AND** it SHALL NOT report `EXPOJSI032` for `int` then `double`, `Uri` then
+  `string`, payload `Circle` then payload `Point`, `Dictionary<string, int>`
+  then `IReadOnlyList<int>`, or payload `Point` then a record payload
+  `Line(string X, double Y)`
+
+#### Scenario: Reachable through record defaults
+- **GIVEN** a union with cases `Dot(Point)` and then `Relaxed(Partial)`, where
+  `record Point(double X, double Y)` and
+  `record Partial(double X, double Y = 0, double Z = 0)`
+- **WHEN** the generator runs and JavaScript passes `{ x: 1 }`
+- **THEN** it SHALL NOT report `EXPOJSI032`
+- **AND** the value SHALL decode as `Relaxed`
+
+#### Scenario: A JavaScriptValue dictionary takes every object
+- **GIVEN** a union with cases `Bag(Dictionary<string, JavaScriptValue>)` and
+  then `Text(string)`
+- **WHEN** JavaScript passes a plain object, an array, a `Uint8Array`, an
+  object with a null prototype, a `Map`, a `Date`, and an object with a
+  non-enumerable property
+- **THEN** every value SHALL decode as `Bag`
+
+#### Scenario: A case type outside its union is rejected
+- **GIVEN** a method `int M(NonceInput.Bytes bytes)`
+- **WHEN** the generator runs
+- **THEN** it SHALL report `EXPOJSI001` naming `NonceInput.Bytes`, and SHALL NOT
+  generate a record codec for it
+
+#### Scenario: Generated union codecs avoid reflection
+- **GIVEN** the generated provider of a project that uses unions
+- **WHEN** a reviewer searches it for `GetType(`, `typeof(`, `MethodInfo`,
+  `Activator`, `DynamicInvoke`, and `object?[]`
+- **THEN** the union codecs SHALL contain none of them
+
+#### Scenario: Either is gone
+- **GIVEN** the repository after this change
+- **WHEN** a reviewer runs
+  `git grep -n -e "Either[<]" -e "Either[C]odec" -e "IJavaScriptValueKind[C]odec" -- packages apps docs/specs docs/module-authoring-guide.md`
+- **THEN** it SHALL print nothing
 
 ### Requirement: Uint8Array Is A Byte View
 
 `Uint8Array` SHALL be accepted in every codec position where `ArrayBuffer` is,
-each also as `Uint8Array?`, and as a union member of kind `Object`, through
+each also as `Uint8Array?`, and as a union payload, through
 `Uint8ArrayCodec`, an ordinary `IJavaScriptCodec<Uint8Array>` that holds a
 leaf. A `Uint8Array` owns one `ArrayBuffer` lease plus an offset and a length.
 Decoding SHALL prove the value is a `Uint8Array` by prototype-chain membership
@@ -2086,14 +2363,18 @@ arrays.
 
 #### Scenario: Callback, event, and union
 - **GIVEN** a callback whose argument and result are `Uint8Array?`, a
-  `Func<Uint8Array?, Task>` event, and an `Either<string, Uint8Array>`
-  parameter
+  `Func<Uint8Array?, Task>` event, and a `StringOrView` union parameter with
+  cases `Text(string)` and `View(Uint8Array)`
 - **WHEN** JavaScript passes a view or `null`
 - **THEN** a view or `null` passed to the callback or the event SHALL stay with
   the author, and a view returned by the callback SHALL belong to the author
-- **AND** the union SHALL decode a string as its first member and a view as its
-  second, SHALL throw the kind message for an `ArrayBuffer`, and SHALL throw
-  `Value is not a Uint8Array.` for another object
+- **AND** the union SHALL decode a string as `Text` and a view as `View`
+- **AND** it SHALL throw
+  `'StringOrView' expected string or Uint8Array, but received ArrayBuffer` for
+  an `ArrayBuffer`, and
+  `'StringOrView' expected string or Uint8Array, but received object` for
+  another object, whose `InnerException` is `Value is not a Uint8Array.`, so
+  the JavaScript message ends with `\n→ Caused by: Value is not a Uint8Array.`
 
 ### Requirement: Nullable Reference Codecs Are Annotation-Driven
 
@@ -2151,15 +2432,16 @@ annotation-erased `T` paired with a nullable codec makes generated code report
 
 ### Requirement: Supported Nullable Reference Values Use Dedicated Codecs
 
-Generated bindings SHALL support nullable `string`, `Uri`, `byte[]`, and
-positional reference-record values through `NullableReferenceCodec<T, TCodec>`,
-constrained with `where T : class` and `where TCodec : IJavaScriptCodec<T>`.
-Both the scoped and the owned decode overloads SHALL return C# `null` for
-JavaScript `null` or `undefined` without calling the inner codec. Encoding C#
-`null` SHALL produce JavaScript `null`. Non-null conversion SHALL delegate to
-the existing codec for the same non-nullable type, whose behavior SHALL remain
-unchanged. `ByteArrayCodec` SHALL implement `IJavaScriptCodec<byte[]>` so it can
-serve as an inner codec, keeping its existing copy-in-both-directions behavior.
+Generated bindings SHALL support nullable `string`, `Uri`, `byte[]`,
+positional reference-record values, and `[Union]` values through
+`NullableReferenceCodec<T, TCodec>`, constrained with `where T : class` and
+`where TCodec : IJavaScriptCodec<T>`. Both the scoped and the owned decode
+overloads SHALL return C# `null` for JavaScript `null` or `undefined` without
+calling the inner codec. Encoding C# `null` SHALL produce JavaScript `null`.
+Non-null conversion SHALL delegate to the existing codec for the same
+non-nullable type, whose behavior SHALL remain unchanged. `ByteArrayCodec`
+SHALL implement `IJavaScriptCodec<byte[]>` so it can serve as an inner codec,
+keeping its existing copy-in-both-directions behavior.
 
 #### Scenario: Nullish input decodes to null
 - **GIVEN** a supported nullable reference codec receives JavaScript `null` or
