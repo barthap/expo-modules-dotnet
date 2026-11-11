@@ -168,6 +168,22 @@ internal sealed partial class FileSystemDirectory : FileSystemPath
   [JS]
   public void Rename(string newName) => RenameCore(newName);
 
+  [JS]
+  public void CopySync(FileSystemPath destination, RelocationOptions? options = null) =>
+      CopyCore(destination, options);
+
+  [JS]
+  public Task Copy(FileSystemPath destination, RelocationOptions? options = null) =>
+      CopyCoreAsync(destination, options);
+
+  [JS]
+  public void MoveSync(FileSystemPath destination, RelocationOptions? options = null) =>
+      MoveCore(destination, options);
+
+  [JS]
+  public Task Move(FileSystemPath destination, RelocationOptions? options = null) =>
+      MoveCoreAsync(destination, options);
+
   protected override void EnsureCorrectType(string nativePath)
   {
     if (File.Exists(nativePath))

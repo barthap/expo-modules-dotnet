@@ -2,9 +2,9 @@ using System.Runtime.Versioning;
 
 namespace ExpoFileSystemDotnet.Tests;
 
-/// <summary>Makes a file fail to delete until disposed.</summary>
+/// <summary>Makes a file fail to delete, or fail to read, until disposed.</summary>
 /// <remarks>
-/// On Windows an open handle without delete sharing does it. On macOS and Linux file modes do it,
+/// On Windows an open handle without delete or read sharing does it. On macOS and Linux file modes do it,
 /// so these tests need a user that is not root.
 /// </remarks>
 internal static class FileLocks
@@ -18,6 +18,16 @@ internal static class FileLocks
     }
     var parent = Path.GetDirectoryName(filePath)!;
     return new ModeScope(parent, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+  }
+
+  /// <summary>The file cannot be read.</summary>
+  internal static IDisposable BlockRead(string filePath)
+  {
+    if (OperatingSystem.IsWindows())
+    {
+      return new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.None);
+    }
+    return new ModeScope(filePath, UnixFileMode.None);
   }
 
   [UnsupportedOSPlatform("windows")]

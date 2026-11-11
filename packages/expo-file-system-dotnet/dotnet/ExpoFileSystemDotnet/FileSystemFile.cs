@@ -232,6 +232,22 @@ internal sealed partial class FileSystemFile : FileSystemPath
     return Task.Run(() => ReadBytes(target));
   }
 
+  [JS]
+  public void CopySync(FileSystemPath destination, RelocationOptions? options = null) =>
+      CopyCore(destination, options);
+
+  [JS]
+  public Task Copy(FileSystemPath destination, RelocationOptions? options = null) =>
+      CopyCoreAsync(destination, options);
+
+  [JS]
+  public void MoveSync(FileSystemPath destination, RelocationOptions? options = null) =>
+      MoveCore(destination, options);
+
+  [JS]
+  public Task Move(FileSystemPath destination, RelocationOptions? options = null) =>
+      MoveCoreAsync(destination, options);
+
   /// <summary>Decodes base64 text, ignoring every character outside the base64 alphabet.</summary>
   /// <returns>The bytes, or <see langword="null" /> when the remaining characters do not decode.</returns>
   internal static byte[]? DecodeBase64Leniently(string text)

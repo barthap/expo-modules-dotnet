@@ -113,7 +113,7 @@ public sealed class FileSystemBindingTests
           const m = _expoDotnet.modules.FileSystem;
           const f = new m.FileSystemFile('{{DirUri(temp.Path)}}a.txt');
           const d = new m.FileSystemDirectory('{{DirUri(temp.Path)}}');
-          const absent = ['copy', 'copySync', 'move', 'moveSync', 'open', 'type'];
+          const absent = ['open', 'type'];
           return absent.filter((name) => name in f || name in d).join(',');
         })()
         """
@@ -658,5 +658,96 @@ public sealed class FileSystemBindingTests
         result[0]);
     Assert.Equal($"ERR_MISSING_PERMISSION|Missing permission for uri: {dir}app/a.txt", result[1]);
     Assert.Equal("A", File.ReadAllText(Path.Combine(temp.Path, "app", "a.txt")));
+  }
+
+  [Fact]
+  public async Task CopyAndMoveResolveAndUpdateTheUri()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    File.WriteAllText(Path.Combine(temp.Path, "a.txt"), "A");
+    Directory.CreateDirectory(Path.Combine(temp.Path, "d"));
+    using var host = ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoFileSystemDotnet.Register);
+    var dir = DirUri(temp.Path);
+
+    var result = await EvalListAsync(
+        host,
+        $$"""
+        (() => {
+          {{Prelude(dir)}}
+          const a = new m.FileSystemFile(dir + 'a.txt');
+          const d = new m.FileSystemDirectory(dir + 'd');
+          const missing = new m.FileSystemDirectory(dir + 'missing');
+          const results = [];
+          return a.copy(d, { overwrite: undefined })
+            .then((copied) => { results.push(String(copied)); return a.move(d, { overwrite: true }); })
+            .then((moved) => {
+              results.push(String(moved), a.uri);
+              return rejection(a.move(missing));
+            })
+            .then((failure) => {
+              results.push(failure, a.uri);
+              return rejection(new m.FileSystemFile(dir + 'd/a.txt').copy(missing, {}));
+            })
+            .then((failure) => JSON.stringify(results.concat([failure])));
+        })()
+        """
+    );
+
+    Assert.Equal(
+        new[]
+        {
+          "undefined",
+          "undefined",
+          $"{dir}d/a.txt",
+          "ERR_DESTINATION_DOES_NOT_EXIST|The destination path does not exist",
+          $"{dir}d/a.txt",
+          "ERR_DESTINATION_DOES_NOT_EXIST|The destination path does not exist",
+        },
+        result);
+    Assert.Equal("A", File.ReadAllText(Path.Combine(temp.Path, "d", "a.txt")));
+    Assert.False(File.Exists(Path.Combine(temp.Path, "a.txt")));
+  }
+
+  [Fact]
+  public void BundleTreeRejectsMovesButIsACopySource()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    Directory.CreateDirectory(Path.Combine(temp.Path, "app"));
+    File.WriteAllText(Path.Combine(temp.Path, "app", "a.txt"), "A");
+    Directory.CreateDirectory(Path.Combine(temp.Path, "out"));
+    using var bundle = FileSystemRoots.OverrideBundleForTests(Path.Combine(temp.Path, "app"));
+    using var host = ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoFileSystemDotnet.Register);
+    var dir = DirUri(temp.Path);
+
+    var result = EvalList(
+        host,
+        $$"""
+        (() => {
+          {{Prelude(dir)}}
+          const a = new m.FileSystemFile(dir + 'app/a.txt');
+          const out = new m.FileSystemDirectory(dir + 'out');
+          const results = [
+            err(() => a.moveSync(out)),
+            err(() => new m.FileSystemFile(dir + 'out/b.txt').copySync(new m.FileSystemDirectory(dir + 'app'))),
+          ];
+          a.copySync(out);
+          results.push(hex(a.bytesSync()));
+          return JSON.stringify(results);
+        })()
+        """
+    );
+
+    Assert.Equal(
+        new[]
+        {
+          $"ERR_MISSING_PERMISSION|Missing permission for uri: {dir}app/a.txt",
+          $"ERR_MISSING_PERMISSION|Missing permission for uri: {dir}app/",
+          "41",
+        },
+        result);
+    Assert.Equal("A", File.ReadAllText(Path.Combine(temp.Path, "app", "a.txt")));
+    Assert.Equal("A", File.ReadAllText(Path.Combine(temp.Path, "out", "a.txt")));
   }
 }

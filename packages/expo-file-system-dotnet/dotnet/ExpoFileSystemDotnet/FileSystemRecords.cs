@@ -18,6 +18,8 @@ public enum EncodingType
 
 public sealed record WriteOptions(EncodingType Encoding = EncodingType.UTF8, bool Append = false);
 
+public sealed record RelocationOptions(bool Overwrite = false);
+
 // The payloads cross as three different JavaScript kinds (string, ArrayBuffer, object), so the
 // case order decides nothing.
 [Union]
