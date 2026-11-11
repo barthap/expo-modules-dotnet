@@ -207,4 +207,87 @@ public sealed partial class LeafReleaseModuleTests
         "foo:a:2|text:x|{\"name\":\"a\",\"count\":2}",
         leaf.ReadString("[us.describeExternal({ name: 'a', count: 2 }), us.describeExternal('x'), JSON.stringify(us.makeExternal())].join('|')"));
   }
+
+  private const string FallbackSetup =
+      ScenarioSetup + "; globalThis.b = new ArrayBuffer(4); globalThis.b2 = new ArrayBuffer(2); true";
+
+  // The Packed attempt decodes the buffer, then fails on count. The record codec releases that lease
+  // before the Raw case is tried, and the Raw payload is released once when the call ends.
+  [Fact]
+  public void FailedRecordAttemptReleasesItsLeaseAndFallsThrough()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(FallbackSetup);
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("raw:object", leaf.ReadString("us.fallback({ data: b, count: 'x' })"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+    Assert.Throws<ObjectDisposedException>(() => _ = UnionScenariosModule.LastRaw!.Kind);
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("packed:2", leaf.ReadString("us.fallback({ data: b, count: 2 })"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public async Task FailedAttemptReleasesItsLeaseInAnAsyncCall()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(FallbackSetup);
+
+    leaf.Fixture.ResetCounters();
+    leaf.StartOutcome("us.fallbackLater({ data: b, count: 'x' })");
+    await leaf.WaitForOutcomeAsync();
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("fulfilled:raw:object", leaf.ReadString("`${__outcome.status}:${__outcome.value}`"));
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+    Assert.Throws<ObjectDisposedException>(() => _ = UnionScenariosModule.LastRaw!.Kind);
+  }
+
+  [Theory]
+  [InlineData("us.fallbackField({ value: { data: b, count: 'x' }, tag: 7 })", "raw:object:7", 1u)]
+  [InlineData("us.fallbackAll([{ data: b, count: 'x' }, { data: b2, count: 1 }])", "raw:object|packed:1", 2u)]
+  [InlineData("[us.fallbackOptional(null), us.fallbackOptional({ data: b, count: 'x' })].join('|')", "null|raw:object", 1u)]
+  [InlineData("us.takeFallback(() => ({ data: b, count: 'x' }))", "raw:object", 1u)]
+  public void FailedAttemptReleasesItsLeaseInEveryDecodePosition(string call, string expected, uint releases)
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(FallbackSetup);
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal(expected, leaf.ReadString(call));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(releases, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  // An event payload stays with the author: only the parameter lease releases.
+  [Fact]
+  public void UnionEventPayloadStaysWithTheAuthor()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(FallbackSetup + "; globalThis.seen = false; us.addListener('onFallback', p => { seen = p.data === b && p.count === 1; }); true");
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("4:true", leaf.ReadString("`${us.emitPacked(b)}:${seen}`"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  // A case whose construction throws after its payload decoded releases that payload and stops:
+  // the later Raw case, which would take an ArrayBuffer, is not tried.
+  [Fact]
+  public void CaseConstructionFailureReleasesThePayloadAndStops()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(FallbackSetup);
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("undefined|rejected length", leaf.ReadString("err(() => us.describeStrict(new ArrayBuffer(3)))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    Assert.Equal("buffer:2", leaf.ReadString("us.describeStrict(new ArrayBuffer(2))"));
+  }
 }

@@ -99,6 +99,31 @@ public abstract record ExternalChoice
   public sealed record Text(string Value) : ExternalChoice;
 }
 
+public sealed record UnionPair(ArrayBuffer Data, int Count);
+
+// The Packed attempt can decode a buffer and then fail on its count, so the Raw case that follows
+// proves that a failed attempt releases what it decoded.
+[Union]
+public abstract record RawFallback
+{
+  public sealed record Packed(UnionPair Value) : RawFallback;
+  public sealed record Raw(JavaScriptValue Value) : RawFallback;
+}
+
+public sealed record FallbackHolder(RawFallback Value, int Tag);
+
+[Union]
+public abstract record StrictBuffer
+{
+  // Construction throws after the payload decoded, so the codec must release the lease itself.
+  public sealed record Buffer(ArrayBuffer Value) : StrictBuffer
+  {
+    public ArrayBuffer Value { get; } = Value.ByteLength != 3 ? Value : throw new ArgumentException("rejected length");
+  }
+
+  public sealed record Raw(JavaScriptValue Value) : StrictBuffer;
+}
+
 [ExpoModule("UnionScenarios")]
 public sealed partial class UnionScenariosModule
 {
@@ -259,4 +284,83 @@ public sealed partial class UnionScenariosModule
 
   [JS]
   public ExternalChoice MakeExternal() => new ExternalChoice.Foo(new ExternalRecord("a", 2));
+
+  // The Raw payload that the last call saw, not retained, so a test can check that glue disposed it.
+  public static JavaScriptValue? LastRaw;
+
+  private static string DescribeFallback(RawFallback value)
+  {
+    switch (value)
+    {
+      case RawFallback.Packed(var pair):
+        return $"packed:{pair.Count}";
+      case RawFallback.Raw(var raw):
+        LastRaw = raw;
+        return raw.IsObject ? "raw:object" : "raw:other";
+      default:
+        throw new ArgumentOutOfRangeException(nameof(value));
+    }
+  }
+
+  [JS]
+  public string Fallback(RawFallback value) => DescribeFallback(value);
+
+  [JS]
+  public async Task<string> FallbackLater(RawFallback value)
+  {
+    var description = DescribeFallback(value);
+    await Task.Yield();
+    return description;
+  }
+
+  [JS]
+  public string FallbackField(FallbackHolder holder) => $"{DescribeFallback(holder.Value)}:{holder.Tag}";
+
+  [JS]
+  public string FallbackAll(IReadOnlyList<RawFallback> values) => string.Join("|", values.Select(DescribeFallback));
+
+  [JS]
+  public string FallbackOptional(RawFallback? value) => value is null ? "null" : DescribeFallback(value);
+
+  // The decoded callback result belongs to the author, who disposes what the case holds.
+  [JS]
+  public string TakeFallback(JavaScriptCallback<RawFallback> callback)
+  {
+    var value = callback.Invoke();
+    try
+    {
+      return DescribeFallback(value);
+    }
+    finally
+    {
+      switch (value)
+      {
+        case RawFallback.Raw(var raw):
+          raw.Dispose();
+          break;
+        case RawFallback.Packed(var pair):
+          pair.Data.Dispose();
+          break;
+      }
+    }
+  }
+
+  [Event]
+  public partial Func<RawFallback, Task> OnFallback { get; }
+
+  // The event payload stays with the author, who still owns the parameter after the emit.
+  [JS]
+  public string EmitPacked(ArrayBuffer data)
+  {
+    OnFallback(new RawFallback.Packed(new UnionPair(data, 1))).GetAwaiter().GetResult();
+    return data.ByteLength.ToString(CultureInfo.InvariantCulture);
+  }
+
+  [JS]
+  public string DescribeStrict(StrictBuffer value) => value switch
+  {
+    StrictBuffer.Buffer(var buffer) => $"buffer:{buffer.ByteLength}",
+    StrictBuffer.Raw => "raw",
+    _ => throw new ArgumentOutOfRangeException(nameof(value)),
+  };
 }

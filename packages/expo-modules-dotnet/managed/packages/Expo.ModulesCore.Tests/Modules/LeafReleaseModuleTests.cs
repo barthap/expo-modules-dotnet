@@ -1327,11 +1327,11 @@ public sealed partial class LeafReleaseModuleTests
       "globalThis.u = globalThis._expoDotnet.modules.UnionThings; " +
       "globalThis.b = new Uint8Array([1, 2, 3]).buffer; true";
 
-  private static string StringOrBufferKind(string kind) =>
-      $"Value kind '{kind}' is not one of 'String' or 'ArrayBuffer'.";
+  private static string ContentMismatch(string received) =>
+      $"'UnionContent' expected string or ArrayBuffer, but received {received}";
 
-  private static string NumberOrBoolKind(string kind) =>
-      $"Value kind '{kind}' is not one of 'Number' or 'Bool'.";
+  private static string ChoiceMismatch(string received) =>
+      $"'UnionChoice' expected double or bool, but received {received}";
 
   [Fact]
   public void UnionParameterDecodesEachMemberAndReleasesTheBufferOnce()
@@ -1410,12 +1410,12 @@ public sealed partial class LeafReleaseModuleTests
   }
 
   [Theory]
-  [InlineData("5", "Number")]
-  [InlineData("true", "Bool")]
-  [InlineData("({})", "Object")]
-  [InlineData("null", "Null")]
-  [InlineData("undefined", "Undefined")]
-  [InlineData("new Uint8Array([1, 2, 3])", "Object")]
+  [InlineData("5", "number")]
+  [InlineData("true", "boolean")]
+  [InlineData("({})", "object")]
+  [InlineData("null", "null")]
+  [InlineData("undefined", "undefined")]
+  [InlineData("new Uint8Array([1, 2, 3])", "object")]
   public void UnionParameterRejectsOtherKindsBeforeAuthoredCode(string input, string kind)
   {
     using var leaf = LeafReleaseFixture.Create();
@@ -1435,7 +1435,7 @@ public sealed partial class LeafReleaseModuleTests
 
     var messages = result.Split('|');
     Assert.Equal(3, messages.Length);
-    Assert.All(messages, message => Assert.Contains(StringOrBufferKind(kind), message));
+    Assert.All(messages, message => Assert.Contains(ContentMismatch(kind), message));
     Assert.Equal(0, UnionThingsModule.Calls);
     Assert.Equal(before, leaf.Fixture.Runtime.Execute(_ => leaf.Context.SharedObjects.Count));
     Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
@@ -1463,8 +1463,8 @@ public sealed partial class LeafReleaseModuleTests
     var obj = leaf.ReadString(
         "try { u.writeOptional({}); 'no error'; } catch (error) { error.message; }"
     );
-    Assert.Contains(StringOrBufferKind("Number"), number);
-    Assert.Contains(StringOrBufferKind("Object"), obj);
+    Assert.Contains(ContentMismatch("number"), number);
+    Assert.Contains(ContentMismatch("object"), obj);
     Assert.Equal(callsBefore, UnionThingsModule.Calls);
   }
 
@@ -1485,9 +1485,9 @@ public sealed partial class LeafReleaseModuleTests
         $"try {{ {call}; 'no error'; }} catch (error) {{ error instanceof Error ? error.message : 'not an Error'; }}"
     );
 
-    Assert.Contains(NumberOrBoolKind("String"), CatchMessage("u.pick('')"));
-    Assert.Contains(NumberOrBoolKind("String"), CatchMessage("w.pick('')"));
-    Assert.Contains(NumberOrBoolKind("Null"), CatchMessage("u.pick(null)"));
+    Assert.Contains(ChoiceMismatch("string"), CatchMessage("u.pick('')"));
+    Assert.Contains(ChoiceMismatch("string"), CatchMessage("w.pick('')"));
+    Assert.Contains(ChoiceMismatch("null"), CatchMessage("u.pick(null)"));
   }
 
   [Fact]
@@ -1544,7 +1544,7 @@ public sealed partial class LeafReleaseModuleTests
     leaf.Fixture.WaitUntilIdle();
 
     // The list decode releases the two buffers it already decoded, and authored code never runs.
-    Assert.Contains(StringOrBufferKind("Number"), result);
+    Assert.Contains(ContentMismatch("number"), result);
     Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
     Assert.Equal(0, UnionThingsModule.Calls);
   }
@@ -1673,7 +1673,7 @@ public sealed partial class LeafReleaseModuleTests
     var error = leaf.ReadString(
         "try { u.take(() => 5); 'no error'; } catch (error) { error instanceof Error ? error.message : 'not an Error'; }"
     );
-    Assert.Contains(StringOrBufferKind("Number"), error);
+    Assert.Contains(ContentMismatch("number"), error);
   }
 
   private const string TypedArraySetup =
