@@ -109,6 +109,38 @@ public sealed class ExpoCryptoModuleTests
         Catch(host, "m.digestString('SHA-256', 'Expo', { encoding: 'utf8' })"));
   }
 
+  [Theory]
+  [MemberData(nameof(UpstreamVectors))]
+  public async Task DigestStringAsyncResolvesTheSyncValue(string algorithm, string hex, string base64)
+  {
+    using var host = CreateHost();
+
+    Assert.Equal(hex, await RunAsync(host, $"m.digestStringAsync('{algorithm}', 'Expo', {{ encoding: 'hex' }})"));
+    Assert.Equal(base64, await RunAsync(host, $"m.digestStringAsync('{algorithm}', 'Expo', {{ encoding: 'base64' }})"));
+    Assert.Equal(Sha256OfExpo, await RunAsync(host, "m.digestStringAsync('SHA-256', 'Expo', {})"));
+  }
+
+  // Arguments decode on the JavaScript thread, and a decode failure rejects the promise.
+  [Theory]
+  [InlineData("'MD4'", "'MD4' is not a valid ExpoCryptoDotnet.DigestAlgorithm value. " + AlgorithmChoices)]
+  [InlineData("1", "Value is not a string.")]
+  public async Task DigestStringAsyncRejectsInvalidArguments(string algorithm, string messageEnd)
+  {
+    using var host = CreateHost();
+
+    var outcome = await RunAsync(host, $$"""
+        (() => {
+          let promise;
+          try { promise = m.digestStringAsync({{algorithm}}, 'Expo', {}); }
+          catch (e) { return Promise.resolve('threw|' + e.message); }
+          return promise.then(() => 'resolved', e => ['rejected', e instanceof Error, e.message].join('|'));
+        })()
+        """);
+
+    Assert.StartsWith("rejected|true|", outcome, StringComparison.Ordinal);
+    Assert.EndsWith(messageEnd, outcome, StringComparison.Ordinal);
+  }
+
   private static ExpoModuleTestHost CreateHost() =>
       ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoCryptoDotnet.Register);
 
@@ -122,6 +154,22 @@ public sealed class ExpoCryptoModuleTests
         );
         return value.AsString();
       });
+
+  // Evaluates an expression that returns a promise, with m bound, and returns the string it resolves with.
+  private static async Task<string> RunAsync(ExpoModuleTestHost host, string expression)
+  {
+    var value = await host.EvaluatePromiseAsync(
+        "(() => { const m = globalThis._expoDotnet.modules.ExpoCrypto;\nreturn " + expression + ";\n})()",
+        TestContext.Current.CancellationToken
+    );
+    return host.Runtime.Execute(_ =>
+    {
+      using (value)
+      {
+        return value.AsString();
+      }
+    });
+  }
 
   // Runs call and describes what it throws: "<is Error>|<has code>|<message>".
   private static string Catch(ExpoModuleTestHost host, string call) =>

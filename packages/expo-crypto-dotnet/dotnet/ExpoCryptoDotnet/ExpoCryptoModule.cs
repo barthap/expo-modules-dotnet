@@ -18,6 +18,16 @@ public sealed partial class ExpoCryptoModule : Module
   public string DigestString(DigestAlgorithm algorithm, string data, DigestOptions options) =>
       ComputeDigestString(algorithm, data, options.Encoding);
 
+  // Generated glue decodes the arguments on the JavaScript thread. The digest then runs on the .NET
+  // thread pool, like Swift @JS(.concurrent) and Kotlin Dispatchers.Default. Only a string and two
+  // enums cross into the lambda.
+  [JS]
+  public Task<string> DigestStringAsync(DigestAlgorithm algorithm, string data, DigestOptions options)
+  {
+    var encoding = options.Encoding;
+    return Task.Run(() => ComputeDigestString(algorithm, data, encoding));
+  }
+
   // Hex is lowercase. Base64 is standard and padded, with no line breaks.
   private static string ComputeDigestString(DigestAlgorithm algorithm, string data, CryptoEncoding encoding)
   {
