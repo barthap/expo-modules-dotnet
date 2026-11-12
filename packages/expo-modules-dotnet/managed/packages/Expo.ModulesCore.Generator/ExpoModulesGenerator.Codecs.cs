@@ -5,37 +5,87 @@ namespace Expo.ModulesCore.Generator;
 
 public sealed partial class ExpoModulesGenerator
 {
+  // Renders a parameter default as a C# expression of the parameter's own type, so a conditional
+  // `undefined ? <default> : <decode>` has that type. The text depends only on the constant, not
+  // on the culture or the runtime that hosts the compiler. Codec resolution rejects every type
+  // whose constant this does not cover (char, decimal, nint) before a default is rendered.
   private static string GetDefaultValueExpression(ITypeSymbol typeSymbol, object? value)
   {
+    var isNullableValueType = typeSymbol is INamedTypeSymbol
+    {
+      ConstructedFrom.SpecialType: SpecialType.System_Nullable_T,
+    };
     if (value is null)
     {
-      return "null";
+      if (typeSymbol.IsValueType && !isNullableValueType)
+      {
+        return $"default({typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})";
+      }
+
+      // `string Name = null` is accepted (the author gets CS8625). The null-forgiving operator keeps
+      // CS8604 out of the generated glue, where the default reaches a non-nullable parameter.
+      return typeSymbol.IsReferenceType && typeSymbol.NullableAnnotation != NullableAnnotation.Annotated
+          ? "null!"
+          : "null";
     }
 
-    if (typeSymbol is INamedTypeSymbol namedType &&
-        namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
+    if (isNullableValueType)
     {
-      typeSymbol = namedType.TypeArguments.Single();
+      typeSymbol = ((INamedTypeSymbol)typeSymbol).TypeArguments.Single();
+    }
+
+    if (typeSymbol is INamedTypeSymbol { TypeKind: TypeKind.Enum, EnumUnderlyingType: { } underlyingType })
+    {
+      return $"({typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})({GetEnumUnderlyingLiteral(underlyingType.SpecialType, value)})";
     }
 
     return typeSymbol.SpecialType switch
     {
       SpecialType.System_Boolean => (bool)value ? "true" : "false",
       SpecialType.System_String => $"\"{EscapeString((string)value)}\"",
-      SpecialType.System_SByte => ((sbyte)value).ToString(CultureInfo.InvariantCulture),
-      SpecialType.System_Byte => ((byte)value).ToString(CultureInfo.InvariantCulture),
-      SpecialType.System_Int16 => ((short)value).ToString(CultureInfo.InvariantCulture),
-      SpecialType.System_UInt16 => ((ushort)value).ToString(CultureInfo.InvariantCulture),
+      SpecialType.System_SByte => $"(sbyte)({((sbyte)value).ToString(CultureInfo.InvariantCulture)})",
+      SpecialType.System_Byte => $"(byte)({((byte)value).ToString(CultureInfo.InvariantCulture)})",
+      SpecialType.System_Int16 => $"(short)({((short)value).ToString(CultureInfo.InvariantCulture)})",
+      SpecialType.System_UInt16 => $"(ushort)({((ushort)value).ToString(CultureInfo.InvariantCulture)})",
       SpecialType.System_Int32 => ((int)value).ToString(CultureInfo.InvariantCulture),
-      SpecialType.System_UInt32 => ((uint)value).ToString(CultureInfo.InvariantCulture),
+      SpecialType.System_UInt32 => ((uint)value).ToString(CultureInfo.InvariantCulture) + "U",
       SpecialType.System_Int64 => ((long)value).ToString(CultureInfo.InvariantCulture) + "L",
       SpecialType.System_UInt64 => ((ulong)value).ToString(CultureInfo.InvariantCulture) + "UL",
-      SpecialType.System_Single => ((float)value).ToString("R", CultureInfo.InvariantCulture) + "F",
-      SpecialType.System_Double => ((double)value).ToString("R", CultureInfo.InvariantCulture),
+      SpecialType.System_Single => GetSingleLiteral((float)value),
+      SpecialType.System_Double => GetDoubleLiteral((double)value),
+      // Unreachable: a type outside this table has no codec, and the caller reports that first.
       _ => throw new InvalidOperationException(
           $"Unsupported default value type: {typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}"
       ),
     };
+  }
+
+  // An enum value of any underlying type fits the literal of that type, and an explicit enum cast
+  // from it always compiles, also for a [Flags] combination or a value that names no member.
+  private static string GetEnumUnderlyingLiteral(SpecialType underlyingType, object value) => underlyingType switch
+  {
+    SpecialType.System_UInt32 => ((uint)value).ToString(CultureInfo.InvariantCulture) + "U",
+    SpecialType.System_Int64 => ((long)value).ToString(CultureInfo.InvariantCulture) + "L",
+    SpecialType.System_UInt64 => ((ulong)value).ToString(CultureInfo.InvariantCulture) + "UL",
+    _ => Convert.ToInt32(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture),
+  };
+
+  private static string GetDoubleLiteral(double value)
+  {
+    if (double.IsNaN(value)) return "global::System.Double.NaN";
+    if (double.IsPositiveInfinity(value)) return "global::System.Double.PositiveInfinity";
+    if (double.IsNegativeInfinity(value)) return "global::System.Double.NegativeInfinity";
+    if (value == 0 && double.IsNegativeInfinity(1 / value)) return "-0.0";
+    return value.ToString("G17", CultureInfo.InvariantCulture);
+  }
+
+  private static string GetSingleLiteral(float value)
+  {
+    if (float.IsNaN(value)) return "global::System.Single.NaN";
+    if (float.IsPositiveInfinity(value)) return "global::System.Single.PositiveInfinity";
+    if (float.IsNegativeInfinity(value)) return "global::System.Single.NegativeInfinity";
+    if (value == 0 && float.IsNegativeInfinity(1 / value)) return "-0.0F";
+    return value.ToString("G9", CultureInfo.InvariantCulture) + "F";
   }
 
   // Codec type arguments keep their nullable reference annotations. A nullable inner codec
@@ -440,6 +490,18 @@ public sealed partial class ExpoModulesGenerator
     var fields = new List<ExpoGeneratedRecordFieldModel>();
     foreach (var parameter in constructor.Parameters)
     {
+      // Checked from the symbol before the field codec resolves, so a rejected record adds no
+      // codec for the struct it holds.
+      if (GetRecordFieldDefaultRejection(parameter) is { } rejection)
+      {
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.UnsupportedRecordField.Id,
+            parameter.Locations.FirstOrDefault(),
+            new EquatableArray<string>(new[] { typeSymbol.Name, parameter.Name, rejection })
+        ));
+        return null;
+      }
+
       var property = typeSymbol.GetMembers().OfType<IPropertySymbol>()
           .FirstOrDefault(item => item.Name == parameter.Name);
       var fieldCodec = GetCodec(parameter.Type, diagnostics, recordCodecs);
@@ -455,14 +517,25 @@ public sealed partial class ExpoModulesGenerator
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedRecordField.Id,
             parameter.Locations.FirstOrDefault(),
-            new EquatableArray<string>(new[] { typeSymbol.Name, parameter.Name, GetDiagnosticTypeName(parameter.Type) })
+            new EquatableArray<string>(new[]
+            {
+                typeSymbol.Name,
+                parameter.Name,
+                $"uses unsupported type '{GetDiagnosticTypeName(parameter.Type)}'",
+            })
         ));
         return null;
       }
 
+      // The default is rendered only after the codec check above, so a field type without a
+      // codec keeps its unsupported-type diagnostic.
       fields.Add(new ExpoGeneratedRecordFieldModel(
           LowerCamel(parameter.Name), property.Name, LowerCamel(property.Name),
           parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), fieldCodec,
+          GetRecordFieldKind(parameter),
+          parameter.HasExplicitDefaultValue
+              ? GetDefaultValueExpression(parameter.Type, parameter.ExplicitDefaultValue)
+              : string.Empty,
           parameter.Locations.FirstOrDefault()
       ));
     }
@@ -480,6 +553,57 @@ public sealed partial class ExpoModulesGenerator
     recordCodecs.Add(codec);
     return RecordCodecDescriptor(codec);
   }
+
+  // The upstream @Record rule: a default makes a field optional, an optional type makes it
+  // nullable and optional, and every other field is required. JavaScriptValue already represents
+  // null and undefined, and JavaScriptValue? is rejected, so it is optional by type. An oblivious
+  // reference (nullable context disabled) is not annotated and stays required.
+  private static ExpoRecordFieldKind GetRecordFieldKind(IParameterSymbol parameter)
+  {
+    if (parameter.HasExplicitDefaultValue)
+    {
+      return ExpoRecordFieldKind.Defaulted;
+    }
+
+    var type = parameter.Type;
+    var isOptionalByType =
+        type is INamedTypeSymbol { ConstructedFrom.SpecialType: SpecialType.System_Nullable_T } ||
+        (type.IsReferenceType && type.NullableAnnotation == NullableAnnotation.Annotated) ||
+        type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == JavaScriptValueMetadataName;
+    return isOptionalByType ? ExpoRecordFieldKind.OptionalByType : ExpoRecordFieldKind.Required;
+  }
+
+  // A default on a JavaScriptValue field, or on a record struct field that holds one, can only be
+  // C# null or a struct holding null. That is not a JavaScript undefined value, and
+  // JavaScriptValueCodec.Encode rejects it. A method parameter default is not a record field and
+  // keeps its behavior.
+  private static string? GetRecordFieldDefaultRejection(IParameterSymbol parameter)
+  {
+    if (!parameter.HasExplicitDefaultValue)
+    {
+      return null;
+    }
+
+    var typeName = GetDiagnosticTypeName(parameter.Type);
+    if (parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == JavaScriptValueMetadataName)
+    {
+      return $"of type '{typeName}' cannot have a default value";
+    }
+
+    return HoldsJavaScriptValueByValue(parameter.Type)
+        ? $"of type '{typeName}' cannot have a default value because the type holds a JavaScriptValue"
+        : null;
+  }
+
+  // A record struct holds a JavaScriptValue when a constructor field is one, or is a record struct
+  // that holds one. A struct cannot contain itself by value (CS0523), so the recursion ends.
+  // Nullable<T> is not followed: its default is null, which encodes as JavaScript null.
+  private static bool HoldsJavaScriptValueByValue(ITypeSymbol typeSymbol) =>
+      typeSymbol is INamedTypeSymbol { IsRecord: true, IsValueType: true } recordType &&
+      GetRecordCodecConstructor(recordType) is { } constructor &&
+      constructor.Parameters.Any(parameter =>
+          parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == JavaScriptValueMetadataName ||
+          HoldsJavaScriptValueByValue(parameter.Type));
   private static string GetParameterExpression(
       ExpoParameterModel parameter,
       int index,

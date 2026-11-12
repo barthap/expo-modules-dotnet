@@ -510,6 +510,33 @@ public sealed class LeafReleaseModuleTests
     Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
+  // The required check throws inside the record decode try, so the buffer decoded before it is
+  // released once, on the borrowed (argument) and the owned (callback result) overload.
+  [Fact]
+  public void MissingRequiredFieldAfterLeafReleasesTheLeafOnce()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    var borrowed = leaf.ReadString(
+        "let failed; try { m.measureCounted({ buffer: b }); failed = 'no error'; } " +
+        "catch (error) { failed = error instanceof Error && error.message.includes(\"Value for property 'count' is required, got undefined\"); } String(failed)"
+    );
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("true", borrowed);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    var owned = leaf.ReadString(
+        "let failed; try { m.takeCounted(() => ({ buffer: b })); failed = 'no error'; } " +
+        "catch (error) { failed = error instanceof Error && error.message.includes(\"Value for property 'count' is required, got undefined\"); } String(failed)"
+    );
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("true", owned);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
   [Fact]
   public void AliasInTwoReturnedLeavesReleasesSourceOnce()
   {
@@ -1083,6 +1110,23 @@ public sealed class LeafReleaseModuleTests
     leaf.Fixture.WaitUntilIdle();
     Assert.Equal("true", absent);
     Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
+  public void DefaultedLeafRecordFieldReleasesOnlyWhenSupplied()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("-1", leaf.ReadString("String(m.measureBlob({ name: 'a' }))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("4", leaf.ReadString("String(m.measureBlob({ name: 'a', data: b }))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
   [Fact]

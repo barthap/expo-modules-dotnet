@@ -315,10 +315,10 @@ Two `[JS]` members that resolve to one JavaScript name are build errors
 (`EXPOJSI005` for functions, `EXPOJSI016` for members). A C# overload
 therefore cannot export one JavaScript function with several shapes.
 
-<!-- backed-by: spec "Requirement: Optional Nullable Reference Arguments Preserve Authored Defaults" (modules-core-boundary.md); test GeneratedProviderUsesDefaultForMissingOrUndefinedOptionalNullableArguments; test GeneratorPreservesLeafFreeCodecPolicyModuleOutputContract; source ExpoModulesGenerator.GetDefaultValueExpression -->
+<!-- backed-by: spec "Requirement: Optional Nullable Reference Arguments Preserve Authored Defaults" (modules-core-boundary.md); spec "Requirement: Generated Parameter Defaults Render Every Constant" (modules-core-boundary.md); test GeneratedProviderUsesDefaultForMissingOrUndefinedOptionalNullableArguments; test GeneratedProviderAppliesEnumValueTypeAndEdgeParameterDefaults; source ExpoModulesGenerator.GetDefaultValueExpression -->
 Omitting a parameter that has a C# default value, or passing `undefined`, uses
-the default value. Defaults work for `bool`, `string`, numeric types and
-`null`, for nullable and non-nullable parameters.
+the default value. A default can be any C# constant, including an enum member,
+`NaN` and `default`, for nullable and non-nullable parameters.
 
 <!-- backed-by: source ExpoModulesGenerator.GetRequiredParameterCount; source GeneratedFunction.RequireArgumentCount; test GeneratedAsyncArgumentCountFailureRejectsPromise -->
 The generated function checks the argument count. The minimum is the number of
@@ -749,8 +749,28 @@ Positional `record`, `record class` and `record struct` types (including simple
 nested records) map to and from plain JavaScript objects with lower-camel field
 names. For example, `ExampleUser.Name` and `ExampleUser.Age` map to `name` and
 `age`. Decode reads only those lower-camel names; there is no PascalCase
-compatibility fallback. A missing field follows its existing codec's
-`undefined` behavior. A constructor default does not make a field optional today.
+compatibility fallback.
+
+<!-- backed-by: spec "Requirement: Record Fields With Defaults Are Optional In JavaScript" (modules-core-boundary.md); spec "Requirement: Required Record Fields Name The Missing Field" (modules-core-boundary.md); test GeneratorEmitsDefaultedRecordFieldDecodeInBothOverloads -->
+```csharp
+public record Options(string Name, int Count = 5, string? Label = null);
+```
+
+<!-- backed-by: spec "Requirement: Record Fields With Defaults Are Optional In JavaScript" (modules-core-boundary.md); spec "Requirement: Required Record Fields Name The Missing Field" (modules-core-boundary.md); test GeneratedProviderAppliesOmittedOrUndefinedRecordFieldDefaults; test GeneratedProviderNamesMissingRequiredRecordField; test GeneratedProviderEncodesEveryRecordFieldIncludingDefaults -->
+A field with a C# default is optional: when JavaScript omits it or passes
+`undefined`, the record gets the default. A field of a nullable type without a
+default is optional too and decodes as `null`. Every other field is required.
+In `Options`, `name` is required, `count` is `5` when omitted or `undefined`,
+and `label` is `null` when omitted. Explicit `null` goes to the field's codec,
+so `label: null` stays `null` even when the default is not `null`, and
+`count: null` throws. A missing required field throws an `Error` whose message
+contains `Value for property 'name' is required, got undefined`. Encoding writes
+every field, also one equal to its default.
+
+<!-- backed-by: spec "Requirement: Record Fields With Defaults Are Optional In JavaScript" (modules-core-boundary.md); test GeneratorRejectsDefaultOnJavaScriptValueRecordFields -->
+A `JavaScriptValue` field is optional and holds a JavaScript `undefined` value
+when omitted. A default on a `JavaScriptValue` field, or on a `record struct`
+field that holds one, is build error `EXPOJSI007`.
 
 ## Unions
 
@@ -1083,7 +1103,7 @@ subset works. `Not yet` means it is not built.
 | Inline and blocking events | Supported | Not supported yet | Not yet: no opt-in mode like Swift `@Event(.inline)` or `@Event(.blocking)`; typed events already dispatch inline when invoked with runtime access |
 | Shared objects | Supported | Supported | Supported |
 | Static members of shared objects | Supported | Not supported yet | Not yet |
-| Records | Supported | Supported | Partial: positional records only; a field with a default is still required |
+| Records | Supported | Supported | Partial: positional records only |
 | Enums | Supported | Supported | Differs: the member name crosses verbatim; `[JSEnum]` selects numbers |
 | Unions | Supported | Not supported yet | Partial: `Either<TFirst, TSecond>`, two members of different kinds |
 | Byte arrays | Supported | Supported | Differs: `byte[]` decodes from and encodes to `ArrayBuffer` only |
@@ -1103,7 +1123,7 @@ subset works. `Not yet` means it is not built.
 <!-- backed-by: Inline and blocking events: spec "Requirement: Typed Event Tasks Carry Dispatch Outcomes" (modules-core-boundary.md) -->
 <!-- backed-by: Shared objects: spec "Requirement: Public SharedObject Authoring Is Explicit" (modules-core-boundary.md) -->
 <!-- backed-by: Static members of shared objects: source ExpoModulesGenerator.GetFunctions -->
-<!-- backed-by: Records: spec "Requirement: Generated Record Codecs Use Lower-Camel JavaScript Fields" (modules-core-boundary.md) -->
+<!-- backed-by: Records: spec "Requirement: Generated Record Codecs Use Lower-Camel JavaScript Fields" (modules-core-boundary.md); spec "Requirement: Record Fields With Defaults Are Optional In JavaScript" (modules-core-boundary.md); spec "Requirement: Required Record Fields Name The Missing Field" (modules-core-boundary.md) -->
 <!-- backed-by: Enums: source StringEnumCodec; test GeneratedLookingCodeUsesStringEnumByDefault -->
 <!-- backed-by: Unions: spec "Requirement: Two-Member Unions Decode By Value Kind" (modules-core-boundary.md); source Either -->
 <!-- backed-by: Byte arrays: source ByteArrayCodec -->

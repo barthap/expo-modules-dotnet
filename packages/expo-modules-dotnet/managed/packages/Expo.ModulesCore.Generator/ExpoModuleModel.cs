@@ -148,12 +148,24 @@ internal sealed record ExpoGeneratedRecordCodecModel(
     bool IsValueType,
     Location? Location);
 
+// How generated decode treats a record field that reads as JavaScript undefined (an absent key or
+// an explicit undefined): Required throws before the codec runs, OptionalByType passes undefined
+// to its codec (null, or a JavaScript undefined value), and Defaulted yields DefaultValueExpression.
+internal enum ExpoRecordFieldKind
+{
+  Required,
+  OptionalByType,
+  Defaulted,
+}
+
 internal sealed record ExpoGeneratedRecordFieldModel(
     string ParameterName,
     string CSharpPropertyName,
     string JavaScriptName,
     string TypeName,
     ExpoCodecDescriptor Codec,
+    ExpoRecordFieldKind Kind,
+    string DefaultValueExpression,
     Location? Location);
 
 internal readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>

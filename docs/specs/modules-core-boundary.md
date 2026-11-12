@@ -169,8 +169,9 @@ Generated record codecs SHALL model the authored C# property name separately
 from its JavaScript field name. Encoding and decoding SHALL use only the
 lower-camel JavaScript name, while generated direct C# access SHALL continue to
 use the authored C# name. Decoding SHALL NOT probe or fall back to a PascalCase
-JavaScript field. A missing lower-camel field SHALL follow the existing codec's
-behavior for JavaScript `undefined`.
+JavaScript field. A missing lower-camel field SHALL read as JavaScript
+`undefined`. Generated decode SHALL then apply "Record Fields With Defaults Are
+Optional In JavaScript" and "Required Record Fields Name The Missing Field".
 
 #### Scenario: Record is encoded for JavaScript
 - **GIVEN** a supported C# record has `Name`, `Age`, and `Summary` properties
@@ -188,9 +189,157 @@ behavior for JavaScript `undefined`.
 #### Scenario: Lower-camel record field is missing
 - **GIVEN** a JavaScript object supplies only a stale PascalCase field
 - **WHEN** generated glue reads the absent lower-camel field as `undefined`
-- **THEN** a required codec that rejects `undefined` SHALL fail through the
-  normal catchable JavaScript error path
-- **AND** a nullable codec MAY decode `undefined` as `null`
+- **THEN** a required field SHALL fail with the required-field error that names
+  the lower-camel field, through the normal catchable JavaScript error path
+- **AND** a nullable field without a default SHALL decode as `null`
+- **AND** a field with a C# default SHALL decode as that default
+
+### Requirement: Record Fields With Defaults Are Optional In JavaScript
+
+A generated record codec SHALL treat a positional record constructor parameter
+that has a C# default value as an optional JavaScript field. When the field
+reads as JavaScript `undefined`, because the key is absent or holds explicit
+`undefined`, generated decode SHALL use the authored default and SHALL NOT call
+the field codec. Any other value, including JavaScript `null`, SHALL decode
+through the field codec. The generator SHALL inline the default as a
+compile-time C# expression, without reflection, boxing or dynamic invocation.
+Both generated `Decode` overloads SHALL behave the same. Encoding SHALL write
+every field, including a field whose value equals its default. A record field
+that has a default and whose type is `JavaScriptValue`, or a `record struct`
+that holds a `JavaScriptValue`, SHALL be a build error: the generator SHALL
+report `EXPOJSI007` with a message that says the field cannot have a default
+value, and SHALL NOT emit a codec for the record. A method parameter of type
+`JavaScriptValue` with a default SHALL keep its current behavior.
+
+#### Scenario: Omitted or undefined defaulted field uses the default
+- **GIVEN** a record `Options(string Name, int Count = 5)` is a `[JS]` method
+  parameter
+- **WHEN** JavaScript passes `{ name: 'a' }` or `{ name: 'a', count: undefined }`
+- **THEN** authored code SHALL receive `Count == 5`
+
+#### Scenario: Supplied value wins over the default
+- **GIVEN** the same record
+- **WHEN** JavaScript passes `{ name: 'a', count: 41 }`
+- **THEN** authored code SHALL receive `Count == 41`
+
+#### Scenario: Explicit null on a nullable defaulted field stays null
+- **GIVEN** a record field `string? Label = "x"`
+- **WHEN** JavaScript passes `{ label: null }`, and then an object without
+  `label`
+- **THEN** authored code SHALL receive `null` for the first call
+- **AND** it SHALL receive `"x"` for the second call
+
+#### Scenario: Explicit null on a non-nullable defaulted field fails
+- **GIVEN** a record field `int Count = 5`
+- **WHEN** JavaScript passes `{ count: null }`
+- **THEN** the call SHALL fail through the field codec with a catchable
+  JavaScript `Error`
+- **AND** authored code SHALL NOT run
+
+#### Scenario: Enum and value-type defaults
+- **GIVEN** a `readonly record struct Settings(Mode Mode = Mode.Fast, TimeSpan
+  Delay = default, Mode? Fallback = Mode.Slow)`
+- **WHEN** JavaScript passes `{}`
+- **THEN** authored code SHALL receive `Mode.Fast`, `TimeSpan.Zero` and
+  `Mode.Slow`
+
+#### Scenario: Owned decode path applies the default
+- **GIVEN** a `[JS]` method takes `JavaScriptCallback<Options>`
+- **WHEN** the JavaScript callback returns `{ name: 'a' }` and authored code
+  calls `Invoke()`
+- **THEN** `Invoke()` SHALL return a record with `Count == 5`
+
+#### Scenario: Encoding writes every field
+- **GIVEN** an authored method returns `new Options("a")`
+- **WHEN** JavaScript reads the result
+- **THEN** the object SHALL have own properties `name` and `count`, with
+  `count === 5`
+
+#### Scenario: Defaulted leaf field is released exactly once
+- **GIVEN** a record `Blob(string Name, ArrayBuffer? Data = null)` is a `[JS]`
+  method parameter
+- **WHEN** JavaScript passes `{ name: 'a' }`, and then
+  `{ name: 'a', data: buffer }`
+- **THEN** authored code SHALL receive `null` for the first call, and no leaf
+  SHALL be released
+- **AND** for the second call the decoded buffer SHALL be released exactly once
+  after the call
+
+#### Scenario: Default on a JavaScriptValue record field is a build error
+- **GIVEN** a record `Holder(string Name, JavaScriptValue V = null)`, and a
+  record `Wrapper(Slot Slot = default)` where `Slot` is a `record struct` that
+  holds a `JavaScriptValue`
+- **WHEN** the generator runs on a module with a `[JS]` method that takes each
+  record
+- **THEN** it SHALL report `EXPOJSI007` for `V` with the message
+  `Record 'Holder' field 'V' of type 'global::Expo.JSI.JavaScriptValue' cannot have a default value`
+- **AND** it SHALL report `EXPOJSI007` for `Slot` with the message
+  `Record 'Wrapper' field 'Slot' of type '<Slot type>' cannot have a default value because the type holds a JavaScriptValue`,
+  where `<Slot type>` is the `global::`-qualified name of `Slot`
+- **AND** it SHALL NOT emit a record codec for either record
+
+#### Scenario: Unsupported field type message does not change
+- **GIVEN** a record `Bad(decimal Value)` used by a `[JS]` method
+- **WHEN** the generator runs
+- **THEN** it SHALL report `EXPOJSI007` with the message
+  `Record 'Bad' field 'Value' uses unsupported type 'System.Decimal'`
+
+#### Scenario: JavaScriptValue field without a default and method parameter default stay accepted
+- **GIVEN** a record `Holder(string Name, JavaScriptValue V)` and a `[JS]`
+  method `Run(JavaScriptValue value = null)`
+- **WHEN** the generator runs
+- **THEN** it SHALL report no diagnostic
+- **AND** an omitted `v` field SHALL hold a JavaScript `undefined` value
+
+#### Scenario: Generated decode inlines the default
+- **GIVEN** a record field `int Count = 5`
+- **WHEN** the generator emits the record codec
+- **THEN** both `Decode` overloads SHALL contain a `JavaScriptValueKind.Undefined`
+  check that yields the literal `5`
+- **AND** the generated source SHALL NOT use reflection to read the default
+
+### Requirement: Required Record Fields Name The Missing Field
+
+A generated record field SHALL be required when it has no C# default and its C#
+type is not a nullable value type, not an annotated nullable reference type,
+and not `JavaScriptValue`. When a required field reads as JavaScript
+`undefined`, generated decode SHALL throw before it calls the field codec. The
+message SHALL be `Value for property '<field>' is required, got undefined`,
+where `<field>` is the lower-camel JavaScript name. The failure SHALL reach
+JavaScript through the normal path for its position: a sync `Error`, an async
+rejection, or a failed callback `Invoke()`. Leaves that earlier fields already
+decoded SHALL be released once. Explicit `null` on a required field SHALL decode
+through the field codec. A field that is not required and has no default SHALL
+keep its codec's behavior for `undefined`.
+
+#### Scenario: Missing required field is named
+- **GIVEN** a record `CodecUser(string Name, int Age)` is a `[JS]` method
+  parameter
+- **WHEN** JavaScript passes `{ age: 37 }`
+- **THEN** JavaScript SHALL catch an `Error` whose message contains
+  `Value for property 'name' is required, got undefined`
+- **AND** authored code SHALL NOT run
+
+#### Scenario: Async method rejects on a missing required field
+- **GIVEN** an async `[JS]` method takes the same record
+- **WHEN** JavaScript passes `{ age: 37 }`
+- **THEN** the call SHALL return a promise that rejects with an `Error` whose
+  message contains `Value for property 'name' is required`
+- **AND** the call SHALL NOT throw synchronously
+
+#### Scenario: Nullable and JavaScriptValue fields stay optional
+- **GIVEN** records with an `int? LuckyNumber` field and a `JavaScriptValue
+  Value` field, neither with a default
+- **WHEN** JavaScript omits each field
+- **THEN** `LuckyNumber` SHALL decode as `null`
+- **AND** `Value` SHALL hold a JavaScript `undefined` value
+
+#### Scenario: Earlier leaf is released when a later required field is missing
+- **GIVEN** a record `CountedBuffer(ArrayBuffer Buffer, int Count)` is a `[JS]`
+  method parameter
+- **WHEN** JavaScript passes `{ buffer: b }`
+- **THEN** the call SHALL fail with the required-field error naming `count`
+- **AND** the decoded buffer SHALL be released exactly once
 
 ### Requirement: Runtime Context Owns Module Instances
 
@@ -2308,6 +2457,48 @@ optional nullable value-type behavior.
 - **GIVEN** a generated method declares a required nullable reference parameter
 - **WHEN** JavaScript passes explicit `undefined`
 - **THEN** generated dispatch SHALL pass C# `null`
+
+### Requirement: Generated Parameter Defaults Render Every Constant
+
+The generator SHALL render each C# parameter default that a parameter type it
+accepts can hold as a C# expression that compiles in generated glue and gives
+the same constant. This SHALL apply to module method parameters, shared-object
+constructor and method parameters, and record fields. It SHALL cover `null`,
+`bool`, `string`, the ten numeric primitives (including `NaN`, the infinities
+and negative zero for `float` and `double`), enum values (including a nullable
+enum, a `[Flags]` combination and a value that names no member) as a cast of the
+underlying constant, and `default(T)` for a non-nullable value type, including
+a byte span, whose default is `default` or `new()`. The generator SHALL NOT
+throw for a default value, SHALL NOT emit `null` for a non-nullable value type,
+and its output SHALL NOT depend on the culture or runtime that hosts the
+compiler.
+
+#### Scenario: Enum parameter default
+- **GIVEN** a module declares `[JS] public string Pick(Mode mode = Mode.Fast)`
+  and a shared object declares `[JS] public Picker(Mode mode = Mode.Fast)`
+- **WHEN** the project is compiled and JavaScript calls `pick()` and
+  `new Picker()`
+- **THEN** the generator SHALL report no diagnostic and SHALL NOT fail
+- **AND** authored code SHALL receive `Mode.Fast`
+
+#### Scenario: Value-type default
+- **GIVEN** a module declares `[JS] public string Wait(TimeSpan delay = default)`
+- **WHEN** JavaScript calls `wait()`
+- **THEN** generated glue SHALL compile and authored code SHALL receive
+  `TimeSpan.Zero`
+
+#### Scenario: Small integer default
+- **GIVEN** a module declares `[JS] public int Small(byte value = 5)`
+- **WHEN** JavaScript calls `small()`
+- **THEN** generated glue SHALL compile and authored code SHALL receive `5`
+
+#### Scenario: Non-finite and negative-zero defaults
+- **GIVEN** a module declares `[JS] public double Edge(int which, double nan =
+  double.NaN, double low = double.NegativeInfinity, double zero = -0.0)` that
+  returns the chosen parameter
+- **WHEN** JavaScript calls `edge(0)`, `edge(1)` and `edge(2)`
+- **THEN** JavaScript SHALL receive `NaN`, `-Infinity` and a value for which
+  `Object.is(value, -0)` is true
 
 ### Requirement: Nullable Reference Codecs Apply Across Generated Binding Surfaces
 

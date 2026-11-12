@@ -164,6 +164,26 @@ public sealed class GeneratedEventModuleTests
   }
 
   [Fact]
+  public async Task TypedRecordEventPayloadWritesEveryFieldIncludingDefaults()
+  {
+    using var typed = TypedEventsFixture.Create();
+    typed.Evaluate(
+        """
+        const events = globalThis._expoDotnet.modules.GeneratedTypedEvents;
+        events.addListener('onOptions', value => {
+          globalThis.__typedOptions = Object.keys(value).join(',') + ':' + value.count + ':' + value.label;
+        });
+        true
+        """,
+        "typed-events-record-defaults.js"
+    );
+
+    await typed.Module.OnOptions(new RecordDefaultOptions("a"));
+
+    Assert.Equal("name,count,label:5:x", typed.ReadString("globalThis.__typedOptions"));
+  }
+
+  [Fact]
   public async Task TypedNullableStringEventPayloadReachesJavaScriptAsNull()
   {
     using var typed = TypedEventsFixture.Create();
@@ -278,6 +298,7 @@ public sealed class GeneratedEventModuleTests
           typed.Module.__ExpoModulesCoreInitializeEvents(
               secondContext,
               static () => Task.CompletedTask,
+              static _ => Task.CompletedTask,
               static _ => Task.CompletedTask,
               static _ => Task.CompletedTask,
               static _ => Task.CompletedTask,

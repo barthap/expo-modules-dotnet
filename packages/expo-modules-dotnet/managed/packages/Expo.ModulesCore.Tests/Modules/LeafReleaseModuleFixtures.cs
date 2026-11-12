@@ -14,6 +14,8 @@ public sealed record OptionalBufferPair(ArrayBuffer? First, ArrayBuffer? Second)
 
 public sealed record OptionalCountedBuffer(ArrayBuffer? Buffer, int Count);
 
+public sealed record DefaultedBlob(string Name, ArrayBuffer? Data = null);
+
 public sealed record ValuePair(JavaScriptValue First, JavaScriptValue Second);
 
 public sealed record Shelf(IReadOnlyList<Dictionary<string, ArrayBuffer>> Rows);
@@ -367,6 +369,9 @@ public sealed partial class LeafReleaseModule : Module, IDisposable
 
   [JS]
   public int MeasureOptionalCounted(OptionalCountedBuffer value) => value.Count;
+
+  [JS]
+  public int MeasureBlob(DefaultedBlob blob) => blob.Data?.ByteLength ?? -1;
 
   [JS]
   public int CountPresent(IReadOnlyList<ArrayBuffer?> values) => values.Count(value => value is not null);
