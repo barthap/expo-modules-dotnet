@@ -35,7 +35,7 @@ internal static class FileSystemRelocation
     if (renameInPlace)
     {
       // The same item in other letter case: rename it and delete nothing.
-      MoveEntry(source, target);
+      RenameInPlace(source, target);
       return target;
     }
     if (!source.IsDirectory)
@@ -232,15 +232,32 @@ internal static class FileSystemRelocation
     }
   }
 
-  private static void MoveEntry(FileSystemLocation source, FileSystemLocation target)
+  // Renames an item to the same name in other letter case. A path that differs only in a parent's
+  // case needs no rename. Directory.Move rejects a target equal to the source ignoring case, so a
+  // directory goes through a temporary sibling name.
+  private static void RenameInPlace(FileSystemLocation source, FileSystemLocation target)
   {
-    if (source.IsDirectory)
+    var sourcePath = source.NativePath;
+    var parent = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(sourcePath))!;
+    if (string.Equals(StoredName(parent, source.Name), target.Name, StringComparison.Ordinal))
     {
-      Directory.Move(source.NativePath, target.NativePath);
+      return;
     }
-    else
+    if (!source.IsDirectory)
     {
-      File.Move(source.NativePath, target.NativePath);
+      File.Move(sourcePath, target.NativePath);
+      return;
+    }
+    var temporary = Path.Join(parent, $".{Guid.NewGuid():N}.tmp");
+    Directory.Move(sourcePath, temporary);
+    try
+    {
+      Directory.Move(temporary, Path.Join(parent, target.Name));
+    }
+    catch
+    {
+      Directory.Move(temporary, sourcePath);
+      throw;
     }
   }
 

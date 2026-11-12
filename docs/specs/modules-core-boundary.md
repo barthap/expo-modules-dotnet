@@ -4655,7 +4655,9 @@ SHALL run these checks in this order, all before any side effect:
    SHALL fail with `UnableToMoveException` (same reason) when the two
    canonical URIs are also equal ordinally. When the URIs differ, the request
    changes only letter case, and `move` SHALL rename the entry in place and
-   SHALL delete nothing.
+   SHALL delete nothing. When the entry's stored name already equals the target
+   name, because only a parent differs in case, `move` SHALL change no file
+   system entry and SHALL set the object's location.
 6. Nesting. A directory target inside the source directory SHALL fail with
    `UnableToCopyException` or `UnableToMoveException`
    (`destination is inside the source`).

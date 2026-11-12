@@ -280,6 +280,46 @@ public sealed class FileSystemRelocationTests
     Assert.Equal(renamed.Uri, file.Uri);
   }
 
+  // The target differs from the source path only in the letter case of a parent, so the stored
+  // name is already right and nothing is renamed.
+  [Fact]
+  public void DirectoryMoveThroughAParentInOtherCaseChangesNothingOnDisk()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    Write(Path.Combine(temp.Path, "d", "s", "n.txt"), "N");
+    if (!Directory.Exists(Path.Combine(temp.Path, "D")))
+    {
+      return; // case-sensitive volume: D is another directory
+    }
+    var source = NewDirectory(Path.Combine(temp.Path, "d", "s"));
+    var destination = NewDirectory(Path.Combine(temp.Path, "D"));
+
+    source.MoveSync(destination);
+
+    Assert.Equal(new[] { "d/", "d/s/", "d/s/n.txt=N" }, Tree(temp.Path));
+    Assert.Equal(NewDirectory(Path.Combine(temp.Path, "D", "s")).Uri, source.Uri);
+  }
+
+  [Fact]
+  public void DirectoryMoveRenamesAStoredNameInOtherCase()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    Write(Path.Combine(temp.Path, "d", "s", "n.txt"), "N");
+    if (!Directory.Exists(Path.Combine(temp.Path, "D")))
+    {
+      return; // case-sensitive volume: D is another directory
+    }
+    var source = NewDirectory(Path.Combine(temp.Path, "d", "S"));
+    var destination = NewDirectory(Path.Combine(temp.Path, "D"));
+
+    source.MoveSync(destination);
+
+    Assert.Equal(new[] { "d/", "d/S/", "d/S/n.txt=N" }, Tree(temp.Path));
+    Assert.Equal(source.Uri, NewDirectory(Path.Combine(temp.Path, "D", "S")).Uri);
+  }
+
   [Fact]
   public void SameItemComparesStoredNames()
   {
