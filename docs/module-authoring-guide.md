@@ -411,7 +411,7 @@ generated module codec today.
 
 ### Constants
 
-<!-- backed-by: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md); spec "Requirement: Expo Constants Dotnet Exposes Typed Host Values" (modules-core-boundary.md) -->
+<!-- backed-by: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md); spec "Requirement: Expo Constants Dotnet Exposes Typed Host Values" (modules/expo-constants.md) -->
 <!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/modules.mdx -->
 There is no `[Constant]` attribute. A constant is a getter-only `[JS]` property,
 and its getter runs on every JavaScript read. Upstream reads a constant once:
@@ -1345,7 +1345,7 @@ subset works. `Not yet` means it is not built.
 <!-- backed-by: Synchronous functions: source ExpoModulesGenerator.GetRequiredParameterCount; source GeneratedFunction.RequireArgumentCount; spec "Requirement: Optional Nullable Reference Arguments Preserve Authored Defaults" (modules-core-boundary.md); test GeneratorReportsDuplicateJavaScriptFunctionName; test GeneratedProviderUsesDefaultForMissingOrUndefinedOptionalNullableArguments; test GeneratedAsyncArgumentCountFailureRejectsPromise; test GeneratorPreservesLeafFreeCodecPolicyModuleOutputContract -->
 <!-- backed-by: Asynchronous functions: spec "Requirement: Async Function Generation Returns Promises" (modules-core-boundary.md) -->
 <!-- backed-by: Properties: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md) -->
-<!-- backed-by: Constants: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md); spec "Requirement: Expo Constants Dotnet Exposes Typed Host Values" (modules-core-boundary.md) -->
+<!-- backed-by: Constants: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md); spec "Requirement: Expo Constants Dotnet Exposes Typed Host Values" (modules/expo-constants.md) -->
 <!-- backed-by: Functions that run off the JavaScript thread: test AsyncSharedResultCompletedOnAnotherThreadPreservesIdentity; spec "Requirement: Async Managed Promise Helper" (promises.md); source ExpoModulesGenerator.EmitAsyncHostFunctionBody -->
 <!-- backed-by: Events: spec "Requirement: Typed Event Members Are Awaitable Generated Properties" (modules-core-boundary.md) -->
 <!-- backed-by: Inline and blocking events: spec "Requirement: Typed Event Tasks Carry Dispatch Outcomes" (modules-core-boundary.md) -->

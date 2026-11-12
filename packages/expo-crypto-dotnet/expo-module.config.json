@@ -1,0 +1,11 @@
+{
+  "platforms": ["dotnet"],
+  "dotnet": {
+    "projects": [
+      {
+        "path": "dotnet/ExpoCryptoDotnet/ExpoCryptoDotnet.csproj",
+        "assemblyName": "ExpoCryptoDotnet"
+      }
+    ]
+  }
+}
