@@ -291,4 +291,31 @@ internal static class ExpoModulesDiagnostics
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true
   );
+
+  public static readonly DiagnosticDescriptor InvalidEnumJavaScriptValue = new(
+      id: "EXPOJSI033",
+      title: "Invalid enum JavaScript value",
+      messageFormat: "Enum '{0}' member '{1}' has an invalid JavaScript value: {2}{3}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor DuplicateEnumJavaScriptValue = new(
+      id: "EXPOJSI034",
+      title: "Duplicate enum JavaScript value",
+      messageFormat: "Enum '{0}' members '{1}' and '{2}' both cross to JavaScript as \"{3}\"{4}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor AliasedStringEnumMember = new(
+      id: "EXPOJSI035",
+      title: "Aliased string enum member",
+      messageFormat: "Enum '{0}' members '{1}' and '{2}' have the same value {3}, so a string enum cannot tell them apart{4}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
 }

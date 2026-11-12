@@ -145,13 +145,16 @@ public sealed partial class ExpoModulesGenerator
     };
   }
 
+  // The value of Expo.ModulesCore.EnumRepresentation.Number.
+  private const int NumberEnumRepresentation = 1;
+
+  // The effective representation of an enum at one codec position: the usage-level [JSEnum] on the
+  // parameter or return value when present, else the enum type's [JSEnum], else String.
   private static bool UsesNumberEnumRepresentation(
       ITypeSymbol enumType,
-      IEnumerable<AttributeData>? usageAttributes)
-  {
-    return GetEnumRepresentation(usageAttributes) == 1 ||
-        GetEnumRepresentation(enumType.GetAttributes()) == 1;
-  }
+      IEnumerable<AttributeData>? usageAttributes) =>
+      (GetEnumRepresentation(usageAttributes) ?? GetEnumRepresentation(enumType.GetAttributes())) ==
+      NumberEnumRepresentation;
 
   private static int? GetEnumRepresentation(IEnumerable<AttributeData>? attributes)
   {
@@ -175,6 +178,14 @@ public sealed partial class ExpoModulesGenerator
     return null;
   }
 
+  // The type's declaration, else the member. A type that is a source symbol of another compilation,
+  // as an IDE project reference yields, has a location Roslyn rejects in a diagnostic.
+  private static Location? GetTypeLocationOrMember(ITypeSymbol type, ISymbol member) =>
+      type.Locations.FirstOrDefault() is { } location &&
+      (!location.IsInSource || SymbolEqualityComparer.Default.Equals(type.ContainingAssembly, member.ContainingAssembly))
+          ? location
+          : member.Locations.FirstOrDefault();
+
   private static string GetDiagnosticTypeName(ITypeSymbol typeSymbol)
   {
     return typeSymbol.SpecialType switch
@@ -187,10 +198,12 @@ public sealed partial class ExpoModulesGenerator
     };
   }
 
+  // A usage-level [JSEnum] on a Nullable<TEnum> parameter or return value applies to the enum inside.
   private static ExpoCodecDescriptor? TryGetNullableCodec(
       ITypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
-      ExpoCodecCollector codecs)
+      ExpoCodecCollector codecs,
+      IEnumerable<AttributeData>? usageAttributes)
   {
     if (typeSymbol is not INamedTypeSymbol namedType ||
         namedType.ConstructedFrom.SpecialType != SpecialType.System_Nullable_T)
@@ -199,7 +212,7 @@ public sealed partial class ExpoModulesGenerator
     }
 
     var valueType = namedType.TypeArguments.Single();
-    var valueCodec = AsCompositeChildCodec(GetCodec(valueType, diagnostics, codecs));
+    var valueCodec = AsCompositeChildCodec(GetCodec(valueType, diagnostics, codecs, usageAttributes));
     if (valueCodec is null)
     {
       return null;
@@ -416,16 +429,20 @@ public sealed partial class ExpoModulesGenerator
       return null;
     }
 
+    // A record from a referenced assembly has no location in this compilation, and Roslyn rejects a
+    // diagnostic located in another compilation's file, so its diagnostics land at the use site.
+    var declaredHere = SymbolEqualityComparer.Default.Equals(typeSymbol.ContainingAssembly, codecs.Assembly);
     var fields = new List<ExpoGeneratedRecordFieldModel>();
     foreach (var parameter in constructor.Parameters)
     {
+      var parameterLocation = declaredHere ? parameter.Locations.FirstOrDefault() : codecs.UseSite;
       // Checked from the symbol before the field codec resolves, so a rejected record adds no
       // codec for the struct it holds.
       if (GetRecordFieldDefaultRejection(parameter) is { } rejection)
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedRecordField.Id,
-            parameter.Locations.FirstOrDefault(),
+            parameterLocation,
             new EquatableArray<string>(new[] { typeSymbol.Name, parameter.Name, rejection })
         ));
         return null;
@@ -433,7 +450,7 @@ public sealed partial class ExpoModulesGenerator
 
       var property = typeSymbol.GetMembers().OfType<IPropertySymbol>()
           .FirstOrDefault(item => item.Name == parameter.Name);
-      var fieldCodec = GetCodecAt(parameter.Locations.FirstOrDefault(), parameter.Type, diagnostics, codecs);
+      var fieldCodec = GetCodecAt(parameterLocation, parameter.Type, diagnostics, codecs);
       // Composition rule: generated record codecs call field codecs directly with Decode and
       // Encode. A field needs both, and a context-bearing codec has no runtime context there.
       if (property is null ||
@@ -445,7 +462,7 @@ public sealed partial class ExpoModulesGenerator
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedRecordField.Id,
-            parameter.Locations.FirstOrDefault(),
+            parameterLocation,
             new EquatableArray<string>(new[]
             {
                 typeSymbol.Name,
@@ -694,7 +711,7 @@ public sealed partial class ExpoModulesGenerator
       return null;
     }
 
-    if (TryGetNullableCodec(typeSymbol, diagnostics, codecs) is { } nullableCodec)
+    if (TryGetNullableCodec(typeSymbol, diagnostics, codecs, usageAttributes) is { } nullableCodec)
     {
       return nullableCodec;
     }
@@ -703,15 +720,9 @@ public sealed partial class ExpoModulesGenerator
     {
       return OrdinaryCodec(convertibleCodec);
     }
-    if (typeSymbol.TypeKind == TypeKind.Enum)
+    if (typeSymbol is INamedTypeSymbol { TypeKind: TypeKind.Enum } enumType)
     {
-      // Usage-level enum metadata wins over enum-type metadata; string remains the default.
-      var enumTypeName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-      return OrdinaryCodec(
-          UsesNumberEnumRepresentation(typeSymbol, usageAttributes)
-              ? $"NumberEnumCodec<{enumTypeName}>"
-              : $"StringEnumCodec<{enumTypeName}>"
-      );
+      return TryGetEnumCodec(enumType, diagnostics, codecs, usageAttributes);
     }
     if (typeSymbol is INamedTypeSymbol { IsRecord: true } recordType)
     {

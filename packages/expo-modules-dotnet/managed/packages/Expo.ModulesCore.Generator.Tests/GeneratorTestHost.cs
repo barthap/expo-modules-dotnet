@@ -68,6 +68,16 @@ internal static class GeneratorTestHost
 
     return MetadataReference.CreateFromImage(stream.ToArray());
   }
+
+  // Compiles a referenced project as a compilation reference, so its types reach the generator as
+  // source symbols of another compilation, as an IDE project reference does.
+  public static MetadataReference CompileSourceReference(string source, string assemblyName) =>
+      CSharpCompilation.Create(
+          assemblyName,
+          new[] { CSharpSyntaxTree.ParseText(source, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest)) },
+          ReferenceResolver.GetReferences(),
+          new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable)
+      ).ToMetadataReference();
 }
 
 internal sealed record GeneratorRunResult(

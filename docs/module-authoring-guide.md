@@ -30,8 +30,6 @@ upstream:
   `### Declare a module` under `## Modules`.
 - Lower-camel `[JS]` names. See `### Functions` and `### Naming conventions`
   under `## Modules`.
-- Enum casing: a string enum crosses as the C# member name. See `### Enums`
-  under `## Types`.
 - Constants: a constant is a getter-only `[JS]` property. See `### Constants`
   under `## Modules`.
 - Event names keep the `On` prefix. See `## Events`.
@@ -471,8 +469,12 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
   each other, in records, in callback types, and in typed event payloads. They
   can hold `JavaScriptValue`, `ArrayBuffer`, and `Uint8Array`.
 - Shared objects, declared as described in `## Shared objects`.
-- C# `enum` values — encoded as JavaScript strings by default; annotate with
-  `[JSEnum(EnumRepresentation.Number)]` for integer-backed representation.
+- C# `enum` values. A string enum crosses as each member's C# name, or as the
+  `Value` of `[EnumMember]` from `System.Runtime.Serialization` when it is set.
+  Matching is exact and case-sensitive. `[JSEnum(EnumRepresentation.Number)]`
+  on the enum, or on one parameter or return value, crosses the underlying
+  number, and the attribute on the parameter or return value wins. See
+  `### Enums`.
 - `[Union]` types, for a value that JavaScript passes as one of several shapes.
   See `## Unions`.
 - `JavaScriptValue` directly, for cases the typed codecs don't cover. See
@@ -489,12 +491,43 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
 
 ### Enums
 
-<!-- backed-by: source StringEnumCodec; test GeneratedLookingCodeUsesStringEnumByDefault; test GeneratorUsesExplicitNumberEnumRepresentation -->
+<!-- backed-by: spec "Requirement: String Enums Cross As Declared JavaScript Values" (modules-core-boundary.md); test DeclaredStringsCrossBothWays; test OnlyDeclaredStringsDecode; test GeneratorUsesExplicitNumberEnumRepresentation -->
 <!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/types.mdx -->
 A string enum crosses as the C# member name, so `ImageFormat.Png` crosses as
-`"Png"`. Decoding is case-sensitive. `[JSEnum(EnumRepresentation.Number)]`
-switches to integers. There is no way to choose the string, unlike an upstream
-raw value.
+`"Png"`. To cross as another string, such as one that is not a C# name, set
+`[EnumMember(Value = ...)]` from `System.Runtime.Serialization` on the member.
+This is the C# form of a Swift raw value:
+
+<!-- backed-by: spec "Requirement: String Enums Cross As Declared JavaScript Values" (modules-core-boundary.md); test DeclaredStringsCrossBothWays -->
+```csharp
+using System.Runtime.Serialization;
+
+public enum DigestAlgorithm
+{
+  MD5,
+  [EnumMember(Value = "SHA-1")]
+  SHA1,
+  [EnumMember(Value = "SHA-256")]
+  SHA256,
+}
+```
+
+`MD5` crosses as `"MD5"` and `SHA1` as `"SHA-1"`. Decoding accepts only these
+strings, compared exactly, so `"SHA1"`, `"sha-1"`, and `"1"` fail. The error
+lists what JavaScript may pass:
+`'SHA1' is not a valid MyModule.DigestAlgorithm value. It must be one of: 'MD5', 'SHA-1', 'SHA-256'`.
+Returning a value that names no member, such as a `[Flags]` combination, fails
+too.
+
+`[JSEnum(EnumRepresentation.Number)]` switches to the underlying number. Put it
+on the enum, or on one parameter or return value, where it wins over the enum's
+own attribute.
+
+<!-- backed-by: spec "Requirement: Invalid String Enum Declarations Are Build Diagnostics" (modules-core-boundary.md); test GeneratorReportsInvalidEnumJavaScriptValues; test GeneratorReportsDuplicateEnumJavaScriptValues; test GeneratorReportsAliasedStringEnumMembers -->
+The build fails with `EXPOJSI033` for an empty or invalid value, or a value on
+an enum that crosses as a number. It fails with `EXPOJSI034` when two members
+cross as one string, and with `EXPOJSI035` when two members of a string enum
+have one number, such as `Default = Fast`.
 
 ### Leaf ownership
 
@@ -1282,7 +1315,7 @@ subset works. `Not yet` means it is not built.
 | Shared objects | Supported | Supported | Supported |
 | Static members of shared objects | Supported | Not supported yet | Not yet |
 | Records | Supported | Supported | Partial: positional records only |
-| Enums | Supported | Supported | Differs: the member name crosses verbatim; `[JSEnum]` selects numbers |
+| Enums | Supported | Supported | Supported: `[EnumMember(Value = ...)]` sets the string; `[JSEnum]` selects numbers |
 | Unions | Supported | Not supported yet | Differs: `[Union]` on an `abstract record` with nested `sealed record` cases; an integer case takes only whole numbers when a later number case exists; no tag cases |
 | Byte arrays | Supported | Supported | Differs: `byte[]` decodes from and encodes to `ArrayBuffer` only |
 | Array buffers | Supported | Not supported yet (in Kotlin, use a byte array) | Supported: `ArrayBuffer` |
@@ -1302,7 +1335,7 @@ subset works. `Not yet` means it is not built.
 <!-- backed-by: Shared objects: spec "Requirement: Public SharedObject Authoring Is Explicit" (modules-core-boundary.md) -->
 <!-- backed-by: Static members of shared objects: source ExpoModulesGenerator.GetFunctions -->
 <!-- backed-by: Records: spec "Requirement: Generated Record Codecs Use Lower-Camel JavaScript Fields" (modules-core-boundary.md); spec "Requirement: Record Fields With Defaults Are Optional In JavaScript" (modules-core-boundary.md); spec "Requirement: Required Record Fields Name The Missing Field" (modules-core-boundary.md) -->
-<!-- backed-by: Enums: source StringEnumCodec; test GeneratedLookingCodeUsesStringEnumByDefault -->
+<!-- backed-by: Enums: spec "Requirement: String Enums Cross As Declared JavaScript Values" (modules-core-boundary.md); test DeclaredStringsCrossBothWays -->
 <!-- backed-by: Unions: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); source UnionAttribute -->
 <!-- backed-by: Byte arrays: source ByteArrayCodec -->
 <!-- backed-by: Array buffers: spec "Requirement: Module-facing ArrayBuffer And Binary Codecs" (modules-core-boundary.md) -->
@@ -1334,7 +1367,7 @@ subset works. `Not yet` means it is not built.
 | Shared object release | override `OnRelease()` | override `sharedObjectDidRelease()` | override `sharedObjectDidRelease()` |
 | Coded error | subclass `CodedException` | subclass `Exception` | subclass `CodedException` |
 | Record | positional `record` | `@Record` on a struct | `@Record` on a data class |
-| Enum | `enum`, `[JSEnum]` for numbers | enum that implements `Enumerable` | enum class that implements `Enumerable` |
+| Enum | `enum`, `[EnumMember(Value = ...)]` for a raw value, `[JSEnum]` for numbers | enum that implements `Enumerable` | enum class that implements `Enumerable` |
 | Union | `[Union]` on an `abstract record` with nested `sealed record` cases | `@Union` on an enum | Not supported yet |
 | Closure argument | `JavaScriptCallback<TArgs, TResult>` parameter | closure | Not supported yet |
 | App context | `DotnetRuntimeContext` | `appContext` | `androidContext`, `reactContext`, `context` |

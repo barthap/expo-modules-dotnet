@@ -17,6 +17,7 @@ internal sealed record ExpoSharedObjectModel(
     EquatableArray<ExpoPropertyModel> Properties,
     EquatableArray<ExpoGeneratedRecordCodecModel> RecordCodecs,
     EquatableArray<ExpoGeneratedUnionCodecModel> UnionCodecs,
+    EquatableArray<ExpoGeneratedEnumCodecModel> EnumCodecs,
     EquatableArray<ExpoDiagnosticModel> Diagnostics);
 
 internal sealed record ExpoSharedObjectConstructorModel(

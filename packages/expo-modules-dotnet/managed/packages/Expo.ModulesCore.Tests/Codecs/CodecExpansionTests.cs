@@ -49,25 +49,6 @@ public sealed class GeneratedCodecExpansionModuleTests
   }
 
   [Fact]
-  public void GeneratedLookingCodeUsesStringEnumByDefault()
-  {
-    using var fixture = HermesRuntimeFixture.Create();
-    fixture.Runtime.Execute(runtime =>
-    {
-      using var context = new DotnetRuntimeContext(runtime);
-      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
-      GeneratedCodecExpansionModuleProvider.Register(context, modules);
-      using var result = fixture.Evaluate(
-          "globalThis._expoDotnet.modules.CodecExpansion.describeMode('Fast')",
-          "enum-mode.js"
-      );
-
-      Assert.Equal("Fast", result.AsString());
-      return true;
-    });
-  }
-
-  [Fact]
   public void GeneratedProviderDecodesAndEncodesPositionalRecord()
   {
     using var fixture = HermesRuntimeFixture.Create();
@@ -541,12 +522,6 @@ public sealed class GeneratedCodecExpansionModuleTests
     });
   }
 
-  private enum Mode
-  {
-    Slow,
-    Fast,
-  }
-
   private sealed class CodecExpansionModule
   {
     public double Total(Dictionary<string, double> values) => values.Values.Sum();
@@ -557,8 +532,6 @@ public sealed class GeneratedCodecExpansionModuleTests
           ["one"] = "first",
           ["two"] = "second",
         };
-
-    public Mode DescribeMode(Mode mode) => mode;
   }
 
   private static class GeneratedCodecExpansionModuleProvider
@@ -569,7 +542,6 @@ public sealed class GeneratedCodecExpansionModuleTests
       var instance = new CodecExpansionModule();
       GeneratedFunction.DefineSync(context, module, "total", 1, TotalHostFunction, instance);
       GeneratedFunction.DefineSync(context, module, "labels", 0, LabelsHostFunction, instance);
-      GeneratedFunction.DefineSync(context, module, "describeMode", 1, DescribeModeHostFunction, instance);
     }
 
     private static JavaScriptValue TotalHostFunction(
@@ -596,18 +568,6 @@ public sealed class GeneratedCodecExpansionModuleTests
       GeneratedFunction.RequireArgumentCount("CodecExpansion.labels", arguments, 0);
       var module = (CodecExpansionModule)context;
       return JavaScriptDictionaryCodec<string, StringCodec>.Encode(module.Labels(), runtime);
-    }
-
-    private static JavaScriptValue DescribeModeHostFunction(
-        JavaScriptRuntime runtime,
-        JavaScriptValueRef thisValue,
-        JavaScriptArguments arguments,
-        object context)
-    {
-      GeneratedFunction.RequireArgumentCount("CodecExpansion.describeMode", arguments, 1);
-      var module = (CodecExpansionModule)context;
-      var mode = StringEnumCodec<Mode>.Decode(arguments.GetValue(0), runtime);
-      return StringEnumCodec<Mode>.Encode(module.DescribeMode(mode), runtime);
     }
   }
 }

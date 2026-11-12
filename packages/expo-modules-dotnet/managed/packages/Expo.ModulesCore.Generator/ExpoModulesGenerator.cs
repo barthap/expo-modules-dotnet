@@ -18,6 +18,7 @@ public sealed partial class ExpoModulesGenerator : IIncrementalGenerator
   private const string OnStartObservingAttributeMetadataName = "Expo.ModulesCore.OnStartObservingAttribute";
   private const string OnStopObservingAttributeMetadataName = "Expo.ModulesCore.OnStopObservingAttribute";
   private const string JSEnumAttributeMetadataName = "Expo.ModulesCore.JSEnumAttribute";
+  private const string EnumMemberAttributeMetadataName = "System.Runtime.Serialization.EnumMemberAttribute";
   private const string JSAttributeMetadataName = "Expo.ModulesCore.JSAttribute";
   private const string DotnetRuntimeContextMetadataName = "Expo.ModulesCore.DotnetRuntimeContext";
   private const string JavaScriptValueMetadataName = "global::Expo.JSI.JavaScriptValue";

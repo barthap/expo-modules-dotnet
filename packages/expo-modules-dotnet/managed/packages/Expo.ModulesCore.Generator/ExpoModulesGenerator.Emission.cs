@@ -14,9 +14,24 @@ public sealed partial class ExpoModulesGenerator
       IEnumerable<ExpoSharedObjectModel> sharedObjects)
   {
     var sharedObjectModels = sharedObjects.ToArray();
+
+    // EXPOJSI033 to 035 describe an enum declaration, and every position that uses the enum finds the
+    // same error, so an equal one (same ID, location, and arguments) is reported once. Other IDs keep
+    // their reporting.
+    var reportedEnumDiagnostics = new HashSet<ExpoDiagnosticModel>();
+    void Report(ExpoDiagnosticModel diagnostic)
+    {
+      if (IsEnumDeclarationDiagnostic(diagnostic.DescriptorId) && !reportedEnumDiagnostics.Add(diagnostic))
+      {
+        return;
+      }
+
+      context.ReportDiagnostic(ToDiagnostic(diagnostic));
+    }
+
     foreach (var diagnostic in sharedObjectModels.SelectMany(sharedObject => sharedObject.Diagnostics.Values))
     {
-      context.ReportDiagnostic(ToDiagnostic(diagnostic));
+      Report(diagnostic);
     }
 
     var moduleModels = modules.ToArray();
@@ -30,7 +45,7 @@ public sealed partial class ExpoModulesGenerator
 
     foreach (var diagnostic in moduleModels.SelectMany(module => module.Diagnostics.Values))
     {
-      context.ReportDiagnostic(ToDiagnostic(diagnostic));
+      Report(diagnostic);
     }
 
     // The owning module's full JavaScript namespace is validated across the whole
@@ -111,6 +126,18 @@ public sealed partial class ExpoModulesGenerator
       if (emittedUnionTypes.Add(unionCodec.UnionTypeName))
       {
         EmitUnionCodec(builder, unionCodec);
+      }
+    }
+
+    var emittedEnumTypes = new HashSet<string>(StringComparer.Ordinal);
+    foreach (var enumCodec in moduleModels
+                 .SelectMany(module => module.EnumCodecs.Values)
+                 .Concat(moduleModels.SelectMany(module =>
+                     GetEmittableClasses(module).SelectMany(sharedObject => sharedObject.EnumCodecs.Values))))
+    {
+      if (emittedEnumTypes.Add(enumCodec.EnumTypeName))
+      {
+        EmitEnumCodec(builder, enumCodec);
       }
     }
 
@@ -775,6 +802,9 @@ public sealed partial class ExpoModulesGenerator
       "EXPOJSI030" => ExpoModulesDiagnostics.InvalidUnionCase,
       "EXPOJSI031" => ExpoModulesDiagnostics.DuplicateUnionPayload,
       "EXPOJSI032" => ExpoModulesDiagnostics.UnreachableUnionCase,
+      "EXPOJSI033" => ExpoModulesDiagnostics.InvalidEnumJavaScriptValue,
+      "EXPOJSI034" => ExpoModulesDiagnostics.DuplicateEnumJavaScriptValue,
+      "EXPOJSI035" => ExpoModulesDiagnostics.AliasedStringEnumMember,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());
@@ -1519,6 +1549,46 @@ public sealed partial class ExpoModulesGenerator
 
   // Emits the field decodes and the record construction. With leaf fields, they are declared
   // before a try whose catch releases the ones already decoded and rethrows.
+  // One emitter for every string enum codec: two constant switches, so the codec needs no
+  // reflection and no runtime context, and holds no leaves (the default Release). The decode error
+  // lists the declared strings in declaration order; the encode error renders the underlying number
+  // with the invariant culture, so the error path reads no enum metadata either.
+  private static void EmitEnumCodec(StringBuilder builder, ExpoGeneratedEnumCodecModel codec)
+  {
+    var enumTypeName = codec.EnumTypeName;
+    var displayName = codec.DisplayName;
+    var members = codec.Members.Values;
+    var accepted = string.Join(", ", members.Select(member => $"'{member.JavaScriptName}'"));
+
+    builder.AppendLine($"  private readonly struct {codec.CodecTypeName} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<{enumTypeName}>");
+    builder.AppendLine("  {");
+    builder.AppendLine($"    public static {enumTypeName} Decode(global::Expo.JSI.JavaScriptValueRef value, global::Expo.JSI.JavaScriptRuntime runtime) => FromJavaScriptString(value.AsString());");
+    builder.AppendLine();
+    builder.AppendLine($"    public static {enumTypeName} Decode(global::Expo.JSI.JavaScriptValue value, global::Expo.JSI.JavaScriptRuntime runtime) => FromJavaScriptString(value.AsString());");
+    builder.AppendLine();
+    builder.AppendLine($"    public static global::Expo.JSI.JavaScriptValue Encode({enumTypeName} value, global::Expo.JSI.JavaScriptRuntime runtime) => runtime.CreateString(ToJavaScriptString(value));");
+    builder.AppendLine();
+    builder.AppendLine($"    private static {enumTypeName} FromJavaScriptString(string value) => value switch");
+    builder.AppendLine("    {");
+    foreach (var member in members)
+    {
+      builder.AppendLine($"      \"{EscapeString(member.JavaScriptName)}\" => {enumTypeName}.{EscapeIdentifier(member.CSharpName)},");
+    }
+    builder.AppendLine($"      _ => throw new global::System.ArgumentException(\"'\" + value + \"' is not a valid {EscapeString(displayName)} value. It must be one of: {EscapeString(accepted)}\"),");
+    builder.AppendLine("    };");
+    builder.AppendLine();
+    builder.AppendLine($"    private static string ToJavaScriptString({enumTypeName} value) => value switch");
+    builder.AppendLine("    {");
+    foreach (var member in members)
+    {
+      builder.AppendLine($"      {enumTypeName}.{EscapeIdentifier(member.CSharpName)} => \"{EscapeString(member.JavaScriptName)}\",");
+    }
+    builder.AppendLine($"      _ => throw new global::System.InvalidOperationException((({codec.UnderlyingTypeName})value).ToString(global::System.Globalization.CultureInfo.InvariantCulture) + \" is not a member of {EscapeString(displayName)}, so it has no JavaScript value.\"),");
+    builder.AppendLine("    };");
+    builder.AppendLine("  }");
+    builder.AppendLine();
+  }
+
   private static void EmitRecordDecodeBody(
       StringBuilder builder,
       ExpoGeneratedRecordCodecModel codec,

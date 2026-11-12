@@ -221,10 +221,11 @@ public sealed partial class ExpoModulesGenerator
           eventCodec = AsCompositeChildCodec(GetCodecAt(property.Locations.FirstOrDefault(), payloadType, scratchDiagnostics, scratch));
           if (eventCodec is null)
           {
-            // A union from a referenced assembly is reported at the event property; the other
+            // A union from a referenced assembly and an invalid enum are reported here; the other
             // scratch diagnostics stay dropped.
             diagnostics.AddRange(scratchDiagnostics.Where(item =>
-                item.DescriptorId == ExpoModulesDiagnostics.InvalidUnionDeclaration.Id));
+                item.DescriptorId == ExpoModulesDiagnostics.InvalidUnionDeclaration.Id ||
+                IsEnumDeclarationDiagnostic(item.DescriptorId)));
             diagnostics.Add(CreateUnsupportedEventPayload(
                 moduleName,
                 property,
@@ -324,7 +325,10 @@ public sealed partial class ExpoModulesGenerator
       string diagnosticId = "EXPOJSI019") =>
       new(
           diagnosticId,
-          payloadType.Locations.FirstOrDefault() ?? property.Locations.FirstOrDefault(),
+          // A payload declared in another assembly has no location in this compilation.
+          SymbolEqualityComparer.Default.Equals(payloadType.ContainingAssembly, property.ContainingAssembly)
+              ? payloadType.Locations.FirstOrDefault() ?? property.Locations.FirstOrDefault()
+              : property.Locations.FirstOrDefault(),
           new EquatableArray<string>(new[] { moduleName, property.Name, GetDiagnosticTypeName(payloadType), reason })
       );
 
