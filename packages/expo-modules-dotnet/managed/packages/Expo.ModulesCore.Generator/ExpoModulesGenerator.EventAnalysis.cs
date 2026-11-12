@@ -169,7 +169,7 @@ public sealed partial class ExpoModulesGenerator
       var propertyReason = containerReason ?? GetUnsupportedEventPropertyShape(property, declaration);
       var canReproduce = unsupportedContainerShape is null &&
           CanReproduceEventProperty(property, declaration);
-      var javaScriptName = LowerCamel(property.Name);
+      var javaScriptName = DefaultEventName(property.Name);
       ITypeSymbol? payloadType = null;
       var hasUnsupportedPayload = false;
       if (eventAttribute.ConstructorArguments.Length == 1)
@@ -286,6 +286,17 @@ public sealed partial class ExpoModulesGenerator
 
     return events;
   }
+
+  // A bare [Event] drops an On or on prefix that an uppercase letter follows, as the upstream Swift
+  // and Kotlin @Event macros do, then lowercases only the first character like LowerCamel. Modules
+  // and shared objects both reach this through GetTypedEvents.
+  private static string DefaultEventName(string propertyName) =>
+      propertyName.Length > 2 &&
+      (propertyName.StartsWith("On", StringComparison.Ordinal) ||
+       propertyName.StartsWith("on", StringComparison.Ordinal)) &&
+      char.IsUpper(propertyName[2])
+          ? LowerCamel(propertyName.Substring(2))
+          : LowerCamel(propertyName);
 
   private static IReadOnlyList<string> MergeEventNames(
       string moduleName,

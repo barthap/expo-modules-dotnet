@@ -190,8 +190,8 @@ public sealed class EnumModuleTests
         "[\"SHA-1\",\"SHA-1\"]",
         await ReadAsync(
             host,
-            "(() => { const seen = []; m.addListener('onAlgorithm', value => seen.push(value)); " +
-            "m.addListener('onOptions', value => seen.push(value.algorithm)); return m.emitDigest('SHA-1').then(() => seen); })()"));
+            "(() => { const seen = []; m.addListener('algorithm', value => seen.push(value)); " +
+            "m.addListener('options', value => seen.push(value.algorithm)); return m.emitDigest('SHA-1').then(() => seen); })()"));
   }
 
   // A default is the member itself (a cast of its number), so an omitted argument or field is the

@@ -267,7 +267,7 @@ public sealed partial class LeafReleaseModuleTests
   public void UnionEventPayloadStaysWithTheAuthor()
   {
     using var leaf = LeafReleaseFixture.Create();
-    leaf.Run(FallbackSetup + "; globalThis.seen = false; us.addListener('onFallback', p => { seen = p.data === b && p.count === 1; }); true");
+    leaf.Run(FallbackSetup + "; globalThis.seen = false; us.addListener('fallback', p => { seen = p.data === b && p.count === 1; }); true");
 
     leaf.Fixture.ResetCounters();
     Assert.Equal("4:true", leaf.ReadString("`${us.emitPacked(b)}:${seen}`"));

@@ -465,13 +465,13 @@ public sealed partial class ExpoModulesGeneratorTests
   [InlineData(false, "[JS] public int M(Shelf shelf) => 0;", "m", "(value.Parts, ref __expoReleaseFailures);")]
   [InlineData(false, "[JS] public int M(JavaScriptCallback<ValueTuple<Content>, int> callback) => 0;", "m", "ValueTupleCodec<" + ContentType + ", ContentUnionCodec_")]
   [InlineData(false, "[JS] public int M(JavaScriptCallback<Content> callback) => 0;", "m", "JavaScriptCallbackCodec<" + ContentType + ", ContentUnionCodec_")]
-  [InlineData(false, "[Event] public partial Func<Content, Task> OnContent { get; }", "onContent", "EmitAsync<ContentUnionCodec_")]
+  [InlineData(false, "[Event] public partial Func<Content, Task> OnContent { get; }", "content", "EmitAsync<ContentUnionCodec_")]
   [InlineData(true, "[JS] public Entry(Content seed) { }", "Entry", "__expoArg0 = ContentUnionCodec_")]
   [InlineData(true, "[JS] public string Write(Content content) => \"\";", "write", "__expoArg0 = ContentUnionCodec_")]
   [InlineData(true, "[JS] public Task<string> WriteLater(Content content) => Task.FromResult(\"\");", "writeLater", "__expoArg0 = ContentUnionCodec_")]
   [InlineData(true, "[JS] public Content Give() => null!;", "give", "CodecRelease.Release<" + ContentType + ", ContentUnionCodec_")]
   [InlineData(true, "[JS] public Content Value { get; set; } = null!;", "value", "__expoValue = ContentUnionCodec_")]
-  [InlineData(true, "[Event] public partial Func<Content, Task> OnContent { get; }", "onContent", "EmitAsync<ContentUnionCodec_")]
+  [InlineData(true, "[Event] public partial Func<Content, Task> OnContent { get; }", "content", "EmitAsync<ContentUnionCodec_")]
   public void GeneratorAcceptsNamedUnionsInEveryPosition(bool onSharedObject, string member, string jsName, string expectedFragment)
   {
     var result = GeneratorTestHost.Run(

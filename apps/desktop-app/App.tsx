@@ -34,7 +34,7 @@ const initialResults: Record<CapabilityKey, string> = {
   async: 'Tap to call getMessageAsync()',
   record: 'Tap to send a JS object into a C# record',
   callback: 'Tap to let C# invoke a JS function',
-  event: 'Tap to emit onStatus from C#',
+  event: 'Tap to emit the status event from C#',
   shared: 'Tap to construct and release a shared counter',
 };
 
@@ -102,9 +102,9 @@ export default function App() {
   }
 
   function runEvent() {
-    const waiting = 'Waiting for onStatus...';
+    const waiting = 'Waiting for the status event...';
     setResult('event', waiting);
-    markStillWaiting('event', waiting, 'Still waiting for onStatus');
+    markStillWaiting('event', waiting, 'Still waiting for the status event');
     emitStatusAsync('button').catch(caught => {
       setResult('event', caught instanceof Error ? caught.message : String(caught));
     });
