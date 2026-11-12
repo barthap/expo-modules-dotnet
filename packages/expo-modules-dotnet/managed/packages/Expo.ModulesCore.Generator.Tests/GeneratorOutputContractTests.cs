@@ -199,7 +199,7 @@ public sealed class GeneratorOutputContractTests
     );
 
     Assert.DoesNotContain(result.Diagnostics, d => d.Severity == DiagnosticSeverity.Error && d.Id.StartsWith("CS", StringComparison.Ordinal));
-    // EMC-76 re-pinned the provider digest: PolicyMode now crosses through a generated enum codec.
+    // PolicyMode crosses through a generated enum codec, and the digest covers that codec.
     Assert.Equal(
         new[]
         {

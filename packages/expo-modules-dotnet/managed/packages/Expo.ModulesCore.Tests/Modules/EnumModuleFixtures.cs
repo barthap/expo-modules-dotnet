@@ -51,7 +51,8 @@ public enum DigestFlags
   Spaced = 2,
 }
 
-// [EnumMember] without Value names no string, so a number enum keeps crossing as its number.
+// [EnumMember] without Value declares no string, so it has no effect. On a number enum it must not be
+// a build error, unlike [EnumMember(Value = "...")].
 [JSEnum(EnumRepresentation.Number)]
 public enum QuietLevel
 {

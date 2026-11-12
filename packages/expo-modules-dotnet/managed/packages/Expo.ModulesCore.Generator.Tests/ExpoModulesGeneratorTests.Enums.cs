@@ -484,7 +484,7 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.Contains("new[] { \"DigestAlgorithm\", \"DigestEncoding\", \"string\" }", codec, StringComparison.Ordinal);
   }
 
-  // EMC-64 rule 4: a string case takes every string, so a later enum case is unreachable. The other
+  // A string case takes every string, so a later enum case is unreachable. The other
   // order is reachable: a string the enum does not declare fails the enum attempt and moves on.
   [Fact]
   public void GeneratorReportsAnEnumCaseAfterAStringCaseAsUnreachable()
