@@ -1007,5 +1007,5 @@ internal readonly unsafe struct ExpoJsiApi
   public void ReleaseMutableBuffer(ExpoJsiMutableBufferHandle handle) => MutableBufferRelease(handle);
 
   public static uint ExpectedSize => (uint)sizeof(ExpoJsiApi);
-  public const uint ExpectedVersion = 23;
+  public const uint ExpectedVersion = 24;
 }

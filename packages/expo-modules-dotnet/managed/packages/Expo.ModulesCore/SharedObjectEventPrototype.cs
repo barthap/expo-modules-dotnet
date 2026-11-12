@@ -113,7 +113,8 @@ internal static class SharedObjectEventPrototype
           0,
           RemoveSubscriptionByState,
           state,
-          static value => ((SubscriptionState)value).Dispose()
+          static value => ((SubscriptionState)value).Dispose(),
+          GeneratedFunction.CreateJavaScriptError
       );
       using var removeValue = remove.AsValue();
       subscription.SetProperty("remove", removeValue);

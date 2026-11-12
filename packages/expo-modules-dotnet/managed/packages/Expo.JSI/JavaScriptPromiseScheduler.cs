@@ -1,3 +1,5 @@
+using Expo.JSI.Interop;
+
 namespace Expo.JSI;
 
 internal static class JavaScriptPromiseScheduler
@@ -6,6 +8,7 @@ internal static class JavaScriptPromiseScheduler
       JavaScriptRuntime runtime,
       JavaScriptPromise promise,
       Func<CancellationToken, Task<JavaScriptPromiseResult>> operation,
+      JavaScriptErrorFactory? createError,
       CancellationToken cancellationToken
   )
   {
@@ -17,7 +20,7 @@ internal static class JavaScriptPromiseScheduler
     catch (Exception ex)
     {
       await runtime.ScheduleAsync(
-          js => RejectPromiseWithErrorAndDispose(js, promise, ex),
+          js => RejectPromiseWithErrorAndDispose(js, promise, ex, createError),
           JavaScriptTaskPriority.Immediate,
           CancellationToken.None
       ).ConfigureAwait(false);
@@ -27,7 +30,7 @@ internal static class JavaScriptPromiseScheduler
     try
     {
       await runtime.ScheduleAsync(
-          js => SettlePromiseFromResultAndDispose(js, promise, result),
+          js => SettlePromiseFromResultAndDispose(js, promise, result, createError),
           JavaScriptTaskPriority.Immediate,
           CancellationToken.None
       ).ConfigureAwait(false);
@@ -41,12 +44,13 @@ internal static class JavaScriptPromiseScheduler
   private static void SettlePromiseFromResultAndDispose(
       JavaScriptRuntime runtime,
       JavaScriptPromise promise,
-      JavaScriptPromiseResult result
+      JavaScriptPromiseResult result,
+      JavaScriptErrorFactory? createError
   )
   {
     try
     {
-      SettlePromiseFromResult(runtime, promise, result);
+      SettlePromiseFromResult(runtime, promise, result, createError);
     }
     finally
     {
@@ -57,7 +61,8 @@ internal static class JavaScriptPromiseScheduler
   private static void SettlePromiseFromResult(
       JavaScriptRuntime runtime,
       JavaScriptPromise promise,
-      JavaScriptPromiseResult result
+      JavaScriptPromiseResult result,
+      JavaScriptErrorFactory? createError
   )
   {
     try
@@ -74,19 +79,20 @@ internal static class JavaScriptPromiseScheduler
     }
     catch (Exception ex)
     {
-      RejectPromiseWithError(runtime, promise, ex);
+      RejectPromiseWithError(runtime, promise, ex, createError);
     }
   }
 
   private static void RejectPromiseWithErrorAndDispose(
       JavaScriptRuntime runtime,
       JavaScriptPromise promise,
-      Exception exception
+      Exception exception,
+      JavaScriptErrorFactory? createError
   )
   {
     try
     {
-      RejectPromiseWithError(runtime, promise, exception);
+      RejectPromiseWithError(runtime, promise, exception, createError);
     }
     finally
     {
@@ -97,11 +103,43 @@ internal static class JavaScriptPromiseScheduler
   private static void RejectPromiseWithError(
       JavaScriptRuntime runtime,
       JavaScriptPromise promise,
-      Exception exception
+      Exception exception,
+      JavaScriptErrorFactory? createError
   )
   {
+    var reason = createError is null ? null : TryCreateReason(runtime, exception, createError);
+    if (reason is not null)
+    {
+      using (reason)
+      {
+        promise.Reject(reason);
+      }
+      return;
+    }
+
     using var error = runtime.CreateErrorObject(exception.Message);
     using var value = error.AsValue();
     promise.Reject(value);
+  }
+
+  // The factory's value is owned here until Reject returns. A failing factory has already released
+  // what it created, and a null result owns nothing; the caller falls back to an Error built from
+  // the original Message, so the promise always settles. A failing factory is reported the same way
+  // as on the host-function path.
+  private static JavaScriptValue? TryCreateReason(
+      JavaScriptRuntime runtime,
+      Exception exception,
+      JavaScriptErrorFactory createError
+  )
+  {
+    try
+    {
+      return createError(runtime, exception);
+    }
+    catch (Exception factoryException)
+    {
+      HostFunctionContext.ReportException(factoryException);
+      return null;
+    }
   }
 }

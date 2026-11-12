@@ -60,6 +60,12 @@ callback state at most once. The four-parameter overload SHALL keep callback
 state externally owned, and `Expo.JSI` SHALL NOT infer disposal from the state
 object's type.
 
+`CreateHostFunction` SHALL accept a `JavaScriptErrorFactory` through a separate
+six-parameter overload, not through an optional parameter on the five-parameter
+overload. An optional parameter would change the five-parameter signature and
+break binary compatibility with existing callers. The five-parameter overload
+SHALL call the six-parameter overload with no factory.
+
 The same terminal operation SHALL cover managed creation failure, JavaScript
 collection of the function, and runtime teardown of a still-live function.
 
@@ -118,15 +124,66 @@ consumer SHOULD mirror this contract instead of inferring ownership from
 
 ### Requirement: Managed Exceptions Become Structured Errors
 
-Managed exceptions SHALL NOT cross unmanaged callback frames.
+Managed exceptions SHALL NOT cross unmanaged callback frames. A host function
+created without an error factory SHALL report a failure as a message. A host
+function created with an error factory SHALL report a failure as a JavaScript
+value that the factory built.
 
 #### Scenario: Callback throws
-- **GIVEN** a managed host-function callback throws an exception
+- **GIVEN** a managed host-function callback created without an error factory
+  throws an exception
 - **WHEN** control returns to native
 - **THEN** managed code SHALL return `ok = 0` with an error captured through
   the callback context
 - **AND** the captured error message SHALL include managed exception stack-trace
   context
+
+#### Scenario: Callback with an error factory throws
+- **GIVEN** a managed host-function callback created with a
+  `JavaScriptErrorFactory` throws an exception
+- **WHEN** control returns to native
+- **THEN** managed code SHALL call the factory once with the runtime and the
+  original exception, under a handle scope
+- **AND** it SHALL return `ok = 0` with the detached factory value and an empty
+  `expo_jsi_error`
+- **AND** JavaScript SHALL catch that same value
+
+#### Scenario: Error factory throws
+- **GIVEN** a host-function callback with a `JavaScriptErrorFactory` throws
+- **AND** the factory throws too
+- **WHEN** control returns to native
+- **THEN** managed code SHALL report the factory exception to stderr
+- **AND** it SHALL return the message result for the original exception, as
+  for a callback without a factory
+
+### Requirement: Host-Function Error Factories Own No Pending Value
+
+`Expo.JSI` SHALL expose `JavaScriptErrorFactory(JavaScriptRuntime runtime,
+Exception exception)` as the only way for a host function to throw a
+managed-built JavaScript value. The factory SHALL return a new owned
+`JavaScriptValue`. The caller of the factory SHALL take ownership at once: the
+host-function trampoline detaches it into the callback result, and the promise
+scheduler disposes it after `Reject`. No managed object SHALL hold a
+built-but-unthrown value.
+
+#### Scenario: Thrown value releases exactly once
+- **GIVEN** a host function with a factory that returns a value JavaScript can
+  identify
+- **WHEN** JavaScript calls it and the callback throws
+- **THEN** JavaScript SHALL catch the identical value
+- **AND** native SHALL release its value handle exactly once
+
+#### Scenario: Callback catches its own exception
+- **GIVEN** a host-function callback that throws and catches an exception
+  before it returns normally
+- **WHEN** the callback returns
+- **THEN** the factory SHALL NOT be called
+- **AND** no value handle SHALL be created for the caught exception
+
+#### Scenario: HostObject callbacks ignore factories
+- **GIVEN** a HostObject getter, setter, or property-name callback throws
+- **WHEN** control returns to native
+- **THEN** native SHALL throw from the captured message as today
 
 ### Requirement: JavaScript Error Objects
 

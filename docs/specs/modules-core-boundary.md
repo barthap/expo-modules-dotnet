@@ -1262,31 +1262,173 @@ or `this` refs across asynchronous continuations.
   host-function callback
 - **AND** pass only decoded managed values into the authored async method
 
+### Requirement: Coded Exceptions
+
+`Expo.ModulesCore` SHALL expose a public, non-sealed
+`CodedException : Exception` with constructors
+`(string message, Exception? innerException = null)` and
+`(string? code, string message, Exception? innerException = null)`, and a
+virtual `string Code`. `Code` SHALL return a non-null explicit code as given,
+and otherwise the code derived from `GetType().Name`: remove a generic arity
+suffix, remove one trailing `Error` or `Exception`, insert `_` per the
+`(.)([A-Z])` to `$1_$2` replacement, uppercase invariantly, and prefix `ERR_`.
+Derivation SHALL run only when `Code` is read and SHALL NOT use reflection
+beyond `GetType().Name`. `Message` SHALL NOT include the cause chain.
+
+#### Scenario: Code is derived from the class name
+- **GIVEN** `class InvalidPathException : CodedException` constructed with a
+  message only
+- **WHEN** `Code` is read
+- **THEN** it SHALL be `ERR_INVALID_PATH`
+
+#### Scenario: Derivation keeps upstream edge cases
+- **GIVEN** coded exception types named `NotFoundError`, `HTTPException`,
+  `PathException<T>`, a nested `Outer.InvalidPathException`, and
+  `CodedException` itself
+- **WHEN** `Code` is read on each
+- **THEN** the codes SHALL be `ERR_NOT_FOUND`, `ERR_H_TT_P`, `ERR_PATH`,
+  `ERR_INVALID_PATH`, and `ERR_CODED`
+
+#### Scenario: Explicit code
+- **GIVEN** `new CodedException("ERR_CUSTOM", "m")`
+- **WHEN** `Code` is read
+- **THEN** it SHALL be `ERR_CUSTOM`
+
+#### Scenario: Null explicit code derives
+- **GIVEN** a subclass passes a null code to the three-argument constructor
+- **WHEN** `Code` is read
+- **THEN** it SHALL be the derived code
+
+#### Scenario: Same code under both loaders
+- **GIVEN** the console showcase throws a coded exception
+- **WHEN** it runs under the hostfxr loader and under the NativeAOT loader
+- **THEN** JavaScript SHALL read the same `code` in both runs
+
+### Requirement: Module Failures Become JavaScript Errors
+
+Every JavaScript-callable function that `Expo.ModulesCore` creates SHALL convert
+a managed exception through `GeneratedFunction.CreateJavaScriptError`. The
+result SHALL be a JavaScript `Error`. Its `message` SHALL be the thrown
+exception's `Message`, followed, for each exception in its `InnerException`
+chain from the direct inner exception to the root, by `\n→ Caused by: ` and that
+exception's `Message`. When the thrown exception is a `CodedException` whose
+`Code` is not null or empty, the `Error` SHALL have a string `code` property
+with that value; otherwise it SHALL have no `code` property. The converter SHALL
+NOT add the .NET type name, the stack trace, or the code of a cause to the
+message, and SHALL NOT filter, shorten, or limit the chain. A module that must
+keep data out of JavaScript SHALL keep it out of every exception in the chain it
+throws.
+
+#### Scenario: Sync member throws a coded exception
+- **GIVEN** a sync module method, property getter, property setter,
+  shared-object method, or shared-object constructor throws
+  `InvalidPathException("bad path")`
+- **WHEN** JavaScript calls it
+- **THEN** JavaScript SHALL catch an `Error` with `e instanceof Error`,
+  `e.code === 'ERR_INVALID_PATH'`, and `e.message === 'bad path'`
+
+#### Scenario: Plain exception has no code
+- **GIVEN** a module member throws `InvalidOperationException("plain")`
+- **WHEN** JavaScript calls it
+- **THEN** `'code' in e` SHALL be `false`
+- **AND** `e.message` SHALL be `plain`
+
+#### Scenario: Empty or overridden code
+- **GIVEN** a coded exception whose `Code` returns an empty string, and another
+  whose overridden `Code` and `Message` return `ERR_REPHRASED` and `rephrased`
+- **WHEN** JavaScript calls members that throw them
+- **THEN** the first `Error` SHALL have no `code` property
+- **AND** the second SHALL have `code === 'ERR_REPHRASED'` and
+  `message === 'rephrased'`
+
+#### Scenario: Cause chain is appended
+- **GIVEN** a member throws
+  `new CodedException("outer", new IOException("inner"))`
+- **WHEN** JavaScript calls it
+- **THEN** `e.message` SHALL be `'outer\n→ Caused by: inner'`
+- **AND** `e.code` SHALL be `ERR_CODED`
+
+#### Scenario: Chain walks to the root through coded and plain causes
+- **GIVEN** a member throws
+  `new InvalidOperationException("outer", new InvalidPathException("middle", new IOException("root")))`
+- **WHEN** JavaScript calls it
+- **THEN** `e.message` SHALL be
+  `'outer\n→ Caused by: middle\n→ Caused by: root'`
+- **AND** `'code' in e` SHALL be `false`, because only the thrown exception
+  gives the code
+
+#### Scenario: Overridden message keeps the chain
+- **GIVEN** a coded exception whose overridden `Message` returns `rephrased` and
+  whose inner exception has the message `inner`
+- **WHEN** JavaScript calls a member that throws it
+- **THEN** `e.message` SHALL be `'rephrased\n→ Caused by: inner'`
+
+#### Scenario: Sync and async give the same error
+- **GIVEN** the same exception type, message, and inner exception thrown from a
+  sync member and from an async member's task
+- **WHEN** JavaScript catches the throw and the rejection
+- **THEN** both errors SHALL have equal `code` presence, `code`, and `message`,
+  cause chain included
+
+#### Scenario: Core functions follow the same contract
+- **GIVEN** an `EventEmitterPrototype` function, a subscription `remove`
+  function, or a shared-object `release` function throws
+- **WHEN** JavaScript calls it
+- **THEN** the function SHALL convert the exception through
+  `GeneratedFunction.CreateJavaScriptError`
+- **AND** JavaScript SHALL catch an `Error` whose message holds no .NET type
+  name or stack trace
+
+#### Scenario: Converter failure falls back
+- **GIVEN** `CreateJavaScriptError` throws while converting a sync member
+  failure
+- **WHEN** control returns to native
+- **THEN** JavaScript SHALL still catch an `Error`, built from the original
+  exception's message result, which is its `ToString()` text and so holds the
+  .NET type name and the stack trace
+
 ### Requirement: Async Function Failures Reject Promises
 
 Generated async function glue SHALL reject the returned Promise for generated
-dispatch failures, authored-method failures, faulted tasks, and canceled tasks.
+dispatch failures, authored-method failures, faulted tasks, canceled tasks, and
+result-encoding failures. Every rejection reason SHALL come from
+`GeneratedFunction.CreateJavaScriptError`, so it follows "Module Failures Become
+JavaScript Errors", cause chain included.
 
 #### Scenario: Argument validation fails
 - **GIVEN** JavaScript calls a generated async function with an unsupported
   argument count or value
 - **WHEN** generated dispatch validates or decodes the arguments
 - **THEN** the generated function SHALL return a JavaScript Promise
-- **AND** the Promise SHALL reject with a JavaScript `Error`
+- **AND** the Promise SHALL reject with a JavaScript `Error` without a `code`
+  property
 - **AND** the validation or codec failure SHALL NOT escape as a synchronous
   JavaScript throw
 
 #### Scenario: Authored async method throws before returning a task
 - **GIVEN** JavaScript calls a generated async function
-- **WHEN** the authored method throws before returning its task
+- **WHEN** the authored method throws a `CodedException` before returning its
+  task
 - **THEN** the generated function SHALL return a JavaScript Promise
-- **AND** the Promise SHALL reject with a JavaScript `Error`
+- **AND** the Promise SHALL reject with a JavaScript `Error` that carries the
+  exception's `code` and its message with the cause chain
 
-#### Scenario: Authored async task fails
+#### Scenario: Authored async task faults
 - **GIVEN** JavaScript calls a generated async function
-- **WHEN** the authored task faults or is canceled
-- **THEN** the generated function SHALL return a JavaScript Promise
-- **AND** the Promise SHALL reject with a JavaScript `Error`
+- **WHEN** the authored task faults after an `await` with a `CodedException`
+- **THEN** the Promise SHALL reject with a JavaScript `Error` that carries the
+  exception's `code` and its message with the cause chain
+
+#### Scenario: Authored async task is canceled
+- **GIVEN** JavaScript calls a generated async function
+- **WHEN** the authored task is canceled
+- **THEN** the Promise SHALL reject with a JavaScript `Error` without a `code`
+  property
+
+#### Scenario: Result encoding fails
+- **GIVEN** a generated async function's task completes
+- **WHEN** encoding its result throws on the runtime path
+- **THEN** the Promise SHALL reject with the converted `Error`
 
 #### Scenario: Sync function does not use async promise dispatch
 - **GIVEN** a generated provider registers a module with a non-`Task` `[JS]`
@@ -3556,7 +3698,7 @@ Caller cancellation SHALL remain an `OperationCanceledException`. An
 while the caller token is live SHALL use the controlled download or save error
 family. Download errors SHALL start with `Unable to download asset from url:
 '<url>'`; save errors SHALL start with `Unable to save asset to directory:
-'ExponentAsset'`. Outer error messages SHALL NOT include local absolute paths.
+'ExponentAsset'`.
 
 The package SHALL keep its full validation, cache, HTTP, concurrency,
 cancellation, and cleanup matrix in pure offline tests with injected cache and

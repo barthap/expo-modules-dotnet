@@ -9,7 +9,7 @@ public sealed class ExpoJsiApiTests
   [Fact]
   public unsafe void AbiVersionAndSizeIncludeWeakObjectTail()
   {
-    Assert.Equal(23u, ExpoJsiApi.ExpectedVersion);
+    Assert.Equal(24u, ExpoJsiApi.ExpectedVersion);
     Assert.Equal((uint)sizeof(ExpoJsiApi), ExpoJsiApi.ExpectedSize);
 
     var truncated = new FakeExpoJsiApi
