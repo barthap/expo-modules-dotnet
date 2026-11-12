@@ -55,7 +55,7 @@ matches it, even if existing C# modules must change.
 
 ## Planned
 
-- `expo-crypto-dotnet`: AES-GCM encryption (EMC-78)
+- `expo-crypto-dotnet`: AES-GCM encryption
 - `expo-file-system-dotnet`: write, bytes, copy, and move
 - Windows apps can opt in to `*-dotnet` modules in place of the expo-desktop
   stubs
