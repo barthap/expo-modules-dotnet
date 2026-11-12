@@ -182,7 +182,7 @@ internal sealed record ExpoGeneratedUnionCaseModel(
     string IntegerGate);
 
 // One generated string-enum codec, deduplicated by EnumTypeName like record codecs. Members are in
-// declaration order and keep both names, because EMC-30 reports both.
+// declaration order and keep both the C# name and the JavaScript string.
 internal sealed record ExpoGeneratedEnumCodecModel(
     string CodecTypeName,
     string EnumTypeName,
