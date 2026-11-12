@@ -19,11 +19,11 @@ export type ExampleUserSummary = ExampleUser & {
 };
 
 type ExampleModuleEvents = {
-  onStatus(payload: string): void;
+  status(payload: string): void;
 };
 
 type ExampleCounterEvents = {
-  onChange(value: number): void;
+  change(value: number): void;
 };
 
 /**
@@ -56,7 +56,7 @@ export function add(a: number, b: number): number {
 }
 
 export function addStatusListener(listener: (payload: string) => void): EventSubscription {
-  return nativeModule.addListener('onStatus', listener);
+  return nativeModule.addListener('status', listener);
 }
 
 export function describeUser(user: ExampleUser): ExampleUserSummary {
@@ -86,7 +86,7 @@ export function addCounterChangeListener(
   counter: ExampleCounter,
   listener: (value: number) => void
 ): EventSubscription {
-  return counter.addListener('onChange', listener);
+  return counter.addListener('change', listener);
 }
 
 export function makeCounter(start: number): ExampleCounter {

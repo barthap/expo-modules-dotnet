@@ -2029,17 +2029,17 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.Contains("private static global::Expo.TestModules.DeviceModule CreateDevice", provider.Text);
     Assert.Contains("InitializeDeviceEvents(context, module);", provider.Text);
     Assert.Contains("var emitter = context.Events;", provider.Text);
-    Assert.Contains("() => emitter.EmitAsync(module, \"onReady\")", provider.Text);
+    Assert.Contains("() => emitter.EmitAsync(module, \"ready\")", provider.Text);
     Assert.Contains($"emitter.EmitAsync<{RecordCodecName("Progress", "global::Expo.TestModules.Progress")}, global::Expo.TestModules.Progress>(module, \"StatusChanged\", onProgressValue)", provider.Text);
-    Assert.Contains("emitter.EmitAsync(module, \"onValue\", onValueValue)", provider.Text);
-    Assert.Contains("emitter.EmitAsync(module, \"onBuffer\", onBufferValue)", provider.Text);
+    Assert.Contains("emitter.EmitAsync(module, \"value\", onValueValue)", provider.Text);
+    Assert.Contains("emitter.EmitAsync(module, \"buffer\", onBufferValue)", provider.Text);
     Assert.Contains("GetOrCreateModule(\"Device\", () => CreateDevice(context), static module => module.Initialize(), null)", provider.Text);
     Assert.Contains("InitializeDeviceEvents(context, instance_Device);", provider.Text);
     Assert.True(
         provider.Text.IndexOf("() => CreateDevice(context)", StringComparison.Ordinal) <
         provider.Text.IndexOf("static module => module.Initialize()", StringComparison.Ordinal)
     );
-    Assert.Contains("new[] { \"legacy\", \"onReady\", \"StatusChanged\", \"onText\", \"onValue\", \"onBuffer\" }", provider.Text);
+    Assert.Contains("new[] { \"legacy\", \"ready\", \"StatusChanged\", \"text\", \"value\", \"buffer\" }", provider.Text);
     Assert.Contains("private global::System.Func<global::System.Threading.Tasks.Task>? __expoEvent_OnReady;", partial.Text);
     Assert.Contains("Event member 'DeviceModule.OnReady' is unavailable before module registration.", partial.Text);
     Assert.Contains("public partial global::System.Func<global::System.Threading.Tasks.Task> OnReady", partial.Text);
@@ -2229,7 +2229,7 @@ public sealed partial class ExpoModulesGeneratorTests
   }
 
   [Theory]
-  [InlineData("[Event] public partial Func<Task> OnReady { get; }\n[Event(\"onReady\")] public partial Func<Task> OnReadyAgain { get; }")]
+  [InlineData("[Event] public partial Func<Task> OnReady { get; }\n[Event(\"ready\")] public partial Func<Task> OnReadyAgain { get; }")]
   [InlineData("[Event(\"legacy\")] public partial Func<Task> OnReady { get; }")]
   public void TypedEventDuplicateNamesUseTypedEventDiagnostics(string properties)
   {
@@ -2254,6 +2254,167 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI020");
     Assert.DoesNotContain(result.Diagnostics, item =>
         item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+  }
+
+  // A bare [Event] drops an On or on prefix that an uppercase letter follows, like the upstream
+  // Swift and Kotlin @Event macros, so one JavaScript facade listens under the same name on every
+  // platform. Other names keep the lower-camel member rule. Both a module and a shared object run
+  // every row, because one helper must serve both. The single-element name list proves that the
+  // C# name, the lower-camel name and the unprefixed name are never declared as aliases.
+  [Theory]
+  [InlineData("[Event] public partial Func<Task> OnProgress { get; }", "progress")]
+  [InlineData("[Event] public partial Func<Task> OnStatusChange { get; }", "statusChange")]
+  [InlineData("[Event] public partial Func<Task> onFoo { get; }", "foo")]
+  [InlineData("[Event] public partial Func<Task> OnX { get; }", "x")]
+  [InlineData("[Event] public partial Func<Task> OnURLChange { get; }", "uRLChange")]
+  [InlineData("[Event] public partial Func<Task> Online { get; }", "online")]
+  [InlineData("[Event] public partial Func<Task> On { get; }", "on")]
+  [InlineData("[Event] public partial Func<Task> On1Thing { get; }", "on1Thing")]
+  [InlineData("[Event] public partial Func<Task> On_Foo { get; }", "on_Foo")]
+  [InlineData("[Event] public partial Func<Task> ONLine { get; }", "oNLine")]
+  [InlineData("[Event] public partial Func<Task> Changed { get; }", "changed")]
+  [InlineData("[Event] public partial Func<Task> @event { get; }", "event")]
+  [InlineData("[Event(\"onDatabaseChange\")] public partial Func<Task> OnDatabaseChange { get; }", "onDatabaseChange")]
+  [InlineData("[Event(\"StatusChanged\")] public partial Func<Task> OnStatus { get; }", "StatusChanged")]
+  public void ImplicitTypedEventNameDropsOnPrefixBeforeUppercaseLetter(string member, string expectedName)
+  {
+    foreach (var onSharedObject in new[] { false, true })
+    {
+      var result = GeneratorTestHost.Run(
+          onSharedObject ? SharedObjectMemberSource(member) : ModuleSource(string.Empty, member)
+      );
+
+      Assert.Empty(GeneratorDiagnosticIds(result));
+      AssertNoCompilerErrors(result);
+      var text = GeneratedText(result);
+      Assert.Contains($"new[] {{ \"{expectedName}\" }}", text, StringComparison.Ordinal);
+      Assert.Contains(
+          onSharedObject
+              ? $"GeneratedSharedObjectEvents.EmitAsync(context, sharedObject, \"{expectedName}\")"
+              : $"emitter.EmitAsync(module, \"{expectedName}\")",
+          text,
+          StringComparison.Ordinal
+      );
+    }
+  }
+
+  // Duplicate detection compares JavaScript names, so two C# names that derive one name collide. On
+  // a module the later declaration is reported and loses its dispatch glue.
+  [Fact]
+  public void DerivedTypedEventNamesCollideOnModule()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        string.Empty,
+        "[Event] public partial Func<Task> OnReady { get; }\n[Event] public partial Func<Task> Ready { get; }"
+    ));
+
+    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI020");
+    Assert.Contains("event property 'Ready' resolves to duplicate event name 'ready'", diagnostic.GetMessage(), StringComparison.Ordinal);
+    AssertNoCompilerErrors(result);
+    Assert.Contains("new[] { \"ready\" }", GeneratedText(result), StringComparison.Ordinal);
+  }
+
+  // On a shared object every declaration in a duplicate group is invalid, so neither gets glue.
+  [Fact]
+  public void DerivedTypedEventNamesCollideOnSharedObject()
+  {
+    var result = GeneratorTestHost.Run(SharedObjectMemberSource(
+        "[Event] public partial Func<Task> OnReady { get; }\n[Event] public partial Func<Task> Ready { get; }"
+    ));
+
+    var diagnostics = result.Diagnostics.Where(item => item.Id == "EXPOJSI028").ToArray();
+    Assert.Equal(2, diagnostics.Length);
+    Assert.All(diagnostics, item =>
+        Assert.Contains("duplicate event name 'ready'", item.GetMessage(), StringComparison.Ordinal));
+    AssertNoCompilerErrors(result);
+    Assert.DoesNotContain("GeneratedSharedObjectEvents.EmitAsync", GeneratedText(result), StringComparison.Ordinal);
+  }
+
+  // Legacy [Events] names are explicit strings, so a legacy name collides with the derived name of a
+  // typed event, and the old prefixed name now declares a separate event next to it.
+  [Theory]
+  [InlineData("status", true)]
+  [InlineData("onStatus", false)]
+  public void LegacyEventNameCollidesOnlyWithDerivedTypedEventName(string legacyName, bool collides)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using System;
+        using System.Threading.Tasks;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        [Events("{{legacyName}}")]
+        public sealed partial class DeviceModule
+        {
+          [Event] public partial Func<string, Task> OnStatus { get; }
+        }
+        """
+    );
+
+    AssertNoCompilerErrors(result);
+    if (collides)
+    {
+      var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI020");
+      Assert.Contains("duplicate event name 'status'", diagnostic.GetMessage(), StringComparison.Ordinal);
+    }
+    else
+    {
+      Assert.Empty(GeneratorDiagnosticIds(result));
+      Assert.Contains("new[] { \"onStatus\", \"status\" }", GeneratedText(result), StringComparison.Ordinal);
+    }
+  }
+
+  // Observing hooks match merged JavaScript names, so a hook that still names the old prefixed name
+  // fails the build instead of never running.
+  [Theory]
+  [InlineData("change", false)]
+  [InlineData("onChange", true)]
+  public void ObservingHookMatchesDerivedTypedEventName(string hookEventName, bool reportsUndeclared)
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(
+        string.Empty,
+        "[Event] public partial Func<string, Task> OnChange { get; }\n" +
+        $"[OnStopObserving(\"{hookEventName}\")] public void Stop() {{}}"
+    ));
+
+    AssertNoCompilerErrors(result);
+    if (reportsUndeclared)
+    {
+      var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI010");
+      Assert.Contains("event 'onChange' is not declared", diagnostic.GetMessage(), StringComparison.Ordinal);
+    }
+    else
+    {
+      Assert.Empty(GeneratorDiagnosticIds(result));
+      Assert.Contains("module.Stop();", GeneratedText(result), StringComparison.Ordinal);
+    }
+  }
+
+  // Event names are a declared-name list, never properties of the module object or the shared-object
+  // prototype, so an event and a [JS] member may share a JavaScript name, as on iOS.
+  [Theory]
+  [InlineData(false)]
+  [InlineData(true)]
+  public void TypedEventAndJavaScriptMemberMayShareName(bool onSharedObject)
+  {
+    const string members =
+        "[Event] public partial Func<string, Task> OnStatus { get; }\n[JS] public string Status => \"\";";
+    var result = GeneratorTestHost.Run(
+        onSharedObject ? SharedObjectMemberSource(members) : ModuleSource(string.Empty, members)
+    );
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerErrors(result);
+    Assert.Contains(
+        onSharedObject
+            ? "(context, sharedObject, \"status\", onStatusValue)"
+            : "(module, \"status\", onStatusValue)",
+        GeneratedText(result),
+        StringComparison.Ordinal
+    );
   }
 
   [Fact]
@@ -3992,11 +4153,11 @@ public sealed partial class ExpoModulesGeneratorTests
     var text = GeneratedText(result);
     Assert.Contains("private readonly struct ProgressCodec", text);
     Assert.Contains("GeneratedSharedObjectEvents.EmitAsync<ProgressCodec", text);
-    Assert.Contains("\"onProgress\"", text);
+    Assert.Contains("\"progress\"", text);
     Assert.Contains("\"ReadyNow\"", text);
     Assert.Contains("__ExpoModulesCoreInitializeSharedObjectEvents", text);
     Assert.Contains("private global::System.Func<global::Expo.TestModules.Progress, global::System.Threading.Tasks.Task>? __expoSharedObjectEvent_OnProgress", text);
-    Assert.Contains("new[] { \"onProgress\", \"ReadyNow\" }", text);
+    Assert.Contains("new[] { \"progress\", \"ReadyNow\" }", text);
     Assert.Contains("static (context, sharedObject) => InitializeSharedObjectEvents_", text);
   }
 
@@ -4463,12 +4624,12 @@ public sealed partial class ExpoModulesGeneratorTests
         source
     );
     Assert.Contains(
-        "emitter.EmitAsync<NullableReferenceCodec<string, StringCodec>, string?>(module, \"onText\"",
+        "emitter.EmitAsync<NullableReferenceCodec<string, StringCodec>, string?>(module, \"text\"",
         source
     );
     Assert.Contains(
         "GeneratedSharedObjectEvents.EmitAsync<NullableReferenceCodec<string, StringCodec>, string?>(" +
-        "context, sharedObject, \"onChanged\"",
+        "context, sharedObject, \"changed\"",
         source
     );
     Assert.Contains(
@@ -4657,8 +4818,8 @@ public sealed partial class ExpoModulesGeneratorTests
     var sharedDiagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI027");
     Assert.Contains("OnSharedValue", sharedDiagnostic.GetMessage());
     var source = GeneratedText(result);
-    Assert.DoesNotContain("\"onValue\"", source);
-    Assert.DoesNotContain("\"onSharedValue\"", source);
+    Assert.DoesNotContain("\"value\"", source);
+    Assert.DoesNotContain("\"sharedValue\"", source);
     AssertNoCompilerErrors(result);
   }
 
@@ -5787,10 +5948,10 @@ public sealed partial class ExpoModulesGeneratorTests
   // A Uint8Array payload, direct or nested, encodes through its codec on the owning runtime and stays
   // with the author.
   [Theory]
-  [InlineData(false, "Uint8Array", "emitter.EmitAsync<Uint8ArrayCodec, " + U8 + ">(module, \"onBytes\", onBytesValue)")]
-  [InlineData(true, "Uint8Array", "GeneratedSharedObjectEvents.EmitAsync<Uint8ArrayCodec, " + U8 + ">(context, sharedObject, \"onBytes\", onBytesValue)")]
-  [InlineData(false, "Uint8Array?", "emitter.EmitAsync<" + Nu8c + ", " + U8 + "?>(module, \"onBytes\", onBytesValue)")]
-  [InlineData(false, "IReadOnlyList<Uint8Array>", "emitter.EmitAsync<JavaScriptArrayCodec<" + U8 + ", Uint8ArrayCodec>, global::System.Collections.Generic.IReadOnlyList<" + U8 + ">>(module, \"onBytes\", onBytesValue)")]
+  [InlineData(false, "Uint8Array", "emitter.EmitAsync<Uint8ArrayCodec, " + U8 + ">(module, \"bytes\", onBytesValue)")]
+  [InlineData(true, "Uint8Array", "GeneratedSharedObjectEvents.EmitAsync<Uint8ArrayCodec, " + U8 + ">(context, sharedObject, \"bytes\", onBytesValue)")]
+  [InlineData(false, "Uint8Array?", "emitter.EmitAsync<" + Nu8c + ", " + U8 + "?>(module, \"bytes\", onBytesValue)")]
+  [InlineData(false, "IReadOnlyList<Uint8Array>", "emitter.EmitAsync<JavaScriptArrayCodec<" + U8 + ", Uint8ArrayCodec>, global::System.Collections.Generic.IReadOnlyList<" + U8 + ">>(module, \"bytes\", onBytesValue)")]
   public void GeneratorAcceptsUint8ArrayEventPayloads(bool onSharedObject, string payload, string expectedFragment)
   {
     var member = $"[Event] public partial Func<{payload}, Task> OnBytes {{ get; }}";
@@ -5886,8 +6047,8 @@ public sealed partial class ExpoModulesGeneratorTests
   [InlineData("", "[JS] public int M(JavaScriptCallback<JavaScriptCallback<int>$N> value) => 0;", false, "EXPOJSI008", "\"m\"")]
   [InlineData("", "[JS] public int M(JavaScriptCallback<ValueTuple<JavaScriptCallback<int>$N>, int> value) => 0;", false, "EXPOJSI008", "\"m\"")]
   [InlineData("", "[JS] public int M(JavaScriptCallback<decimal>$N callback) => 0;", false, "EXPOJSI008", "\"m\"")]
-  [InlineData("", "[Event] public partial Func<JavaScriptCallback<int>$N, Task> OnCallback { get; }", false, "EXPOJSI019", "\"onCallback\"")]
-  [InlineData("", "[Event] public partial Func<JavaScriptCallback<int>$N, Task> OnCallback { get; }", true, "EXPOJSI027", "\"onCallback\"")]
+  [InlineData("", "[Event] public partial Func<JavaScriptCallback<int>$N, Task> OnCallback { get; }", false, "EXPOJSI019", "\"callback\"")]
+  [InlineData("", "[Event] public partial Func<JavaScriptCallback<int>$N, Task> OnCallback { get; }", true, "EXPOJSI027", "\"callback\"")]
   [InlineData("", "[JS] public JavaScriptCallback<int>$N Make() => throw new NotImplementedException();", true, "EXPOJSI023", "\"make\"")]
   [InlineData("", "[JS] public JavaScriptCallback<int>$N Callback { get; } = null!;", true, "EXPOJSI023", "\"callback\"")]
   [InlineData("", "[JS] public void Run(JavaScriptCallback<decimal>$N callback) { }", true, "EXPOJSI023", "\"run\"")]
@@ -5986,8 +6147,8 @@ public sealed partial class ExpoModulesGeneratorTests
   [InlineData("public sealed record Holder(Entry$N Field);", "[JS] public int M(Holder holder) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "\"m\"")]
   [InlineData("", "[JS] public int M(JavaScriptCallback<Entry$N> callback) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "\"m\"")]
   [InlineData("", "[JS] public int M(JavaScriptCallback<ValueTuple<Handle$N>, int> callback) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "\"m\"")]
-  [InlineData("", "[Event] public partial Func<Entry$N, Task> OnEntry { get; }", "", "EXPOJSI019", "OnEntry", "no encode-capable codec is available", "\"onEntry\"")]
-  [InlineData("", "", "[Event] public partial Func<Handle$N, Task> OnHandle { get; }", "EXPOJSI027", "OnHandle", "no encode-capable codec is available", "\"onHandle\"")]
+  [InlineData("", "[Event] public partial Func<Entry$N, Task> OnEntry { get; }", "", "EXPOJSI019", "OnEntry", "no encode-capable codec is available", "\"entry\"")]
+  [InlineData("", "", "[Event] public partial Func<Handle$N, Task> OnHandle { get; }", "EXPOJSI027", "OnHandle", "no encode-capable codec is available", "\"handle\"")]
   [InlineData("", "", "[JS] public int Take(IReadOnlyList<Handle$N> values) => 0;", "EXPOJSI023", "Take", "inside a composed codec", "\"take\"")]
   [InlineData("", "", "[JS] public Entry(SharedRef<Resource>$N source) { }", "EXPOJSI023", "Entry", "which is the SharedRef<T> managed carrier base", "ConstructSharedObject_")]
   public void GeneratorKeepsSharedObjectDiagnosticsForNullableBasesAndNestedShapes(
@@ -6093,8 +6254,8 @@ public sealed partial class ExpoModulesGeneratorTests
   [InlineData("public sealed record Holder(PathBase$N Field);", "[JS] public int M(Holder holder) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "inside a composed codec", "\"m\"")]
   [InlineData("", "[JS] public int M(JavaScriptCallback<PathBase$N> callback) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "inside a composed codec", "\"m\"")]
   [InlineData("", "[JS] public int M(JavaScriptCallback<ValueTuple<PathBase$N>, int> callback) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "inside a composed codec", "\"m\"")]
-  [InlineData("", "[Event] public partial Func<PathBase$N, Task> OnPath { get; }", "", "EXPOJSI019", "OnPath", "no encode-capable codec is available", "no encode-capable codec is available", "\"onPath\"")]
-  [InlineData("", "", "[Event] public partial Func<PathBase$N, Task> OnPath { get; }", "EXPOJSI027", "OnPath", "no encode-capable codec is available", "no encode-capable codec is available", "\"onPath\"")]
+  [InlineData("", "[Event] public partial Func<PathBase$N, Task> OnPath { get; }", "", "EXPOJSI019", "OnPath", "no encode-capable codec is available", "no encode-capable codec is available", "\"path\"")]
+  [InlineData("", "", "[Event] public partial Func<PathBase$N, Task> OnPath { get; }", "EXPOJSI027", "OnPath", "no encode-capable codec is available", "no encode-capable codec is available", "\"path\"")]
   [InlineData("public abstract class GenericBase<T> : SharedObject { }", "[JS] public int M(GenericBase<int>$N path) => 0;", "", "EXPOJSI023", "M", AbstractBaseShapeReason, AbstractBaseNullableReason, "\"m\"")]
   [InlineData("public static class Outer { public abstract class NestedBase : SharedObject { } }", "[JS] public int M(Outer.NestedBase$N path) => 0;", "", "EXPOJSI023", "M", AbstractBaseShapeReason, AbstractBaseNullableReason, "\"m\"")]
   [InlineData("", "[JS] public int M(SharedObject$N value) => 0;", "", "EXPOJSI023", "M", "which is the polymorphic SharedObject base", "which is the polymorphic SharedObject base", "\"m\"")]
@@ -6154,10 +6315,10 @@ public sealed partial class ExpoModulesGeneratorTests
   }
 
   [Theory]
-  [InlineData(false, "Func<ArrayBuffer?, Task> OnBuffer", "onBufferValue => emitter.EmitAsync(module, \"onBuffer\", onBufferValue)")]
-  [InlineData(true, "Func<ArrayBuffer?, Task> OnBuffer", "onBufferValue => global::Expo.ModulesCore.GeneratedSharedObjectEvents.EmitAsync(context, sharedObject, \"onBuffer\", onBufferValue)")]
-  [InlineData(false, "Func<IReadOnlyList<ArrayBuffer?>, Task> OnBuffers", "emitter.EmitAsync<JavaScriptArrayCodec<global::Expo.ModulesCore.ArrayBuffer?, " + Nabc + ">, global::System.Collections.Generic.IReadOnlyList<global::Expo.ModulesCore.ArrayBuffer?>>(module, \"onBuffers\", onBuffersValue)")]
-  [InlineData(true, "Func<IReadOnlyList<ArrayBuffer?>, Task> OnBuffers", "GeneratedSharedObjectEvents.EmitAsync<JavaScriptArrayCodec<global::Expo.ModulesCore.ArrayBuffer?, " + Nabc + ">, global::System.Collections.Generic.IReadOnlyList<global::Expo.ModulesCore.ArrayBuffer?>>(context, sharedObject, \"onBuffers\", onBuffersValue)")]
+  [InlineData(false, "Func<ArrayBuffer?, Task> OnBuffer", "onBufferValue => emitter.EmitAsync(module, \"buffer\", onBufferValue)")]
+  [InlineData(true, "Func<ArrayBuffer?, Task> OnBuffer", "onBufferValue => global::Expo.ModulesCore.GeneratedSharedObjectEvents.EmitAsync(context, sharedObject, \"buffer\", onBufferValue)")]
+  [InlineData(false, "Func<IReadOnlyList<ArrayBuffer?>, Task> OnBuffers", "emitter.EmitAsync<JavaScriptArrayCodec<global::Expo.ModulesCore.ArrayBuffer?, " + Nabc + ">, global::System.Collections.Generic.IReadOnlyList<global::Expo.ModulesCore.ArrayBuffer?>>(module, \"buffers\", onBuffersValue)")]
+  [InlineData(true, "Func<IReadOnlyList<ArrayBuffer?>, Task> OnBuffers", "GeneratedSharedObjectEvents.EmitAsync<JavaScriptArrayCodec<global::Expo.ModulesCore.ArrayBuffer?, " + Nabc + ">, global::System.Collections.Generic.IReadOnlyList<global::Expo.ModulesCore.ArrayBuffer?>>(context, sharedObject, \"buffers\", onBuffersValue)")]
   public void GeneratorAcceptsNullableArrayBufferEventPayloads(bool onSharedObject, string property, string expectedFragment)
   {
     var member = $"[Event] public partial {property} {{ get; }}";
@@ -6193,10 +6354,10 @@ public sealed partial class ExpoModulesGeneratorTests
   [InlineData("", "[JS] public JavaScriptValue? GiveValue() => null;", "[JS] public ArrayBuffer? GiveBuffer() => null;", false, "EXPOJSI002", "giveBuffer")]
   [InlineData("", "[JS] public JavaScriptValue? ValueProperty { get; set; }", "[JS] public ArrayBuffer? BufferProperty { get; set; }", false, "EXPOJSI015", "bufferProperty")]
   [InlineData("public sealed record ValueHolder(JavaScriptValue? Value); public sealed record BufferHolder(ArrayBuffer? Buffer);", "[JS] public int TakeValueHolder(ValueHolder holder) => 0;", "[JS] public int TakeBufferHolder(BufferHolder holder) => 0;", false, "EXPOJSI007,EXPOJSI001", "takeBufferHolder")]
-  [InlineData("", "[Event] public partial Func<JavaScriptValue?, Task> OnValue { get; }", "[Event] public partial Func<ArrayBuffer?, Task> OnBuffer { get; }", false, "EXPOJSI019", "onBuffer")]
-  [InlineData("", "[Event] public partial Func<IReadOnlyList<JavaScriptValue?>, Task> OnValues { get; }", "[Event] public partial Func<IReadOnlyList<ArrayBuffer?>, Task> OnBuffers { get; }", false, "EXPOJSI019", "onBuffers")]
+  [InlineData("", "[Event] public partial Func<JavaScriptValue?, Task> OnValue { get; }", "[Event] public partial Func<ArrayBuffer?, Task> OnBuffer { get; }", false, "EXPOJSI019", "buffer")]
+  [InlineData("", "[Event] public partial Func<IReadOnlyList<JavaScriptValue?>, Task> OnValues { get; }", "[Event] public partial Func<IReadOnlyList<ArrayBuffer?>, Task> OnBuffers { get; }", false, "EXPOJSI019", "buffers")]
   [InlineData("", "[JS] public int TakeValue(JavaScriptValue? value) => 0;", "[JS] public int TakeBuffer(ArrayBuffer? value) => 0;", true, "EXPOJSI023", "takeBuffer")]
-  [InlineData("", "[Event] public partial Func<JavaScriptValue?, Task> OnValue { get; }", "[Event] public partial Func<ArrayBuffer?, Task> OnBuffer { get; }", true, "EXPOJSI027", "onBuffer")]
+  [InlineData("", "[Event] public partial Func<JavaScriptValue?, Task> OnValue { get; }", "[Event] public partial Func<ArrayBuffer?, Task> OnBuffer { get; }", true, "EXPOJSI027", "buffer")]
   public void GeneratorKeepsJavaScriptValueExclusionNextToNullableArrayBuffer(
       string declarations,
       string valueMember,

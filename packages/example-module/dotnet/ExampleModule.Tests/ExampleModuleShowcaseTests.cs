@@ -19,7 +19,7 @@ public sealed class ExampleModuleShowcaseTests
           var module = globalThis._expoDotnet.modules.ExampleModule;
           var eventPayload = null;
           var subscription = module.addListener(
-            'onStatus',
+            'status',
             function (value) { eventPayload = value; }
           );
           return Promise.resolve().then(function () {
