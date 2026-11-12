@@ -51,6 +51,35 @@ public sealed partial class ExpoModulesGenerator : IIncrementalGenerator
         static (sourceContext, model) => EmitOrphanEvent(sourceContext, model!)
     );
 
+    var unionDeclarations = context.SyntaxProvider.ForAttributeWithMetadataName(
+        UnionAttributeMetadataName,
+        static (node, _) => node is TypeDeclarationSyntax,
+        static (syntaxContext, cancellationToken) =>
+            CreateUnionDeclarationDiagnostics(syntaxContext, cancellationToken)
+    );
+
+    context.RegisterSourceOutput(
+        unionDeclarations,
+        static (sourceContext, diagnostics) =>
+        {
+          foreach (var diagnostic in diagnostics.Values)
+          {
+            sourceContext.ReportDiagnostic(ToDiagnostic(diagnostic));
+          }
+        }
+    );
+
+    var foreignUnionCases = context.SyntaxProvider.CreateSyntaxProvider(
+        static (node, _) => node is RecordDeclarationSyntax { BaseList: not null },
+        static (syntaxContext, cancellationToken) =>
+            CreateForeignUnionCaseDiagnostic(syntaxContext, cancellationToken)
+    ).Where(static diagnostic => diagnostic is not null);
+
+    context.RegisterSourceOutput(
+        foreignUnionCases,
+        static (sourceContext, diagnostic) => sourceContext.ReportDiagnostic(ToDiagnostic(diagnostic!))
+    );
+
     var compilationModulesAndSharedObjects = context.CompilationProvider
         .Combine(modules.Collect())
         .Combine(sharedObjects.Collect());

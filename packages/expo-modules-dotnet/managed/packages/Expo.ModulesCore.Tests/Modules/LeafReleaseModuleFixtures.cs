@@ -537,6 +537,20 @@ public sealed partial class TypedArrayEntry : SharedObject
   public string Describe(Uint8Array bytes) => TypedArrayThingsModule.Describe(bytes);
 }
 
+[Union]
+public abstract record StringOrView
+{
+  public sealed record Text(string Value) : StringOrView;
+  public sealed record View(Uint8Array Value) : StringOrView;
+}
+
+[Union]
+public abstract record BufferOrView
+{
+  public sealed record Buffer(ArrayBuffer Value) : BufferOrView;
+  public sealed record View(Uint8Array Value) : BufferOrView;
+}
+
 // Owns TypedArrayEntry, so it does not report EXPOJSI024. No other module may list it.
 [ExpoModule("TypedArrayThings", Classes = new[] { typeof(TypedArrayEntry) })]
 public sealed partial class TypedArrayThingsModule : Module, IDisposable
@@ -652,8 +666,20 @@ public sealed partial class TypedArrayThingsModule : Module, IDisposable
   public int TakeBytes(byte[] bytes) => bytes.Length;
 
   [JS]
-  public string Write(Either<string, Uint8Array> content) =>
-      content.IsFirst ? $"text:{content.First}" : $"bytes:{Describe(content.Second)}";
+  public string Write(StringOrView content) => content switch
+  {
+    StringOrView.Text(var text) => $"text:{text}",
+    StringOrView.View(var view) => $"bytes:{Describe(view)}",
+    _ => throw new ArgumentOutOfRangeException(nameof(content)),
+  };
+
+  [JS]
+  public string DescribeBufferOrView(BufferOrView value) => value switch
+  {
+    BufferOrView.Buffer(var buffer) => $"buffer:{buffer.ByteLength}",
+    BufferOrView.View(var view) => $"view:{view.Length}",
+    _ => throw new ArgumentOutOfRangeException(nameof(value)),
+  };
 
   [Event]
   public partial Func<Uint8Array?, Task> OnBytes { get; }

@@ -144,7 +144,7 @@ public sealed partial class ExpoModulesGenerator
       INamedTypeSymbol typeSymbol,
       string moduleName,
       List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs,
+      ExpoCodecCollector codecs,
       string unsupportedPropertyDiagnosticId = "EXPOJSI018",
       string unsupportedPayloadDiagnosticId = "EXPOJSI019",
       string? containerReasonOverride = null)
@@ -216,11 +216,15 @@ public sealed partial class ExpoModulesGenerator
         }
         else
         {
-          var scratchRecordCodecs = recordCodecs.ToList();
+          var scratch = codecs.Fork();
           var scratchDiagnostics = new List<ExpoDiagnosticModel>();
-          eventCodec = AsCompositeChildCodec(GetCodec(payloadType, scratchDiagnostics, scratchRecordCodecs));
+          eventCodec = AsCompositeChildCodec(GetCodecAt(property.Locations.FirstOrDefault(), payloadType, scratchDiagnostics, scratch));
           if (eventCodec is null)
           {
+            // A union from a referenced assembly is reported at the event property; the other
+            // scratch diagnostics stay dropped.
+            diagnostics.AddRange(scratchDiagnostics.Where(item =>
+                item.DescriptorId == ExpoModulesDiagnostics.InvalidUnionDeclaration.Id));
             diagnostics.Add(CreateUnsupportedEventPayload(
                 moduleName,
                 property,
@@ -233,8 +237,7 @@ public sealed partial class ExpoModulesGenerator
           }
           else
           {
-            recordCodecs.Clear();
-            recordCodecs.AddRange(scratchRecordCodecs);
+            codecs.Adopt(scratch);
           }
         }
       }
@@ -401,6 +404,16 @@ public sealed partial class ExpoModulesGenerator
         return namedType.TypeArguments[0].SpecialType == SpecialType.System_String
             ? GetUnsupportedEventPayload(namedType.TypeArguments[1], visitedTypes)
             : null;
+      if (IsUnionType(namedType))
+      {
+        // A union is an abstract record with no record constructor; walk its case payloads.
+        return GetUnionCaseCandidates(namedType)
+            .Select(candidate => GetRecordCodecConstructor(candidate))
+            .Where(constructor => constructor is not null)
+            .SelectMany(constructor => constructor!.Parameters)
+            .Select(parameter => GetUnsupportedEventPayload(parameter.Type, visitedTypes))
+            .FirstOrDefault(reason => reason is not null);
+      }
       if (!namedType.IsRecord) return null;
       var constructor = GetRecordCodecConstructor(namedType);
       return constructor is null

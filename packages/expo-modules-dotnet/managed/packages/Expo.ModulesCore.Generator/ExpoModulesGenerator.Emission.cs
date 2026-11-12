@@ -102,6 +102,18 @@ public sealed partial class ExpoModulesGenerator
       }
     }
 
+    var emittedUnionTypes = new HashSet<string>(StringComparer.Ordinal);
+    foreach (var unionCodec in moduleModels
+                 .SelectMany(module => module.UnionCodecs.Values)
+                 .Concat(moduleModels.SelectMany(module =>
+                     GetEmittableClasses(module).SelectMany(sharedObject => sharedObject.UnionCodecs.Values))))
+    {
+      if (emittedUnionTypes.Add(unionCodec.UnionTypeName))
+      {
+        EmitUnionCodec(builder, unionCodec);
+      }
+    }
+
     builder.AppendLine("  public static void Register(global::Expo.ModulesCore.DotnetRuntimeContext context)");
     builder.AppendLine("  {");
     builder.AppendLine("    global::System.ArgumentNullException.ThrowIfNull(context);");
@@ -759,6 +771,10 @@ public sealed partial class ExpoModulesGenerator
       "EXPOJSI026" => ExpoModulesDiagnostics.UnsupportedSharedObjectEventProperty,
       "EXPOJSI027" => ExpoModulesDiagnostics.UnsupportedSharedObjectEventPayload,
       "EXPOJSI028" => ExpoModulesDiagnostics.DuplicateSharedObjectEventName,
+      "EXPOJSI029" => ExpoModulesDiagnostics.InvalidUnionDeclaration,
+      "EXPOJSI030" => ExpoModulesDiagnostics.InvalidUnionCase,
+      "EXPOJSI031" => ExpoModulesDiagnostics.DuplicateUnionPayload,
+      "EXPOJSI032" => ExpoModulesDiagnostics.UnreachableUnionCase,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());
@@ -1358,6 +1374,143 @@ public sealed partial class ExpoModulesGenerator
           leafFieldModels.Select(field =>
               new LeafValue(field.Codec.ValueTypeName, field.Codec.Expression, $"value.{field.CSharpPropertyName}"))
       );
+      builder.AppendLine("    }");
+    }
+    builder.AppendLine("  }");
+    builder.AppendLine();
+  }
+
+  private static string GetUnionKindCondition(ExpoGeneratedUnionCaseModel unionCase)
+  {
+    var kinds = Enum.GetValues(typeof(ExpoJavaScriptKinds))
+        .Cast<ExpoJavaScriptKinds>()
+        .Where(kind => kind is not (ExpoJavaScriptKinds.None or ExpoJavaScriptKinds.All) && (unionCase.Kinds & kind) == kind)
+        .Select(kind => $"__expoKind == global::Expo.JSI.JavaScriptValueKind.{kind}");
+    var condition = string.Join(" || ", kinds);
+    return unionCase.IntegerGate.Length == 0 ? condition : $"{condition} && {unionCase.IntegerGate}";
+  }
+
+  // One emitter for every union codec: a fixed sequence of typed payload-codec calls, with no
+  // reflection and no object-typed values. Decode visits the cases in declaration order and skips a
+  // case whose kinds do not contain the value kind. An attempt lets an AggregateException (a release
+  // failure) propagate and treats any other exception as a failed attempt. Case construction runs
+  // outside the attempt, so a throwing constructor never falls through to a later case.
+  private static void EmitUnionCodec(StringBuilder builder, ExpoGeneratedUnionCodecModel codec)
+  {
+    var cases = codec.Cases.Values;
+    var unionTypeName = codec.UnionTypeName;
+
+    builder.AppendLine($"  private readonly struct {codec.CodecTypeName} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<{unionTypeName}>");
+    builder.AppendLine("  {");
+    builder.AppendLine($"    public static {unionTypeName} Decode(global::Expo.JSI.JavaScriptValueRef value, global::Expo.JSI.JavaScriptRuntime runtime)");
+    builder.AppendLine("    {");
+    builder.AppendLine("      var __expoKind = value.Kind;");
+    if (cases.Any(unionCase => unionCase.IntegerGate.Length > 0))
+    {
+      builder.AppendLine("      var __expoNumber = __expoKind == global::Expo.JSI.JavaScriptValueKind.Number ? value.AsDouble() : 0d;");
+    }
+    builder.AppendLine("      global::System.Exception? __expoFailure = null;");
+    for (var index = 0; index < cases.Count; index++)
+    {
+      var unionCase = cases[index];
+      var payload = $"__expoPayload{index}";
+      var decoded = $"__expoDecoded{index}";
+      if (unionCase.Kinds != ExpoJavaScriptKinds.All || unionCase.IntegerGate.Length > 0)
+      {
+        builder.AppendLine($"      if ({GetUnionKindCondition(unionCase)})");
+      }
+      builder.AppendLine("      {");
+      builder.AppendLine($"        var {decoded} = false;");
+      builder.AppendLine($"        {unionCase.PayloadCodec.ValueTypeName} {payload} = default!;");
+      builder.AppendLine("        try");
+      builder.AppendLine("        {");
+      builder.AppendLine($"          {payload} = {unionCase.PayloadCodec.Expression}.Decode(value, runtime);");
+      builder.AppendLine($"          {decoded} = true;");
+      builder.AppendLine("        }");
+      builder.AppendLine("        catch (global::System.AggregateException)");
+      builder.AppendLine("        {");
+      builder.AppendLine("          throw;");
+      builder.AppendLine("        }");
+      builder.AppendLine("        catch (global::System.Exception __expoAttemptFailure)");
+      builder.AppendLine("        {");
+      builder.AppendLine("          __expoFailure = __expoAttemptFailure;");
+      builder.AppendLine("        }");
+      builder.AppendLine($"        if ({decoded})");
+      builder.AppendLine("        {");
+      if (HoldsLeaves(unionCase.PayloadCodec))
+      {
+        builder.AppendLine("          try");
+        builder.AppendLine("          {");
+        builder.AppendLine($"            return new {unionCase.CaseTypeName}({payload});");
+        builder.AppendLine("          }");
+        builder.AppendLine("          catch");
+        builder.AppendLine("          {");
+        EmitRelease(
+            builder,
+            "            ",
+            new[] { new LeafValue(unionCase.PayloadCodec.ValueTypeName, unionCase.PayloadCodec.Expression, payload) });
+        builder.AppendLine("            throw;");
+        builder.AppendLine("          }");
+      }
+      else
+      {
+        builder.AppendLine($"          return new {unionCase.CaseTypeName}({payload});");
+      }
+      builder.AppendLine("        }");
+      builder.AppendLine("      }");
+    }
+    var expected = string.Join(", ", cases.Select(unionCase => $"\"{EscapeString(unionCase.PayloadMessageName)}\""));
+    builder.AppendLine($"      throw new global::Expo.ModulesCore.UnionCaseMismatchException(\"{EscapeString(codec.UnionName)}\", new[] {{ {expected} }}, __expoKind, __expoFailure);");
+    builder.AppendLine("    }");
+    builder.AppendLine();
+    builder.AppendLine($"    public static {unionTypeName} Decode(global::Expo.JSI.JavaScriptValue value, global::Expo.JSI.JavaScriptRuntime runtime) =>");
+    builder.AppendLine("        Decode(value.Ref, runtime);");
+    builder.AppendLine();
+    builder.AppendLine($"    public static global::Expo.JSI.JavaScriptValue Encode({unionTypeName} value, global::Expo.JSI.JavaScriptRuntime runtime)");
+    builder.AppendLine("    {");
+    builder.AppendLine("      global::System.ArgumentNullException.ThrowIfNull(value);");
+    builder.AppendLine("      return value switch");
+    builder.AppendLine("      {");
+    for (var index = 0; index < cases.Count; index++)
+    {
+      var unionCase = cases[index];
+      builder.AppendLine($"        {unionCase.CaseTypeName} __expoCase{index} => {unionCase.PayloadCodec.Expression}.Encode(__expoCase{index}.{unionCase.PayloadPropertyName}, runtime),");
+    }
+    var notACaseName = unionTypeName.StartsWith("global::", StringComparison.Ordinal) ? unionTypeName.Substring("global::".Length) : unionTypeName;
+    builder.AppendLine($"        _ => throw global::Expo.ModulesCore.Codecs.UnionCodecErrors.NotACase(value, \"{EscapeString(notACaseName)}\"),");
+    builder.AppendLine("      };");
+    builder.AppendLine("    }");
+    if (codec.ResourceOwnership == ExpoResourceOwnership.HoldsLeaves)
+    {
+      builder.AppendLine();
+      builder.AppendLine($"    public static void Release({unionTypeName} value)");
+      builder.AppendLine("    {");
+      builder.AppendLine("      switch (value)");
+      builder.AppendLine("      {");
+      for (var index = 0; index < cases.Count; index++)
+      {
+        var unionCase = cases[index];
+        if (!HoldsLeaves(unionCase.PayloadCodec))
+        {
+          continue;
+        }
+
+        builder.AppendLine($"        case {unionCase.CaseTypeName} __expoCase{index}:");
+        builder.AppendLine("        {");
+        EmitRelease(
+            builder,
+            "          ",
+            new[]
+            {
+                new LeafValue(
+                    unionCase.PayloadCodec.ValueTypeName,
+                    unionCase.PayloadCodec.Expression,
+                    $"__expoCase{index}.{unionCase.PayloadPropertyName}"),
+            });
+        builder.AppendLine("          return;");
+        builder.AppendLine("        }");
+      }
+      builder.AppendLine("      }");
       builder.AppendLine("    }");
     }
     builder.AppendLine("  }");

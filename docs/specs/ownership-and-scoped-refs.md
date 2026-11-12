@@ -196,10 +196,12 @@ lease. Every `IJavaScriptCodec<T>` SHALL follow this contract: `Decode` SHALL
 give the caller every leaf in the result. `Encode` SHALL return a new owned
 JavaScript value and SHALL NOT dispose `value` or any leaf in it. `Release`
 SHALL dispose every leaf in `value`, and SHALL do nothing for null or default.
-A decoded `ArrayBuffer?` or `Uint8Array?` that is `null` holds no leaf. A union
-holds only the leaves of the member it holds: an `ArrayBuffer` or `Uint8Array`
-member is a leaf, and a string, bool, number, `byte[]`, `Memory<byte>`, or
-`ReadOnlyMemory<byte>` member holds none. A nullable callback parameter that
+A decoded `ArrayBuffer?` or `Uint8Array?` that is `null` holds no leaf. A
+`[Union]` value holds only the leaves of the payload of the case it holds,
+under these same rules: an `ArrayBuffer`, `Uint8Array`, or `JavaScriptValue`
+payload is a leaf, a list, dictionary, record, or union payload holds the
+leaves it contains, and other payloads hold none. A failed case attempt during
+decode holds nothing after it fails. A nullable callback parameter that
 decodes to `null` holds nothing. A non-null one is context-retained by
 `DotnetRuntimeContext`, never a leaf holder. A nullable concrete
 `[ExpoSharedObject]` value that is `null` holds nothing; a non-null one stays a

@@ -886,13 +886,27 @@ public sealed partial class BaseThingsModule
   }
 }
 
+[Union]
+public abstract record UnionContent
+{
+  public sealed record Text(string Value) : UnionContent;
+  public sealed record Buffer(ArrayBuffer Value) : UnionContent;
+}
+
+[Union]
+public abstract record UnionChoice
+{
+  public sealed record Number(double Value) : UnionChoice;
+  public sealed record Flag(bool Value) : UnionChoice;
+}
+
 [ExpoSharedObject]
 public sealed partial class UnionWriter : SharedObject
 {
   private readonly string seed;
 
   [JS]
-  public UnionWriter(Either<string, ArrayBuffer> seed)
+  public UnionWriter(UnionContent seed)
   {
     this.seed = UnionThingsModule.Describe(seed);
   }
@@ -901,10 +915,10 @@ public sealed partial class UnionWriter : SharedObject
   public string ReadSeed() => seed;
 
   [JS]
-  public string Write(Either<string, ArrayBuffer> content) => UnionThingsModule.Describe(content);
+  public string Write(UnionContent content) => UnionThingsModule.Describe(content);
 
   [JS]
-  public int Pick(Either<double, bool> value) => UnionThingsModule.Score(value);
+  public int Pick(UnionChoice value) => UnionThingsModule.Score(value);
 }
 
 // Owns UnionWriter, so it does not report EXPOJSI024. No other module may list it.
@@ -914,62 +928,69 @@ public sealed partial class UnionThingsModule
   // Counts every authored read of a union, so a test proves a failed decode never reached authored code.
   public static int Calls;
 
-  // Reads the active member through IsFirst, First, and Second, as authored code is expected to.
-  public static string Describe(Either<string, ArrayBuffer> content)
+  // Reads the case with a switch pattern, as authored code is expected to.
+  public static string Describe(UnionContent content)
   {
     Calls++;
-    return content.IsFirst
-        ? $"first:{content.First}"
-        : $"second:{string.Join(",", content.Second.ToArray())}";
+    return content switch
+    {
+      UnionContent.Text(var text) => $"first:{text}",
+      UnionContent.Buffer(var buffer) => $"second:{string.Join(",", buffer.ToArray())}",
+      _ => throw new ArgumentOutOfRangeException(nameof(content)),
+    };
   }
 
-  public static int Score(Either<double, bool> value) =>
-      value.Match(number => 100 + (int)(number * 10), flag => flag ? 1 : 0);
+  public static int Score(UnionChoice value) => value switch
+  {
+    UnionChoice.Number(var number) => 100 + (int)(number * 10),
+    UnionChoice.Flag(var flag) => flag ? 1 : 0,
+    _ => throw new ArgumentOutOfRangeException(nameof(value)),
+  };
 
   [JS]
-  public string Write(Either<string, ArrayBuffer> content) => Describe(content);
+  public string Write(UnionContent content) => Describe(content);
 
   [JS]
-  public async Task<string> WriteLater(Either<string, ArrayBuffer> content)
+  public async Task<string> WriteLater(UnionContent content)
   {
     await Task.Yield();
 
     // After the await this method runs off the runtime thread, where a JavaScript-backed buffer
     // allows only asynchronous byte access.
-    if (content.IsFirst)
+    if (content is UnionContent.Buffer(var buffer))
     {
-      return Describe(content);
+      var bytes = await buffer.ToArrayAsync();
+      Calls++;
+      return $"second:{string.Join(",", bytes)}";
     }
 
-    var bytes = await content.Second.ToArrayAsync();
-    Calls++;
-    return $"second:{string.Join(",", bytes)}";
+    return Describe(content);
   }
 
   [JS]
-  public string WriteOptional(Either<string, ArrayBuffer>? content) =>
+  public string WriteOptional(UnionContent? content) =>
       content is { } value ? Describe(value) : "null";
 
   [JS]
-  public string WriteWithCount(Either<string, ArrayBuffer> content, int count) =>
+  public string WriteWithCount(UnionContent content, int count) =>
       $"{Describe(content)}:{count}";
 
   [JS]
-  public string WriteAll(IReadOnlyList<Either<string, ArrayBuffer>> parts) =>
+  public string WriteAll(IReadOnlyList<UnionContent> parts) =>
       string.Join("|", parts.Select(Describe));
 
   [JS]
-  public int Pick(Either<double, bool> value) => Score(value);
+  public int Pick(UnionChoice value) => Score(value);
 
   // Encode positions. A returned union belongs to generated glue. Each method returns a Retain()
   // copy that shares the parameter's native entry, so the entry releases only when glue releases
   // both the parameter and the result.
   [JS]
-  public Either<string, ArrayBuffer> Echo(Either<string, ArrayBuffer> content) => Copy(content);
+  public UnionContent Echo(UnionContent content) => Copy(content);
 
   // Retain() is a runtime call, so it runs before the await, on the runtime thread.
   [JS]
-  public async Task<Either<string, ArrayBuffer>> EchoLater(Either<string, ArrayBuffer> content)
+  public async Task<UnionContent> EchoLater(UnionContent content)
   {
     var copy = Copy(content);
     await Task.Yield();
@@ -980,33 +1001,33 @@ public sealed partial class UnionThingsModule
   public UnionHolder Wrap(UnionHolder holder) => holder with { Content = Copy(holder.Content) };
 
   [JS]
-  public IReadOnlyList<Either<string, ArrayBuffer>> EchoAll(IReadOnlyList<Either<string, ArrayBuffer>> parts) =>
+  public IReadOnlyList<UnionContent> EchoAll(IReadOnlyList<UnionContent> parts) =>
       parts.Select(Copy).ToArray();
 
   // Stores and returns only Retain() copies; the module owns the stored copy until it is replaced.
   [JS]
-  public Either<string, ArrayBuffer> Stored
+  public UnionContent Stored
   {
     get => Copy(stored);
     set
     {
       var copy = Copy(value);
-      if (!stored.IsFirst)
+      if (stored is UnionContent.Buffer(var old))
       {
-        stored.Second.Dispose();
+        old.Dispose();
       }
       stored = copy;
     }
   }
 
   [Event]
-  public partial Func<Either<string, ArrayBuffer>, Task> OnContent { get; }
+  public partial Func<UnionContent, Task> OnContent { get; }
 
   // The event payload and the callback argument stay with the author, who reads the union after both.
   [JS]
   public string Forward(
-      Either<string, ArrayBuffer> content,
-      JavaScriptCallback<ValueTuple<Either<string, ArrayBuffer>>, bool> callback)
+      UnionContent content,
+      JavaScriptCallback<ValueTuple<UnionContent>, bool> callback)
   {
     OnContent(content).GetAwaiter().GetResult();
     var seen = callback.Invoke(ValueTuple.Create(content));
@@ -1015,7 +1036,7 @@ public sealed partial class UnionThingsModule
 
   // The decoded callback result belongs to the author, who disposes a buffer member.
   [JS]
-  public string Take(JavaScriptCallback<Either<string, ArrayBuffer>> callback)
+  public string Take(JavaScriptCallback<UnionContent> callback)
   {
     var content = callback.Invoke();
     try
@@ -1024,20 +1045,20 @@ public sealed partial class UnionThingsModule
     }
     finally
     {
-      if (!content.IsFirst)
+      if (content is UnionContent.Buffer(var buffer))
       {
-        content.Second.Dispose();
+        buffer.Dispose();
       }
     }
   }
 
-  private Either<string, ArrayBuffer> stored = Either<string, ArrayBuffer>.FromFirst(string.Empty);
+  private UnionContent stored = new UnionContent.Text(string.Empty);
 
-  private static Either<string, ArrayBuffer> Copy(Either<string, ArrayBuffer> value) =>
-      value.IsFirst ? value : Either<string, ArrayBuffer>.FromSecond(value.Second.Retain());
+  private static UnionContent Copy(UnionContent value) =>
+      value is UnionContent.Buffer(var buffer) ? new UnionContent.Buffer(buffer.Retain()) : value;
 }
 
-public sealed record UnionHolder(Either<string, ArrayBuffer> Content, int Count);
+public sealed record UnionHolder(UnionContent Content, int Count);
 
 public enum ParameterDefaultMode
 {

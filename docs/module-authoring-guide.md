@@ -35,7 +35,9 @@ upstream:
 - Constants: a constant is a getter-only `[JS]` property. See `### Constants`
   under `## Modules`.
 - Event names keep the `On` prefix. See `## Events`.
-- Unions use `Either<TFirst, TSecond>`. See `## Unions`.
+- Unions are `[Union]` abstract records with nested case records, and an
+  integer case takes only whole numbers when a later number case exists. See
+  `## Unions`.
 - Errors: a plain exception gives an `Error` without `code`, and `error.message`
   carries the cause chain in the iOS format. See `## Errors`.
 - Attributes (`[OnCreate]`, `[OnDestroy]`) take the place of overridable
@@ -471,6 +473,8 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
 - Shared objects, declared as described in `## Shared objects`.
 - C# `enum` values — encoded as JavaScript strings by default; annotate with
   `[JSEnum(EnumRepresentation.Number)]` for integer-backed representation.
+- `[Union]` types, for a value that JavaScript passes as one of several shapes.
+  See `## Unions`.
 - `JavaScriptValue` directly, for cases the typed codecs don't cover. See
   "Leaf ownership" below and `docs/specs/managed-jsi-wrappers.md`.
 - `JavaScriptCallback<TResult>` / `JavaScriptCallback<TArgs, TResult>` for
@@ -516,11 +520,11 @@ method, call it before the first `await`. See
 <!-- backed-by: spec "Requirement: Nullable Reference Codecs Are Annotation-Driven" (modules-core-boundary.md); spec "Requirement: Ownership-Bearing Nullable References Are Build Diagnostics" (modules-core-boundary.md) -->
 Nullable reference types work for `ArrayBuffer?`, `Uint8Array?`, and for the
 codecs that carry no JSI ownership: `string?`, `Uri?`, `byte[]?`, positional
-reference records, and the `IReadOnlyList<T>?`, `Dictionary<string, T>?`, and
-`IReadOnlyDictionary<string, T>?` containers. Nullable elements and dictionary
-values work wherever the nested type is supported, so `IReadOnlyList<string?>?`
-composes. `List<T>` stays unsupported in both forms, because its non-nullable
-form has no codec either.
+reference records, `[Union]` types, and the `IReadOnlyList<T>?`,
+`Dictionary<string, T>?`, and `IReadOnlyDictionary<string, T>?` containers.
+Nullable elements and dictionary values work wherever the nested type is
+supported, so `IReadOnlyList<string?>?` composes. `List<T>` stays unsupported
+in both forms, because its non-nullable form has no codec either.
 
 <!-- backed-by: spec "Requirement: Nullable Reference Codecs Are Annotation-Driven" (modules-core-boundary.md); spec "Requirement: Ownership-Bearing Nullable References Are Build Diagnostics" (modules-core-boundary.md) -->
 `JavaScriptValue?`, `SharedObject?`, and `SharedRef<T>?` are build
@@ -778,20 +782,82 @@ field that holds one, is build error `EXPOJSI007`.
 
 ## Unions
 
-<!-- backed-by: spec "Requirement: Two-Member Unions Decode By Value Kind" (modules-core-boundary.md); source Either -->
-`Either<TFirst, TSecond>` is for a value that JavaScript passes as one of
-two kinds, such as `string | ArrayBuffer`. Each member is `string`, `bool`,
-a numeric type, a binary type (`ArrayBuffer`, `byte[]`, `Memory<byte>`,
-`ReadOnlyMemory<byte>`), or `Uint8Array` (an object), and the two members
-must have different JavaScript kinds: `Either<double, bool>` works,
-`Either<double, int>` does not. Read
-`IsFirst`, then `First` or `Second`, or call `Match`. Create one with
-`Either<TFirst, TSecond>.FromFirst` or `FromSecond`. A union works in every
-position. JavaScript `null`, `undefined`, and any other kind fail with a
-JavaScript error: a parameter fails before your code runs, and a callback
-result fails inside `Invoke()`. `Either<TFirst, TSecond>?` turns `null` and
-`undefined` into C# `null`. An `ArrayBuffer` or `Uint8Array` member is a leaf
-and follows the leaf rules in `## Types`.
+<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); source UnionAttribute -->
+A union is a value that JavaScript passes as one of several shapes, such as
+`string | ArrayBuffer | number`. Declare it as an `abstract record` with
+`[Union]`. Each case is a nested `sealed record` that derives from the union
+and has one positional parameter, the payload. The payload's own codec decides
+the JavaScript shape. Read a union with `switch` or `is` patterns:
+
+<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test ThreeCasesDecodeByKind -->
+```csharp
+[Union]
+public abstract record NonceInput
+{
+  public sealed record Base64(string Value) : NonceInput;
+  public sealed record Bytes(byte[] Value) : NonceInput;
+  public sealed record Length(int Value) : NonceInput;
+}
+
+[JS]
+public int NonceSize(NonceInput nonce) => nonce switch
+{
+  NonceInput.Base64(var text) => Convert.FromBase64String(text).Length,
+  NonceInput.Bytes(var bytes) => bytes.Length,
+  NonceInput.Length(var length) => length,
+  _ => throw new ArgumentOutOfRangeException(nameof(nonce)),
+};
+```
+
+<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test FailedAttemptMovesToTheNextCase; test RecordsArePickedByTheirFields -->
+The cases are tried in declaration order, and the first case whose payload
+decodes wins. Put the more specific case first: `Uri` before `string`, `int`
+before `double`, and the record with more required fields first. A case must
+not have the same name as its payload type, because inside the union body the
+name means the case: write `Address(Uri Value)`, not `Uri(Uri Value)`.
+
+<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test MismatchNamesTheReceivedKind -->
+A case is tried only when its payload can decode the JavaScript kind of the
+value:
+
+| Payload | JavaScript kind |
+| --- | --- |
+| `string`, `Guid`, `Uri`, `DateTimeOffset`, `TimeSpan`, string enum | string |
+| `bool` | boolean |
+| numeric types, number enum | number |
+| `ArrayBuffer`, `byte[]`, `Memory<byte>`, `ReadOnlyMemory<byte>` | `ArrayBuffer` |
+| record, `IReadOnlyList<T>`, dictionary, `Uint8Array` | object (an array is an object) |
+| `JavaScriptValue` | any |
+| another `[Union]` | the kinds of its cases |
+
+<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test IntegerGateSendsNonExactNumbersToTheLaterNumberCase; test LoneIntegerCaseTruncatesLikeItsCodec -->
+An integer case followed by another number case takes only a whole number
+that its type holds. With `Whole(int)` and then `Fraction(double)`, `3`
+decodes as `Whole`, and `2.5` and `3e9` as `Fraction`. The last number case
+decodes like its codec, so a lone `int` case still truncates `2.5` to `2`.
+
+<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test NonNullableUnionRejectsNullishWithTheMismatchError; source UnionCaseMismatchException -->
+When no case takes the value, JavaScript gets an `Error` with `code`
+`ERR_UNION_CASE_MISMATCH` and a message such as
+`'NonceInput' expected string or byte[] or int, but received boolean`. If a
+case was tried and failed, its error follows after `→ Caused by:`. JavaScript
+`null` and `undefined` fail the same way. A `NonceInput?` turns them into C#
+`null`.
+
+<!-- backed-by: spec "Requirement: Boundary Leaf Ownership Is Explicit" (ownership-and-scoped-refs.md); test FailedRecordAttemptReleasesItsLeaseAndFallsThrough -->
+A union holds the leaves of the case it holds and follows the rules in
+`### Leaf ownership`. A case that is tried and fails releases what it decoded
+before the next case is tried. A union works in every position: parameters,
+returns, properties, record fields, list elements, dictionary values,
+callbacks, events, and shared-object members.
+
+<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test GeneratorReportsInvalidUnionDeclarationOnce; test GeneratorReportsInvalidUnionCases; test GeneratorReportsDuplicateUnionPayload; test GeneratorReportsUnreachableUnionCases -->
+The build reports `EXPOJSI029` for an invalid union declaration, a union that
+contains itself, or a union from a referenced assembly. Declare a union in the
+project that uses it. `EXPOJSI030` reports an invalid case, `EXPOJSI031` two
+cases with the same payload type, and `EXPOJSI032` a case that an earlier case
+always takes first. Tag cases, discriminators, shared-object payloads, and
+callback payloads are not supported.
 
 ## Binary data
 
@@ -1217,7 +1283,7 @@ subset works. `Not yet` means it is not built.
 | Static members of shared objects | Supported | Not supported yet | Not yet |
 | Records | Supported | Supported | Partial: positional records only |
 | Enums | Supported | Supported | Differs: the member name crosses verbatim; `[JSEnum]` selects numbers |
-| Unions | Supported | Not supported yet | Partial: `Either<TFirst, TSecond>`, two members of different kinds |
+| Unions | Supported | Not supported yet | Differs: `[Union]` on an `abstract record` with nested `sealed record` cases; an integer case takes only whole numbers when a later number case exists; no tag cases |
 | Byte arrays | Supported | Supported | Differs: `byte[]` decodes from and encodes to `ArrayBuffer` only |
 | Array buffers | Supported | Not supported yet (in Kotlin, use a byte array) | Supported: `ArrayBuffer` |
 | Typed arrays | Supported | Supported | Partial: `Uint8Array` only |
@@ -1237,7 +1303,7 @@ subset works. `Not yet` means it is not built.
 <!-- backed-by: Static members of shared objects: source ExpoModulesGenerator.GetFunctions -->
 <!-- backed-by: Records: spec "Requirement: Generated Record Codecs Use Lower-Camel JavaScript Fields" (modules-core-boundary.md); spec "Requirement: Record Fields With Defaults Are Optional In JavaScript" (modules-core-boundary.md); spec "Requirement: Required Record Fields Name The Missing Field" (modules-core-boundary.md) -->
 <!-- backed-by: Enums: source StringEnumCodec; test GeneratedLookingCodeUsesStringEnumByDefault -->
-<!-- backed-by: Unions: spec "Requirement: Two-Member Unions Decode By Value Kind" (modules-core-boundary.md); source Either -->
+<!-- backed-by: Unions: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); source UnionAttribute -->
 <!-- backed-by: Byte arrays: source ByteArrayCodec -->
 <!-- backed-by: Array buffers: spec "Requirement: Module-facing ArrayBuffer And Binary Codecs" (modules-core-boundary.md) -->
 <!-- backed-by: Typed arrays: spec "Requirement: Uint8Array Is A Byte View" (modules-core-boundary.md) -->
@@ -1248,7 +1314,7 @@ subset works. `Not yet` means it is not built.
 ## Syntax mapping: C# and Swift and Kotlin
 
 <!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/; expo/expo#53039 docs/pages/modules/v2/migrate/from-v1.mdx -->
-<!-- backed-by: source ExpoModuleAttribute; source JSAttribute; source EventAttribute; source OnCreateAttribute; source OnDestroyAttribute; source OnStartObservingAttribute; source OnStopObservingAttribute; source ExpoSharedObjectAttribute; source JSEnumAttribute; source Either; source JavaScriptCallback; source DotnetRuntimeContext; source CodedException -->
+<!-- backed-by: source ExpoModuleAttribute; source JSAttribute; source EventAttribute; source OnCreateAttribute; source OnDestroyAttribute; source OnStartObservingAttribute; source OnStopObservingAttribute; source ExpoSharedObjectAttribute; source JSEnumAttribute; source UnionAttribute; source JavaScriptCallback; source DotnetRuntimeContext; source CodedException -->
 | Concept | C# | Swift | Kotlin |
 | --- | --- | --- | --- |
 | Module | `[ExpoModule("Name")]` on a `partial` class; the `Module` base class is optional | `@ExpoModule("Name")` on a `public final class` that subclasses `Module` | `@ExpoModule("Name")` on a class |
@@ -1269,7 +1335,7 @@ subset works. `Not yet` means it is not built.
 | Coded error | subclass `CodedException` | subclass `Exception` | subclass `CodedException` |
 | Record | positional `record` | `@Record` on a struct | `@Record` on a data class |
 | Enum | `enum`, `[JSEnum]` for numbers | enum that implements `Enumerable` | enum class that implements `Enumerable` |
-| Union | `Either<TFirst, TSecond>` | `@Union` on an enum | Not supported yet |
+| Union | `[Union]` on an `abstract record` with nested `sealed record` cases | `@Union` on an enum | Not supported yet |
 | Closure argument | `JavaScriptCallback<TArgs, TResult>` parameter | closure | Not supported yet |
 | App context | `DotnetRuntimeContext` | `appContext` | `androidContext`, `reactContext`, `context` |
 | Another module | Not yet | `appContext?.moduleRegistry.get(moduleWithName:)` | `context.module<T>()` |

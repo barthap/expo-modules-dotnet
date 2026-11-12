@@ -2,12 +2,8 @@ using Expo.JSI;
 
 namespace Expo.ModulesCore.Codecs;
 
-public readonly struct Uint8ArrayCodec : IJavaScriptCodec<Uint8Array>, IJavaScriptValueKindCodec
+public readonly struct Uint8ArrayCodec : IJavaScriptCodec<Uint8Array>
 {
-  /// <summary>Gets the JavaScript value kind that this codec decodes.</summary>
-  /// <remarks>A <c>Uint8Array</c> is an object. Decode then proves that it is a <c>Uint8Array</c>.</remarks>
-  public static JavaScriptValueKind Kind => JavaScriptValueKind.Object;
-
   public static Uint8Array Decode(JavaScriptValueRef value, JavaScriptRuntime runtime)
   {
     if (!value.IsObject)
