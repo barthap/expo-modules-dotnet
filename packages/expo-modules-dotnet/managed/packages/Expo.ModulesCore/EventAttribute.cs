@@ -5,8 +5,12 @@ namespace Expo.ModulesCore;
 /// <c>Func&lt;T, Task&gt;</c> property.
 /// </summary>
 /// <remarks>
-/// The default JavaScript name lowercases only the first character of the property name; an
-/// explicit name is preserved. Generated registration initializes the property before
+/// A bare <c>[Event]</c> drops a leading <c>On</c> or <c>on</c> that an uppercase letter follows,
+/// then lowercases only the first character, so <c>OnProgress</c> emits <c>progress</c> and
+/// <c>OnURLChange</c> emits <c>uRLChange</c>. Any other name only lowercases its first character,
+/// so <c>Online</c> emits <c>online</c>. An explicit name is used verbatim, so
+/// <c>[Event("onProgress")]</c> keeps an <c>onX</c> wire name. Generated registration initializes
+/// the property before
 /// <see cref="OnCreateAttribute"/> hooks run. The returned task represents dispatch completion.
 /// Direct <see cref="Expo.JSI.JavaScriptValue"/> payloads remain caller-owned until that task
 /// completes, while direct <see cref="ArrayBuffer"/> payloads are retained by the dispatcher.

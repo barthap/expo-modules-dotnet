@@ -23,9 +23,9 @@ public sealed class GeneratedEventModuleTests
       using var setup = fixture.Evaluate(
           "const m = globalThis._expoDotnet.modules.GeneratedRecordCollision; " +
           "globalThis.__recordCodecValues = []; " +
-          "m.addListener('onModuleProgress', value => __recordCodecValues.push('m:' + value.moduleValue)); " +
+          "m.addListener('moduleProgress', value => __recordCodecValues.push('m:' + value.moduleValue)); " +
           "const entry = new m.RecordCollisionEntry(); " +
-          "entry.addListener('onSharedProgress', value => __recordCodecValues.push('s:' + value.sharedValue)); " +
+          "entry.addListener('sharedProgress', value => __recordCodecValues.push('s:' + value.sharedValue)); " +
           "Promise.all([m.emitModuleProgressAsync(17), entry.emitSharedProgressAsync('ok')])" +
           ".then(() => { globalThis.__recordCodecDone = true; }); 'started'",
           "generated-record-codec-collision.js"
@@ -145,9 +145,9 @@ public sealed class GeneratedEventModuleTests
     typed.Evaluate(
         """
         const events = globalThis._expoDotnet.modules.GeneratedTypedEvents;
-        events.addListener('onReady', () => { globalThis.__typedReady = 'ready'; });
-        events.addListener('onChange', value => { globalThis.__typedChange = value; });
-        events.addListener('onProgress', value => { globalThis.__typedProgress = value.percent; });
+        events.addListener('ready', () => { globalThis.__typedReady = 'ready'; });
+        events.addListener('change', value => { globalThis.__typedChange = value; });
+        events.addListener('progress', value => { globalThis.__typedProgress = value.percent; });
         true
         """,
         "typed-events-listeners.js"
@@ -163,6 +163,82 @@ public sealed class GeneratedEventModuleTests
     );
   }
 
+  // The implicit name drops the On prefix, and addListener accepts any name, so a listener left on
+  // the old prefixed name is accepted and never called. Both halves are asserted.
+  [Fact]
+  public async Task TypedEventDispatchesUnprefixedNameAndNotOldPrefixedName()
+  {
+    using var typed = TypedEventsFixture.Create();
+    typed.Evaluate(
+        """
+        const events = globalThis._expoDotnet.modules.GeneratedTypedEvents;
+        globalThis.__typedNewName = [];
+        globalThis.__typedOldName = 0;
+        events.addListener('progress', value => { globalThis.__typedNewName.push(value.percent); });
+        events.addListener('onProgress', () => { globalThis.__typedOldName++; });
+        true
+        """,
+        "typed-events-prefix.js"
+    );
+
+    await typed.Module.OnProgress(new TypedProgress(50));
+
+    Assert.Equal(
+        "50:0",
+        typed.ReadString("`${globalThis.__typedNewName.join(',')}:${globalThis.__typedOldName}`")
+    );
+  }
+
+  // Event names are a declared-name list, not module properties, so a typed OnStatus event and a
+  // [JS] Status property share the name status without colliding.
+  [Fact]
+  public async Task TypedEventAndJavaScriptPropertyShareOneName()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+    DotnetRuntimeContext? context = null;
+    fixture.Runtime.Execute(runtime =>
+    {
+      context = new DotnetRuntimeContext(runtime);
+      using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();
+      ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
+      using var setup = fixture.Evaluate(
+          "const m = globalThis._expoDotnet.modules.GeneratedEventMemberNames; " +
+          "globalThis.__memberNameLog = [m.status]; " +
+          "m.addListener('status', value => __memberNameLog.push('status:' + value)); " +
+          "m.addListener('onStatus', value => __memberNameLog.push('old:' + value)); " +
+          "m.emitStatusAsync('50%').then(() => { globalThis.__memberNameDone = true; }); 'started'",
+          "generated-event-member-names.js"
+      );
+      return true;
+    });
+
+    for (var attempt = 0; attempt < 200; attempt++)
+    {
+      fixture.DrainTasks();
+      var done = fixture.Runtime.Execute(_ =>
+      {
+        using var value = fixture.Evaluate(
+            "String(globalThis.__memberNameDone === true)",
+            "generated-event-member-names-wait.js"
+        );
+        return value.AsString() == "true";
+      });
+      if (done) break;
+      await Task.Delay(10, TestContext.Current.CancellationToken);
+    }
+
+    fixture.Runtime.Execute(_ =>
+    {
+      using var result = fixture.Evaluate(
+          "globalThis.__memberNameLog.join(',')",
+          "generated-event-member-names-result.js"
+      );
+      Assert.Equal("status property,status:50%", result.AsString());
+      context!.Dispose();
+      return true;
+    });
+  }
+
   [Fact]
   public async Task TypedRecordEventPayloadWritesEveryFieldIncludingDefaults()
   {
@@ -170,7 +246,7 @@ public sealed class GeneratedEventModuleTests
     typed.Evaluate(
         """
         const events = globalThis._expoDotnet.modules.GeneratedTypedEvents;
-        events.addListener('onOptions', value => {
+        events.addListener('options', value => {
           globalThis.__typedOptions = Object.keys(value).join(',') + ':' + value.count + ':' + value.label;
         });
         true
@@ -190,7 +266,7 @@ public sealed class GeneratedEventModuleTests
     typed.Evaluate(
         """
         const events = globalThis._expoDotnet.modules.GeneratedTypedEvents;
-        events.addListener('onText', value => {
+        events.addListener('text', value => {
           globalThis.__typedText = value === null ? 'null' : String(value);
         });
         true
@@ -212,15 +288,23 @@ public sealed class GeneratedEventModuleTests
     typed.Evaluate(
         """
         const events = globalThis._expoDotnet.modules.GeneratedTypedEvents;
-        globalThis.__typedSubscription = events.addListener('onChange', () => {});
+        globalThis.__typedOldNameSubscription = events.addListener('onChange', () => {});
         true
         """,
+        "typed-events-observing-old-name.js"
+    );
+    // The hooks name the derived event, so a listener on the old prefixed name does not start observing.
+    Assert.Equal(string.Empty, typed.Module.Started);
+
+    typed.Evaluate(
+        "globalThis.__typedSubscription = globalThis._expoDotnet.modules.GeneratedTypedEvents" +
+        ".addListener('change', () => {}); true",
         "typed-events-observing.js"
     );
-    Assert.Equal("onChange", typed.Module.Started);
+    Assert.Equal("change", typed.Module.Started);
 
     typed.Evaluate("globalThis.__typedSubscription.remove(); true", "typed-events-stop-observing.js");
-    Assert.Equal("onChange", typed.Module.Stopped);
+    Assert.Equal("change", typed.Module.Stopped);
   }
 
   [Fact]
@@ -231,7 +315,7 @@ public sealed class GeneratedEventModuleTests
         """
         const events = globalThis._expoDotnet.modules.GeneratedTypedEvents;
         events.addListener('onLegacy', value => { globalThis.__typedLegacy = value; });
-        events.addListener('onChange', value => { globalThis.__typedTyped = value; });
+        events.addListener('change', value => { globalThis.__typedTyped = value; });
         true
         """,
         "typed-events-legacy.js"
@@ -253,8 +337,8 @@ public sealed class GeneratedEventModuleTests
     typed.Evaluate(
         """
         const events = globalThis._expoDotnet.modules.GeneratedTypedEvents;
-        events.addListener('onReady', () => { throw new Error('listener failed'); });
-        events.addListener('onReady', () => { globalThis.__typedListenerIsolation = 'reached'; });
+        events.addListener('ready', () => { throw new Error('listener failed'); });
+        events.addListener('ready', () => { globalThis.__typedListenerIsolation = 'reached'; });
         true
         """,
         "typed-events-listener-isolation.js"
@@ -343,7 +427,7 @@ public sealed class GeneratedEventModuleTests
     typed.Evaluate(
         """
         const events = globalThis._expoDotnet.modules.GeneratedTypedEvents;
-        events.addListener('onValue', value => { globalThis.__typedValue = value; });
+        events.addListener('value', value => { globalThis.__typedValue = value; });
         true
         """,
         "typed-events-value-listener.js"
@@ -548,7 +632,7 @@ public sealed class GeneratedEventModuleTests
     typed.Evaluate(
         """
         const events = globalThis._expoDotnet.modules.GeneratedTypedEvents;
-        events.addListener('onBuffer', value => {
+        events.addListener('buffer', value => {
           globalThis.__typedBuffer = Array.from(new Uint8Array(value)).join(',');
         });
         true
@@ -580,7 +664,7 @@ public sealed class GeneratedEventModuleTests
     typed.Evaluate(
         """
         const events = globalThis._expoDotnet.modules.GeneratedTypedEvents;
-        events.addListener('onOptionalBuffer', (...args) => {
+        events.addListener('optionalBuffer', (...args) => {
           globalThis.__typedOptionalBuffer = args.length + ':' +
             (args[0] === null ? 'null' : Array.from(new Uint8Array(args[0])).join(','));
         });
@@ -605,7 +689,7 @@ public sealed class GeneratedEventModuleTests
     typed.Evaluate(
         """
         const events = globalThis._expoDotnet.modules.GeneratedTypedEvents;
-        events.addListener('onOptionalBuffer', (...args) => {
+        events.addListener('optionalBuffer', (...args) => {
           globalThis.__typedOptionalBuffer = args.length + ':' +
             (args[0] === null ? 'null' : Array.from(new Uint8Array(args[0])).join(','));
         });

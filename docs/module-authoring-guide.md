@@ -32,7 +32,9 @@ upstream:
   under `## Modules`.
 - Constants: a constant is a getter-only `[JS]` property. See `### Constants`
   under `## Modules`.
-- Event names keep the `On` prefix. See `## Events`.
+- Event names drop the `On` prefix as upstream does, but lowercase only the
+  first character after it: `OnURLChange` sends `uRLChange`, as Kotlin does,
+  where Swift sends `urlChange`. See `## Events`.
 - Unions are `[Union]` abstract records with nested case records, and an
   integer case takes only whole numbers when a later number case exists. See
   `## Unions`.
@@ -216,11 +218,11 @@ export type ExampleUserSummary = ExampleUser & {
 };
 
 type ExampleModuleEvents = {
-  onStatus(payload: string): void;
+  status(payload: string): void;
 };
 
 type ExampleCounterEvents = {
-  onChange(value: number): void;
+  change(value: number): void;
 };
 
 /**
@@ -253,7 +255,7 @@ export function add(a: number, b: number): number {
 }
 
 export function addStatusListener(listener: (payload: string) => void): EventSubscription {
-  return nativeModule.addListener('onStatus', listener);
+  return nativeModule.addListener('status', listener);
 }
 ```
 
@@ -676,8 +678,9 @@ unsupported shape.
 
 <!-- backed-by: spec "Requirement: Shared Objects Declare Typed Awaitable Events" (modules-core-boundary.md) -->
 Declare shared-object events with the same awaitable typed shape as module
-events. The generated delegate becomes available when the object first pairs
-with its JavaScript instance:
+events. They follow the module naming rule, so `OnChange` emits `change`. The
+generated delegate becomes available when the object first pairs with its
+JavaScript instance:
 
 ```csharp
 // packages/example-module/dotnet/ExampleModule/ExampleCounter.cs
@@ -768,7 +771,7 @@ Release deterministically with `try`/`finally`:
 <!-- backed-by: spec "Requirement: TypeScript Facades Expose Explicit Release" (modules-core-boundary.md) -->
 ```ts
 const counter = new module.ExampleCounter(40);
-const subscription = counter.addListener('onChange', value => {
+const subscription = counter.addListener('change', value => {
   console.log(value);
 });
 try {
@@ -936,13 +939,18 @@ public sealed partial class ExampleMathModule : Module
 ```
 
 <!-- backed-by: spec "Requirement: Typed Event Members Are Awaitable Generated Properties" (modules-core-boundary.md); spec "Requirement: Typed Event Members Initialize Before Lifecycle Hooks" (modules-core-boundary.md) -->
-`[Event]` lowercases only the first character of the C# property name, so
-`OnStatus` emits `onStatus`; it does not strip the `On` prefix. Use
-`[Event("StatusChanged")]` when JavaScript must receive an explicit name
-verbatim. The delegate returns the real dispatch task. Await it when the
-calling code needs to observe target lookup, payload encoding, scheduling, or
-teardown failures; a `[JS]` method returning that task exposes the result as a
-JavaScript Promise.
+A bare `[Event]` drops a leading `On` or `on` from the C# property name when an
+uppercase letter follows it, then lowercases the first character of the rest,
+as the upstream Swift and Kotlin `@Event` macros do. `OnStatus` emits `status`
+and `OnProgress` emits `progress`. Any other name only gets its first character
+lowercased, so `Online` emits `online` and `Changed` emits `changed`. Only the
+first character after the prefix changes, so `OnURLChange` emits `uRLChange`;
+write `[Event("urlChange")]` for `urlChange`. An explicit name is used
+verbatim, so `[Event("StatusChanged")]` emits `StatusChanged` and
+`[Event("onStatus")]` keeps an `onStatus` wire name. The delegate returns the
+real dispatch task. Await it when the calling code needs to observe target
+lookup, payload encoding, scheduling, or teardown failures; a `[JS]` method
+returning that task exposes the result as a JavaScript Promise.
 
 <!-- backed-by: spec "Requirement: Typed Event Members Are Awaitable Generated Properties" (modules-core-boundary.md); spec "Requirement: Typed Event Members Initialize Before Lifecycle Hooks" (modules-core-boundary.md) -->
 Generated registration initializes typed event members before `[OnCreate]`
@@ -984,16 +992,21 @@ convertible.
 <!-- backed-by: spec "Requirement: Event Observing Hooks Use Module Object Functions" (modules-core-boundary.md) -->
 To react when JavaScript adds or removes listeners, declare hook methods with
 `[OnStartObserving]` / `[OnStopObserving]` (optionally naming a specific event,
-for example `[OnStopObserving("onChange")]`):
+for example `[OnStopObserving("change")]`):
 
 <!-- backed-by: spec "Requirement: Event Observing Hooks Use Module Object Functions" (modules-core-boundary.md) -->
 ```csharp
 [OnStartObserving]
 public void Start(string eventName) { /* first listener for eventName added */ }
 
-[OnStopObserving("onChange")]
-public void Stop() { /* last listener for onChange removed */ }
+[OnStopObserving("change")]
+public void Stop() { /* last listener for change removed */ }
 ```
+
+<!-- backed-by: spec "Requirement: Event Observing Hooks Use Module Object Functions" (modules-core-boundary.md) -->
+A hook names the JavaScript event name, so a hook for a typed `OnChange` event
+names `change`. A hook that names an event the module does not declare, such
+as the old `onChange`, is build error `EXPOJSI010`.
 
 <!-- backed-by: spec "Requirement: Event Observing Hooks Use Module Object Functions" (modules-core-boundary.md) -->
 Typed events are registered as `_expoDotnet.NativeModule` instances, so the
@@ -1008,13 +1021,17 @@ On the JS facade side, subscribe with `addListener`:
 ```ts
 // packages/example-module/src/index.ts
 export function addStatusListener(listener: (payload: string) => void): EventSubscription {
-  return nativeModule.addListener('onStatus', listener);
+  return nativeModule.addListener('status', listener);
 }
 ```
 
 <!-- backed-by: spec "Requirement: Event Modules Use NativeModule Objects" (modules-core-boundary.md) -->
-The JavaScript listener facade and its event map do not change when moving to a
-typed C# event member.
+A typed `OnStatus` event emits `status`. This changes the JavaScript name for
+modules written when a bare `[Event]` kept the prefix, and for a module that
+moves a legacy `[Events("onStatus")]` event to a typed `OnStatus` member.
+Rename the JavaScript listeners and event-map keys to `status`, or keep the old
+name with `[Event("onStatus")]`. `addListener` accepts any name, so a listener
+left on the old name raises no error and receives no events.
 
 ### Legacy `[Events]` and `SendEventAsync`
 
@@ -1310,7 +1327,7 @@ subset works. `Not yet` means it is not built.
 | Constants | Supported | Supported | Differs: getter-only `[JS]` property, the getter runs on every read |
 | Functions that run off the JavaScript thread | Supported | Supported | Differs: no option; `await Task.Run(...)` in a `Task` method moves the work, and the Promise settles on the runtime |
 | Asynchronous variants of synchronous functions | Supported | Not supported yet | Not yet |
-| Events | Supported | Supported | Differs: a bare `[Event]` keeps the `On` prefix |
+| Events | Supported | Supported | Differs: only the first character after the `On` prefix is lowercased, so `OnURLChange` sends `uRLChange` where Swift sends `urlChange` |
 | Inline and blocking events | Supported | Not supported yet | Not yet: no opt-in mode like Swift `@Event(.inline)` or `@Event(.blocking)`; typed events already dispatch inline when invoked with runtime access |
 | Shared objects | Supported | Supported | Supported |
 | Static members of shared objects | Supported | Not supported yet | Not yet |
