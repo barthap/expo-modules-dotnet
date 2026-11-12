@@ -1301,28 +1301,28 @@ does. `Differs` means it works with the stated difference. `Partial` means a
 subset works. `Not yet` means it is not built.
 
 <!-- upstream: expo/expo#53014 and expo/expo#53016 docs/components/plugins/modules-v2-support/data.ts -->
-| Feature | Swift macros (`expo-modules-macros` 0.33.0) | Kotlin (`expo-modules-v2-react` 0.2.7) | C# | Later item |
-| --- | --- | --- | --- | --- |
-| Modules | Supported | Supported | Differs: `[ExpoModule]` without a name strips a trailing `Module` | EMC-75 |
-| Synchronous functions | Supported | Supported | Differs: a trailing nullable parameter without a default is required; overloads are build errors; the argument count is checked | EMC-63 |
-| Asynchronous functions | Supported | Supported | Supported: `Task` and `Task<T>` | none |
-| Properties | Supported | Supported | Supported | none |
-| Constants | Supported | Supported | Differs: getter-only `[JS]` property, the getter runs on every read | EMC-62 |
-| Functions that run off the JavaScript thread | Supported | Supported | Differs: no option; `await Task.Run(...)` in a `Task` method moves the work, and the Promise settles on the runtime | none |
-| Asynchronous variants of synchronous functions | Supported | Not supported yet | Not yet | EMC-73 |
-| Events | Supported | Supported | Differs: a bare `[Event]` keeps the `On` prefix | EMC-74 |
-| Inline and blocking events | Supported | Not supported yet | Not yet: no opt-in mode like Swift `@Event(.inline)` or `@Event(.blocking)`; typed events already dispatch inline when invoked with runtime access | none (deferred, not planned) |
-| Shared objects | Supported | Supported | Supported | none |
-| Static members of shared objects | Supported | Not supported yet | Not yet | EMC-66 |
-| Records | Supported | Supported | Partial: positional records only | none |
-| Enums | Supported | Supported | Supported: `[EnumMember(Value = ...)]` sets the string; `[JSEnum]` selects numbers | none |
-| Unions | Supported | Not supported yet | Differs: `[Union]` on an `abstract record` with nested `sealed record` cases; an integer case takes only whole numbers when a later number case exists; no tag cases | none |
-| Byte arrays | Supported | Supported | Differs: `byte[]` decodes from and encodes to `ArrayBuffer` only | none |
-| Array buffers | Supported | Not supported yet (in Kotlin, use a byte array) | Supported: `ArrayBuffer` | none |
-| Typed arrays | Supported | Supported | Partial: `Uint8Array` only | EMC-65 |
-| Tuples | Supported | Not supported yet | Not yet: `ValueTuple` is only a callback argument list | EMC-70 |
-| Closure arguments | Supported | Not supported yet | Partial: `JavaScriptCallback` as a parameter only | EMC-67 |
-| JavaScript values as arguments | Supported | Supported | Partial: `JavaScriptValue` only | EMC-72 |
+| Feature | Swift macros (`expo-modules-macros` 0.33.0) | Kotlin (`expo-modules-v2-react` 0.2.7) | C# |
+| --- | --- | --- | --- |
+| Modules | Supported | Supported | Differs: `[ExpoModule]` without a name strips a trailing `Module` |
+| Synchronous functions | Supported | Supported | Differs: a trailing nullable parameter without a default is required; overloads are build errors; the argument count is checked |
+| Asynchronous functions | Supported | Supported | Supported: `Task` and `Task<T>` |
+| Properties | Supported | Supported | Supported |
+| Constants | Supported | Supported | Differs: getter-only `[JS]` property, the getter runs on every read |
+| Functions that run off the JavaScript thread | Supported | Supported | Differs: no option; `await Task.Run(...)` in a `Task` method moves the work, and the Promise settles on the runtime |
+| Asynchronous variants of synchronous functions | Supported | Not supported yet | Not yet |
+| Events | Supported | Supported | Differs: a bare `[Event]` keeps the `On` prefix |
+| Inline and blocking events | Supported | Not supported yet | Not yet: no opt-in mode like Swift `@Event(.inline)` or `@Event(.blocking)`; typed events already dispatch inline when invoked with runtime access |
+| Shared objects | Supported | Supported | Supported |
+| Static members of shared objects | Supported | Not supported yet | Not yet |
+| Records | Supported | Supported | Partial: positional records only |
+| Enums | Supported | Supported | Supported: `[EnumMember(Value = ...)]` sets the string; `[JSEnum]` selects numbers |
+| Unions | Supported | Not supported yet | Differs: `[Union]` on an `abstract record` with nested `sealed record` cases; an integer case takes only whole numbers when a later number case exists; no tag cases |
+| Byte arrays | Supported | Supported | Differs: `byte[]` decodes from and encodes to `ArrayBuffer` only |
+| Array buffers | Supported | Not supported yet (in Kotlin, use a byte array) | Supported: `ArrayBuffer` |
+| Typed arrays | Supported | Supported | Partial: `Uint8Array` only |
+| Tuples | Supported | Not supported yet | Not yet: `ValueTuple` is only a callback argument list |
+| Closure arguments | Supported | Not supported yet | Partial: `JavaScriptCallback` as a parameter only |
+| JavaScript values as arguments | Supported | Supported | Partial: `JavaScriptValue` only |
 
 <!-- backed-by: Modules: test GeneratorEmitsDeterministicProviderForAssembly; source ExpoModulesGenerator.CreateModuleModel -->
 <!-- backed-by: Synchronous functions: source ExpoModulesGenerator.GetRequiredParameterCount; source GeneratedFunction.RequireArgumentCount; spec "Requirement: Optional Nullable Reference Arguments Preserve Authored Defaults" (modules-core-boundary.md); test GeneratorReportsDuplicateJavaScriptFunctionName; test GeneratedProviderUsesDefaultForMissingOrUndefinedOptionalNullableArguments; test GeneratedAsyncArgumentCountFailureRejectsPromise; test GeneratorPreservesLeafFreeCodecPolicyModuleOutputContract -->
