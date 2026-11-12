@@ -49,7 +49,7 @@ internal static class FileSystemRelocation
       CopyEntry(source, target);
       try
       {
-        Directory.Delete(source.NativePath, recursive: true);
+        DeleteEntry(source.NativePath);
       }
       catch (Exception error) when (error is IOException or UnauthorizedAccessException)
       {
@@ -261,13 +261,18 @@ internal static class FileSystemRelocation
     }
   }
 
-  // Deletes a file, a link, or a directory tree. A link is removed, never followed.
+  // Deletes a file, a link, or a directory tree. A link is removed, never followed. On Windows a
+  // read-only file cannot be deleted, so the attribute is cleared first.
   private static void DeleteEntry(string path)
   {
     FileSystemInfo entry = Directory.Exists(path) ? new DirectoryInfo(path) : new FileInfo(path);
     if (!entry.Exists && entry.LinkTarget is null)
     {
       return;
+    }
+    if (OperatingSystem.IsWindows())
+    {
+      ClearReadOnly(entry);
     }
     if (entry is DirectoryInfo directory && entry.LinkTarget is null)
     {
@@ -276,6 +281,25 @@ internal static class FileSystemRelocation
     else
     {
       entry.Delete();
+    }
+  }
+
+  private static void ClearReadOnly(FileSystemInfo entry)
+  {
+    if (entry.LinkTarget is not null)
+    {
+      return;
+    }
+    if (entry is DirectoryInfo directory)
+    {
+      foreach (var child in directory.EnumerateFileSystemInfos("*", AllEntries))
+      {
+        ClearReadOnly(child);
+      }
+    }
+    else if (entry.Attributes.HasFlag(FileAttributes.ReadOnly))
+    {
+      entry.Attributes &= ~FileAttributes.ReadOnly;
     }
   }
 

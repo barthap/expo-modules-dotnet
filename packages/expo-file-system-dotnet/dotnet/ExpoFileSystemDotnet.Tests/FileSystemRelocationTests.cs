@@ -422,6 +422,68 @@ public sealed class FileSystemRelocationTests
     Assert.Equal(new[] { "a.txt=SOURCE", "b.txt=FOREIGN" }, Tree(temp.Path));
   }
 
+  // On Windows the read-only attribute blocks File.Delete and Directory.Delete, and File.Copy copies
+  // it. On macOS and Linux the attribute removes the write bits, which does not block a delete,
+  // so these three tests guard Windows only.
+  private static string WriteReadOnly(string path, string contents)
+  {
+    Write(path, contents);
+    File.SetAttributes(path, File.GetAttributes(path) | FileAttributes.ReadOnly);
+    return path;
+  }
+
+  [Fact]
+  public void OverwriteDeletesReadOnlyEntries()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    Write(Path.Combine(temp.Path, "s", "x.txt"), "X");
+    WriteReadOnly(Path.Combine(temp.Path, "t", "s", "old.txt"), "OLD");
+    WriteReadOnly(Path.Combine(temp.Path, "t", "s", "deep", "older.txt"), "OLDER");
+    var file = NewFile(Write(Path.Combine(temp.Path, "a.txt"), "A"));
+    WriteReadOnly(Path.Combine(temp.Path, "d", "a.txt"), "OLD");
+
+    NewDirectory(Path.Combine(temp.Path, "s")).CopySync(
+        NewDirectory(Path.Combine(temp.Path, "t")),
+        new RelocationOptions(Overwrite: true));
+    file.CopySync(NewDirectory(Path.Combine(temp.Path, "d")), new RelocationOptions(Overwrite: true));
+
+    Assert.Equal(new[] { "x.txt=X" }, Tree(Path.Combine(temp.Path, "t", "s")));
+    Assert.Equal(new[] { "a.txt=A" }, Tree(Path.Combine(temp.Path, "d")));
+  }
+
+  [Fact]
+  public void FailedDirectoryCopyRemovesReadOnlyFilesItCopied()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    WriteReadOnly(Path.Combine(temp.Path, "s", "a.txt"), "A");
+    var locked = Write(Path.Combine(temp.Path, "s", "z", "locked.txt"), "L");
+    var source = NewDirectory(Path.Combine(temp.Path, "s"));
+
+    using (FileLocks.BlockRead(locked))
+    {
+      Assert.ThrowsAny<Exception>(() => source.CopySync(NewDirectory(Path.Combine(temp.Path, "c"))));
+    }
+
+    Assert.False(Directory.Exists(Path.Combine(temp.Path, "c")));
+  }
+
+  [Fact]
+  public void FallbackMoveDeletesAReadOnlySource()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    WriteReadOnly(Path.Combine(temp.Path, "s", "nested", "n.txt"), "N");
+    var source = FileSystemLocation.Parse(Path.Combine(temp.Path, "s"), isDirectory: true, PathFlavors.Current);
+    var destination = FileSystemLocation.Parse(Path.Combine(temp.Path, "m"), isDirectory: true, PathFlavors.Current);
+
+    FileSystemRelocation.Move(source, destination, overwrite: false, (_, _) => false);
+
+    Assert.False(Directory.Exists(Path.Combine(temp.Path, "s")));
+    Assert.Equal(new[] { "m/", "m/nested/", "m/nested/n.txt=N" }, Tree(temp.Path));
+  }
+
   [Fact]
   public void DirectoryMoveToAnotherVolumeCopiesThenDeletes()
   {
