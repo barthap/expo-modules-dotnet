@@ -1245,25 +1245,6 @@ subset works. `Not yet` means it is not built.
 <!-- backed-by: Closure arguments: source JavaScriptCallback -->
 <!-- backed-by: JavaScript values as arguments: spec "Requirement: Generated Module Value Ownership" (managed-jsi-wrappers.md) -->
 
-Each later roadmap item changes one row or section of this guide. These items
-are open:
-
-- EMC-30 TypeScript types: `## Tooling` (no row).
-- EMC-62 constants read once: Constants.
-- EMC-63 trailing nullable arguments are optional: Synchronous functions.
-- EMC-64 `[Union]` replaces `Either`: Unions.
-- EMC-65 typed array kinds: Typed arrays.
-- EMC-66 static members of shared objects: Static members of shared objects.
-- EMC-67 callbacks as delegate parameters: Closure arguments.
-- EMC-68 additional memory pressure: Shared objects (note), and `## Lifecycle and runtime context` if a hook is added.
-- EMC-69 modules find other modules: `## Lifecycle and runtime context` (no row).
-- EMC-70 tuples: Tuples.
-- EMC-71 dates and durations: `## Types` (no row).
-- EMC-72 `JavaScriptObject` and dynamic values: JavaScript values as arguments.
-- EMC-73 one method as both sync and async: Asynchronous variants of synchronous functions.
-- EMC-74 event names drop `On`: Events.
-- EMC-75 default module name is the class name: Modules.
-
 ## Syntax mapping: C# and Swift and Kotlin
 
 <!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/; expo/expo#53039 docs/pages/modules/v2/migrate/from-v1.mdx -->
