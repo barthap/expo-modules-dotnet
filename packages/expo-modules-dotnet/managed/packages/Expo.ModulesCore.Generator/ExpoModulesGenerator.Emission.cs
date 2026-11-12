@@ -14,9 +14,24 @@ public sealed partial class ExpoModulesGenerator
       IEnumerable<ExpoSharedObjectModel> sharedObjects)
   {
     var sharedObjectModels = sharedObjects.ToArray();
+
+    // EXPOJSI033 to 035 describe an enum declaration, and every position that uses the enum finds the
+    // same error, so an equal one (same ID, location, and arguments) is reported once. Other IDs keep
+    // their reporting.
+    var reportedEnumDiagnostics = new HashSet<ExpoDiagnosticModel>();
+    void Report(ExpoDiagnosticModel diagnostic)
+    {
+      if (IsEnumDeclarationDiagnostic(diagnostic.DescriptorId) && !reportedEnumDiagnostics.Add(diagnostic))
+      {
+        return;
+      }
+
+      context.ReportDiagnostic(ToDiagnostic(diagnostic));
+    }
+
     foreach (var diagnostic in sharedObjectModels.SelectMany(sharedObject => sharedObject.Diagnostics.Values))
     {
-      context.ReportDiagnostic(ToDiagnostic(diagnostic));
+      Report(diagnostic);
     }
 
     var moduleModels = modules.ToArray();
@@ -30,7 +45,7 @@ public sealed partial class ExpoModulesGenerator
 
     foreach (var diagnostic in moduleModels.SelectMany(module => module.Diagnostics.Values))
     {
-      context.ReportDiagnostic(ToDiagnostic(diagnostic));
+      Report(diagnostic);
     }
 
     // The owning module's full JavaScript namespace is validated across the whole
@@ -99,6 +114,30 @@ public sealed partial class ExpoModulesGenerator
       if (emittedRecordTypes.Add(recordCodec.RecordTypeName))
       {
         EmitRecordCodec(builder, recordCodec);
+      }
+    }
+
+    var emittedUnionTypes = new HashSet<string>(StringComparer.Ordinal);
+    foreach (var unionCodec in moduleModels
+                 .SelectMany(module => module.UnionCodecs.Values)
+                 .Concat(moduleModels.SelectMany(module =>
+                     GetEmittableClasses(module).SelectMany(sharedObject => sharedObject.UnionCodecs.Values))))
+    {
+      if (emittedUnionTypes.Add(unionCodec.UnionTypeName))
+      {
+        EmitUnionCodec(builder, unionCodec);
+      }
+    }
+
+    var emittedEnumTypes = new HashSet<string>(StringComparer.Ordinal);
+    foreach (var enumCodec in moduleModels
+                 .SelectMany(module => module.EnumCodecs.Values)
+                 .Concat(moduleModels.SelectMany(module =>
+                     GetEmittableClasses(module).SelectMany(sharedObject => sharedObject.EnumCodecs.Values))))
+    {
+      if (emittedEnumTypes.Add(enumCodec.EnumTypeName))
+      {
+        EmitEnumCodec(builder, enumCodec);
       }
     }
 
@@ -759,6 +798,13 @@ public sealed partial class ExpoModulesGenerator
       "EXPOJSI026" => ExpoModulesDiagnostics.UnsupportedSharedObjectEventProperty,
       "EXPOJSI027" => ExpoModulesDiagnostics.UnsupportedSharedObjectEventPayload,
       "EXPOJSI028" => ExpoModulesDiagnostics.DuplicateSharedObjectEventName,
+      "EXPOJSI029" => ExpoModulesDiagnostics.InvalidUnionDeclaration,
+      "EXPOJSI030" => ExpoModulesDiagnostics.InvalidUnionCase,
+      "EXPOJSI031" => ExpoModulesDiagnostics.DuplicateUnionPayload,
+      "EXPOJSI032" => ExpoModulesDiagnostics.UnreachableUnionCase,
+      "EXPOJSI033" => ExpoModulesDiagnostics.InvalidEnumJavaScriptValue,
+      "EXPOJSI034" => ExpoModulesDiagnostics.DuplicateEnumJavaScriptValue,
+      "EXPOJSI035" => ExpoModulesDiagnostics.AliasedStringEnumMember,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());
@@ -903,7 +949,8 @@ public sealed partial class ExpoModulesGenerator
     {
       EmitAsyncSettlement(builder, "            ", function);
     }
-    builder.AppendLine("          }");
+    builder.AppendLine("          },");
+    builder.AppendLine("          createError: GeneratedFunction.CreateJavaScriptError");
     builder.AppendLine("      );");
     if (!hasLeafArguments)
     {
@@ -1304,7 +1351,15 @@ public sealed partial class ExpoModulesGenerator
     {
       foreach (var field in codec.Fields.Values)
       {
-        builder.AppendLine($"{indent}{GetLocalDeclaration(field.Codec, GetRecordFieldLocalName(field), $"{field.Codec.Expression}.Decode(obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\"), runtime)")}");
+        var read = $"obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\")";
+        if (field.Kind == ExpoRecordFieldKind.OptionalByType)
+        {
+          builder.AppendLine($"{indent}{GetLocalDeclaration(field.Codec, GetRecordFieldLocalName(field), $"{field.Codec.Expression}.Decode({read}, runtime)")}");
+          continue;
+        }
+
+        builder.AppendLine($"{indent}var {GetRecordFieldPropertyLocalName(field)} = {read};");
+        EmitRecordFieldDecode(builder, indent, field);
       }
     });
     builder.AppendLine("    }");
@@ -1316,8 +1371,8 @@ public sealed partial class ExpoModulesGenerator
     {
       foreach (var field in codec.Fields.Values)
       {
-        builder.AppendLine($"{indent}using var {field.ParameterName}Value = obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\");");
-        builder.AppendLine($"{indent}{GetLocalDeclaration(field.Codec, GetRecordFieldLocalName(field), $"{field.Codec.Expression}.Decode({field.ParameterName}Value, runtime)")}");
+        builder.AppendLine($"{indent}using var {GetRecordFieldPropertyLocalName(field)} = obj.GetProperty(\"{EscapeString(field.JavaScriptName)}\");");
+        EmitRecordFieldDecode(builder, indent, field);
       }
     });
     builder.AppendLine("    }");
@@ -1355,8 +1410,185 @@ public sealed partial class ExpoModulesGenerator
     builder.AppendLine();
   }
 
+  private static string GetUnionKindCondition(ExpoGeneratedUnionCaseModel unionCase)
+  {
+    var kinds = Enum.GetValues(typeof(ExpoJavaScriptKinds))
+        .Cast<ExpoJavaScriptKinds>()
+        .Where(kind => kind is not (ExpoJavaScriptKinds.None or ExpoJavaScriptKinds.All) && (unionCase.Kinds & kind) == kind)
+        .Select(kind => $"__expoKind == global::Expo.JSI.JavaScriptValueKind.{kind}");
+    var condition = string.Join(" || ", kinds);
+    return unionCase.IntegerGate.Length == 0 ? condition : $"{condition} && {unionCase.IntegerGate}";
+  }
+
+  // One emitter for every union codec: a fixed sequence of typed payload-codec calls, with no
+  // reflection and no object-typed values. Decode visits the cases in declaration order and skips a
+  // case whose kinds do not contain the value kind. An attempt lets an AggregateException (a release
+  // failure) propagate and treats any other exception as a failed attempt. Case construction runs
+  // outside the attempt, so a throwing constructor never falls through to a later case.
+  private static void EmitUnionCodec(StringBuilder builder, ExpoGeneratedUnionCodecModel codec)
+  {
+    var cases = codec.Cases.Values;
+    var unionTypeName = codec.UnionTypeName;
+
+    builder.AppendLine($"  private readonly struct {codec.CodecTypeName} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<{unionTypeName}>");
+    builder.AppendLine("  {");
+    builder.AppendLine($"    public static {unionTypeName} Decode(global::Expo.JSI.JavaScriptValueRef value, global::Expo.JSI.JavaScriptRuntime runtime)");
+    builder.AppendLine("    {");
+    builder.AppendLine("      var __expoKind = value.Kind;");
+    if (cases.Any(unionCase => unionCase.IntegerGate.Length > 0))
+    {
+      builder.AppendLine("      var __expoNumber = __expoKind == global::Expo.JSI.JavaScriptValueKind.Number ? value.AsDouble() : 0d;");
+    }
+    builder.AppendLine("      global::System.Exception? __expoFailure = null;");
+    for (var index = 0; index < cases.Count; index++)
+    {
+      var unionCase = cases[index];
+      var payload = $"__expoPayload{index}";
+      var decoded = $"__expoDecoded{index}";
+      if (unionCase.Kinds != ExpoJavaScriptKinds.All || unionCase.IntegerGate.Length > 0)
+      {
+        builder.AppendLine($"      if ({GetUnionKindCondition(unionCase)})");
+      }
+      builder.AppendLine("      {");
+      builder.AppendLine($"        var {decoded} = false;");
+      builder.AppendLine($"        {unionCase.PayloadCodec.ValueTypeName} {payload} = default!;");
+      builder.AppendLine("        try");
+      builder.AppendLine("        {");
+      builder.AppendLine($"          {payload} = {unionCase.PayloadCodec.Expression}.Decode(value, runtime);");
+      builder.AppendLine($"          {decoded} = true;");
+      builder.AppendLine("        }");
+      builder.AppendLine("        catch (global::System.AggregateException)");
+      builder.AppendLine("        {");
+      builder.AppendLine("          throw;");
+      builder.AppendLine("        }");
+      builder.AppendLine("        catch (global::System.Exception __expoAttemptFailure)");
+      builder.AppendLine("        {");
+      builder.AppendLine("          __expoFailure = __expoAttemptFailure;");
+      builder.AppendLine("        }");
+      builder.AppendLine($"        if ({decoded})");
+      builder.AppendLine("        {");
+      if (HoldsLeaves(unionCase.PayloadCodec))
+      {
+        builder.AppendLine("          try");
+        builder.AppendLine("          {");
+        builder.AppendLine($"            return new {unionCase.CaseTypeName}({payload});");
+        builder.AppendLine("          }");
+        builder.AppendLine("          catch");
+        builder.AppendLine("          {");
+        EmitRelease(
+            builder,
+            "            ",
+            new[] { new LeafValue(unionCase.PayloadCodec.ValueTypeName, unionCase.PayloadCodec.Expression, payload) });
+        builder.AppendLine("            throw;");
+        builder.AppendLine("          }");
+      }
+      else
+      {
+        builder.AppendLine($"          return new {unionCase.CaseTypeName}({payload});");
+      }
+      builder.AppendLine("        }");
+      builder.AppendLine("      }");
+    }
+    var expected = string.Join(", ", cases.Select(unionCase => $"\"{EscapeString(unionCase.PayloadMessageName)}\""));
+    builder.AppendLine($"      throw new global::Expo.ModulesCore.UnionCaseMismatchException(\"{EscapeString(codec.UnionName)}\", new[] {{ {expected} }}, __expoKind, __expoFailure);");
+    builder.AppendLine("    }");
+    builder.AppendLine();
+    builder.AppendLine($"    public static {unionTypeName} Decode(global::Expo.JSI.JavaScriptValue value, global::Expo.JSI.JavaScriptRuntime runtime) =>");
+    builder.AppendLine("        Decode(value.Ref, runtime);");
+    builder.AppendLine();
+    builder.AppendLine($"    public static global::Expo.JSI.JavaScriptValue Encode({unionTypeName} value, global::Expo.JSI.JavaScriptRuntime runtime)");
+    builder.AppendLine("    {");
+    builder.AppendLine("      global::System.ArgumentNullException.ThrowIfNull(value);");
+    builder.AppendLine("      return value switch");
+    builder.AppendLine("      {");
+    for (var index = 0; index < cases.Count; index++)
+    {
+      var unionCase = cases[index];
+      builder.AppendLine($"        {unionCase.CaseTypeName} __expoCase{index} => {unionCase.PayloadCodec.Expression}.Encode(__expoCase{index}.{unionCase.PayloadPropertyName}, runtime),");
+    }
+    var notACaseName = unionTypeName.StartsWith("global::", StringComparison.Ordinal) ? unionTypeName.Substring("global::".Length) : unionTypeName;
+    builder.AppendLine($"        _ => throw global::Expo.ModulesCore.Codecs.UnionCodecErrors.NotACase(value, \"{EscapeString(notACaseName)}\"),");
+    builder.AppendLine("      };");
+    builder.AppendLine("    }");
+    if (codec.ResourceOwnership == ExpoResourceOwnership.HoldsLeaves)
+    {
+      builder.AppendLine();
+      builder.AppendLine($"    public static void Release({unionTypeName} value)");
+      builder.AppendLine("    {");
+      builder.AppendLine("      switch (value)");
+      builder.AppendLine("      {");
+      for (var index = 0; index < cases.Count; index++)
+      {
+        var unionCase = cases[index];
+        if (!HoldsLeaves(unionCase.PayloadCodec))
+        {
+          continue;
+        }
+
+        builder.AppendLine($"        case {unionCase.CaseTypeName} __expoCase{index}:");
+        builder.AppendLine("        {");
+        EmitRelease(
+            builder,
+            "          ",
+            new[]
+            {
+                new LeafValue(
+                    unionCase.PayloadCodec.ValueTypeName,
+                    unionCase.PayloadCodec.Expression,
+                    $"__expoCase{index}.{unionCase.PayloadPropertyName}"),
+            });
+        builder.AppendLine("          return;");
+        builder.AppendLine("        }");
+      }
+      builder.AppendLine("      }");
+      builder.AppendLine("    }");
+    }
+    builder.AppendLine("  }");
+    builder.AppendLine();
+  }
+
   // Emits the field decodes and the record construction. With leaf fields, they are declared
   // before a try whose catch releases the ones already decoded and rethrows.
+  // One emitter for every string enum codec: two constant switches, so the codec needs no
+  // reflection and no runtime context, and holds no leaves (the default Release). The decode error
+  // lists the declared strings in declaration order; the encode error renders the underlying number
+  // with the invariant culture, so the error path reads no enum metadata either.
+  private static void EmitEnumCodec(StringBuilder builder, ExpoGeneratedEnumCodecModel codec)
+  {
+    var enumTypeName = codec.EnumTypeName;
+    var displayName = codec.DisplayName;
+    var members = codec.Members.Values;
+    var accepted = string.Join(", ", members.Select(member => $"'{member.JavaScriptName}'"));
+
+    builder.AppendLine($"  private readonly struct {codec.CodecTypeName} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<{enumTypeName}>");
+    builder.AppendLine("  {");
+    builder.AppendLine($"    public static {enumTypeName} Decode(global::Expo.JSI.JavaScriptValueRef value, global::Expo.JSI.JavaScriptRuntime runtime) => FromJavaScriptString(value.AsString());");
+    builder.AppendLine();
+    builder.AppendLine($"    public static {enumTypeName} Decode(global::Expo.JSI.JavaScriptValue value, global::Expo.JSI.JavaScriptRuntime runtime) => FromJavaScriptString(value.AsString());");
+    builder.AppendLine();
+    builder.AppendLine($"    public static global::Expo.JSI.JavaScriptValue Encode({enumTypeName} value, global::Expo.JSI.JavaScriptRuntime runtime) => runtime.CreateString(ToJavaScriptString(value));");
+    builder.AppendLine();
+    builder.AppendLine($"    private static {enumTypeName} FromJavaScriptString(string value) => value switch");
+    builder.AppendLine("    {");
+    foreach (var member in members)
+    {
+      builder.AppendLine($"      \"{EscapeString(member.JavaScriptName)}\" => {enumTypeName}.{EscapeIdentifier(member.CSharpName)},");
+    }
+    builder.AppendLine($"      _ => throw new global::System.ArgumentException(\"'\" + value + \"' is not a valid {EscapeString(displayName)} value. It must be one of: {EscapeString(accepted)}\"),");
+    builder.AppendLine("    };");
+    builder.AppendLine();
+    builder.AppendLine($"    private static string ToJavaScriptString({enumTypeName} value) => value switch");
+    builder.AppendLine("    {");
+    foreach (var member in members)
+    {
+      builder.AppendLine($"      {enumTypeName}.{EscapeIdentifier(member.CSharpName)} => \"{EscapeString(member.JavaScriptName)}\",");
+    }
+    builder.AppendLine($"      _ => throw new global::System.InvalidOperationException((({codec.UnderlyingTypeName})value).ToString(global::System.Globalization.CultureInfo.InvariantCulture) + \" is not a member of {EscapeString(displayName)}, so it has no JavaScript value.\"),");
+    builder.AppendLine("    };");
+    builder.AppendLine("  }");
+    builder.AppendLine();
+  }
+
   private static void EmitRecordDecodeBody(
       StringBuilder builder,
       ExpoGeneratedRecordCodecModel codec,
@@ -1411,6 +1643,36 @@ public sealed partial class ExpoModulesGenerator
 
   private static string GetRecordFieldLocalName(ExpoGeneratedRecordFieldModel field) =>
       field.ParameterName == "value" ? "__expoValue" : field.ParameterName;
+
+  // Decodes one record field from its property local, read once. A required field throws a named
+  // ArgumentException for JavaScript undefined before the codec runs; a defaulted field yields its
+  // inlined default without calling the codec. Explicit null and every other value go to the
+  // field codec.
+  private static void EmitRecordFieldDecode(
+      StringBuilder builder,
+      string indent,
+      ExpoGeneratedRecordFieldModel field)
+  {
+    var propertyLocal = GetRecordFieldPropertyLocalName(field);
+    var decode = $"{field.Codec.Expression}.Decode({propertyLocal}, runtime)";
+    var undefinedCheck = $"{propertyLocal}.Kind == global::Expo.JSI.JavaScriptValueKind.Undefined";
+    if (field.Kind == ExpoRecordFieldKind.Required)
+    {
+      // Thrown inside the decode try, so leaves of earlier fields are released by its catch.
+      builder.AppendLine($"{indent}if ({undefinedCheck}) throw new global::System.ArgumentException(\"Value for property '{EscapeString(field.JavaScriptName)}' is required, got undefined\");");
+    }
+    else if (field.Kind == ExpoRecordFieldKind.Defaulted)
+    {
+      decode = $"{undefinedCheck} ? {field.DefaultValueExpression} : {decode}";
+    }
+
+    builder.AppendLine($"{indent}{GetLocalDeclaration(field.Codec, GetRecordFieldLocalName(field), decode)}");
+  }
+
+  // The owned overload already names this local `<field>Value`; the borrowed overload uses the
+  // same name, so an OptionalByType field keeps today's text in both.
+  private static string GetRecordFieldPropertyLocalName(ExpoGeneratedRecordFieldModel field) =>
+      $"{field.ParameterName}Value";
 
   private static int GetRequiredParameterCount(ExpoFunctionModel function) =>
       function.Parameters.Values.Count(parameter => !parameter.HasDefaultValue);

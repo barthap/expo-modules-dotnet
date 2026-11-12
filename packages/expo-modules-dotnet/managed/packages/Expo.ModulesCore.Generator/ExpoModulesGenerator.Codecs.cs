@@ -5,37 +5,87 @@ namespace Expo.ModulesCore.Generator;
 
 public sealed partial class ExpoModulesGenerator
 {
+  // Renders a parameter default as a C# expression of the parameter's own type, so a conditional
+  // `undefined ? <default> : <decode>` has that type. The text depends only on the constant, not
+  // on the culture or the runtime that hosts the compiler. Codec resolution rejects every type
+  // whose constant this does not cover (char, decimal, nint) before a default is rendered.
   private static string GetDefaultValueExpression(ITypeSymbol typeSymbol, object? value)
   {
+    var isNullableValueType = typeSymbol is INamedTypeSymbol
+    {
+      ConstructedFrom.SpecialType: SpecialType.System_Nullable_T,
+    };
     if (value is null)
     {
-      return "null";
+      if (typeSymbol.IsValueType && !isNullableValueType)
+      {
+        return $"default({typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})";
+      }
+
+      // `string Name = null` is accepted (the author gets CS8625). The null-forgiving operator keeps
+      // CS8604 out of the generated glue, where the default reaches a non-nullable parameter.
+      return typeSymbol.IsReferenceType && typeSymbol.NullableAnnotation != NullableAnnotation.Annotated
+          ? "null!"
+          : "null";
     }
 
-    if (typeSymbol is INamedTypeSymbol namedType &&
-        namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
+    if (isNullableValueType)
     {
-      typeSymbol = namedType.TypeArguments.Single();
+      typeSymbol = ((INamedTypeSymbol)typeSymbol).TypeArguments.Single();
+    }
+
+    if (typeSymbol is INamedTypeSymbol { TypeKind: TypeKind.Enum, EnumUnderlyingType: { } underlyingType })
+    {
+      return $"({typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)})({GetEnumUnderlyingLiteral(underlyingType.SpecialType, value)})";
     }
 
     return typeSymbol.SpecialType switch
     {
       SpecialType.System_Boolean => (bool)value ? "true" : "false",
       SpecialType.System_String => $"\"{EscapeString((string)value)}\"",
-      SpecialType.System_SByte => ((sbyte)value).ToString(CultureInfo.InvariantCulture),
-      SpecialType.System_Byte => ((byte)value).ToString(CultureInfo.InvariantCulture),
-      SpecialType.System_Int16 => ((short)value).ToString(CultureInfo.InvariantCulture),
-      SpecialType.System_UInt16 => ((ushort)value).ToString(CultureInfo.InvariantCulture),
+      SpecialType.System_SByte => $"(sbyte)({((sbyte)value).ToString(CultureInfo.InvariantCulture)})",
+      SpecialType.System_Byte => $"(byte)({((byte)value).ToString(CultureInfo.InvariantCulture)})",
+      SpecialType.System_Int16 => $"(short)({((short)value).ToString(CultureInfo.InvariantCulture)})",
+      SpecialType.System_UInt16 => $"(ushort)({((ushort)value).ToString(CultureInfo.InvariantCulture)})",
       SpecialType.System_Int32 => ((int)value).ToString(CultureInfo.InvariantCulture),
-      SpecialType.System_UInt32 => ((uint)value).ToString(CultureInfo.InvariantCulture),
+      SpecialType.System_UInt32 => ((uint)value).ToString(CultureInfo.InvariantCulture) + "U",
       SpecialType.System_Int64 => ((long)value).ToString(CultureInfo.InvariantCulture) + "L",
       SpecialType.System_UInt64 => ((ulong)value).ToString(CultureInfo.InvariantCulture) + "UL",
-      SpecialType.System_Single => ((float)value).ToString("R", CultureInfo.InvariantCulture) + "F",
-      SpecialType.System_Double => ((double)value).ToString("R", CultureInfo.InvariantCulture),
+      SpecialType.System_Single => GetSingleLiteral((float)value),
+      SpecialType.System_Double => GetDoubleLiteral((double)value),
+      // Unreachable: a type outside this table has no codec, and the caller reports that first.
       _ => throw new InvalidOperationException(
           $"Unsupported default value type: {typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}"
       ),
     };
+  }
+
+  // An enum value of any underlying type fits the literal of that type, and an explicit enum cast
+  // from it always compiles, also for a [Flags] combination or a value that names no member.
+  private static string GetEnumUnderlyingLiteral(SpecialType underlyingType, object value) => underlyingType switch
+  {
+    SpecialType.System_UInt32 => ((uint)value).ToString(CultureInfo.InvariantCulture) + "U",
+    SpecialType.System_Int64 => ((long)value).ToString(CultureInfo.InvariantCulture) + "L",
+    SpecialType.System_UInt64 => ((ulong)value).ToString(CultureInfo.InvariantCulture) + "UL",
+    _ => Convert.ToInt32(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture),
+  };
+
+  private static string GetDoubleLiteral(double value)
+  {
+    if (double.IsNaN(value)) return "global::System.Double.NaN";
+    if (double.IsPositiveInfinity(value)) return "global::System.Double.PositiveInfinity";
+    if (double.IsNegativeInfinity(value)) return "global::System.Double.NegativeInfinity";
+    if (value == 0 && double.IsNegativeInfinity(1 / value)) return "-0.0";
+    return value.ToString("G17", CultureInfo.InvariantCulture);
+  }
+
+  private static string GetSingleLiteral(float value)
+  {
+    if (float.IsNaN(value)) return "global::System.Single.NaN";
+    if (float.IsPositiveInfinity(value)) return "global::System.Single.PositiveInfinity";
+    if (float.IsNegativeInfinity(value)) return "global::System.Single.NegativeInfinity";
+    if (value == 0 && float.IsNegativeInfinity(1 / value)) return "-0.0F";
+    return value.ToString("G9", CultureInfo.InvariantCulture) + "F";
   }
 
   // Codec type arguments keep their nullable reference annotations. A nullable inner codec
@@ -63,7 +113,7 @@ public sealed partial class ExpoModulesGenerator
   private static bool HoldsLeaves(ExpoCodecDescriptor? codec) =>
       codec?.ResourceOwnership == ExpoResourceOwnership.HoldsLeaves;
 
-  // A list, dictionary, nullable, or union codec holds leaves when a child does, and releases them
+  // A list, dictionary, or nullable codec holds leaves when a child does, and releases them
   // through the child codec.
   private static ExpoCodecDescriptor CompositeCodec(ExpoCodecDescriptor codec, ExpoCodecDescriptor child) =>
       HoldsLeaves(child) ? codec with { ResourceOwnership = ExpoResourceOwnership.HoldsLeaves } : codec;
@@ -95,13 +145,16 @@ public sealed partial class ExpoModulesGenerator
     };
   }
 
+  // The value of Expo.ModulesCore.EnumRepresentation.Number.
+  private const int NumberEnumRepresentation = 1;
+
+  // The effective representation of an enum at one codec position: the usage-level [JSEnum] on the
+  // parameter or return value when present, else the enum type's [JSEnum], else String.
   private static bool UsesNumberEnumRepresentation(
       ITypeSymbol enumType,
-      IEnumerable<AttributeData>? usageAttributes)
-  {
-    return GetEnumRepresentation(usageAttributes) == 1 ||
-        GetEnumRepresentation(enumType.GetAttributes()) == 1;
-  }
+      IEnumerable<AttributeData>? usageAttributes) =>
+      (GetEnumRepresentation(usageAttributes) ?? GetEnumRepresentation(enumType.GetAttributes())) ==
+      NumberEnumRepresentation;
 
   private static int? GetEnumRepresentation(IEnumerable<AttributeData>? attributes)
   {
@@ -125,6 +178,14 @@ public sealed partial class ExpoModulesGenerator
     return null;
   }
 
+  // The type's declaration, else the member. A type that is a source symbol of another compilation,
+  // as an IDE project reference yields, has a location Roslyn rejects in a diagnostic.
+  private static Location? GetTypeLocationOrMember(ITypeSymbol type, ISymbol member) =>
+      type.Locations.FirstOrDefault() is { } location &&
+      (!location.IsInSource || SymbolEqualityComparer.Default.Equals(type.ContainingAssembly, member.ContainingAssembly))
+          ? location
+          : member.Locations.FirstOrDefault();
+
   private static string GetDiagnosticTypeName(ITypeSymbol typeSymbol)
   {
     return typeSymbol.SpecialType switch
@@ -137,10 +198,12 @@ public sealed partial class ExpoModulesGenerator
     };
   }
 
+  // A usage-level [JSEnum] on a Nullable<TEnum> parameter or return value applies to the enum inside.
   private static ExpoCodecDescriptor? TryGetNullableCodec(
       ITypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs)
+      ExpoCodecCollector codecs,
+      IEnumerable<AttributeData>? usageAttributes)
   {
     if (typeSymbol is not INamedTypeSymbol namedType ||
         namedType.ConstructedFrom.SpecialType != SpecialType.System_Nullable_T)
@@ -149,7 +212,7 @@ public sealed partial class ExpoModulesGenerator
     }
 
     var valueType = namedType.TypeArguments.Single();
-    var valueCodec = AsCompositeChildCodec(GetCodec(valueType, diagnostics, recordCodecs));
+    var valueCodec = AsCompositeChildCodec(GetCodec(valueType, diagnostics, codecs, usageAttributes));
     if (valueCodec is null)
     {
       return null;
@@ -181,7 +244,7 @@ public sealed partial class ExpoModulesGenerator
   private static bool TryGetNullableReferenceCodec(
       ITypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs,
+      ExpoCodecCollector codecs,
       out ExpoCodecDescriptor? codec)
   {
     codec = null;
@@ -207,7 +270,7 @@ public sealed partial class ExpoModulesGenerator
     // callback is always handled here.
     if (IsJavaScriptCallbackType(valueType))
     {
-      codec = TryGetJavaScriptCallbackCodec(valueType, diagnostics, recordCodecs, "NullableJavaScriptCallbackCodec");
+      codec = TryGetJavaScriptCallbackCodec(valueType, diagnostics, codecs, "NullableJavaScriptCallbackCodec");
       return true;
     }
 
@@ -219,7 +282,7 @@ public sealed partial class ExpoModulesGenerator
       if (constructedType == "global::System.Collections.Generic.IReadOnlyList<T>")
       {
         var elementType = namedType.TypeArguments.Single();
-        if (AsCompositeChildCodec(GetCodec(elementType, diagnostics, recordCodecs)) is { } elementCodec)
+        if (AsCompositeChildCodec(GetCodec(elementType, diagnostics, codecs)) is { } elementCodec)
         {
           codec = CompositeCodec(
               OrdinaryCodec($"NullableReadOnlyListCodec<{GetCodecTypeArgumentName(elementType)}, {elementCodec.Expression}>"),
@@ -239,7 +302,7 @@ public sealed partial class ExpoModulesGenerator
         }
 
         var dictionaryValueType = namedType.TypeArguments[1];
-        if (AsCompositeChildCodec(GetCodec(dictionaryValueType, diagnostics, recordCodecs)) is { } dictionaryValueCodec)
+        if (AsCompositeChildCodec(GetCodec(dictionaryValueType, diagnostics, codecs)) is { } dictionaryValueCodec)
         {
           var codecName =
               constructedType == "global::System.Collections.Generic.Dictionary<TKey, TValue>"
@@ -255,7 +318,7 @@ public sealed partial class ExpoModulesGenerator
       }
     }
 
-    if (AsCompositeChildCodec(GetCodec(valueType, diagnostics, recordCodecs)) is { } valueCodec)
+    if (AsCompositeChildCodec(GetCodec(valueType, diagnostics, codecs)) is { } valueCodec)
     {
       codec = CompositeCodec(
           OrdinaryCodec($"NullableReferenceCodec<{GetCodecTypeArgumentName(valueType)}, {valueCodec.Expression}>"),
@@ -265,8 +328,6 @@ public sealed partial class ExpoModulesGenerator
 
     return true;
   }
-
-  private const string EitherMetadataName = "global::Expo.ModulesCore.Either<TFirst, TSecond>";
 
   private const string Uint8ArrayMetadataName = "global::Expo.ModulesCore.Uint8Array";
 
@@ -284,79 +345,10 @@ public sealed partial class ExpoModulesGenerator
           SpecialType.System_Single or
           SpecialType.System_Double;
 
-  // The JavaScript kind a union member decodes from. The names mirror JavaScriptValueKind and the
-  // Kind of the leaf codecs, which the managed union codec compares at runtime. A type outside the
-  // table, or an annotated one (null is not a kind), is not a union member. A Uint8Array is an
-  // Object, and its codec then proves that the object is a Uint8Array.
-  private static string? GetUnionMemberKind(ITypeSymbol typeSymbol)
-  {
-    if (typeSymbol.NullableAnnotation == NullableAnnotation.Annotated)
-    {
-      return null;
-    }
-
-    switch (typeSymbol.SpecialType)
-    {
-      case SpecialType.System_String:
-        return "String";
-      case SpecialType.System_Boolean:
-        return "Bool";
-      case var specialType when IsNumberSpecialType(specialType):
-        return "Number";
-    }
-
-    if (typeSymbol is IArrayTypeSymbol { Rank: 1, ElementType.SpecialType: SpecialType.System_Byte })
-    {
-      return "ArrayBuffer";
-    }
-
-    return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) switch
-    {
-      ArrayBufferMetadataName or
-      "global::System.Memory<byte>" or
-      "global::System.ReadOnlyMemory<byte>" => "ArrayBuffer",
-      Uint8ArrayMetadataName => "Object",
-      _ => null,
-    };
-  }
-
-  // A union is one ordinary codec. Its members must be of different JavaScript kinds, and it holds
-  // leaves when a member does.
-  private static ExpoCodecDescriptor? GetEitherCodec(
-      INamedTypeSymbol typeSymbol,
-      List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs)
-  {
-    var firstType = typeSymbol.TypeArguments[0];
-    var secondType = typeSymbol.TypeArguments[1];
-
-    // The kinds are checked before any member codec resolves, so a rejected union adds no record
-    // codec and no diagnostic as a side effect.
-    var firstKind = GetUnionMemberKind(firstType);
-    var secondKind = GetUnionMemberKind(secondType);
-    if (firstKind is null || secondKind is null || firstKind == secondKind)
-    {
-      return null;
-    }
-
-    var firstCodec = AsCompositeChildCodec(GetCodec(firstType, diagnostics, recordCodecs));
-    var secondCodec = AsCompositeChildCodec(GetCodec(secondType, diagnostics, recordCodecs));
-    if (firstCodec is null || secondCodec is null)
-    {
-      return null;
-    }
-
-    var codec = OrdinaryCodec(
-        $"EitherCodec<{GetCodecTypeArgumentName(firstType)}, {firstCodec.Expression}, " +
-        $"{GetCodecTypeArgumentName(secondType)}, {secondCodec.Expression}>"
-    );
-    return CompositeCodec(CompositeCodec(codec, firstCodec), secondCodec);
-  }
-
   private static ExpoCodecDescriptor? TryGetReadOnlyListCodec(
       ITypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs)
+      ExpoCodecCollector codecs)
   {
     if (typeSymbol is not INamedTypeSymbol namedType ||
         namedType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) !=
@@ -366,7 +358,7 @@ public sealed partial class ExpoModulesGenerator
     }
 
     var elementType = namedType.TypeArguments.Single();
-    var elementCodec = AsCompositeChildCodec(GetCodec(elementType, diagnostics, recordCodecs));
+    var elementCodec = AsCompositeChildCodec(GetCodec(elementType, diagnostics, codecs));
     if (elementCodec is null)
     {
       return null;
@@ -384,7 +376,7 @@ public sealed partial class ExpoModulesGenerator
   private static ExpoCodecDescriptor? TryGetDictionaryCodec(
       ITypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs)
+      ExpoCodecCollector codecs)
   {
     if (typeSymbol is not INamedTypeSymbol namedType)
     {
@@ -404,7 +396,7 @@ public sealed partial class ExpoModulesGenerator
     }
 
     var valueType = namedType.TypeArguments[1];
-    var valueCodec = AsCompositeChildCodec(GetCodec(valueType, diagnostics, recordCodecs));
+    var valueCodec = AsCompositeChildCodec(GetCodec(valueType, diagnostics, codecs));
     if (valueCodec is null)
     {
       return null;
@@ -422,10 +414,10 @@ public sealed partial class ExpoModulesGenerator
   private static ExpoCodecDescriptor? TryGetRecordCodec(
       INamedTypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs)
+      ExpoCodecCollector codecs)
   {
     var recordTypeName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-    var existing = recordCodecs.FirstOrDefault(codec => codec.RecordTypeName == recordTypeName);
+    var existing = codecs.Records.FirstOrDefault(codec => codec.RecordTypeName == recordTypeName);
     if (existing is not null)
     {
       return RecordCodecDescriptor(existing);
@@ -437,12 +429,28 @@ public sealed partial class ExpoModulesGenerator
       return null;
     }
 
+    // A record from a referenced assembly has no location in this compilation, and Roslyn rejects a
+    // diagnostic located in another compilation's file, so its diagnostics land at the use site.
+    var declaredHere = SymbolEqualityComparer.Default.Equals(typeSymbol.ContainingAssembly, codecs.Assembly);
     var fields = new List<ExpoGeneratedRecordFieldModel>();
     foreach (var parameter in constructor.Parameters)
     {
+      var parameterLocation = declaredHere ? parameter.Locations.FirstOrDefault() : codecs.UseSite;
+      // Checked from the symbol before the field codec resolves, so a rejected record adds no
+      // codec for the struct it holds.
+      if (GetRecordFieldDefaultRejection(parameter) is { } rejection)
+      {
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.UnsupportedRecordField.Id,
+            parameterLocation,
+            new EquatableArray<string>(new[] { typeSymbol.Name, parameter.Name, rejection })
+        ));
+        return null;
+      }
+
       var property = typeSymbol.GetMembers().OfType<IPropertySymbol>()
           .FirstOrDefault(item => item.Name == parameter.Name);
-      var fieldCodec = GetCodec(parameter.Type, diagnostics, recordCodecs);
+      var fieldCodec = GetCodecAt(parameterLocation, parameter.Type, diagnostics, codecs);
       // Composition rule: generated record codecs call field codecs directly with Decode and
       // Encode. A field needs both, and a context-bearing codec has no runtime context there.
       if (property is null ||
@@ -454,15 +462,26 @@ public sealed partial class ExpoModulesGenerator
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedRecordField.Id,
-            parameter.Locations.FirstOrDefault(),
-            new EquatableArray<string>(new[] { typeSymbol.Name, parameter.Name, GetDiagnosticTypeName(parameter.Type) })
+            parameterLocation,
+            new EquatableArray<string>(new[]
+            {
+                typeSymbol.Name,
+                parameter.Name,
+                $"uses unsupported type '{GetDiagnosticTypeName(parameter.Type)}'",
+            })
         ));
         return null;
       }
 
+      // The default is rendered only after the codec check above, so a field type without a
+      // codec keeps its unsupported-type diagnostic.
       fields.Add(new ExpoGeneratedRecordFieldModel(
           LowerCamel(parameter.Name), property.Name, LowerCamel(property.Name),
           parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), fieldCodec,
+          GetRecordFieldKind(parameter),
+          parameter.HasExplicitDefaultValue
+              ? GetDefaultValueExpression(parameter.Type, parameter.ExplicitDefaultValue)
+              : string.Empty,
           parameter.Locations.FirstOrDefault()
       ));
     }
@@ -477,9 +496,60 @@ public sealed partial class ExpoModulesGenerator
         typeSymbol.IsValueType,
         typeSymbol.Locations.FirstOrDefault()
     );
-    recordCodecs.Add(codec);
+    codecs.Records.Add(codec);
     return RecordCodecDescriptor(codec);
   }
+
+  // The upstream @Record rule: a default makes a field optional, an optional type makes it
+  // nullable and optional, and every other field is required. JavaScriptValue already represents
+  // null and undefined, and JavaScriptValue? is rejected, so it is optional by type. An oblivious
+  // reference (nullable context disabled) is not annotated and stays required.
+  private static ExpoRecordFieldKind GetRecordFieldKind(IParameterSymbol parameter)
+  {
+    if (parameter.HasExplicitDefaultValue)
+    {
+      return ExpoRecordFieldKind.Defaulted;
+    }
+
+    var type = parameter.Type;
+    var isOptionalByType =
+        type is INamedTypeSymbol { ConstructedFrom.SpecialType: SpecialType.System_Nullable_T } ||
+        (type.IsReferenceType && type.NullableAnnotation == NullableAnnotation.Annotated) ||
+        type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == JavaScriptValueMetadataName;
+    return isOptionalByType ? ExpoRecordFieldKind.OptionalByType : ExpoRecordFieldKind.Required;
+  }
+
+  // A default on a JavaScriptValue field, or on a record struct field that holds one, can only be
+  // C# null or a struct holding null. That is not a JavaScript undefined value, and
+  // JavaScriptValueCodec.Encode rejects it. A method parameter default is not a record field and
+  // keeps its behavior.
+  private static string? GetRecordFieldDefaultRejection(IParameterSymbol parameter)
+  {
+    if (!parameter.HasExplicitDefaultValue)
+    {
+      return null;
+    }
+
+    var typeName = GetDiagnosticTypeName(parameter.Type);
+    if (parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == JavaScriptValueMetadataName)
+    {
+      return $"of type '{typeName}' cannot have a default value";
+    }
+
+    return HoldsJavaScriptValueByValue(parameter.Type)
+        ? $"of type '{typeName}' cannot have a default value because the type holds a JavaScriptValue"
+        : null;
+  }
+
+  // A record struct holds a JavaScriptValue when a constructor field is one, or is a record struct
+  // that holds one. A struct cannot contain itself by value (CS0523), so the recursion ends.
+  // Nullable<T> is not followed: its default is null, which encodes as JavaScript null.
+  private static bool HoldsJavaScriptValueByValue(ITypeSymbol typeSymbol) =>
+      typeSymbol is INamedTypeSymbol { IsRecord: true, IsValueType: true } recordType &&
+      GetRecordCodecConstructor(recordType) is { } constructor &&
+      constructor.Parameters.Any(parameter =>
+          parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == JavaScriptValueMetadataName ||
+          HoldsJavaScriptValueByValue(parameter.Type));
   private static string GetParameterExpression(
       ExpoParameterModel parameter,
       int index,
@@ -548,27 +618,48 @@ public sealed partial class ExpoModulesGenerator
   private static ExpoCodecDescriptor? GetCodec(
       ITypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs,
+      ExpoCodecCollector codecs,
       IEnumerable<AttributeData>? usageAttributes = null) =>
-      ResolveCodec(typeSymbol, diagnostics, recordCodecs, usageAttributes) is { } codec
+      ResolveCodec(typeSymbol, diagnostics, codecs, usageAttributes) is { } codec
           ? codec with { ValueTypeName = GetCodecTypeArgumentName(typeSymbol) }
           : null;
+
+  // Resolves the codec of a boundary position and records where it is used, so a union declared in
+  // a referenced assembly is reported at that position.
+  private static ExpoCodecDescriptor? GetCodecAt(
+      Location? useSite,
+      ITypeSymbol typeSymbol,
+      List<ExpoDiagnosticModel> diagnostics,
+      ExpoCodecCollector codecs,
+      IEnumerable<AttributeData>? usageAttributes = null)
+  {
+    var previous = codecs.UseSite;
+    codecs.UseSite = useSite;
+    try
+    {
+      return GetCodec(typeSymbol, diagnostics, codecs, usageAttributes);
+    }
+    finally
+    {
+      codecs.UseSite = previous;
+    }
+  }
 
   private static ExpoCodecDescriptor? ResolveCodec(
       ITypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs,
+      ExpoCodecCollector codecs,
       IEnumerable<AttributeData>? usageAttributes)
   {
     // An annotated reference must be classified before any concrete type match, because `string?`
     // and `string` are the same symbol and differ only by their nullable annotation.
     if (TryGetNullableReferenceCodec(
-            typeSymbol, diagnostics, recordCodecs, out var nullableReferenceCodec))
+            typeSymbol, diagnostics, codecs, out var nullableReferenceCodec))
     {
       return nullableReferenceCodec;
     }
 
-    if (TryGetJavaScriptCallbackCodec(typeSymbol, diagnostics, recordCodecs, "JavaScriptCallbackCodec") is { } callbackCodec)
+    if (TryGetJavaScriptCallbackCodec(typeSymbol, diagnostics, codecs, "JavaScriptCallbackCodec") is { } callbackCodec)
     {
       return callbackCodec;
     }
@@ -608,15 +699,19 @@ public sealed partial class ExpoModulesGenerator
       };
     }
 
-    // A union never reaches the later branches, even when it is rejected. Either<,>? reaches this
-    // branch through TryGetNullableCodec.
-    if (typeSymbol is INamedTypeSymbol eitherType &&
-        eitherType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == EitherMetadataName)
+    // A union is classified before the record branch: it is an abstract record, and its cases are
+    // positional records that must never become record codecs.
+    if (typeSymbol is INamedTypeSymbol unionType && IsUnionType(unionType))
     {
-      return GetEitherCodec(eitherType, diagnostics, recordCodecs);
+      return TryGetUnionCodec(unionType, diagnostics, codecs);
     }
 
-    if (TryGetNullableCodec(typeSymbol, diagnostics, recordCodecs) is { } nullableCodec)
+    if (IsUnionCaseType(typeSymbol))
+    {
+      return null;
+    }
+
+    if (TryGetNullableCodec(typeSymbol, diagnostics, codecs, usageAttributes) is { } nullableCodec)
     {
       return nullableCodec;
     }
@@ -625,19 +720,13 @@ public sealed partial class ExpoModulesGenerator
     {
       return OrdinaryCodec(convertibleCodec);
     }
-    if (typeSymbol.TypeKind == TypeKind.Enum)
+    if (typeSymbol is INamedTypeSymbol { TypeKind: TypeKind.Enum } enumType)
     {
-      // Usage-level enum metadata wins over enum-type metadata; string remains the default.
-      var enumTypeName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-      return OrdinaryCodec(
-          UsesNumberEnumRepresentation(typeSymbol, usageAttributes)
-              ? $"NumberEnumCodec<{enumTypeName}>"
-              : $"StringEnumCodec<{enumTypeName}>"
-      );
+      return TryGetEnumCodec(enumType, diagnostics, codecs, usageAttributes);
     }
     if (typeSymbol is INamedTypeSymbol { IsRecord: true } recordType)
     {
-      return TryGetRecordCodec(recordType, diagnostics, recordCodecs);
+      return TryGetRecordCodec(recordType, diagnostics, codecs);
     }
 
     return typeSymbol.SpecialType switch
@@ -646,8 +735,8 @@ public sealed partial class ExpoModulesGenerator
       SpecialType.System_String => OrdinaryCodec("StringCodec"),
       var specialType when IsNumberSpecialType(specialType) =>
           OrdinaryCodec(GetNumberCodecExpression(typeSymbol)),
-      _ => TryGetReadOnlyListCodec(typeSymbol, diagnostics, recordCodecs) ??
-          TryGetDictionaryCodec(typeSymbol, diagnostics, recordCodecs),
+      _ => TryGetReadOnlyListCodec(typeSymbol, diagnostics, codecs) ??
+          TryGetDictionaryCodec(typeSymbol, diagnostics, codecs),
     };
   }
 
@@ -749,6 +838,16 @@ public sealed partial class ExpoModulesGenerator
           ContainsJavaScriptCallback(namedType.TypeArguments[1], visitedTypes);
     }
 
+    if (IsUnionType(namedType))
+    {
+      // A union is an abstract record with no record constructor; walk its case payloads.
+      return GetUnionCaseCandidates(namedType)
+          .Select(candidate => GetRecordCodecConstructor(candidate))
+          .Where(caseConstructor => caseConstructor is not null)
+          .SelectMany(caseConstructor => caseConstructor!.Parameters)
+          .Any(parameter => ContainsJavaScriptCallback(parameter.Type, visitedTypes));
+    }
+
     if (!namedType.IsRecord)
     {
       return false;
@@ -762,7 +861,7 @@ public sealed partial class ExpoModulesGenerator
   private static ExpoCodecDescriptor? TryGetJavaScriptCallbackCodec(
       ITypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs,
+      ExpoCodecCollector codecs,
       string codecClassName)
   {
     if (typeSymbol is not INamedTypeSymbol namedType || !IsJavaScriptCallbackType(namedType))
@@ -773,7 +872,7 @@ public sealed partial class ExpoModulesGenerator
     if (namedType.TypeArguments.Length == 1)
     {
       var zeroArgResultType = namedType.TypeArguments[0];
-      var zeroArgResultCodec = AsCompositeChildCodec(GetCodec(zeroArgResultType, diagnostics, recordCodecs));
+      var zeroArgResultCodec = AsCompositeChildCodec(GetCodec(zeroArgResultType, diagnostics, codecs));
       if (zeroArgResultCodec is null)
       {
         return null;
@@ -786,8 +885,8 @@ public sealed partial class ExpoModulesGenerator
 
     var argsType = namedType.TypeArguments[0];
     var resultType = namedType.TypeArguments[1];
-    var argsCodec = TryGetValueTupleArgsCodec(argsType, diagnostics, recordCodecs);
-    var resultCodec = AsCompositeChildCodec(GetCodec(resultType, diagnostics, recordCodecs));
+    var argsCodec = TryGetValueTupleArgsCodec(argsType, diagnostics, codecs);
+    var resultCodec = AsCompositeChildCodec(GetCodec(resultType, diagnostics, codecs));
     if (argsCodec is null || resultCodec is null)
     {
       return null;
@@ -810,7 +909,7 @@ public sealed partial class ExpoModulesGenerator
   private static string? TryGetValueTupleArgsCodec(
       ITypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs)
+      ExpoCodecCollector codecs)
   {
     var elements = GetValueTupleElements(typeSymbol);
     if (elements is null || elements.Count > 8)
@@ -826,7 +925,7 @@ public sealed partial class ExpoModulesGenerator
     var codecParts = new List<string>();
     foreach (var element in elements)
     {
-      var codec = AsCompositeChildCodec(GetCodec(element, diagnostics, recordCodecs));
+      var codec = AsCompositeChildCodec(GetCodec(element, diagnostics, codecs));
       if (codec is null)
       {
         return null;

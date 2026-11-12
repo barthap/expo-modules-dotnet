@@ -189,7 +189,7 @@ public sealed class AssetDownloadServiceTests
   }
 
   [Fact]
-  public async Task DownloadAsync_HandlerFailureUsesDownloadErrorWithoutPathLeak()
+  public async Task DownloadAsync_HandlerFailureUsesDownloadError()
   {
     using var temp = new TemporaryDirectory();
     var handler = new TestHttpMessageHandler(
@@ -207,7 +207,6 @@ public sealed class AssetDownloadServiceTests
         exception.Message
     );
     Assert.IsType<HttpRequestException>(exception.InnerException);
-    Assert.DoesNotContain(temp.Path, exception.Message);
     Assert.Empty(AllCacheFiles(temp.Path));
   }
 
@@ -230,7 +229,6 @@ public sealed class AssetDownloadServiceTests
         exception.Message
     );
     Assert.IsType<OperationCanceledException>(exception.InnerException);
-    Assert.DoesNotContain(temp.Path, exception.Message);
     Assert.Empty(AllCacheFiles(temp.Path));
   }
 
@@ -274,7 +272,6 @@ public sealed class AssetDownloadServiceTests
 
     Assert.Equal("Unable to save asset to directory: 'ExponentAsset'", exception.Message);
     Assert.IsType<OperationCanceledException>(exception.InnerException);
-    Assert.DoesNotContain(temp.Path, exception.Message);
     Assert.Empty(DownloadFiles(temp.Path));
   }
 

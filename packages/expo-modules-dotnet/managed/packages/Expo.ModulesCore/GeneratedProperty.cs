@@ -62,7 +62,9 @@ public static class GeneratedProperty
         $"{name} getter",
         0,
         GeneratedFunction.InvokeGeneratedHostFunction,
-        getterRegistration
+        getterRegistration,
+        null,
+        GeneratedFunction.CreateJavaScriptError
     );
     using var getterValue = getterFunction.AsValue();
 
@@ -76,7 +78,9 @@ public static class GeneratedProperty
           $"{name} setter",
           1,
           GeneratedFunction.InvokeGeneratedHostFunction,
-          setterRegistration
+          setterRegistration,
+          null,
+          GeneratedFunction.CreateJavaScriptError
       );
       using var setterValue = setterFunction.AsValue();
       descriptor.SetProperty("set", setterValue);

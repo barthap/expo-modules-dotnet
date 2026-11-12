@@ -12,11 +12,14 @@ internal static class GeneratorTestHost
   public static GeneratorRunResult Run(
       string source,
       string assemblyName = "Expo.TestModules",
-      bool allowUnsafe = false)
+      bool allowUnsafe = false,
+      IReadOnlyList<MetadataReference>? additionalReferences = null)
   {
     var parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest);
     var syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);
-    var references = ReferenceResolver.GetReferences();
+    var references = additionalReferences is null
+        ? ReferenceResolver.GetReferences()
+        : ReferenceResolver.GetReferences().Concat(additionalReferences).ToArray();
 
     var compilation = CSharpCompilation.Create(
         assemblyName,
@@ -45,6 +48,36 @@ internal static class GeneratorTestHost
         runResult.Diagnostics
     );
   }
+
+  // Compiles a referenced assembly to a PE image, so its types reach the generator as metadata
+  // symbols, as a project reference does in a build.
+  public static MetadataReference CompileReference(string source, string assemblyName)
+  {
+    var compilation = CSharpCompilation.Create(
+        assemblyName,
+        new[] { CSharpSyntaxTree.ParseText(source, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest)) },
+        ReferenceResolver.GetReferences(),
+        new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable)
+    );
+    using var stream = new MemoryStream();
+    var emitted = compilation.Emit(stream);
+    if (!emitted.Success)
+    {
+      throw new InvalidOperationException(string.Join("\n", emitted.Diagnostics));
+    }
+
+    return MetadataReference.CreateFromImage(stream.ToArray());
+  }
+
+  // Compiles a referenced project as a compilation reference, so its types reach the generator as
+  // source symbols of another compilation, as an IDE project reference does.
+  public static MetadataReference CompileSourceReference(string source, string assemblyName) =>
+      CSharpCompilation.Create(
+          assemblyName,
+          new[] { CSharpSyntaxTree.ParseText(source, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest)) },
+          ReferenceResolver.GetReferences(),
+          new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable)
+      ).ToMetadataReference();
 }
 
 internal sealed record GeneratorRunResult(

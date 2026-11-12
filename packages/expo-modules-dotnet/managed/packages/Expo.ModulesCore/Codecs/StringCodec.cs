@@ -2,11 +2,8 @@ using Expo.JSI;
 
 namespace Expo.ModulesCore.Codecs;
 
-public readonly struct StringCodec : IJavaScriptCodec<string>, IJavaScriptValueKindCodec
+public readonly struct StringCodec : IJavaScriptCodec<string>
 {
-  /// <summary>Gets the JavaScript value kind that this codec decodes.</summary>
-  public static JavaScriptValueKind Kind => JavaScriptValueKind.String;
-
   public static string Decode(JavaScriptValueRef value, JavaScriptRuntime runtime) =>
       value.AsString();
 

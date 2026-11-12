@@ -186,7 +186,7 @@ void waitForPromiseRegistrationGate(expo_jsi_runtime_handle runtime)
   promiseRegistrationGate.condition.notify_all();
 }
 
-constexpr uint32_t kApiVersion = 23;
+constexpr uint32_t kApiVersion = 24;
 
 struct ErrorResultBuffer {
   explicit ErrorResultBuffer(std::string value)
@@ -2482,6 +2482,18 @@ expo_jsi_value_result createHostFunction(
         expo_jsi_value_result result{};
         try {
           result = context->call(thisHandle.get(), &argumentsHandle);
+          if (result.ok == 0 && result.value != nullptr) {
+            // ABI 24: a failed host-function result with a value throws that value as is.
+            if (result.error.release != nullptr) {
+              result.error.release(result.error.release_context);
+              result.error.release = nullptr;
+            }
+            auto thrown = jsi::Value(jsRuntime, result.value->value());
+            delete result.value;
+            // The catch blocks below delete only a non-null handle; never delete it twice.
+            result.value = nullptr;
+            throw jsi::JSError(jsRuntime, std::move(thrown));
+          }
           if (result.ok == 0 || result.value == nullptr) {
             // The managed message is length-delimited and not NUL-terminated.
             throw jsi::JSError(

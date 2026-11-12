@@ -11,22 +11,22 @@ internal static class EventEmitterPrototype
       Func<JavaScriptFunction, JavaScriptFunction> retainHostFunction)
   {
     using var addListener = retainHostFunction(
-        runtime.CreateHostFunction("addListener", 2, AddListener, state)
+        runtime.CreateHostFunction("addListener", 2, AddListener, state, null, GeneratedFunction.CreateJavaScriptError)
     );
     using var removeListener = retainHostFunction(
-        runtime.CreateHostFunction("removeListener", 2, RemoveListener, state)
+        runtime.CreateHostFunction("removeListener", 2, RemoveListener, state, null, GeneratedFunction.CreateJavaScriptError)
     );
     using var removeAllListeners = retainHostFunction(
-        runtime.CreateHostFunction("removeAllListeners", 1, RemoveAllListeners, state)
+        runtime.CreateHostFunction("removeAllListeners", 1, RemoveAllListeners, state, null, GeneratedFunction.CreateJavaScriptError)
     );
     using var emit = retainHostFunction(
-        runtime.CreateHostFunction("emit", 1, Emit, state)
+        runtime.CreateHostFunction("emit", 1, Emit, state, null, GeneratedFunction.CreateJavaScriptError)
     );
     using var listenerCount = retainHostFunction(
-        runtime.CreateHostFunction("listenerCount", 1, ListenerCount, state)
+        runtime.CreateHostFunction("listenerCount", 1, ListenerCount, state, null, GeneratedFunction.CreateJavaScriptError)
     );
     using var removeSubscription = retainHostFunction(
-        runtime.CreateHostFunction("removeSubscription", 1, RemoveSubscription, state)
+        runtime.CreateHostFunction("removeSubscription", 1, RemoveSubscription, state, null, GeneratedFunction.CreateJavaScriptError)
     );
 
     SetFunctionProperty(prototype, "addListener", addListener);
@@ -65,7 +65,9 @@ internal static class EventEmitterPrototype
         "remove",
         0,
         RemoveSubscriptionByState,
-        new ListenerSubscription(state, emitterId, eventName, listenerId)
+        new ListenerSubscription(state, emitterId, eventName, listenerId),
+        null,
+        GeneratedFunction.CreateJavaScriptError
     );
     SetFunctionProperty(subscription, "remove", remove);
     return subscription.AsValue();

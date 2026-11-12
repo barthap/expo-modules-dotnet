@@ -20,6 +20,8 @@ internal sealed record ExpoModuleModel(
     EquatableArray<ExpoPropertyModel> Properties,
     EquatableArray<ExpoSharedObjectClassModel> SharedObjectClasses,
     EquatableArray<ExpoGeneratedRecordCodecModel> RecordCodecs,
+    EquatableArray<ExpoGeneratedUnionCodecModel> UnionCodecs,
+    EquatableArray<ExpoGeneratedEnumCodecModel> EnumCodecs,
     EquatableArray<ExpoDiagnosticModel> Diagnostics);
 
 internal sealed record ExpoSharedObjectClassModel(
@@ -148,12 +150,75 @@ internal sealed record ExpoGeneratedRecordCodecModel(
     bool IsValueType,
     Location? Location);
 
+// How generated decode treats a record field that reads as JavaScript undefined (an absent key or
+// an explicit undefined): Required throws before the codec runs, OptionalByType passes undefined
+// to its codec (null, or a JavaScript undefined value), and Defaulted yields DefaultValueExpression.
+internal enum ExpoRecordFieldKind
+{
+  Required,
+  OptionalByType,
+  Defaulted,
+}
+
+// One generated union codec. A cache hit rebuilds the same descriptor from ResourceOwnership. The
+// codec type name is deduplicated by UnionTypeName, like record codecs.
+internal sealed record ExpoGeneratedUnionCodecModel(
+    string CodecTypeName,
+    string UnionTypeName,
+    string UnionName,
+    EquatableArray<ExpoGeneratedUnionCaseModel> Cases,
+    ExpoResourceOwnership ResourceOwnership,
+    Location? Location);
+
+// IntegerGate is the C# condition over __expoNumber that an integer case that is not the last
+// number case needs, or the empty string.
+internal sealed record ExpoGeneratedUnionCaseModel(
+    string CaseName,
+    string CaseTypeName,
+    string PayloadPropertyName,
+    string PayloadMessageName,
+    ExpoCodecDescriptor PayloadCodec,
+    ExpoJavaScriptKinds Kinds,
+    string IntegerGate);
+
+// One generated string-enum codec, deduplicated by EnumTypeName like record codecs. Members are in
+// declaration order and keep both the C# name and the JavaScript string.
+internal sealed record ExpoGeneratedEnumCodecModel(
+    string CodecTypeName,
+    string EnumTypeName,
+    string DisplayName,
+    string UnderlyingTypeName,
+    EquatableArray<ExpoGeneratedEnumMemberModel> Members);
+
+internal sealed record ExpoGeneratedEnumMemberModel(
+    string CSharpName,
+    string JavaScriptName);
+
+// The JavaScript kinds a union payload decodes. Member names equal the JavaScriptValueKind names, so
+// emission writes global::Expo.JSI.JavaScriptValueKind.<Name>.
+[Flags]
+internal enum ExpoJavaScriptKinds
+{
+  None = 0,
+  Undefined = 1,
+  Null = 2,
+  Bool = 4,
+  Number = 8,
+  String = 16,
+  Object = 32,
+  Function = 64,
+  ArrayBuffer = 128,
+  All = 255,
+}
+
 internal sealed record ExpoGeneratedRecordFieldModel(
     string ParameterName,
     string CSharpPropertyName,
     string JavaScriptName,
     string TypeName,
     ExpoCodecDescriptor Codec,
+    ExpoRecordFieldKind Kind,
+    string DefaultValueExpression,
     Location? Location);
 
 internal readonly struct EquatableArray<T> : IEquatable<EquatableArray<T>>

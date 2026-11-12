@@ -23,7 +23,9 @@ internal static class SharedObjectPrototype
           "release",
           0,
           Release,
-          CreateReleaseCallbackState(registry)
+          CreateReleaseCallbackState(registry),
+          null,
+          GeneratedFunction.CreateJavaScriptError
       );
       using var releaseValue = releaseFunction.AsValue();
       prototype.SetProperty("release", releaseValue);
@@ -46,7 +48,9 @@ internal static class SharedObjectPrototype
         "release",
         0,
         Release,
-        CreateReleaseCallbackState(registry)
+        CreateReleaseCallbackState(registry),
+        null,
+        GeneratedFunction.CreateJavaScriptError
     );
     using var releaseValue = releaseFunction.AsValue();
     installFailureForTesting?.Invoke();

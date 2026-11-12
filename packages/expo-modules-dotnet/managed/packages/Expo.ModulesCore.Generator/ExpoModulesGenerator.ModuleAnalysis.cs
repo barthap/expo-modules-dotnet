@@ -62,8 +62,8 @@ public sealed partial class ExpoModulesGenerator
       ));
     }
 
-    var recordCodecs = new List<ExpoGeneratedRecordCodecModel>();
-    var typedEvents = GetTypedEvents(typeSymbol, moduleName, diagnostics, recordCodecs);
+    var codecs = new ExpoCodecCollector(context.SemanticModel.Compilation.Assembly);
+    var typedEvents = GetTypedEvents(typeSymbol, moduleName, diagnostics, codecs);
     var legacyEventNames = GetEventNames(typeSymbol, moduleName, diagnostics).ToList();
     var eventNames = MergeEventNames(moduleName, legacyEventNames, typedEvents, diagnostics);
     var onCreateHook = GetLifecycleHook(
@@ -100,9 +100,9 @@ public sealed partial class ExpoModulesGenerator
     HashSet<string> reservedJavaScriptNames = eventNameSet.Count == 0
         ? []
         : new HashSet<string>(["startObserving", "stopObserving"], StringComparer.Ordinal);
-    var functionCollection = GetFunctions(typeSymbol, diagnostics, recordCodecs, reservedJavaScriptNames);
+    var functionCollection = GetFunctions(typeSymbol, diagnostics, codecs, reservedJavaScriptNames);
     var functions = functionCollection.Functions;
-    var properties = GetProperties(typeSymbol, diagnostics, recordCodecs, reservedJavaScriptNames);
+    var properties = GetProperties(typeSymbol, diagnostics, codecs, reservedJavaScriptNames);
     properties = RemoveCollidingProperties(
         typeSymbol,
         functionCollection.ValidJavaScriptNames,
@@ -127,7 +127,9 @@ public sealed partial class ExpoModulesGenerator
         new EquatableArray<ExpoFunctionModel>(functions),
         new EquatableArray<ExpoPropertyModel>(properties),
         new EquatableArray<ExpoSharedObjectClassModel>(sharedObjectClasses),
-        new EquatableArray<ExpoGeneratedRecordCodecModel>(recordCodecs),
+        new EquatableArray<ExpoGeneratedRecordCodecModel>(codecs.Records),
+        new EquatableArray<ExpoGeneratedUnionCodecModel>(codecs.Unions),
+        new EquatableArray<ExpoGeneratedEnumCodecModel>(codecs.Enums),
         new EquatableArray<ExpoDiagnosticModel>(diagnostics)
     );
   }
@@ -402,7 +404,7 @@ public sealed partial class ExpoModulesGenerator
   private static (List<ExpoFunctionModel> Functions, HashSet<string> ValidJavaScriptNames) GetFunctions(
       INamedTypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs,
+      ExpoCodecCollector codecs,
       HashSet<string> reservedJavaScriptNames)
   {
     var functions = new List<ExpoFunctionModel>();
@@ -498,10 +500,11 @@ public sealed partial class ExpoModulesGenerator
       {
         asyncResultCodec = asyncResultType is null || asyncResultPassingKind != ExpoReturnPassingKind.Codec
             ? null
-            : GetCodec(
+            : GetCodecAt(
+                member.Locations.FirstOrDefault(),
                 asyncResultType,
                 diagnostics,
-                recordCodecs,
+                codecs,
                 member.GetReturnTypeAttributes()
             );
       }
@@ -518,7 +521,7 @@ public sealed partial class ExpoModulesGenerator
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedReturnType.Id,
-            asyncResultType?.Locations.FirstOrDefault() ?? member.ReturnType.Locations.FirstOrDefault(),
+            GetTypeLocationOrMember(asyncResultType ?? member.ReturnType, member),
             new EquatableArray<string>(
                 new[]
                 {
@@ -557,10 +560,11 @@ public sealed partial class ExpoModulesGenerator
       {
         returnCodec = returnsVoid || isAsync || returnPassingKind != ExpoReturnPassingKind.Codec
             ? null
-            : GetCodec(
+            : GetCodecAt(
+                member.Locations.FirstOrDefault(),
                 member.ReturnType,
                 diagnostics,
-                recordCodecs,
+                codecs,
                 member.GetReturnTypeAttributes()
             );
       }
@@ -574,7 +578,7 @@ public sealed partial class ExpoModulesGenerator
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedReturnType.Id,
-            member.ReturnType.Locations.FirstOrDefault(),
+            GetTypeLocationOrMember(member.ReturnType, member),
             new EquatableArray<string>(
                 new[]
                 {
@@ -649,10 +653,11 @@ public sealed partial class ExpoModulesGenerator
         }
         else
         {
-          parameterCodec = GetCodec(
+          parameterCodec = GetCodecAt(
+              parameter.Locations.FirstOrDefault(),
               parameter.Type,
               diagnostics,
-              recordCodecs,
+              codecs,
               parameter.GetAttributes()
           );
         }
@@ -750,7 +755,7 @@ public sealed partial class ExpoModulesGenerator
   private static List<ExpoPropertyModel> GetProperties(
       INamedTypeSymbol typeSymbol,
       List<ExpoDiagnosticModel> diagnostics,
-      List<ExpoGeneratedRecordCodecModel> recordCodecs,
+      ExpoCodecCollector codecs,
       HashSet<string> reservedJavaScriptNames)
   {
     var properties = new List<ExpoPropertyModel>();
@@ -780,7 +785,7 @@ public sealed partial class ExpoModulesGenerator
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedJSPropertyType.Id,
-            member.Type.Locations.FirstOrDefault() ?? member.Locations.FirstOrDefault(),
+            GetTypeLocationOrMember(member.Type, member),
             new EquatableArray<string>(new[] { member.Name, GetDiagnosticTypeName(member.Type) })
         ));
         continue;
@@ -804,13 +809,13 @@ public sealed partial class ExpoModulesGenerator
       }
       else
       {
-        codec = GetCodec(member.Type, diagnostics, recordCodecs, member.GetAttributes());
+        codec = GetCodecAt(member.Locations.FirstOrDefault(), member.Type, diagnostics, codecs, member.GetAttributes());
       }
       if (codec is null)
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedJSPropertyType.Id,
-            member.Type.Locations.FirstOrDefault() ?? member.Locations.FirstOrDefault(),
+            GetTypeLocationOrMember(member.Type, member),
             new EquatableArray<string>(new[] { member.Name, GetDiagnosticTypeName(member.Type) })
         ));
         continue;

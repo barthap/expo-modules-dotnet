@@ -273,6 +273,37 @@ frames.
 - **WHEN** the caller needs to distinguish false from failure
 - **THEN** it SHALL inspect the structured error out-parameter
 
+### Requirement: Host-Function Results Can Carry A Thrown Value
+
+A host-function callback result (`expo_jsi_host_function_callback_fn`) with
+`ok == 0` and a non-null `value` SHALL mean "throw this value". This category
+is host-owned handles: only native code can raise a JavaScript exception,
+because managed exceptions SHALL NOT cross unmanaged frames. The ABI SHALL NOT
+carry an error code string; codes and messages are module logic and travel
+inside the value. HostObject callback results SHALL keep their message meaning.
+A change to this meaning SHALL increase `kApiVersion` and
+`ExpoJsiApi.ExpectedVersion` together.
+
+#### Scenario: Native throws a managed-built value
+- **GIVEN** a host-function callback returns `ok = 0` with a non-null value
+  handle
+- **WHEN** native handles the result
+- **THEN** it SHALL throw `jsi::JSError` built from that value, so JavaScript
+  catches the same value
+- **AND** it SHALL delete the value handle exactly once
+- **AND** it SHALL invoke the error release callback when one is present
+
+#### Scenario: Native throws from a message
+- **GIVEN** a host-function callback returns `ok = 0` with a null value handle
+- **WHEN** native handles the result
+- **THEN** it SHALL throw a new JavaScript `Error` from the length-delimited
+  message as today
+
+#### Scenario: HostObject getter returns a value with a failure
+- **GIVEN** a HostObject getter returns `ok = 0` with a non-null value handle
+- **WHEN** native handles the result
+- **THEN** it SHALL delete the value handle and throw from the message
+
 ### Requirement: UTF-8 String Contract
 
 The ABI SHALL represent strings as UTF-8 pointer plus byte length and SHALL

@@ -18,6 +18,7 @@ public sealed partial class ExpoModulesGenerator : IIncrementalGenerator
   private const string OnStartObservingAttributeMetadataName = "Expo.ModulesCore.OnStartObservingAttribute";
   private const string OnStopObservingAttributeMetadataName = "Expo.ModulesCore.OnStopObservingAttribute";
   private const string JSEnumAttributeMetadataName = "Expo.ModulesCore.JSEnumAttribute";
+  private const string EnumMemberAttributeMetadataName = "System.Runtime.Serialization.EnumMemberAttribute";
   private const string JSAttributeMetadataName = "Expo.ModulesCore.JSAttribute";
   private const string DotnetRuntimeContextMetadataName = "Expo.ModulesCore.DotnetRuntimeContext";
   private const string JavaScriptValueMetadataName = "global::Expo.JSI.JavaScriptValue";
@@ -49,6 +50,35 @@ public sealed partial class ExpoModulesGenerator : IIncrementalGenerator
     context.RegisterSourceOutput(
         orphanEvents.Where(model => model is not null),
         static (sourceContext, model) => EmitOrphanEvent(sourceContext, model!)
+    );
+
+    var unionDeclarations = context.SyntaxProvider.ForAttributeWithMetadataName(
+        UnionAttributeMetadataName,
+        static (node, _) => node is TypeDeclarationSyntax,
+        static (syntaxContext, cancellationToken) =>
+            CreateUnionDeclarationDiagnostics(syntaxContext, cancellationToken)
+    );
+
+    context.RegisterSourceOutput(
+        unionDeclarations,
+        static (sourceContext, diagnostics) =>
+        {
+          foreach (var diagnostic in diagnostics.Values)
+          {
+            sourceContext.ReportDiagnostic(ToDiagnostic(diagnostic));
+          }
+        }
+    );
+
+    var foreignUnionCases = context.SyntaxProvider.CreateSyntaxProvider(
+        static (node, _) => node is RecordDeclarationSyntax { BaseList: not null },
+        static (syntaxContext, cancellationToken) =>
+            CreateForeignUnionCaseDiagnostic(syntaxContext, cancellationToken)
+    ).Where(static diagnostic => diagnostic is not null);
+
+    context.RegisterSourceOutput(
+        foreignUnionCases,
+        static (sourceContext, diagnostic) => sourceContext.ReportDiagnostic(ToDiagnostic(diagnostic!))
     );
 
     var compilationModulesAndSharedObjects = context.CompilationProvider

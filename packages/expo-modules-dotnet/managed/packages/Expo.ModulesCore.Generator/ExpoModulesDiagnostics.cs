@@ -61,7 +61,7 @@ internal static class ExpoModulesDiagnostics
   public static readonly DiagnosticDescriptor UnsupportedRecordField = new(
       id: "EXPOJSI007",
       title: "Unsupported Expo record field",
-      messageFormat: "Record '{0}' field '{1}' uses unsupported type '{2}'",
+      messageFormat: "Record '{0}' field '{1}' {2}",
       category: "Expo.ModulesCore",
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true
@@ -251,6 +251,69 @@ internal static class ExpoModulesDiagnostics
       id: "EXPOJSI028",
       title: "Duplicate Expo shared object event name",
       messageFormat: "Shared object class '{0}' event property '{1}' resolves to duplicate event name '{2}'",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor InvalidUnionDeclaration = new(
+      id: "EXPOJSI029",
+      title: "Invalid union declaration",
+      messageFormat: "Union '{0}' is invalid: {1}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor InvalidUnionCase = new(
+      id: "EXPOJSI030",
+      title: "Invalid union case",
+      messageFormat: "Type '{0}' is not a valid case of union '{1}': {2}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor DuplicateUnionPayload = new(
+      id: "EXPOJSI031",
+      title: "Duplicate union payload",
+      messageFormat: "Union '{0}' cases '{1}' and '{2}' have the same payload type '{3}'",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor UnreachableUnionCase = new(
+      id: "EXPOJSI032",
+      title: "Unreachable union case",
+      messageFormat: "Union '{0}' case '{1}' is unreachable: case '{2}' declared before it always takes its values first",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor InvalidEnumJavaScriptValue = new(
+      id: "EXPOJSI033",
+      title: "Invalid enum JavaScript value",
+      messageFormat: "Enum '{0}' member '{1}' has an invalid JavaScript value: {2}{3}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor DuplicateEnumJavaScriptValue = new(
+      id: "EXPOJSI034",
+      title: "Duplicate enum JavaScript value",
+      messageFormat: "Enum '{0}' members '{1}' and '{2}' both cross to JavaScript as \"{3}\"{4}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor AliasedStringEnumMember = new(
+      id: "EXPOJSI035",
+      title: "Aliased string enum member",
+      messageFormat: "Enum '{0}' members '{1}' and '{2}' have the same value {3}, so a string enum cannot tell them apart{4}",
       category: "Expo.ModulesCore",
       defaultSeverity: DiagnosticSeverity.Error,
       isEnabledByDefault: true

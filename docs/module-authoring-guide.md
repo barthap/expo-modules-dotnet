@@ -30,14 +30,16 @@ upstream:
   `### Declare a module` under `## Modules`.
 - Lower-camel `[JS]` names. See `### Functions` and `### Naming conventions`
   under `## Modules`.
-- Enum casing: a string enum crosses as the C# member name. See `### Enums`
-  under `## Types`.
 - Constants: a constant is a getter-only `[JS]` property. See `### Constants`
   under `## Modules`.
 - Event names drop the `On` prefix as upstream does, but lowercase only the
   first character after it: `OnURLChange` sends `uRLChange`, as Kotlin does,
   where Swift sends `urlChange`. See `## Events`.
-- Unions use `Either<TFirst, TSecond>`. See `## Unions`.
+- Unions are `[Union]` abstract records with nested case records, and an
+  integer case takes only whole numbers when a later number case exists. See
+  `## Unions`.
+- Errors: a plain exception gives an `Error` without `code`, and `error.message`
+  carries the cause chain in the iOS format. See `## Errors`.
 - Attributes (`[OnCreate]`, `[OnDestroy]`) take the place of overridable
   methods. See `## Syntax mapping: C# and Swift and Kotlin`.
 - There are no generated TypeScript types. See `## Tooling`.
@@ -317,10 +319,10 @@ Two `[JS]` members that resolve to one JavaScript name are build errors
 (`EXPOJSI005` for functions, `EXPOJSI016` for members). A C# overload
 therefore cannot export one JavaScript function with several shapes.
 
-<!-- backed-by: spec "Requirement: Optional Nullable Reference Arguments Preserve Authored Defaults" (modules-core-boundary.md); test GeneratedProviderUsesDefaultForMissingOrUndefinedOptionalNullableArguments; test GeneratorPreservesLeafFreeCodecPolicyModuleOutputContract; source ExpoModulesGenerator.GetDefaultValueExpression -->
+<!-- backed-by: spec "Requirement: Optional Nullable Reference Arguments Preserve Authored Defaults" (modules-core-boundary.md); spec "Requirement: Generated Parameter Defaults Render Every Constant" (modules-core-boundary.md); test GeneratedProviderUsesDefaultForMissingOrUndefinedOptionalNullableArguments; test GeneratedProviderAppliesEnumValueTypeAndEdgeParameterDefaults; source ExpoModulesGenerator.GetDefaultValueExpression -->
 Omitting a parameter that has a C# default value, or passing `undefined`, uses
-the default value. Defaults work for `bool`, `string`, numeric types and
-`null`, for nullable and non-nullable parameters.
+the default value. A default can be any C# constant, including an enum member,
+`NaN` and `default`, for nullable and non-nullable parameters.
 
 <!-- backed-by: source ExpoModulesGenerator.GetRequiredParameterCount; source GeneratedFunction.RequireArgumentCount; test GeneratedAsyncArgumentCountFailureRejectsPromise -->
 The generated function checks the argument count. The minimum is the number of
@@ -349,11 +351,13 @@ promise-returning JavaScript function instead of a direct-call one:
   }
 ```
 
-<!-- backed-by: spec "Requirement: Async Function Generation Returns Promises" (modules-core-boundary.md); spec "Requirement: Async Function Failures Reject Promises" (modules-core-boundary.md) -->
+<!-- backed-by: spec "Requirement: Async Function Generation Returns Promises" (modules-core-boundary.md); spec "Requirement: Async Function Failures Reject Promises" (modules-core-boundary.md); spec "Requirement: Module Failures Become JavaScript Errors" (modules-core-boundary.md) -->
 Arguments are decoded and captured before the authored method is awaited.
 Argument validation/decoding failures, an authored method throwing
 synchronously, and a faulted or canceled task all reject the returned
 JavaScript Promise instead of throwing synchronously.
+The rejection carries the same `code` and `message` as a synchronous throw; see
+`## Errors`.
 
 ### Properties
 
@@ -467,8 +471,14 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
   each other, in records, in callback types, and in typed event payloads. They
   can hold `JavaScriptValue`, `ArrayBuffer`, and `Uint8Array`.
 - Shared objects, declared as described in `## Shared objects`.
-- C# `enum` values — encoded as JavaScript strings by default; annotate with
-  `[JSEnum(EnumRepresentation.Number)]` for integer-backed representation.
+- C# `enum` values. A string enum crosses as each member's C# name, or as the
+  `Value` of `[EnumMember]` from `System.Runtime.Serialization` when it is set.
+  Matching is exact and case-sensitive. `[JSEnum(EnumRepresentation.Number)]`
+  on the enum, or on one parameter or return value, crosses the underlying
+  number, and the attribute on the parameter or return value wins. See
+  `### Enums`.
+- `[Union]` types, for a value that JavaScript passes as one of several shapes.
+  See `## Unions`.
 - `JavaScriptValue` directly, for cases the typed codecs don't cover. See
   "Leaf ownership" below and `docs/specs/managed-jsi-wrappers.md`.
 - `JavaScriptCallback<TResult>` / `JavaScriptCallback<TArgs, TResult>` for
@@ -483,12 +493,43 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
 
 ### Enums
 
-<!-- backed-by: source StringEnumCodec; test GeneratedLookingCodeUsesStringEnumByDefault; test GeneratorUsesExplicitNumberEnumRepresentation -->
+<!-- backed-by: spec "Requirement: String Enums Cross As Declared JavaScript Values" (modules-core-boundary.md); test DeclaredStringsCrossBothWays; test OnlyDeclaredStringsDecode; test GeneratorUsesExplicitNumberEnumRepresentation -->
 <!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/types.mdx -->
 A string enum crosses as the C# member name, so `ImageFormat.Png` crosses as
-`"Png"`. Decoding is case-sensitive. `[JSEnum(EnumRepresentation.Number)]`
-switches to integers. There is no way to choose the string, unlike an upstream
-raw value.
+`"Png"`. To cross as another string, such as one that is not a C# name, set
+`[EnumMember(Value = ...)]` from `System.Runtime.Serialization` on the member.
+This is the C# form of a Swift raw value:
+
+<!-- backed-by: spec "Requirement: String Enums Cross As Declared JavaScript Values" (modules-core-boundary.md); test DeclaredStringsCrossBothWays -->
+```csharp
+using System.Runtime.Serialization;
+
+public enum DigestAlgorithm
+{
+  MD5,
+  [EnumMember(Value = "SHA-1")]
+  SHA1,
+  [EnumMember(Value = "SHA-256")]
+  SHA256,
+}
+```
+
+`MD5` crosses as `"MD5"` and `SHA1` as `"SHA-1"`. Decoding accepts only these
+strings, compared exactly, so `"SHA1"`, `"sha-1"`, and `"1"` fail. The error
+lists what JavaScript may pass:
+`'SHA1' is not a valid MyModule.DigestAlgorithm value. It must be one of: 'MD5', 'SHA-1', 'SHA-256'`.
+Returning a value that names no member, such as a `[Flags]` combination, fails
+too.
+
+`[JSEnum(EnumRepresentation.Number)]` switches to the underlying number. Put it
+on the enum, or on one parameter or return value, where it wins over the enum's
+own attribute.
+
+<!-- backed-by: spec "Requirement: Invalid String Enum Declarations Are Build Diagnostics" (modules-core-boundary.md); test GeneratorReportsInvalidEnumJavaScriptValues; test GeneratorReportsDuplicateEnumJavaScriptValues; test GeneratorReportsAliasedStringEnumMembers -->
+The build fails with `EXPOJSI033` for an empty or invalid value, or a value on
+an enum that crosses as a number. It fails with `EXPOJSI034` when two members
+cross as one string, and with `EXPOJSI035` when two members of a string enum
+have one number, such as `Default = Fast`.
 
 ### Leaf ownership
 
@@ -514,11 +555,11 @@ method, call it before the first `await`. See
 <!-- backed-by: spec "Requirement: Nullable Reference Codecs Are Annotation-Driven" (modules-core-boundary.md); spec "Requirement: Ownership-Bearing Nullable References Are Build Diagnostics" (modules-core-boundary.md) -->
 Nullable reference types work for `ArrayBuffer?`, `Uint8Array?`, and for the
 codecs that carry no JSI ownership: `string?`, `Uri?`, `byte[]?`, positional
-reference records, and the `IReadOnlyList<T>?`, `Dictionary<string, T>?`, and
-`IReadOnlyDictionary<string, T>?` containers. Nullable elements and dictionary
-values work wherever the nested type is supported, so `IReadOnlyList<string?>?`
-composes. `List<T>` stays unsupported in both forms, because its non-nullable
-form has no codec either.
+reference records, `[Union]` types, and the `IReadOnlyList<T>?`,
+`Dictionary<string, T>?`, and `IReadOnlyDictionary<string, T>?` containers.
+Nullable elements and dictionary values work wherever the nested type is
+supported, so `IReadOnlyList<string?>?` composes. `List<T>` stays unsupported
+in both forms, because its non-nullable form has no codec either.
 
 <!-- backed-by: spec "Requirement: Nullable Reference Codecs Are Annotation-Driven" (modules-core-boundary.md); spec "Requirement: Ownership-Bearing Nullable References Are Build Diagnostics" (modules-core-boundary.md) -->
 `JavaScriptValue?`, `SharedObject?`, and `SharedRef<T>?` are build
@@ -752,25 +793,107 @@ Positional `record`, `record class` and `record struct` types (including simple
 nested records) map to and from plain JavaScript objects with lower-camel field
 names. For example, `ExampleUser.Name` and `ExampleUser.Age` map to `name` and
 `age`. Decode reads only those lower-camel names; there is no PascalCase
-compatibility fallback. A missing field follows its existing codec's
-`undefined` behavior. A constructor default does not make a field optional today.
+compatibility fallback.
+
+<!-- backed-by: spec "Requirement: Record Fields With Defaults Are Optional In JavaScript" (modules-core-boundary.md); spec "Requirement: Required Record Fields Name The Missing Field" (modules-core-boundary.md); test GeneratorEmitsDefaultedRecordFieldDecodeInBothOverloads -->
+```csharp
+public record Options(string Name, int Count = 5, string? Label = null);
+```
+
+<!-- backed-by: spec "Requirement: Record Fields With Defaults Are Optional In JavaScript" (modules-core-boundary.md); spec "Requirement: Required Record Fields Name The Missing Field" (modules-core-boundary.md); test GeneratedProviderAppliesOmittedOrUndefinedRecordFieldDefaults; test GeneratedProviderNamesMissingRequiredRecordField; test GeneratedProviderEncodesEveryRecordFieldIncludingDefaults -->
+A field with a C# default is optional: when JavaScript omits it or passes
+`undefined`, the record gets the default. A field of a nullable type without a
+default is optional too and decodes as `null`. Every other field is required.
+In `Options`, `name` is required, `count` is `5` when omitted or `undefined`,
+and `label` is `null` when omitted. Explicit `null` goes to the field's codec,
+so `label: null` stays `null` even when the default is not `null`, and
+`count: null` throws. A missing required field throws an `Error` whose message
+contains `Value for property 'name' is required, got undefined`. Encoding writes
+every field, also one equal to its default.
+
+<!-- backed-by: spec "Requirement: Record Fields With Defaults Are Optional In JavaScript" (modules-core-boundary.md); test GeneratorRejectsDefaultOnJavaScriptValueRecordFields -->
+A `JavaScriptValue` field is optional and holds a JavaScript `undefined` value
+when omitted. A default on a `JavaScriptValue` field, or on a `record struct`
+field that holds one, is build error `EXPOJSI007`.
 
 ## Unions
 
-<!-- backed-by: spec "Requirement: Two-Member Unions Decode By Value Kind" (modules-core-boundary.md); source Either -->
-`Either<TFirst, TSecond>` is for a value that JavaScript passes as one of
-two kinds, such as `string | ArrayBuffer`. Each member is `string`, `bool`,
-a numeric type, a binary type (`ArrayBuffer`, `byte[]`, `Memory<byte>`,
-`ReadOnlyMemory<byte>`), or `Uint8Array` (an object), and the two members
-must have different JavaScript kinds: `Either<double, bool>` works,
-`Either<double, int>` does not. Read
-`IsFirst`, then `First` or `Second`, or call `Match`. Create one with
-`Either<TFirst, TSecond>.FromFirst` or `FromSecond`. A union works in every
-position. JavaScript `null`, `undefined`, and any other kind fail with a
-JavaScript error: a parameter fails before your code runs, and a callback
-result fails inside `Invoke()`. `Either<TFirst, TSecond>?` turns `null` and
-`undefined` into C# `null`. An `ArrayBuffer` or `Uint8Array` member is a leaf
-and follows the leaf rules in `## Types`.
+<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); source UnionAttribute -->
+A union is a value that JavaScript passes as one of several shapes, such as
+`string | ArrayBuffer | number`. Declare it as an `abstract record` with
+`[Union]`. Each case is a nested `sealed record` that derives from the union
+and has one positional parameter, the payload. The payload's own codec decides
+the JavaScript shape. Read a union with `switch` or `is` patterns:
+
+<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test ThreeCasesDecodeByKind -->
+```csharp
+[Union]
+public abstract record NonceInput
+{
+  public sealed record Base64(string Value) : NonceInput;
+  public sealed record Bytes(byte[] Value) : NonceInput;
+  public sealed record Length(int Value) : NonceInput;
+}
+
+[JS]
+public int NonceSize(NonceInput nonce) => nonce switch
+{
+  NonceInput.Base64(var text) => Convert.FromBase64String(text).Length,
+  NonceInput.Bytes(var bytes) => bytes.Length,
+  NonceInput.Length(var length) => length,
+  _ => throw new ArgumentOutOfRangeException(nameof(nonce)),
+};
+```
+
+<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test FailedAttemptMovesToTheNextCase; test RecordsArePickedByTheirFields -->
+The cases are tried in declaration order, and the first case whose payload
+decodes wins. Put the more specific case first: `Uri` before `string`, `int`
+before `double`, and the record with more required fields first. A case must
+not have the same name as its payload type, because inside the union body the
+name means the case: write `Address(Uri Value)`, not `Uri(Uri Value)`.
+
+<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test MismatchNamesTheReceivedKind -->
+A case is tried only when its payload can decode the JavaScript kind of the
+value:
+
+| Payload | JavaScript kind |
+| --- | --- |
+| `string`, `Guid`, `Uri`, `DateTimeOffset`, `TimeSpan`, string enum | string |
+| `bool` | boolean |
+| numeric types, number enum | number |
+| `ArrayBuffer`, `byte[]`, `Memory<byte>`, `ReadOnlyMemory<byte>` | `ArrayBuffer` |
+| record, `IReadOnlyList<T>`, dictionary, `Uint8Array` | object (an array is an object) |
+| `JavaScriptValue` | any |
+| another `[Union]` | the kinds of its cases |
+
+<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test IntegerGateSendsNonExactNumbersToTheLaterNumberCase; test LoneIntegerCaseTruncatesLikeItsCodec -->
+An integer case followed by another number case takes only a whole number
+that its type holds. With `Whole(int)` and then `Fraction(double)`, `3`
+decodes as `Whole`, and `2.5` and `3e9` as `Fraction`. The last number case
+decodes like its codec, so a lone `int` case still truncates `2.5` to `2`.
+
+<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test NonNullableUnionRejectsNullishWithTheMismatchError; source UnionCaseMismatchException -->
+When no case takes the value, JavaScript gets an `Error` with `code`
+`ERR_UNION_CASE_MISMATCH` and a message such as
+`'NonceInput' expected string or byte[] or int, but received boolean`. If a
+case was tried and failed, its error follows after `→ Caused by:`. JavaScript
+`null` and `undefined` fail the same way. A `NonceInput?` turns them into C#
+`null`.
+
+<!-- backed-by: spec "Requirement: Boundary Leaf Ownership Is Explicit" (ownership-and-scoped-refs.md); test FailedRecordAttemptReleasesItsLeaseAndFallsThrough -->
+A union holds the leaves of the case it holds and follows the rules in
+`### Leaf ownership`. A case that is tried and fails releases what it decoded
+before the next case is tried. A union works in every position: parameters,
+returns, properties, record fields, list elements, dictionary values,
+callbacks, events, and shared-object members.
+
+<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test GeneratorReportsInvalidUnionDeclarationOnce; test GeneratorReportsInvalidUnionCases; test GeneratorReportsDuplicateUnionPayload; test GeneratorReportsUnreachableUnionCases -->
+The build reports `EXPOJSI029` for an invalid union declaration, a union that
+contains itself, or a union from a referenced assembly. Declare a union in the
+project that uses it. `EXPOJSI030` reports an invalid case, `EXPOJSI031` two
+cases with the same payload type, and `EXPOJSI032` a case that an earlier case
+always takes first. Tag cases, discriminators, shared-object payloads, and
+callback payloads are not supported.
 
 ## Binary data
 
@@ -933,6 +1056,7 @@ internal sealed partial class ShowcaseModule : Module
   {
     return SendEventAsync<StringCodec, string>("onStatus", $"C# event: {label}");
   }
+// ...
 }
 ```
 
@@ -943,11 +1067,118 @@ new events so the name and payload type are checked at compile time.
 
 ## Errors
 
-<!-- backed-by: spec "Requirement: Managed Exceptions Become Structured Errors" (host-functions-and-errors.md); test GeneratedProviderReportsInvalidConvertiblePrimitiveAsJavaScriptError; spec "Requirement: Async Function Failures Reject Promises" (modules-core-boundary.md); test GeneratedAsyncAuthoredMethodThrowingBeforeTaskRejectsPromise -->
-An exception thrown by a synchronous `[JS]` function becomes a catchable
-JavaScript `Error`. For an async method, argument-decode failures, a
-synchronous throw from the method, and a faulted or canceled task reject the
-Promise.
+<!-- backed-by: spec "Requirement: Coded Exceptions" (modules-core-boundary.md); spec "Requirement: Module Failures Become JavaScript Errors" (modules-core-boundary.md); test EveryFailurePointConvertsAndReleasesTheError; test CodeIsDerivedFromTheClassNameWithTheIosRule -->
+Throw a subclass of `CodedException` to give JavaScript a stable `code`. A
+synchronous `[JS]` function, property getter or setter, shared-object method
+or shared-object constructor throws an `Error`; an async method rejects its
+Promise with the same `Error`. JavaScript reads `error.code` and
+`error.message`, as it does for upstream Swift and Kotlin modules.
+
+```csharp
+// apps/hermes-console-app/managed/HermesConsoleApp/ShowcaseModule.cs
+  [JS("failWithCode")]
+  public void FailWithCode(string label)
+  {
+    throw new InvalidLabelException(label);
+  }
+
+  [JS("failWithCodeAsync")]
+  public async Task FailWithCodeAsync(string label)
+  {
+    await Task.Yield();
+    throw new InvalidLabelException(label);
+  }
+}
+
+// JavaScript reads error.code === 'ERR_INVALID_LABEL', derived from the class name.
+internal sealed class InvalidLabelException(string label)
+    : CodedException($"Invalid label: {label}");
+```
+
+```js
+const Showcase = globalThis._expoDotnet.modules.Showcase;
+
+try {
+  Showcase.failWithCode('blank');
+} catch (error) {
+  if (error.code === 'ERR_INVALID_LABEL') {
+    // error.message === 'Invalid label: blank'
+  }
+}
+
+Showcase.failWithCodeAsync('blank').catch((error) => {
+  console.log(error.code); // 'ERR_INVALID_LABEL'
+});
+```
+
+### Codes
+
+<!-- backed-by: spec "Requirement: Coded Exceptions" (modules-core-boundary.md); test CodeIsDerivedFromTheClassNameWithTheIosRule; test ConstructorsBindAsTheSpecExpects; test NullExplicitCodeDerivesAndEmptyExplicitCodeStaysEmpty -->
+Without an explicit code, the code comes from the class name, with the iOS
+rule: remove a generic arity suffix and one trailing `Exception` or `Error`,
+put `_` before each uppercase letter that follows another character (pairs do
+not overlap), uppercase, and prefix `ERR_`.
+
+| Class name | `error.code` |
+| --- | --- |
+| `InvalidPathException` | `ERR_INVALID_PATH` |
+| `NotFoundError` | `ERR_NOT_FOUND` |
+| `HTTPException` | `ERR_H_TT_P` |
+| `PathException<T>` | `ERR_PATH` |
+| `Outer.InvalidPathException` (nested) | `ERR_INVALID_PATH` |
+| `CodedException` | `ERR_CODED` |
+
+Pass an explicit code as the first constructor argument. A `null` code derives
+the code from the class name. An empty code, or a `Code` override that returns
+an empty string, gives an `Error` without a `code` property.
+
+<!-- backed-by: source CodedException; test SubclassCanOverrideCodeAndMessage -->
+```csharp
+public sealed class SaveFailedException(string path, Exception inner)
+    : CodedException("ERR_SAVE", $"Unable to save {path}", inner);
+
+public sealed class RephrasedException() : CodedException("original")
+{
+  public override string Code => "ERR_REPHRASED";
+
+  public override string Message => "rephrased";
+}
+```
+
+### Plain exceptions and cancellation
+
+<!-- backed-by: spec "Requirement: Module Failures Become JavaScript Errors" (modules-core-boundary.md); spec "Requirement: Async Function Failures Reject Promises" (modules-core-boundary.md); test CanceledTaskRejectsWithoutCode; test DecodeArityAndEncodeFailuresRejectWithoutCode -->
+Any other exception gives an `Error` without a `code` property and with the
+same message rules. So do argument-count, argument-decode and result-encode
+failures. A canceled `Task` rejects with an `Error` without a `code`, whose
+message is the `OperationCanceledException` message.
+
+### The cause chain
+
+<!-- backed-by: spec "Requirement: Module Failures Become JavaScript Errors" (modules-core-boundary.md); test ConverterBuildsAnErrorWithTheCodeAndTheCauseChain; test SyncThrowAndAsyncRejectionCarryTheSameError; test ConverterFailureOnSyncPathFallsBackToTheMessageResult; test CreatePromiseThrowingErrorFactoryRejectsWithTheOriginalMessage -->
+`error.message` is the thrown exception's `Message`, followed by the message
+of each inner exception, from the direct inner exception to the root, each
+after a line feed and `→ Caused by: `. This is the iOS format. Only the thrown
+exception gives the `code`; the .NET type name and the stack trace do not reach
+JavaScript, with one exception. If the converter itself fails on the sync path,
+JavaScript gets an `Error` whose message is that exception's `ToString()` text,
+which holds the type name and the stack trace. The async path rejects with the
+plain `Message` instead.
+
+<!-- backed-by: test ConverterBuildsAnErrorWithTheCodeAndTheCauseChain -->
+```csharp
+throw new CodedException(
+    "ERR_SAVE",
+    "outer",
+    new InvalidOperationException("middle", new IOException("root")));
+// error.code === 'ERR_SAVE'
+// error.message === 'outer\n→ Caused by: middle\n→ Caused by: root'
+```
+
+The bridge does not filter or shorten the chain. Every inner exception's
+`Message` reaches JavaScript, so a module that must keep data (for example a
+local path) out of JavaScript throws without an inner exception that carries
+it, or with a cause whose message the module wrote.
 
 ## Lifecycle and runtime context
 
@@ -1100,9 +1331,9 @@ subset works. `Not yet` means it is not built.
 | Inline and blocking events | Supported | Not supported yet | Not yet: no opt-in mode like Swift `@Event(.inline)` or `@Event(.blocking)`; typed events already dispatch inline when invoked with runtime access |
 | Shared objects | Supported | Supported | Supported |
 | Static members of shared objects | Supported | Not supported yet | Not yet |
-| Records | Supported | Supported | Partial: positional records only; a field with a default is still required |
-| Enums | Supported | Supported | Differs: the member name crosses verbatim; `[JSEnum]` selects numbers |
-| Unions | Supported | Not supported yet | Partial: `Either<TFirst, TSecond>`, two members of different kinds |
+| Records | Supported | Supported | Partial: positional records only |
+| Enums | Supported | Supported | Supported: `[EnumMember(Value = ...)]` sets the string; `[JSEnum]` selects numbers |
+| Unions | Supported | Not supported yet | Differs: `[Union]` on an `abstract record` with nested `sealed record` cases; an integer case takes only whole numbers when a later number case exists; no tag cases |
 | Byte arrays | Supported | Supported | Differs: `byte[]` decodes from and encodes to `ArrayBuffer` only |
 | Array buffers | Supported | Not supported yet (in Kotlin, use a byte array) | Supported: `ArrayBuffer` |
 | Typed arrays | Supported | Supported | Partial: `Uint8Array` only |
@@ -1120,9 +1351,9 @@ subset works. `Not yet` means it is not built.
 <!-- backed-by: Inline and blocking events: spec "Requirement: Typed Event Tasks Carry Dispatch Outcomes" (modules-core-boundary.md) -->
 <!-- backed-by: Shared objects: spec "Requirement: Public SharedObject Authoring Is Explicit" (modules-core-boundary.md) -->
 <!-- backed-by: Static members of shared objects: source ExpoModulesGenerator.GetFunctions -->
-<!-- backed-by: Records: spec "Requirement: Generated Record Codecs Use Lower-Camel JavaScript Fields" (modules-core-boundary.md) -->
-<!-- backed-by: Enums: source StringEnumCodec; test GeneratedLookingCodeUsesStringEnumByDefault -->
-<!-- backed-by: Unions: spec "Requirement: Two-Member Unions Decode By Value Kind" (modules-core-boundary.md); source Either -->
+<!-- backed-by: Records: spec "Requirement: Generated Record Codecs Use Lower-Camel JavaScript Fields" (modules-core-boundary.md); spec "Requirement: Record Fields With Defaults Are Optional In JavaScript" (modules-core-boundary.md); spec "Requirement: Required Record Fields Name The Missing Field" (modules-core-boundary.md) -->
+<!-- backed-by: Enums: spec "Requirement: String Enums Cross As Declared JavaScript Values" (modules-core-boundary.md); test DeclaredStringsCrossBothWays -->
+<!-- backed-by: Unions: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); source UnionAttribute -->
 <!-- backed-by: Byte arrays: source ByteArrayCodec -->
 <!-- backed-by: Array buffers: spec "Requirement: Module-facing ArrayBuffer And Binary Codecs" (modules-core-boundary.md) -->
 <!-- backed-by: Typed arrays: spec "Requirement: Uint8Array Is A Byte View" (modules-core-boundary.md) -->
@@ -1133,7 +1364,7 @@ subset works. `Not yet` means it is not built.
 ## Syntax mapping: C# and Swift and Kotlin
 
 <!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/; expo/expo#53039 docs/pages/modules/v2/migrate/from-v1.mdx -->
-<!-- backed-by: source ExpoModuleAttribute; source JSAttribute; source EventAttribute; source OnCreateAttribute; source OnDestroyAttribute; source OnStartObservingAttribute; source OnStopObservingAttribute; source ExpoSharedObjectAttribute; source JSEnumAttribute; source Either; source JavaScriptCallback; source DotnetRuntimeContext -->
+<!-- backed-by: source ExpoModuleAttribute; source JSAttribute; source EventAttribute; source OnCreateAttribute; source OnDestroyAttribute; source OnStartObservingAttribute; source OnStopObservingAttribute; source ExpoSharedObjectAttribute; source JSEnumAttribute; source UnionAttribute; source JavaScriptCallback; source DotnetRuntimeContext; source CodedException -->
 | Concept | C# | Swift | Kotlin |
 | --- | --- | --- | --- |
 | Module | `[ExpoModule("Name")]` on a `partial` class; the `Module` base class is optional | `@ExpoModule("Name")` on a `public final class` that subclasses `Module` | `@ExpoModule("Name")` on a class |
@@ -1151,9 +1382,10 @@ subset works. `Not yet` means it is not built.
 | Shared object | `[ExpoSharedObject]` on a `sealed partial` class | `@SharedObject` | `@ExpoSharedObject` |
 | Shared object constructor | `[JS]` constructor | `@JS init` | `@JS constructor` |
 | Shared object release | override `OnRelease()` | override `sharedObjectDidRelease()` | override `sharedObjectDidRelease()` |
+| Coded error | subclass `CodedException` | subclass `Exception` | subclass `CodedException` |
 | Record | positional `record` | `@Record` on a struct | `@Record` on a data class |
-| Enum | `enum`, `[JSEnum]` for numbers | enum that implements `Enumerable` | enum class that implements `Enumerable` |
-| Union | `Either<TFirst, TSecond>` | `@Union` on an enum | Not supported yet |
+| Enum | `enum`, `[EnumMember(Value = ...)]` for a raw value, `[JSEnum]` for numbers | enum that implements `Enumerable` | enum class that implements `Enumerable` |
+| Union | `[Union]` on an `abstract record` with nested `sealed record` cases | `@Union` on an enum | Not supported yet |
 | Closure argument | `JavaScriptCallback<TArgs, TResult>` parameter | closure | Not supported yet |
 | App context | `DotnetRuntimeContext` | `appContext` | `androidContext`, `reactContext`, `context` |
 | Another module | Not yet | `appContext?.moduleRegistry.get(moduleWithName:)` | `context.module<T>()` |

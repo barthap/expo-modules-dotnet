@@ -64,7 +64,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:7F070A3463206559C440AECDFBA7E622144B11D4ECE1B8434DC849D000F18A04",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:E66E82B4364FF0130CE2E9756D49FED1CF2E10DAAB478BF344895D16787C54BF",
           "global__Expo_TestModules_ContractModule_DFCB3B03.Events.g.cs:5EDF4B279587289BFFB6A548BD0C43AF76CA8EF3440A2DB17C6C973139943F79",
         },
         result.GetOutputContract()
@@ -199,10 +199,11 @@ public sealed class GeneratorOutputContractTests
     );
 
     Assert.DoesNotContain(result.Diagnostics, d => d.Severity == DiagnosticSeverity.Error && d.Id.StartsWith("CS", StringComparison.Ordinal));
+    // PolicyMode crosses through a generated enum codec, and the digest covers that codec.
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:D60FB20FA493DAF75A51AC11BFEB623C16351B974C90947299EDCD585FF5F614",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:029BC6671874204484EF016FC3ECE1731B9CD7AF29EE8E02E1EAA49B8039E85F",
           "global__Expo_TestModules_PolicyLeafFreeModule_8D511E8D.Events.g.cs:EB0CCDFABDF861EE54188FA227D628F2A6534E012C2B43EAEF6AFB0C0CA9DE8A",
         },
         result.GetOutputContract()
@@ -257,7 +258,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:7F03CB8D854FF9D7CBED8258B0C20112A19304F5ECE4629CD578787D8BA13B36",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:A8F56D6BD394B5252DC4272752560AA65BBEADC071C6332FC258149377F5B9F8",
         },
         result.GetOutputContract()
     );
@@ -315,7 +316,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:1577152A1DE7137B34712DCE89466A74DFDC5D04204114F2EDB7D88B1D17BB97",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:1D2F2F745A1AF761D26DA28669D46B0374EF5B9C0726876784D4307B9EF51DA8",
           "global__Expo_TestModules_PolicyEntry_7B42955D.SharedObjectEvents.g.cs:7350FE94400C181F149408B9E9810B59C0B87573FD669DAB1B5D5C808A9A2A92",
         },
         result.GetOutputContract()
@@ -413,7 +414,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:2C0279C318F431E1D5A33BEB9DDBD538B19784149C49703D5731BE2416F499C8",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:9AA807FD8409F5491B9934AC49C5AC08067DFC834E60118FDFB4CF09A53A09A9",
         },
         result.GetOutputContract()
     );

@@ -175,6 +175,12 @@ typedef struct expo_jsi_native_state_result {
   expo_jsi_error error;
 } expo_jsi_native_state_result;
 
+// Host-function callback result. ok != 0 with a non-null value returns that
+// value to JavaScript. ok == 0 with a non-null value throws that value to
+// JavaScript as is (since ABI version 24); native takes and deletes the value
+// handle and still calls error.release when it is set. ok == 0 with a null
+// value, or a null value, throws a new Error from the length-delimited
+// error.message. HostObject getter results keep the message meaning.
 typedef expo_jsi_value_result (*expo_jsi_host_function_callback_fn)(
   void *callback_context,
   expo_jsi_runtime_handle runtime,

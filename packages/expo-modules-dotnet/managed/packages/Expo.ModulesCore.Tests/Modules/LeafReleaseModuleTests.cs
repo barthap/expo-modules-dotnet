@@ -14,7 +14,7 @@ namespace Expo.ModulesCore.Tests.Modules;
 // JS-created buffers, whose release reaches LongLivedArrayBuffersReleased after the runtime goes
 // idle. ReleasedValues also counts traversal temporaries, so JavaScriptValue assertions compare
 // against a leaf-free twin call.
-public sealed class LeafReleaseModuleTests
+public sealed partial class LeafReleaseModuleTests
 {
   [Fact]
   public void SyncLeafParameterReleasesOnceOnSuccessAndThrow()
@@ -507,6 +507,33 @@ public sealed class LeafReleaseModuleTests
     leaf.Fixture.WaitUntilIdle();
 
     Assert.Equal("true", result);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  // The required check throws inside the record decode try, so the buffer decoded before it is
+  // released once, on the borrowed (argument) and the owned (callback result) overload.
+  [Fact]
+  public void MissingRequiredFieldAfterLeafReleasesTheLeafOnce()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    var borrowed = leaf.ReadString(
+        "let failed; try { m.measureCounted({ buffer: b }); failed = 'no error'; } " +
+        "catch (error) { failed = error instanceof Error && error.message.includes(\"Value for property 'count' is required, got undefined\"); } String(failed)"
+    );
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("true", borrowed);
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    var owned = leaf.ReadString(
+        "let failed; try { m.takeCounted(() => ({ buffer: b })); failed = 'no error'; } " +
+        "catch (error) { failed = error instanceof Error && error.message.includes(\"Value for property 'count' is required, got undefined\"); } String(failed)"
+    );
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal("true", owned);
     Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
@@ -1086,6 +1113,23 @@ public sealed class LeafReleaseModuleTests
   }
 
   [Fact]
+  public void DefaultedLeafRecordFieldReleasesOnlyWhenSupplied()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("-1", leaf.ReadString("String(m.measureBlob({ name: 'a' }))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("4", leaf.ReadString("String(m.measureBlob({ name: 'a', data: b }))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+  }
+
+  [Fact]
   public void NullableBufferCollectionsReleaseOnlyPresentLeaves()
   {
     using var leaf = LeafReleaseFixture.Create();
@@ -1283,11 +1327,11 @@ public sealed class LeafReleaseModuleTests
       "globalThis.u = globalThis._expoDotnet.modules.UnionThings; " +
       "globalThis.b = new Uint8Array([1, 2, 3]).buffer; true";
 
-  private static string StringOrBufferKind(string kind) =>
-      $"Value kind '{kind}' is not one of 'String' or 'ArrayBuffer'.";
+  private static string ContentMismatch(string received) =>
+      $"'UnionContent' expected string or ArrayBuffer, but received {received}";
 
-  private static string NumberOrBoolKind(string kind) =>
-      $"Value kind '{kind}' is not one of 'Number' or 'Bool'.";
+  private static string ChoiceMismatch(string received) =>
+      $"'UnionChoice' expected double or bool, but received {received}";
 
   [Fact]
   public void UnionParameterDecodesEachMemberAndReleasesTheBufferOnce()
@@ -1366,12 +1410,12 @@ public sealed class LeafReleaseModuleTests
   }
 
   [Theory]
-  [InlineData("5", "Number")]
-  [InlineData("true", "Bool")]
-  [InlineData("({})", "Object")]
-  [InlineData("null", "Null")]
-  [InlineData("undefined", "Undefined")]
-  [InlineData("new Uint8Array([1, 2, 3])", "Object")]
+  [InlineData("5", "number")]
+  [InlineData("true", "boolean")]
+  [InlineData("({})", "object")]
+  [InlineData("null", "null")]
+  [InlineData("undefined", "undefined")]
+  [InlineData("new Uint8Array([1, 2, 3])", "object")]
   public void UnionParameterRejectsOtherKindsBeforeAuthoredCode(string input, string kind)
   {
     using var leaf = LeafReleaseFixture.Create();
@@ -1391,7 +1435,7 @@ public sealed class LeafReleaseModuleTests
 
     var messages = result.Split('|');
     Assert.Equal(3, messages.Length);
-    Assert.All(messages, message => Assert.Contains(StringOrBufferKind(kind), message));
+    Assert.All(messages, message => Assert.Contains(ContentMismatch(kind), message));
     Assert.Equal(0, UnionThingsModule.Calls);
     Assert.Equal(before, leaf.Fixture.Runtime.Execute(_ => leaf.Context.SharedObjects.Count));
     Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
@@ -1419,8 +1463,8 @@ public sealed class LeafReleaseModuleTests
     var obj = leaf.ReadString(
         "try { u.writeOptional({}); 'no error'; } catch (error) { error.message; }"
     );
-    Assert.Contains(StringOrBufferKind("Number"), number);
-    Assert.Contains(StringOrBufferKind("Object"), obj);
+    Assert.Contains(ContentMismatch("number"), number);
+    Assert.Contains(ContentMismatch("object"), obj);
     Assert.Equal(callsBefore, UnionThingsModule.Calls);
   }
 
@@ -1441,9 +1485,9 @@ public sealed class LeafReleaseModuleTests
         $"try {{ {call}; 'no error'; }} catch (error) {{ error instanceof Error ? error.message : 'not an Error'; }}"
     );
 
-    Assert.Contains(NumberOrBoolKind("String"), CatchMessage("u.pick('')"));
-    Assert.Contains(NumberOrBoolKind("String"), CatchMessage("w.pick('')"));
-    Assert.Contains(NumberOrBoolKind("Null"), CatchMessage("u.pick(null)"));
+    Assert.Contains(ChoiceMismatch("string"), CatchMessage("u.pick('')"));
+    Assert.Contains(ChoiceMismatch("string"), CatchMessage("w.pick('')"));
+    Assert.Contains(ChoiceMismatch("null"), CatchMessage("u.pick(null)"));
   }
 
   [Fact]
@@ -1500,7 +1544,7 @@ public sealed class LeafReleaseModuleTests
     leaf.Fixture.WaitUntilIdle();
 
     // The list decode releases the two buffers it already decoded, and authored code never runs.
-    Assert.Contains(StringOrBufferKind("Number"), result);
+    Assert.Contains(ContentMismatch("number"), result);
     Assert.Equal(2u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
     Assert.Equal(0, UnionThingsModule.Calls);
   }
@@ -1629,7 +1673,7 @@ public sealed class LeafReleaseModuleTests
     var error = leaf.ReadString(
         "try { u.take(() => 5); 'no error'; } catch (error) { error instanceof Error ? error.message : 'not an Error'; }"
     );
-    Assert.Contains(StringOrBufferKind("Number"), error);
+    Assert.Contains(ContentMismatch("number"), error);
   }
 
   private const string TypedArraySetup =
@@ -1921,10 +1965,28 @@ public sealed class LeafReleaseModuleTests
     );
     var parts = result.Split('|');
     Assert.Equal(3, parts.Length);
-    Assert.Contains("Value kind 'ArrayBuffer' is not one of 'String' or 'Object'.", parts[0]);
-    Assert.Contains(NotU8, parts[1]);
-    Assert.Contains(NotU8, parts[2]);
+    Assert.Equal("'StringOrView' expected string or Uint8Array, but received ArrayBuffer", parts[0]);
+    Assert.Equal("'StringOrView' expected string or Uint8Array, but received object\n→ Caused by: " + NotU8, parts[1]);
+    Assert.Equal("'StringOrView' expected string or Uint8Array, but received object\n→ Caused by: " + NotU8, parts[2]);
     Assert.Equal(1, TypedArrayThingsModule.Calls);
+  }
+
+  // The union holds one leaf, the one of its case, and releases exactly that lease.
+  [Fact]
+  public void BufferOrViewUnionReleasesTheLeafItHolds()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run(TypedArraySetup);
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("buffer:2", leaf.ReadString("t.describeBufferOrView(new ArrayBuffer(2))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+
+    leaf.Fixture.ResetCounters();
+    Assert.Equal("view:3", leaf.ReadString("t.describeBufferOrView(new Uint8Array([7, 8, 9]))"));
+    leaf.Fixture.WaitUntilIdle();
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
 
   [Fact]

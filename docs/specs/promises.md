@@ -44,7 +44,9 @@ using owned JavaScript values.
 Task<JavaScriptPromiseResult>>)` SHALL create a JavaScript promise value backed
 by an asynchronous managed operation, preserving its settlement scheduling and
 scheduled-callback disposal ordering as native capability storage moves into
-the runtime-owned long-lived collection.
+the runtime-owned long-lived collection. It SHALL accept an optional
+`JavaScriptErrorFactory` that builds the rejection reason for a failed
+operation.
 
 #### Scenario: Async operation resolves
 - **GIVEN** the managed operation returns a resolve result
@@ -52,9 +54,30 @@ the runtime-owned long-lived collection.
 - **THEN** the scheduler SHALL settle the native promise on the runtime path
 
 #### Scenario: Async operation throws
-- **GIVEN** the managed operation throws
+- **GIVEN** the managed operation throws, or its result factory throws during
+  settlement
+- **AND** the promise has no error factory
 - **WHEN** the scheduler observes the failure
-- **THEN** the JavaScript promise SHALL reject with an error value
+- **THEN** the JavaScript promise SHALL reject with an `Error` whose message is
+  the exception's `Message`
+
+#### Scenario: Async operation throws with an error factory
+- **GIVEN** the managed operation throws, or its result factory throws during
+  settlement
+- **AND** the promise has a `JavaScriptErrorFactory`
+- **WHEN** the scheduler observes the failure on the runtime path
+- **THEN** it SHALL call the factory once with the runtime and the exception
+- **AND** it SHALL reject the promise with the returned value and dispose that
+  value after `Reject`
+
+#### Scenario: Error factory throws during rejection
+- **GIVEN** the promise has a `JavaScriptErrorFactory` and the factory throws
+- **WHEN** the scheduler rejects the promise
+- **THEN** it SHALL reject with an `Error` whose message is the original
+  exception's `Message`
+- **AND** it SHALL report the factory exception to stderr, as a host-function
+  error factory failure does
+- **AND** a factory that returns `null` SHALL give the same rejection
 
 #### Scenario: Async promise capability is released
 - **GIVEN** an asynchronous managed operation created a native promise
