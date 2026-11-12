@@ -117,6 +117,7 @@ not supported yet.
 | [`expo-asset-dotnet`](packages/expo-asset-dotnet) | Asset download and cache module. |
 | [`expo-constants-dotnet`](packages/expo-constants-dotnet) | Typed app constants for desktop hosts. |
 | [`expo-file-system-dotnet`](packages/expo-file-system-dotnet) | Local file system module. Work in progress. |
+| [`expo-crypto-dotnet`](packages/expo-crypto-dotnet) | Digest, random bytes, and UUID module. |
 
 The sample apps are in `apps/`: `mobile-app`, `desktop-app` and
 `hermes-console-app` (a headless Hermes app for bridge-level checks).

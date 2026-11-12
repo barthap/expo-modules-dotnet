@@ -57,6 +57,8 @@ exception rules.
 - `packages/expo-file-system-dotnet/` is the standalone Windows/macOS authored
   module package for the upstream local-file subset of `expo-file-system`
   (`File`, `Directory`, `Paths`).
+- `packages/expo-crypto-dotnet/` is the standalone Windows/macOS authored
+  module package for the upstream `ExpoCrypto` digest, random, and UUID API.
 - `packages/example-module/` is an authored .NET Expo module package used by
   example apps. It owns the example C# module source, JavaScript facade,
   dotnet autolinking metadata, and its `ExampleModule.Tests` behavior tests.

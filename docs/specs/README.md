@@ -39,10 +39,18 @@ below:
 - `promises.md`: Promise capability and promise-value wrappers.
 - `hermes-testhost.md`: Hermes-backed native testhost and managed test suite.
 - `modules-core-boundary.md`: `Expo.ModulesCore` package boundary,
-  generated-binding helpers, module test ownership, and standalone authored
-  packages including `expo-constants-dotnet` and `expo-file-system-dotnet`.
+  generated-binding helpers, module test ownership, and the
+  `expo-file-system-dotnet` authored package.
 - `dotnet-autolinking.md`: .NET Expo module discovery, app-level aggregator
   generation, build, and artifact staging contract.
+
+## Authored modules
+
+Each authored module has its own spec under `modules/`:
+
+- `modules/expo-asset.md`: `packages/expo-asset-dotnet`.
+- `modules/expo-constants.md`: `packages/expo-constants-dotnet`.
+- `modules/expo-crypto.md`: `packages/expo-crypto-dotnet`.
 
 The public Expo adapter package currently lives at
 `packages/expo-modules-dotnet`. It owns the autolinkable React Native package
