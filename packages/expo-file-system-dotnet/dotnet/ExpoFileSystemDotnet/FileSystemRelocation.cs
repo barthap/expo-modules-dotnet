@@ -104,6 +104,9 @@ internal static class FileSystemRelocation
   )
   {
     var target = ResolveTarget(source, destination);
+    // The destination was checked before. A destination outside the bundle can still resolve to a
+    // target that is the bundle itself.
+    FileSystemPath.EnsureWritable(target);
     var sourcePath = source.NativePath;
     if (source.IsDirectory ? !Directory.Exists(sourcePath) : !File.Exists(sourcePath))
     {

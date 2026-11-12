@@ -25,7 +25,7 @@ internal abstract class FileSystemPath : SharedObject
 
   protected abstract void EnsureCorrectType(string nativePath);
 
-  protected static void EnsureWritable(FileSystemLocation target)
+  internal static void EnsureWritable(FileSystemLocation target)
   {
     if (target.IsWithin(FileSystemRoots.BundleLocation))
     {

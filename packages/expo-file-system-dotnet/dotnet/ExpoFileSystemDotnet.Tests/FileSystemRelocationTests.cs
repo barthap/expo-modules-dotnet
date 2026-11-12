@@ -196,6 +196,52 @@ public sealed class FileSystemRelocationTests
     Assert.Equal($"Missing permission for uri: {notAFile.Uri}", moveError.Message);
   }
 
+  // The bundle root is a child of the destination, so the resolved target is the bundle itself.
+  [Theory]
+  [InlineData(false, false)]
+  [InlineData(false, true)]
+  [InlineData(true, false)]
+  [InlineData(true, true)]
+  public void OverwriteNeverReplacesTheBundleThroughItsParent(bool isDirectory, bool move)
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    Write(Path.Combine(temp.Path, "app", "bundle.txt"), "BUNDLE");
+    var sourcePath = Path.Combine(temp.Path, "out", "app");
+    if (isDirectory)
+    {
+      Write(Path.Combine(sourcePath, "x.txt"), "X");
+    }
+    else
+    {
+      Write(sourcePath, "X");
+    }
+    using var bundle = FileSystemRoots.OverrideBundleForTests(Path.Combine(temp.Path, "app"));
+    FileSystemPath source = isDirectory ? NewDirectory(sourcePath) : NewFile(sourcePath);
+    var destination = NewDirectory(temp.Path);
+    var before = Tree(temp.Path);
+
+    var options = new RelocationOptions(Overwrite: true);
+    var error = Assert.Throws<MissingPermissionException>(
+        () =>
+        {
+          if (isDirectory)
+          {
+            var directory = (FileSystemDirectory)source;
+            if (move) directory.MoveSync(destination, options); else directory.CopySync(destination, options);
+          }
+          else
+          {
+            var file = (FileSystemFile)source;
+            if (move) file.MoveSync(destination, options); else file.CopySync(destination, options);
+          }
+        });
+
+    var targetUri = isDirectory ? NewDirectory(Path.Combine(temp.Path, "app")).Uri : NewFile(Path.Combine(temp.Path, "app")).Uri;
+    Assert.Equal($"Missing permission for uri: {targetUri}", error.Message);
+    Assert.Equal(before, Tree(temp.Path));
+  }
+
   [Fact]
   public void BundleTreeIsACopySource()
   {

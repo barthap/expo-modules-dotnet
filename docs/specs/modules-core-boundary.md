@@ -4629,7 +4629,9 @@ SHALL run these checks in this order, all before any side effect:
 
 1. Permission. `copy` SHALL require the destination outside the bundle tree.
    `move` SHALL require the source and the destination outside it. A failure
-   SHALL be `MissingPermissionException` with that object's `uri`.
+   SHALL be `MissingPermissionException` with that object's `uri`. After step
+   3 resolves the target, the target SHALL also be outside the bundle tree,
+   with the same error and the target's `uri`.
 2. Type. The source and the destination SHALL each pass their type check
    (`InvalidTypeFileException` or `InvalidTypeDirectoryException`).
 3. Target resolution, by this table:
