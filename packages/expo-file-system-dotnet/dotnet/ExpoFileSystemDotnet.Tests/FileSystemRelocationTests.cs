@@ -320,6 +320,161 @@ public sealed class FileSystemRelocationTests
     Assert.Equal(source.Uri, NewDirectory(Path.Combine(temp.Path, "D", "S")).Uri);
   }
 
+  // Asserts that copy and move with overwrite fail with the given message and change nothing.
+  private static void AssertRejectedWithOverwrite(
+      FileSystemPath source,
+      FileSystemDirectory destination,
+      string root,
+      string reason)
+  {
+    var before = Tree(root);
+    var overwrite = new RelocationOptions(Overwrite: true);
+
+    var copyError = Assert.Throws<UnableToCopyException>(() => Copy(source, destination, overwrite));
+    Assert.Equal("ERR_UNABLE_TO_COPY", copyError.Code);
+    Assert.Equal($"Unable to copy file or directory: {reason}", copyError.Message);
+    Assert.Equal(before, Tree(root));
+
+    var moveError = Assert.Throws<UnableToMoveException>(() => Move(source, destination, overwrite));
+    Assert.Equal("ERR_UNABLE_TO_MOVE", moveError.Code);
+    Assert.Equal($"Unable to move file or directory: {reason}", moveError.Message);
+    Assert.Equal(before, Tree(root));
+  }
+
+  private static void Copy(FileSystemPath source, FileSystemDirectory destination, RelocationOptions options)
+  {
+    if (source is FileSystemFile file)
+    {
+      file.CopySync(destination, options);
+    }
+    else
+    {
+      ((FileSystemDirectory)source).CopySync(destination, options);
+    }
+  }
+
+  private static void Move(FileSystemPath source, FileSystemDirectory destination, RelocationOptions options)
+  {
+    if (source is FileSystemFile file)
+    {
+      file.MoveSync(destination, options);
+    }
+    else
+    {
+      ((FileSystemDirectory)source).MoveSync(destination, options);
+    }
+  }
+
+  // On Windows, creating a link needs Developer Mode or an elevated process. Off Windows it must work.
+  private static bool TryLinkDirectory(string link, string target)
+  {
+    try
+    {
+      Directory.CreateSymbolicLink(link, target);
+      return true;
+    }
+    catch (Exception error) when (error is UnauthorizedAccessException or IOException)
+    {
+      Assert.True(OperatingSystem.IsWindows(), "symlinks must work off Windows");
+      return false;
+    }
+  }
+
+  [Fact]
+  public void OverwriteNeverDeletesASourceInsideTheTarget()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    // Directory a/c/c resolves into a/c, and file a/f/f into the directory a/f. Each target holds the source.
+    Write(Path.Combine(temp.Path, "a", "c", "c", "n.txt"), "N");
+    Write(Path.Combine(temp.Path, "a", "f", "f"), "F");
+    var destination = NewDirectory(Path.Combine(temp.Path, "a"));
+
+    AssertRejectedWithOverwrite(
+        NewDirectory(Path.Combine(temp.Path, "a", "c", "c")), destination, temp.Path, "destination contains the source");
+    AssertRejectedWithOverwrite(
+        NewFile(Path.Combine(temp.Path, "a", "f", "f")), destination, temp.Path, "destination contains the source");
+  }
+
+  [Fact]
+  public void OverwriteStillReplacesATargetWhenOnlyTheDestinationHoldsTheSource()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    // The destination a/ contains the source a/b/f, but the target a/f does not.
+    Write(Path.Combine(temp.Path, "a", "f"), "old");
+    Write(Path.Combine(temp.Path, "a", "b", "f"), "F");
+
+    NewFile(Path.Combine(temp.Path, "a", "b", "f"))
+        .MoveSync(NewDirectory(Path.Combine(temp.Path, "a")), new RelocationOptions(Overwrite: true));
+
+    Assert.Equal(new[] { "a/", "a/b/", "a/f=F" }, Tree(temp.Path));
+  }
+
+  [Fact]
+  public void OverwriteComparesWholePathSegments()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    // The target a/c is not a parent of a/cc/c, though its path is a prefix of the source path.
+    Write(Path.Combine(temp.Path, "a", "c", "old.txt"), "old");
+    Write(Path.Combine(temp.Path, "a", "cc", "c", "n.txt"), "N");
+
+    NewDirectory(Path.Combine(temp.Path, "a", "cc", "c"))
+        .MoveSync(NewDirectory(Path.Combine(temp.Path, "a")), new RelocationOptions(Overwrite: true));
+
+    Assert.Equal(new[] { "a/", "a/c/", "a/c/n.txt=N", "a/cc/" }, Tree(temp.Path));
+  }
+
+  [Fact]
+  public void OverwriteNeverDeletesASourceReachedThroughALink()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    Write(Path.Combine(temp.Path, "a", "s", "n.txt"), "N");
+    Write(Path.Combine(temp.Path, "a", "c", "c", "m.txt"), "M");
+    Write(Path.Combine(temp.Path, "a", "c", "f"), "F");
+    Directory.CreateDirectory(Path.Combine(temp.Path, "links"));
+    if (!TryLinkDirectory(Path.Combine(temp.Path, "links", "up"), Path.Combine(temp.Path, "a")))
+    {
+      return;
+    }
+    var up = NewDirectory(Path.Combine(temp.Path, "links", "up"));
+
+    // links/up/s is a/s, the source itself.
+    AssertRejectedWithOverwrite(
+        NewDirectory(Path.Combine(temp.Path, "a", "s")), up, temp.Path, "source and destination are the same");
+    // links/up/c is a/c, which contains the sources a/c/c and a/c/f.
+    AssertRejectedWithOverwrite(
+        NewDirectory(Path.Combine(temp.Path, "a", "c", "c")), up, temp.Path, "destination contains the source");
+    AssertRejectedWithOverwrite(
+        NewFile(Path.Combine(temp.Path, "a", "c", "f")),
+        NewDirectory(Path.Combine(temp.Path, "links", "up", "c")),
+        temp.Path,
+        "source and destination are the same");
+  }
+
+  [Fact]
+  public void OverwriteRemovesALinkTargetWithoutFollowingIt()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    Write(Path.Combine(temp.Path, "a", "s", "n.txt"), "N");
+    Directory.CreateDirectory(Path.Combine(temp.Path, "d"));
+    if (!TryLinkDirectory(Path.Combine(temp.Path, "d", "s"), Path.Combine(temp.Path, "a")))
+    {
+      return;
+    }
+
+    // The target d/s is a link to the directory that holds the source. Only the link goes.
+    NewDirectory(Path.Combine(temp.Path, "a", "s"))
+        .CopySync(NewDirectory(Path.Combine(temp.Path, "d")), new RelocationOptions(Overwrite: true));
+
+    Assert.Null(new DirectoryInfo(Path.Combine(temp.Path, "d", "s")).LinkTarget);
+    Assert.Equal("N", File.ReadAllText(Path.Combine(temp.Path, "a", "s", "n.txt")));
+    Assert.Equal("N", File.ReadAllText(Path.Combine(temp.Path, "d", "s", "n.txt")));
+  }
+
   [Fact]
   public void SameItemComparesStoredNames()
   {

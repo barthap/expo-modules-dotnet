@@ -10,6 +10,8 @@ internal static class FileSystemRelocation
   /// <summary>Moves a directory and returns <see langword="true" />, or returns <see langword="false" /> when the target is on another volume.</summary>
   internal delegate bool MoveDirectoryStep(string source, string target);
 
+  private const int MaxLinkDepth = 40;
+
   private static readonly EnumerationOptions AllEntries = new()
   {
     AttributesToSkip = 0,
@@ -139,6 +141,22 @@ internal static class FileSystemRelocation
       if (!overwrite)
       {
         throw new DestinationAlreadyExistsException();
+      }
+      // Deleting the target must never delete the source: it must not be the target or inside it,
+      // however links and letter case name the two paths.
+      var resolvedSource = ResolveParents(sourcePath);
+      var resolvedTarget = ResolveParents(targetPath);
+      if (string.Equals(resolvedSource, resolvedTarget, StringComparison.Ordinal))
+      {
+        throw move
+            ? new UnableToMoveException("source and destination are the same")
+            : new UnableToCopyException("source and destination are the same");
+      }
+      if (resolvedSource.StartsWith(resolvedTarget + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+      {
+        throw move
+            ? new UnableToMoveException("destination contains the source")
+            : new UnableToCopyException("destination contains the source");
       }
       DeleteEntry(targetPath);
     }
@@ -328,6 +346,31 @@ internal static class FileSystemRelocation
         FileSystemModule.SelectDriveRoot(targetParent, roots, comparison),
         comparison
     );
+  }
+
+  // Returns the path with every link in its parent directories replaced by its final target and
+  // every segment replaced by its stored name. The last segment is not followed: a link there is
+  // removed or moved as a link. All segments must exist.
+  private static string ResolveParents(string path, int depth = 0)
+  {
+    // A link cycle makes the loop below run forever.
+    if (depth > MaxLinkDepth)
+    {
+      throw new IOException($"Too many levels of symbolic links in '{path}'.");
+    }
+    var trimmed = Path.TrimEndingDirectorySeparator(path);
+    var root = Path.GetPathRoot(trimmed) ?? "";
+    var segments = trimmed[root.Length..].Split(Path.DirectorySeparatorChar);
+    var resolved = root;
+    for (var i = 0; i < segments.Length; i++)
+    {
+      resolved = Path.Join(resolved, StoredName(resolved, segments[i]));
+      if (i < segments.Length - 1 && new DirectoryInfo(resolved).ResolveLinkTarget(returnFinalTarget: true) is { } link)
+      {
+        resolved = ResolveParents(link.FullName, depth + 1);
+      }
+    }
+    return resolved;
   }
 
   private static string StoredName(string parent, string name)
