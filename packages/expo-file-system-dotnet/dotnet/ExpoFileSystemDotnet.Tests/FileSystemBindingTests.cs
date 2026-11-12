@@ -472,39 +472,26 @@ public sealed class FileSystemBindingTests
         result);
   }
 
+  // The facade converts other typed arrays to a Uint8Array. The vitest facade tests cover that
+  // conversion against src/File.ts. This test covers what native code accepts.
   [Fact]
-  public void FacadeConversionPassesOtherTypedArraysAsBytes()
+  public void NativeWriteTakesAUint8ArrayOverTypedArrayBytesAndRejectsTheTypedArray()
   {
     using var platform = PlatformScope.Supported();
     using var temp = new TemporaryDirectory();
     using var host = ExpoModuleTestHost.Create(ExpoModulesProvider_ExpoFileSystemDotnet.Register);
 
-    // The ES5 form of the facade override in src/File.ts.
     var result = EvalList(
         host,
         $$"""
         (() => {
           {{Prelude(DirUri(temp.Path))}}
-          const Base = m.FileSystemFile;
-          function toNativeContent(content) {
-            if (ArrayBuffer.isView(content) && !(content instanceof Uint8Array) && !(content instanceof DataView)) {
-              return new Uint8Array(content.buffer, content.byteOffset, content.byteLength);
-            }
-            return content;
-          }
-          function File(uri) { return Reflect.construct(Base, [uri], File); }
-          Object.setPrototypeOf(File, Base);
-          File.prototype = Object.create(Base.prototype, {
-            constructor: { value: File, writable: true, configurable: true },
-          });
-          File.prototype.writeSync = function (content, options) {
-            return Base.prototype.writeSync.call(this, toNativeContent(content), options);
-          };
           const view = new Int16Array(new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]).buffer, 2, 2);
-          const f = new File(dir + 'a.bin');
-          f.writeSync(view);
-          const native = new Base(dir + 'b.bin');
-          return JSON.stringify([hex(f.bytesSync()), err(() => native.writeSync(view)), String(native.exists)]);
+          const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+          const accepted = new m.FileSystemFile(dir + 'a.bin');
+          accepted.writeSync(bytes);
+          const rejected = new m.FileSystemFile(dir + 'b.bin');
+          return JSON.stringify([hex(accepted.bytesSync()), err(() => rejected.writeSync(view)), String(rejected.exists)]);
         })()
         """
     );

@@ -25,8 +25,13 @@ type FileHasCopyAndMove = Assert<Present<File, "copy" | "copySync" | "move" | "m
 type DirectoryHasCopyAndMove = Assert<Present<Directory, "copy" | "copySync" | "move" | "moveSync">>;
 type FileCreateHasNoIdempotent = Assert<Absent<FileCreateOptions, "idempotent">>;
 type DirectoryCreateHasIdempotent = Assert<Present<DirectoryCreateOptions, "idempotent">>;
+type ExpectedDigestAlgorithms = "MD5" | "SHA-1" | "SHA-256" | "SHA-384" | "SHA-512";
 type DigestAlgorithms = Assert<
-  FileDigestAlgorithm extends "MD5" | "SHA-1" | "SHA-256" | "SHA-384" | "SHA-512" ? true : false
+  [FileDigestAlgorithm] extends [ExpectedDigestAlgorithms]
+    ? [ExpectedDigestAlgorithms] extends [FileDigestAlgorithm]
+      ? true
+      : false
+    : false
 >;
 type WriteEncoding = Assert<EncodingType.Base64 extends FileWriteOptions["encoding"] ? true : false>;
 type RelocationOverwrite = Assert<Present<RelocationOptions, "overwrite">>;
