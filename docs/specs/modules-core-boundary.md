@@ -4667,7 +4667,9 @@ SHALL run these checks in this order, all before any side effect:
 A directory copy SHALL copy every file and subdirectory, hidden entries
 included, and SHALL copy a symbolic link inside the tree as a link. A failed
 copy SHALL delete the target entries it created, SHALL rethrow the original
-error, and SHALL NOT change the source. A directory move that
+error, and SHALL NOT change the source. A copy whose target exists when the
+copy starts, because another writer created it after the checks, SHALL fail
+with `DestinationAlreadyExistsException` and SHALL delete nothing. A directory move that
 `Directory.Move` cannot do because the target is on another volume SHALL copy
 the tree and then delete the source. If that copy fails, the partial target
 SHALL be removed and the source SHALL stay. If the source delete fails after a

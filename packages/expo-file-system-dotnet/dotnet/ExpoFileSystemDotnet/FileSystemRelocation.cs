@@ -170,10 +170,15 @@ internal static class FileSystemRelocation
     return destination;
   }
 
-  // Copies the source to a target that does not exist. On failure, removes what it created and
-  // rethrows the original error.
-  private static void CopyEntry(FileSystemLocation source, FileSystemLocation target)
+  // Copies the source to a target that does not exist. A target that exists now was created by
+  // another writer: the copy fails and deletes nothing. On any later failure, removes what it
+  // created and rethrows the original error.
+  internal static void CopyEntry(FileSystemLocation source, FileSystemLocation target)
   {
+    if (File.Exists(target.NativePath) || Directory.Exists(target.NativePath))
+    {
+      throw new DestinationAlreadyExistsException();
+    }
     try
     {
       if (source.IsDirectory)

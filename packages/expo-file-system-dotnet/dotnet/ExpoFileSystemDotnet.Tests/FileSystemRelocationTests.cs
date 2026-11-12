@@ -340,6 +340,48 @@ public sealed class FileSystemRelocationTests
     Assert.Equal(before, Tree(Path.Combine(temp.Path, "s")));
   }
 
+  // A target that another writer creates after the precondition checks is not ours to delete.
+  [Fact]
+  public void FailedFallbackCopyKeepsADirectoryAnotherWriterCreated()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    Write(Path.Combine(temp.Path, "s", "x.txt"), "SOURCE");
+    var foreign = Path.Combine(temp.Path, "m", "x.txt");
+    var source = FileSystemLocation.Parse(Path.Combine(temp.Path, "s"), isDirectory: true, PathFlavors.Current);
+    var destination = FileSystemLocation.Parse(Path.Combine(temp.Path, "m"), isDirectory: true, PathFlavors.Current);
+
+    var error = Assert.Throws<DestinationAlreadyExistsException>(
+        () => FileSystemRelocation.Move(
+            source,
+            destination,
+            overwrite: false,
+            (_, target) =>
+            {
+              Write(foreign, "FOREIGN");
+              return false;
+            }));
+
+    Assert.Equal("ERR_DESTINATION_ALREADY_EXISTS", error.Code);
+    Assert.Equal(new[] { "x.txt=FOREIGN" }, Tree(Path.Combine(temp.Path, "m")));
+    Assert.Equal(new[] { "x.txt=SOURCE" }, Tree(Path.Combine(temp.Path, "s")));
+  }
+
+  [Fact]
+  public void FileCopyKeepsATargetThatAppearedAfterTheChecks()
+  {
+    using var platform = PlatformScope.Supported();
+    using var temp = new TemporaryDirectory();
+    Write(Path.Combine(temp.Path, "a.txt"), "SOURCE");
+    var foreign = Write(Path.Combine(temp.Path, "b.txt"), "FOREIGN");
+    var source = FileSystemLocation.Parse(Path.Combine(temp.Path, "a.txt"), isDirectory: false, PathFlavors.Current);
+    var target = FileSystemLocation.Parse(foreign, isDirectory: false, PathFlavors.Current);
+
+    Assert.Throws<DestinationAlreadyExistsException>(() => FileSystemRelocation.CopyEntry(source, target));
+
+    Assert.Equal(new[] { "a.txt=SOURCE", "b.txt=FOREIGN" }, Tree(temp.Path));
+  }
+
   [Fact]
   public void DirectoryMoveToAnotherVolumeCopiesThenDeletes()
   {
