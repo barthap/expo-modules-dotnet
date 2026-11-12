@@ -281,8 +281,7 @@ with the returned subscription's `remove()` method.
 <!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/modules.mdx -->
 `[ExpoModule("Name")]` on a `partial` class declares a module. `[ExpoModule]`
 without an argument strips a trailing `Module` from the class name, so
-`MathModule` registers as `Math`. Upstream uses the class name verbatim. EMC-75
-changes this.
+`MathModule` registers as `Math`. Upstream uses the class name verbatim.
 
 <!-- backed-by: spec "Requirement: Runtime Context Owns Module Instances" (modules-core-boundary.md); source Module; test GeneratorReportsUnsupportedModuleConstructor -->
 The `Module` base class is optional. A module without it declares a
@@ -327,7 +326,7 @@ the default value. A default can be any C# constant, including an enum member,
 The generated function checks the argument count. The minimum is the number of
 parameters without a default. The maximum is the number of parameters. A call
 outside that range throws, and an async function rejects its Promise. A
-trailing nullable parameter without a default is required (EMC-63).
+trailing nullable parameter without a default is required.
 
 <!-- backed-by: spec "Requirement: Unsupported Signatures Are Build Diagnostics" (modules-core-boundary.md) -->
 Unsupported parameter, return, constructor, method, and property shapes and
@@ -415,7 +414,7 @@ generated module codec today.
 There is no `[Constant]` attribute. A constant is a getter-only `[JS]` property,
 and its getter runs on every JavaScript read. Upstream reads a constant once:
 Kotlin `@Constant` and a Swift `lazy var` store the value on the JavaScript
-object on the first read. EMC-62 changes this. `ExpoConstantsModule` exposes
+object on the first read. `ExpoConstantsModule` exposes
 its values this way:
 
 ```csharp
@@ -671,7 +670,7 @@ diagnostics):
 
 <!-- backed-by: source ExpoModulesGenerator.GetFunctions -->
 Static `[JS]` members are not supported. The generator reports them as an
-unsupported shape (EMC-66).
+unsupported shape.
 
 ### Per-instance events
 
@@ -911,7 +910,7 @@ accepted. `byte[]` and `ArrayBuffer` parameters do not accept a
 
 <!-- backed-by: source ByteArrayCodec; spec "Requirement: Module-facing ArrayBuffer And Binary Codecs" (modules-core-boundary.md); spec "Requirement: Uint8Array Is A Byte View" (modules-core-boundary.md) -->
 `byte[]` decodes only from and encodes only to `ArrayBuffer`, and `Uint8Array` is
-the only typed array (EMC-65).
+the only typed array.
 
 ## Events
 
@@ -1229,7 +1228,7 @@ public sealed partial class ExpoConstantsModule : Module
 <!-- backed-by: spec "Requirement: Runtime Context Owns Module Instances" (modules-core-boundary.md); source ModuleRegistry.GetOrCreateModule -->
 `ModuleRegistry` is the context-owned registry that holds one instance of each
 module per runtime. Authored code has no supported way to look up another
-module yet (EMC-69). `GetOrCreateModule` is the registration helper that the
+module yet. `GetOrCreateModule` is the registration helper that the
 generator calls.
 
 <!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/lifecycle.mdx -->
@@ -1293,7 +1292,7 @@ Run `expo-modules-dotnet-autolinking <command> --help` for command options, and
 see `packages/expo-modules-dotnet-autolinking/README.md` for the full command
 reference. The "Inspecting Generated Output" section of
 `docs/assorted/modules-core-generator-authoring.md` shows how to read the
-generator output. TypeScript type generation is not built yet (EMC-30).
+generator output. TypeScript type generation is not built yet.
 
 ## Feature support
 
@@ -1345,24 +1344,6 @@ subset works. `Not yet` means it is not built.
 <!-- backed-by: Closure arguments: source JavaScriptCallback -->
 <!-- backed-by: JavaScript values as arguments: spec "Requirement: Generated Module Value Ownership" (managed-jsi-wrappers.md) -->
 
-Each later roadmap item changes one row or section of this guide. These items
-are open:
-
-- EMC-30 TypeScript types: `## Tooling` (no row).
-- EMC-62 constants read once: Constants.
-- EMC-63 trailing nullable arguments are optional: Synchronous functions.
-- EMC-65 typed array kinds: Typed arrays.
-- EMC-66 static members of shared objects: Static members of shared objects.
-- EMC-67 callbacks as delegate parameters: Closure arguments.
-- EMC-68 additional memory pressure: Shared objects (note), and `## Lifecycle and runtime context` if a hook is added.
-- EMC-69 modules find other modules: `## Lifecycle and runtime context` (no row).
-- EMC-70 tuples: Tuples.
-- EMC-71 dates and durations: `## Types` (no row).
-- EMC-72 `JavaScriptObject` and dynamic values: JavaScript values as arguments.
-- EMC-73 one method as both sync and async: Asynchronous variants of synchronous functions.
-- EMC-74 event names drop `On`: Events.
-- EMC-75 default module name is the class name: Modules.
-
 ## Syntax mapping: C# and Swift and Kotlin
 
 <!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/; expo/expo#53039 docs/pages/modules/v2/migrate/from-v1.mdx -->
@@ -1374,7 +1355,7 @@ are open:
 | Function | `[JS]` method, `[JS("name")]` | `@JS func`, `@JS("name")` | `@JS fun`, `@JS("name")` |
 | Asynchronous function | `Task` or `Task<T>` result | `async` function or `Task` result | `suspend fun` or `Promise<T>` result |
 | Run off the JavaScript thread | `await Task.Run(...)` in a `Task` method | `@JS(.concurrent)` | `withContext(Dispatchers.IO)` in a `suspend fun` |
-| Async variant of a sync function | Not yet (EMC-73) | `@JS("textSync", .withAsync("text"))` | Not supported yet |
+| Async variant of a sync function | Not yet | `@JS("textSync", .withAsync("text"))` | Not supported yet |
 | Property | `[JS]` property | `@JS var` | `@JS val` or `@JS var` |
 | Constant | getter-only `[JS]` property | `@JS lazy var` | `@JS @Constant val` |
 | Event | `[Event] public partial Func<T, Task> OnX { get; }` | `@Event var onX: (T) -> Void` | `@Event` on a property created with `event<T>()` |
@@ -1390,7 +1371,7 @@ are open:
 | Union | `[Union]` on an `abstract record` with nested `sealed record` cases | `@Union` on an enum | Not supported yet |
 | Closure argument | `JavaScriptCallback<TArgs, TResult>` parameter | closure | Not supported yet |
 | App context | `DotnetRuntimeContext` | `appContext` | `androidContext`, `reactContext`, `context` |
-| Another module | Not yet (EMC-69) | `appContext?.moduleRegistry.get(moduleWithName:)` | `context.module<T>()` |
+| Another module | Not yet | `appContext?.moduleRegistry.get(moduleWithName:)` | `context.module<T>()` |
 
 C# uses attributes (`[OnCreate]`, `[OnDestroy]`, `[OnStartObserving]`,
 `[OnStopObserving]`) where Swift and Kotlin override methods (`didCreate()`,
@@ -1575,7 +1556,6 @@ provide the native testhost.
   `## Get started`, `## Platform matrix` and `## Troubleshooting` above.
 - `docs/specs/promises.md`, `docs/specs/runtime-scheduling.md` — the async/
   threading model behind `## Threading`.
-- `## Feature support` — which upstream features exist in C#, with the roadmap item
-  that changes each row.
+- `## Feature support` — which upstream features exist in C#.
 - `## Syntax mapping: C# and Swift and Kotlin` — the same concept in each language.
 - `docs/roadmap.md` — direction and what's still planned.
