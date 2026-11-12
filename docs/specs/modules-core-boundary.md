@@ -4664,7 +4664,15 @@ SHALL run these checks in this order, all before any side effect:
 7. Existing target. Without `Overwrite`, an existing target SHALL fail with
    `DestinationAlreadyExistsException`. With `Overwrite`, the existing entry
    SHALL be deleted recursively, whatever its type, after every other check
-   passed.
+   passed. Before the delete, the call SHALL resolve each of the source and
+   the target as follows: every link in a parent directory is replaced by its
+   final target, and every segment is replaced by its stored name. The last
+   segment SHALL NOT be followed. When the two resolved paths are equal, the
+   call SHALL fail with `UnableToCopyException` or `UnableToMoveException`
+   (`source and destination are the same`). When the resolved target contains
+   the resolved source, compared by whole path segments, the call SHALL fail
+   with the same exceptions (`destination contains the source`). Both
+   failures SHALL delete nothing.
 
 A directory copy SHALL copy every file and subdirectory, hidden entries
 included, and SHALL copy a symbolic link inside the tree as a link. A failed
@@ -4707,6 +4715,25 @@ SHALL leave the location unchanged.
   `ERR_COPY_OR_MOVE_DIRECTORY_TO_FILE`, `ERR_DESTINATION_ALREADY_EXISTS`,
   `ERR_UNABLE_TO_COPY`, `ERR_UNABLE_TO_COPY`, and an uncoded error
 - **AND** the filesystem SHALL be unchanged after each call
+
+#### Scenario: Overwrite never deletes a source inside the target
+
+- **GIVEN** a directory `a/c/c/` and a file `a/f/f`
+- **WHEN** `copySync` and `moveSync` with `overwrite: true` run on `a/c/c/` and
+  on `a/f/f`, each with the destination `a/`
+- **THEN** each call SHALL fail with `ERR_UNABLE_TO_COPY` or
+  `ERR_UNABLE_TO_MOVE` (`destination contains the source`)
+- **AND** the source and its contents SHALL still exist
+
+#### Scenario: Overwrite never deletes a source reached through a link
+
+- **GIVEN** a symbolic link `links/up` to a directory `a/` that holds the
+  directories `a/s/` and `a/c/c/`
+- **WHEN** `copySync` and `moveSync` with `overwrite: true` run on `a/s/` with
+  the destination `links/up`, and on `a/c/c/` with the destination `links/up`
+- **THEN** the first calls SHALL fail with `source and destination are the
+  same` and the second calls with `destination contains the source`
+- **AND** the sources and their contents SHALL still exist
 
 #### Scenario: Async forms
 
