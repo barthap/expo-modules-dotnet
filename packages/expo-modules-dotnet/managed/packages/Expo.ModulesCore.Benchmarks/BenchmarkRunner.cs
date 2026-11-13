@@ -198,18 +198,29 @@ internal static class BenchmarkRunner
   }
 
   // Host functions run on the testhost executor thread, so only the process-wide counter sees their
-  // allocations. The delta also holds the allocations of the harness call, which n makes negligible.
+  // allocations. The harness call (evaluate, closure, async continuations) allocates too, so a pass
+  // with n = 0 measures that cost and the per-call number subtracts it.
   private static async Task<double> MeasureBytesAsync(
       ExpoModuleTestHost host,
       string driverName,
       bool isAsync,
       int iterations)
   {
+    var baseline = await AllocatedBytesAsync(host, driverName, isAsync, 0);
+    var allocated = await AllocatedBytesAsync(host, driverName, isAsync, iterations);
+    return Math.Max(0, (double)(allocated - baseline) / iterations);
+  }
+
+  private static async Task<long> AllocatedBytesAsync(
+      ExpoModuleTestHost host,
+      string driverName,
+      bool isAsync,
+      int n)
+  {
     CollectGarbage(host);
     var before = GC.GetTotalAllocatedBytes(precise: true);
-    await RunDriverAsync(host, driverName, isAsync, iterations);
-    var after = GC.GetTotalAllocatedBytes(precise: true);
-    return (double)(after - before) / iterations;
+    await RunDriverAsync(host, driverName, isAsync, n);
+    return GC.GetTotalAllocatedBytes(precise: true) - before;
   }
 
   // The evaluate call of the harness creates one result handle of its own. A pass with n = 0 runs the

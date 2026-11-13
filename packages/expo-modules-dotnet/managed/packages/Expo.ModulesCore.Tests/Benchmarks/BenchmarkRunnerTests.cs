@@ -4,9 +4,17 @@ using Xunit;
 
 namespace Expo.ModulesCore.Tests.Benchmarks;
 
+// The bytes counter is process-wide, so these tests run alone instead of beside other tests.
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class BenchmarkRunnerCollection
+{
+  public const string Name = "benchmark runner";
+}
+
 // The runner turns a case into the numbers that the report compares. A wrong handle count, an async
 // sample that ends before its promises settle, or a case that fails without a name would make the
 // comparison wrong or hard to act on.
+[Collection(BenchmarkRunnerCollection.Name)]
 public sealed class BenchmarkRunnerTests
 {
   private static readonly RunnerOptions Small = new(2, TimeSpan.FromMilliseconds(1), 10);
@@ -110,5 +118,24 @@ public sealed class BenchmarkRunnerTests
     Assert.Equal(0, row.OwnedLinkedPerCall);
     Assert.Equal(0, row.OwnedUnlinkedPerCall);
     Assert.Equal(0, row.BorrowedPerCall);
+  }
+
+  // A slow call calibrates to one call per sample, so any harness allocation that the runner does not
+  // subtract would show up in full as bytes per call.
+  [Fact]
+  public async Task Run_CaseThatAllocatesNothing_ReportsNearZeroBytesEvenAtOneCallPerSample()
+  {
+    using var host = BenchmarkCases.CreateHost();
+    var slow = new BenchmarkCase(
+        "slow without allocation",
+        BenchmarkDirection.None,
+        "",
+        "(function () { for (var k = 0; k < 300000; k++); })()",
+        null,
+        "true");
+
+    var row = await BenchmarkRunner.RunAsync(host, slow, Small);
+
+    Assert.True(row.BytesPerCall < 64, $"bytes/call was {row.BytesPerCall}");
   }
 }

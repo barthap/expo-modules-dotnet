@@ -90,6 +90,17 @@ public sealed class BenchmarkReportTests
   }
 
   [Fact]
+  public void Header_NamesTheJitAndTheTieredCompilationSettings()
+  {
+    var header = BenchmarkReport.Header();
+
+    Assert.Contains("jit: RyuJIT", header);
+    Assert.Contains("tiered compilation: ", header);
+    Assert.Contains("tiered PGO: ", header);
+    Assert.Contains("quick JIT for loops: ", header);
+  }
+
+  [Fact]
   public void NoisyRows_ReturnsOnlyRowsAboveTheLimit()
   {
     var quiet = Row(name: "quiet", spread: BenchmarkStatistics.NoisySpreadLimit);

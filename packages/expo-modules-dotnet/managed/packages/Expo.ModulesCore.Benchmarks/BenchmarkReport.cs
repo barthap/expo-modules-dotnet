@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -29,6 +30,10 @@ internal static class BenchmarkReport
     builder.AppendLine("call-path benchmark");
     builder.AppendLine($"configuration: {Configuration}");
     builder.AppendLine($"runtime: {RuntimeInformation.FrameworkDescription}");
+    builder.AppendLine($"jit: {(RuntimeFeature.IsDynamicCodeCompiled ? "RyuJIT (dynamic code compiled)" : "NativeAOT (no JIT)")}");
+    builder.AppendLine($"tiered compilation: {RuntimeSetting("System.Runtime.TieredCompilation", "TieredCompilation")}");
+    builder.AppendLine($"tiered PGO: {RuntimeSetting("System.Runtime.TieredPGO", "TieredPGO")}");
+    builder.AppendLine($"quick JIT for loops: {RuntimeSetting("System.Runtime.TieredCompilation.QuickJitForLoops", "TC_QuickJitForLoops")}");
     builder.AppendLine($"platform: {RuntimeInformation.RuntimeIdentifier}");
     builder.AppendLine($"logical processors: {Environment.ProcessorCount.ToString(CultureInfo.InvariantCulture)}");
     builder.Append($"hermes ref: {HermesRef()}");
@@ -68,6 +73,20 @@ internal static class BenchmarkReport
 #else
       "Release";
 #endif
+
+  // Reads a setting that the runtime config or a DOTNET_ environment variable sets. When neither
+  // sets it, the runtime default is in effect, and this does not say what that default is.
+  private static string RuntimeSetting(string configSwitch, string environmentName)
+  {
+    if (AppContext.TryGetSwitch(configSwitch, out var enabled))
+    {
+      return enabled ? "on (runtime config)" : "off (runtime config)";
+    }
+
+    var fromEnvironment = Environment.GetEnvironmentVariable($"DOTNET_{environmentName}")
+        ?? Environment.GetEnvironmentVariable($"COMPlus_{environmentName}");
+    return fromEnvironment is null ? "runtime default" : $"{(fromEnvironment == "0" ? "off" : "on")} (environment)";
+  }
 
   // The file is embedded at build time, so the program does not depend on the current directory.
   private static string HermesRef()
