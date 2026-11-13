@@ -66,6 +66,15 @@ importers:
       expo:
         specifier: catalog:react-native-81
         version: 54.0.35(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)(typescript@5.9.3)
+      expo-asset:
+        specifier: ~12.0.13
+        version: 12.0.13(expo@54.0.35)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)(typescript@5.9.3)
+      expo-asset-dotnet:
+        specifier: workspace:*
+        version: link:../../packages/expo-asset-dotnet
+      expo-constants:
+        specifier: ~18.0.13
+        version: 18.0.13(expo@54.0.35)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))
       expo-constants-dotnet:
         specifier: workspace:*
         version: link:../../packages/expo-constants-dotnet
@@ -6543,7 +6552,7 @@ snapshots:
 
   '@expo/prebuild-config@54.0.8(expo@54.0.35(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.3))(@types/react@19.2.17)(react@19.1.4))(react@19.1.4)(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
-      '@expo/config': 12.0.13
+      '@expo/config': 12.0.14
       '@expo/config-plugins': 54.0.4
       '@expo/config-types': 54.0.10
       '@expo/image-utils': 0.8.14(typescript@6.0.3)
@@ -6560,7 +6569,7 @@ snapshots:
 
   '@expo/prebuild-config@54.0.8(expo@54.0.35)(typescript@5.9.3)':
     dependencies:
-      '@expo/config': 12.0.13
+      '@expo/config': 12.0.14
       '@expo/config-plugins': 54.0.4
       '@expo/config-types': 54.0.10
       '@expo/image-utils': 0.8.14(typescript@5.9.3)
@@ -8933,8 +8942,8 @@ snapshots:
 
   expo-constants@18.0.13(expo@54.0.35(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.3))(@types/react@19.2.17)(react@19.1.4))(react@19.1.4)(typescript@6.0.3))(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.3))(@types/react@19.2.17)(react@19.1.4)):
     dependencies:
-      '@expo/config': 12.0.13
-      '@expo/env': 2.0.11
+      '@expo/config': 12.0.14
+      '@expo/env': 2.0.12
       expo: 54.0.35(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.3))(@types/react@19.2.17)(react@19.1.4))(react@19.1.4)(typescript@6.0.3)
       react-native: 0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.3))(@types/react@19.2.17)(react@19.1.4)
     transitivePeerDependencies:
@@ -8942,8 +8951,8 @@ snapshots:
 
   expo-constants@18.0.13(expo@54.0.35)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4)):
     dependencies:
-      '@expo/config': 12.0.13
-      '@expo/env': 2.0.11
+      '@expo/config': 12.0.14
+      '@expo/env': 2.0.12
       expo: 54.0.35(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(react-native@0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)(typescript@5.9.3)
       react-native: 0.81.6(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/metro-config@0.81.6(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.4)
     transitivePeerDependencies:
