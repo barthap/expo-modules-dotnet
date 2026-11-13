@@ -107,6 +107,58 @@ testhost and run the same managed test projects. All runners SHALL pass
 - **AND** it SHALL build the shared native testhost path once and run only the
   selected test projects
 
+### Requirement: Canonical Benchmark Runners
+
+The repository SHALL provide platform-paired call-path benchmark runners:
+`scripts/bench-managed.sh` on macOS and Linux and `scripts/bench-managed.ps1`
+on Windows. Each runner SHALL build the managed projects in Release and the
+native testhost with an optimized build type. It SHALL use a testhost build
+directory that is separate from the test runners' directory, and SHALL pass
+`EXPO_JSI_TESTHOST_LIBRARY` to the benchmark. The benchmark module SHALL go
+through the generator like an authored module. The output SHALL NOT name the
+machine. The benchmark project SHALL run with tiered compilation off, so every
+sample runs fully optimized code. The test runners SHALL build the benchmark
+project, because `Expo.ModulesCore.Tests` references it, and SHALL NOT run it.
+
+Before each timed sample the benchmark SHALL collect garbage in .NET and in
+Hermes and wait until the testhost executor is idle, so deferred work of one
+sample does not land in the next sample or in a control row. A row whose
+slowest sample is more than 1.20 times its median SHALL be marked noisy, and the
+benchmark SHALL then exit with a non-zero code.
+
+Reasons to keep these as they are:
+
+- The benchmark needs optimized builds on both sides, and a Debug testhost
+  gives numbers that mislead.
+- The separate build directory exists because the test runner deletes its own
+  on every run.
+- With tiered compilation on, the first samples after the warm-up run
+  unoptimized code until a background JIT batch completes, so the median
+  depends on which sample that step lands in. One measured run reported a
+  median 55% above the steady value with no noisy mark. Fully optimized code
+  with no dynamic profile data is also nearer to NativeAOT than the tiered
+  steady state is.
+
+#### Scenario: A developer runs the benchmark
+
+- **GIVEN** a developer runs a benchmark runner
+- **WHEN** the run completes
+- **THEN** it SHALL print one row per case with time, managed bytes, handle
+  counts, the native control, and the bridge cost
+
+#### Scenario: A sample set is noisy
+
+- **GIVEN** the spread of a row is above 1.20
+- **WHEN** the benchmark prints its table
+- **THEN** it SHALL mark the row as noisy
+- **AND** it SHALL exit with a non-zero code
+
+#### Scenario: A change breaks the benchmark project
+
+- **GIVEN** a change makes the benchmark project fail to build
+- **WHEN** a developer runs a test runner
+- **THEN** the test runner SHALL fail at build
+
 ### Requirement: Headless Hermes Console Runners
 
 The headless Hermes console proof SHALL have platform-paired runners. The
@@ -282,3 +334,62 @@ remaining long-lived entries.
 - **AND** assert zero remaining entries after release or abandonment
 - **AND** it SHALL treat bare invalidation as abrupt shutdown only, not as a
   production-order proof
+
+### Requirement: Value Handle Creation Counters
+
+The testhost counters SHALL report owned value handles created linked, owned
+value handles created unlinked, and borrowed value handles created. They SHALL
+count each value handle at the point where the counted API table, or the
+testhost's own script evaluation, returns it to managed code. A handle is
+linked when the bridge links it into the per-runtime owned-value list, which it
+does for every owned handle that does not hold undefined, null, a boolean, or a
+number. The borrowed `this` handle that the bridge creates inside a
+host-function call SHALL NOT be counted, and the benchmark documentation SHALL
+state it.
+
+Reason to keep next to the requirement: counting in the testhost table keeps
+the production bridge free of diagnostics. Counting in the bridge looks more
+complete, but it adds test-only code to production for one constant handle per
+call. The classification in the testhost mirrors the bridge, so a test compares
+the linked counter with the tracked-owned-values counter to catch drift.
+
+#### Scenario: A record decode creates a known number of handles
+
+- **GIVEN** a generated function takes a record with 12 fields
+- **WHEN** one call decodes the record
+- **THEN** the counters SHALL report an exact, asserted number of handles of
+  each kind
+- **AND** a record with one more field SHALL create exactly one more owned
+  handle
+
+#### Scenario: Created handles match released values
+
+- **GIVEN** a call has completed
+- **WHEN** a test compares the counters
+- **THEN** owned handles created SHALL equal values released, plus the handle
+  that native frees without `release_value`
+
+#### Scenario: The linked count matches the tracked count
+
+- **GIVEN** a test holds non-primitive owned handles
+- **WHEN** it reads the counters
+- **THEN** the linked counter SHALL equal the tracked-owned-values counter
+
+### Requirement: Native Benchmark Controls
+
+The testhost SHALL expose a test-only export that installs native-only control
+functions, one per benchmark shape and direction. A control SHALL do the same
+traversal or construction in C++ through JSI, SHALL create no value handle, and
+SHALL NOT call managed code.
+
+Reason to keep next to the requirement: without the control, the numbers show
+whether a shape is slow but not how much of the time the bridge adds, so they
+cannot choose between fixes.
+
+#### Scenario: A control runs next to a managed case
+
+- **GIVEN** a benchmark case has a control
+- **WHEN** the benchmark measures both
+- **THEN** the control SHALL leave the handle counters at zero
+- **AND** the table SHALL show the control time and the difference as the
+  bridge cost

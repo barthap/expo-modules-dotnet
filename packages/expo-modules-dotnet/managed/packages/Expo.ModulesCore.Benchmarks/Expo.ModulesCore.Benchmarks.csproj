@@ -8,6 +8,7 @@
     <IsPackable>false</IsPackable>
     <!-- Measured samples must be steady state. With tiering on, the first samples run unoptimized code
          and the median depends on where the JIT step lands. -->
+    <!-- @ref docs/specs/hermes-testhost.md "Canonical Benchmark Runners" -->
     <TieredCompilation>false</TieredCompilation>
   </PropertyGroup>
 

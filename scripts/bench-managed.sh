@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+# Not the directory scripts/test-managed.sh deletes on every run.
+# @ref docs/specs/hermes-testhost.md "Canonical Benchmark Runners"
 build_dir="$repo_root/build/jsi-testhost-bench"
 hermes_root="${HERMES_PREBUILT_ROOT:-$repo_root/build/hermes/source/destroot}"
 benchmark_project="$repo_root/packages/expo-modules-dotnet/managed/packages/Expo.ModulesCore.Benchmarks/Expo.ModulesCore.Benchmarks.csproj"
@@ -112,6 +114,8 @@ if [[ "$(uname)" != "Darwin" ]]; then
     export CXX="${CXX:-clang++}"
   fi
 fi
+# Release on purpose: a Debug testhost gives numbers that mislead.
+# @ref docs/specs/hermes-testhost.md "Canonical Benchmark Runners"
 build_step run_in_repo_env cmake \
 	-S "$repo_root/packages/expo-modules-dotnet/native/testhost" \
 	-B "$build_dir" \

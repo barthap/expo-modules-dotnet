@@ -83,6 +83,8 @@ if ($forwardedArgs.Count -gt 0 -and $forwardedArgs[0] -eq '--') {
 }
 
 $benchmarkProject = Join-Path $repoRoot 'packages\expo-modules-dotnet\managed\packages\Expo.ModulesCore.Benchmarks\Expo.ModulesCore.Benchmarks.csproj'
+# Not the directory scripts\test-managed.ps1 deletes on every run.
+# @ref docs/specs/hermes-testhost.md "Canonical Benchmark Runners"
 $buildDir = Join-Path $repoRoot 'build\jsi-testhost-bench-windows'
 $testhostDll = Join-Path $buildDir 'Release\expo_jsi_testhost.dll'
 
@@ -136,6 +138,8 @@ Invoke-BuildStep -FilePath 'cmake' -ArgumentList @(
 )
 
 Write-Host
+# Release on purpose: a Debug testhost gives numbers that mislead.
+# @ref docs/specs/hermes-testhost.md "Canonical Benchmark Runners"
 Write-Host '==> Building native testhost'
 Invoke-BuildStep -FilePath 'cmake' -ArgumentList @(
   '--build',
