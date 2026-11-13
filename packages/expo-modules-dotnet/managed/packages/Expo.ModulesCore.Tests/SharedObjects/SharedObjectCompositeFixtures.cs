@@ -80,6 +80,8 @@ public sealed partial class CompositeEntriesModule
 
   public static Entry? LastCallbackResult;
 
+  public static EntryChoice? LastChoice;
+
   private static TaskCompletionSource NewGate() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
   public static void Reset()
@@ -87,6 +89,7 @@ public sealed partial class CompositeEntriesModule
     Gate = NewGate();
     LastHeld = null;
     LastCallbackResult = null;
+    LastChoice = null;
     storedCallback = null;
     CallCount = 0;
     LastList = null;
@@ -203,4 +206,11 @@ public sealed partial class CompositeEntriesModule
 
   [JS]
   public Task EmitChoiceAsync(Entry first) => OnChoice(new EntryChoice.Held(new EntryPair(first, null)));
+
+  [JS]
+  public EntryChoice EchoChoice(EntryChoice value)
+  {
+    LastChoice = value;
+    return value;
+  }
 }

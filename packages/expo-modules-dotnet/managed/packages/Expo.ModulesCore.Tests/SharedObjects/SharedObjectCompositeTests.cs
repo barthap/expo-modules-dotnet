@@ -186,4 +186,44 @@ public sealed partial class SharedObjectCompositeTests
       return true;
     });
   }
+
+  // A record or list case decodes and encodes its Entry fields through the registry, and the union
+  // still picks the case by the shape of the value.
+  [Fact]
+  public void UnionPayloadRecordFieldRoundTripsSharedObject()
+  {
+    Run(fixture =>
+    {
+      var result = Evaluate(
+          fixture,
+          "const t = m.echoChoice('text'); " +
+          "const r = m.echoChoice({ first: a, second: b }); " +
+          "const l = m.echoChoice([b, a]); " +
+          "[r.first === a, r.second === b, l.length, l[0] === b, l[1] === a, t].join(':')"
+      );
+
+      Assert.Equal("true:true:2:true:true:text", result);
+      // The last call decoded the list case.
+      var a = Entry.Constructed[0];
+      var b = Entry.Constructed[1];
+      var listed = Assert.IsType<EntryChoice.Listed>(CompositeEntriesModule.LastChoice);
+      Assert.Same(b, listed.Value[0]);
+      Assert.Same(a, listed.Value[1]);
+      return true;
+    });
+  }
+
+  [Fact]
+  public void UnionRecordCaseDecodesToTheManagedInstances()
+  {
+    Run(fixture =>
+    {
+      Evaluate(fixture, "m.echoChoice({ first: a, second: null }); 'done'");
+
+      var held = Assert.IsType<EntryChoice.Held>(CompositeEntriesModule.LastChoice);
+      Assert.Same(Entry.Constructed[0], held.Value.First);
+      Assert.Null(held.Value.Second);
+      return true;
+    });
+  }
 }

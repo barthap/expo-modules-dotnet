@@ -398,14 +398,41 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.DoesNotContain("\"payload\"", GeneratedText(result), StringComparison.Ordinal);
   }
 
-  [Fact]
-  public void UnionPayloadThatIsASharedObjectStaysRejected()
+  [Theory]
+  [InlineData("Entry")]
+  [InlineData("Entry?")]
+  public void UnionCaseWithDirectSharedObjectPayloadReportsExpoJsi030(string payload)
   {
     var result = GeneratorTestHost.Run(CompositeSharedObjectSource(
-        "[Union] public abstract record Choice { public sealed record Held(Entry Value) : Choice; public sealed record Text(string Value) : Choice; }",
+        $"[Union] public abstract record Choice {{ public sealed record Held({payload} Value) : Choice; public sealed record Text(string Value) : Choice; }}",
         "[JS] public Choice Echo(Choice value) => value;"
     ));
 
     Assert.Contains(result.Diagnostics, item => item.Id == "EXPOJSI030");
+    Assert.DoesNotContain(result.Diagnostics, item => item.Id == "EXPOJSI023");
+  }
+
+  [Fact]
+  public void UnionCaseWithRecordHoldingSharedObjectIsAccepted()
+  {
+    var result = GeneratorTestHost.Run(CompositeSharedObjectSource(
+        """
+        public sealed record OpenResult(Entry Entry, Entry? Parent);
+
+        [Union]
+        public abstract record Choice
+        {
+          public sealed record Opened(OpenResult Value) : Choice;
+          public sealed record Listed(IReadOnlyList<Entry> Value) : Choice;
+          public sealed record Named(Dictionary<string, Entry> Value) : Choice;
+          public sealed record Text(string Value) : Choice;
+        }
+        """,
+        "[JS] public Choice Echo(Choice value) => value;"
+    ));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    Assert.Contains("SharedObjectCodec<global::Expo.TestModules.Entry>", GeneratedText(result), StringComparison.Ordinal);
   }
 }
