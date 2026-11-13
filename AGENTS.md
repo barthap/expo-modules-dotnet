@@ -118,6 +118,8 @@ commit it.
 - PRs are squash-merged, so do not squash a PR branch locally.
 - PR descriptions have `## Why`, `## How`, and `## Test Plan`. Do not list the
   other PRs of a stack in a description. GitHub shows the stack in its UI.
+- End the PR description with a last line `Resolves EMC-<n>`, with the item's ID
+  from the Notion Roadmap. Write only the ID, not a Notion link.
 - Pushing and opening PRs still need explicit user approval.
 - On a PR, the `checks` and `native-tests` jobs run only when the PR has the
   `run CI` label. Keep CI runs low: add the label, or re-run failed jobs, only

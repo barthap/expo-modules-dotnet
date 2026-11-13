@@ -140,7 +140,9 @@ For non-trivial behavior changes, run this sequence. `<ID>` is `EMC-<n>` and
     too, see "Reasons In Living Specs" below. Put each requirement in the spec
     for its capability, add `@ref` comments to the code, and run
     `scripts/check-spec-refs.sh`; the rules are in `docs/specs/README.md`.
-12. **PR.** After the owner approves the push and the PR, run
+12. **PR.** After the owner approves the push and the PR, open the PR. Its
+    description ends with the line `Resolves <ID>` (the ID only, no Notion
+    link), so the owner can find the roadmap item from the PR. Then run
     `set <ID> "Status=In review" "PR=<url>"`. Add deferred follow-ups as new rows
     (`Idea`, or `Backlog` with a brief) that depend on this one.
 13. **Done.** The owner merges on GitHub. Reconcile mode, or the owner, sets
