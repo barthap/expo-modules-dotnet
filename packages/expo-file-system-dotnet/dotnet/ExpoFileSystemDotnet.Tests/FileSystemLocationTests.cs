@@ -82,9 +82,10 @@ public sealed class FileSystemLocationTests
   [InlineData("file:///C:/a/%5C.txt", PathFlavor.Windows)]
   public void InvalidInputIsRejected(string input, PathFlavor flavor)
   {
-    var error = Assert.Throws<FileSystemException>(
+    var error = Assert.Throws<InvalidLocationException>(
         () => FileSystemLocation.Parse(input, isDirectory: false, flavor)
     );
+    Assert.Equal("ERR_INVALID_LOCATION", error.Code);
     Assert.StartsWith("Invalid file system location", error.Message);
   }
 
@@ -120,9 +121,10 @@ public sealed class FileSystemLocationTests
   [InlineData("a\0b")]
   public void InvalidNameIsRejected(string name)
   {
-    var error = Assert.Throws<FileSystemException>(
+    var error = Assert.Throws<InvalidNameException>(
         () => FileSystemLocation.ValidateName(name, PathFlavor.Posix)
     );
+    Assert.Equal("ERR_INVALID_NAME", error.Code);
     Assert.Equal($"Invalid file name: '{name}'", error.Message);
   }
 
@@ -130,7 +132,7 @@ public sealed class FileSystemLocationTests
   public void BackslashNameIsRejectedOnWindowsOnly()
   {
     FileSystemLocation.ValidateName(@"a\b", PathFlavor.Posix);
-    Assert.Throws<FileSystemException>(
+    Assert.Throws<InvalidNameException>(
         () => FileSystemLocation.ValidateName(@"a\b", PathFlavor.Windows)
     );
   }
@@ -170,9 +172,10 @@ public sealed class FileSystemLocationTests
   [InlineData("file:///C:/a%3Ab/c.txt")]
   public void WindowsRejectsDeviceHostAndAliasInput(string input)
   {
-    var error = Assert.Throws<FileSystemException>(
+    var error = Assert.Throws<InvalidLocationException>(
         () => FileSystemLocation.Parse(input, isDirectory: false, PathFlavor.Windows)
     );
+    Assert.Equal("ERR_INVALID_LOCATION", error.Code);
     Assert.StartsWith("Invalid file system location", error.Message);
   }
 
@@ -181,9 +184,10 @@ public sealed class FileSystemLocationTests
   [InlineData("file:///a/%C5.txt")]
   public void PosixRejectsTruncatedEscapeInvalidUtf8AndLoneSurrogate(string input)
   {
-    var error = Assert.Throws<FileSystemException>(
+    var error = Assert.Throws<InvalidLocationException>(
         () => FileSystemLocation.Parse(input, isDirectory: false, PathFlavor.Posix)
     );
+    Assert.Equal("ERR_INVALID_LOCATION", error.Code);
     Assert.StartsWith("Invalid file system location", error.Message);
   }
 
@@ -194,9 +198,10 @@ public sealed class FileSystemLocationTests
   {
     // Built at run time: xunit data serialization would replace a literal lone surrogate.
     var input = prefix + (char)0xD800 + "b";
-    var error = Assert.Throws<FileSystemException>(
+    var error = Assert.Throws<InvalidLocationException>(
         () => FileSystemLocation.Parse(input, isDirectory: false, flavor)
     );
+    Assert.Equal("ERR_INVALID_LOCATION", error.Code);
     Assert.StartsWith("Invalid file system location", error.Message);
   }
 
@@ -236,7 +241,7 @@ public sealed class FileSystemLocationTests
   public void ValidateNameOnWindows()
   {
     FileSystemLocation.ValidateName("a b.txt", PathFlavor.Windows);
-    var error = Assert.Throws<FileSystemException>(
+    var error = Assert.Throws<InvalidNameException>(
         () => FileSystemLocation.ValidateName(@"a\b", PathFlavor.Windows)
     );
     Assert.Equal(@"Invalid file name: 'a\b'", error.Message);
@@ -250,7 +255,7 @@ public sealed class FileSystemLocationTests
   [InlineData("a\u0001")]
   public void WindowsValidateNameRejectsAliasingNames(string name)
   {
-    var error = Assert.Throws<FileSystemException>(
+    var error = Assert.Throws<InvalidNameException>(
         () => FileSystemLocation.ValidateName(name, PathFlavor.Windows)
     );
     Assert.StartsWith("Invalid file name", error.Message);

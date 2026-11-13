@@ -25,11 +25,11 @@ internal abstract class FileSystemPath : SharedObject
 
   protected abstract void EnsureCorrectType(string nativePath);
 
-  protected static void EnsureWritable(FileSystemLocation target)
+  internal static void EnsureWritable(FileSystemLocation target)
   {
     if (target.IsWithin(FileSystemRoots.BundleLocation))
     {
-      throw FileSystemErrors.MissingPermission(target.Uri);
+      throw new MissingPermissionException(target.Uri);
     }
   }
 
@@ -41,7 +41,7 @@ internal abstract class FileSystemPath : SharedObject
     var path = target.NativePath;
     if (!File.Exists(path) && !Directory.Exists(path))
     {
-      throw FileSystemErrors.UnableToDelete("path does not exist");
+      throw new UnableToDeleteException("path does not exist");
     }
     try
     {
@@ -56,7 +56,60 @@ internal abstract class FileSystemPath : SharedObject
     }
     catch (Exception error) when (error is IOException or UnauthorizedAccessException)
     {
-      throw FileSystemErrors.UnableToDelete(error.Message, error);
+      throw new UnableToDeleteException(error.Message);
+    }
+  }
+
+  protected void CopyCore(FileSystemPath destination, RelocationOptions? options)
+  {
+    var (source, target) = CheckRelocation(destination, move: false);
+    FileSystemRelocation.Copy(source, target, options?.Overwrite ?? false);
+  }
+
+  protected Task CopyCoreAsync(FileSystemPath destination, RelocationOptions? options)
+  {
+    var (source, target) = CheckRelocation(destination, move: false);
+    var overwrite = options?.Overwrite ?? false;
+    return Task.Run(() => FileSystemRelocation.Copy(source, target, overwrite));
+  }
+
+  protected void MoveCore(FileSystemPath destination, RelocationOptions? options)
+  {
+    var (source, target) = CheckRelocation(destination, move: true);
+    SetLocation(FileSystemRelocation.Move(source, target, options?.Overwrite ?? false));
+  }
+
+  protected Task MoveCoreAsync(FileSystemPath destination, RelocationOptions? options)
+  {
+    var (source, target) = CheckRelocation(destination, move: true);
+    var overwrite = options?.Overwrite ?? false;
+    return Task.Run(() => SetLocation(FileSystemRelocation.Move(source, target, overwrite)));
+  }
+
+  // Steps 1 and 2 of a copy or move: permission, then the type of both objects. They run on the
+  // calling thread with the locations captured here.
+  private (FileSystemLocation Source, FileSystemLocation Destination) CheckRelocation(
+      FileSystemPath destination,
+      bool move
+  )
+  {
+    var source = Location;
+    var target = destination.Location;
+    if (move)
+    {
+      EnsureWritable(source);
+    }
+    EnsureWritable(target);
+    EnsureCorrectType(source.NativePath);
+    destination.EnsureCorrectType(target.NativePath);
+    return (source, target);
+  }
+
+  private void SetLocation(FileSystemLocation value)
+  {
+    lock (gate)
+    {
+      location = value;
     }
   }
 
@@ -66,7 +119,7 @@ internal abstract class FileSystemPath : SharedObject
     {
       if (location.IsRoot)
       {
-        throw FileSystemErrors.InvalidName(newName);
+        throw new InvalidNameException(newName);
       }
       var target = location.WithName(newName);
       EnsureWritable(location);

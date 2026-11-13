@@ -5,7 +5,7 @@ internal static class FileSystemRoots
   private static readonly Lazy<string> processBundleDirectory = new(() =>
       BundleDirectoryFromProcessPath(
           Environment.ProcessPath
-              ?? throw new FileSystemException("Unable to determine the bundle directory"),
+              ?? throw new UnableToDetermineBundleDirectoryException(),
           PathFlavors.Current
       )
   );

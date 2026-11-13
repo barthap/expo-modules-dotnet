@@ -77,7 +77,8 @@ public sealed class FileSystemFileTests
     var (temp, _, file) = Fixture([1]);
     using (temp)
     {
-      var error = await Assert.ThrowsAsync<FileSystemException>(() => file.Digest("SHA-3"));
+      var error = await Assert.ThrowsAsync<UnsupportedDigestAlgorithmException>(() => file.Digest("SHA-3"));
+      Assert.Equal("ERR_UNSUPPORTED_DIGEST_ALGORITHM", error.Code);
       Assert.Equal("Unsupported digest algorithm: SHA-3", error.Message);
     }
   }
@@ -124,5 +125,15 @@ public sealed class FileSystemFileTests
       Assert.Equal(new FileSystemFileInfo(false, file.Uri, null, null, null, null), file.Info());
       Assert.ThrowsAny<Exception>(() => file.TextSync());
     }
+  }
+
+  [Fact]
+  public void LengthAboveIntMaxValueIsTooLarge()
+  {
+    Assert.Equal(int.MaxValue, FileSystemFile.CheckedLength(int.MaxValue, "file:///a"));
+    var error = Assert.Throws<FileTooLargeException>(
+        () => FileSystemFile.CheckedLength((long)int.MaxValue + 1, "file:///a"));
+    Assert.Equal("ERR_FILE_TOO_LARGE", error.Code);
+    Assert.Equal("File is too large to read into memory: file:///a", error.Message);
   }
 }

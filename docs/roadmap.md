@@ -50,13 +50,12 @@ matches it, even if existing C# modules must change.
 - Autolinking of .NET modules on all four platforms
 - expo-desktop 1.0 prebuild for the desktop example app, on macOS and Windows
 - `expo-asset-dotnet`, `expo-constants-dotnet`, `expo-crypto-dotnet` (digests,
-  random values, and UUIDs), and the local-file core of
-  `expo-file-system-dotnet`
+  random values, and UUIDs), and `expo-file-system-dotnet` (local files: read,
+  write, bytes, copy, and move)
 
 ## Planned
 
 - `expo-crypto-dotnet`: AES-GCM encryption
-- `expo-file-system-dotnet`: write, bytes, copy, and move
 - Windows apps can opt in to `*-dotnet` modules in place of the expo-desktop
   stubs
 - A demo app that uses upstream Expo, expo-desktop, and .NET modules on all

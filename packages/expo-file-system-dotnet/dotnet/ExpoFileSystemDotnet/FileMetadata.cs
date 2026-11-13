@@ -69,6 +69,6 @@ internal static class FileMetadata
         "SHA-256" => (SHA256.HashData, SHA256.HashDataAsync),
         "SHA-384" => (SHA384.HashData, SHA384.HashDataAsync),
         "SHA-512" => (SHA512.HashData, SHA512.HashDataAsync),
-        _ => throw FileSystemErrors.UnsupportedDigest(algorithm),
+        _ => throw new UnsupportedDigestAlgorithmException(algorithm),
       };
 }

@@ -1,12 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const native = vi.hoisted(() => {
+  const writes: { method: string; content: unknown; options: unknown }[] = [];
   class FileSystemFile {
     uri: string;
     constructor(uri: string) {
       this.uri = uri.replace(/\/+$/, "");
     }
     validatePath() {}
+    write(content: unknown, options?: unknown) {
+      writes.push({ method: "write", content, options });
+      return Promise.resolve();
+    }
+    writeSync(content: unknown, options?: unknown) {
+      writes.push({ method: "writeSync", content, options });
+    }
   }
   class FileSystemDirectory {
     uri: string;
@@ -28,6 +36,7 @@ const native = vi.hoisted(() => {
     }
   }
   return {
+    writes,
     module: {
       FileSystemFile,
       FileSystemDirectory,
@@ -49,6 +58,7 @@ vi.mock("expo-modules-dotnet", () => ({
 describe("facade", () => {
   beforeEach(() => {
     native.module.info.mockClear();
+    native.writes.length = 0;
   });
 
   it("builds files from directories and segments", async () => {
@@ -89,5 +99,59 @@ describe("facade", () => {
     expect(Paths.availableDiskSpace).toBe(40);
     Paths.info("file:///docs", "a.txt");
     expect(native.module.info).toHaveBeenCalledWith("file:///docs/a.txt");
+  });
+
+  it("passes strings, buffers, Uint8Arrays, and DataViews to native write unchanged", async () => {
+    const { File } = await import("../index");
+    const file = new File("file:///docs/a.bin");
+    const buffer = new ArrayBuffer(4);
+    const bytes = new Uint8Array(buffer, 1, 2);
+    const dataView = new DataView(buffer);
+    const options = { append: true };
+
+    file.writeSync("text", options);
+    file.writeSync(buffer);
+    file.writeSync(bytes);
+    // A DataView is not in the TypeScript type. It reaches native code, which rejects it.
+    file.writeSync(dataView as unknown as Uint8Array);
+    await file.write("async", options);
+
+    expect(native.writes.map((call) => call.method)).toEqual([
+      "writeSync",
+      "writeSync",
+      "writeSync",
+      "writeSync",
+      "write",
+    ]);
+    expect(native.writes[0].content).toBe("text");
+    expect(native.writes[0].options).toBe(options);
+    expect(native.writes[1].content).toBe(buffer);
+    expect(native.writes[2].content).toBe(bytes);
+    expect(native.writes[3].content).toBe(dataView);
+    expect(native.writes[4]).toEqual({ method: "write", content: "async", options });
+  });
+
+  it("passes other typed arrays as a Uint8Array over the same bytes", async () => {
+    const { File } = await import("../index");
+    const file = new File("file:///docs/a.bin");
+    const buffer = new ArrayBuffer(16);
+    const int16 = new Int16Array(buffer, 2, 3);
+    const float32 = new Float32Array(buffer, 4, 2);
+
+    file.writeSync(int16 as unknown as Uint8Array);
+    await file.write(float32 as unknown as Uint8Array, { encoding: "base64" });
+
+    const [first, second] = native.writes.map((call) => call.content as Uint8Array);
+    expect(first).toBeInstanceOf(Uint8Array);
+    expect([first.buffer, first.byteOffset, first.byteLength]).toEqual([buffer, 2, 6]);
+    expect(second).toBeInstanceOf(Uint8Array);
+    expect([second.buffer, second.byteOffset, second.byteLength]).toEqual([buffer, 4, 8]);
+    expect(native.writes[1].options).toEqual({ encoding: "base64" });
+  });
+
+  it("exports EncodingType with the upstream values", async () => {
+    const { EncodingType } = await import("../index");
+    expect(EncodingType.UTF8).toBe("utf8");
+    expect(EncodingType.Base64).toBe("base64");
   });
 });

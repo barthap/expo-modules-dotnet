@@ -71,7 +71,7 @@ public sealed class FileSystemDirectoryTests
     Assert.Equal(0, new FileInfo(Path.Combine(temp.Path, "a b.txt")).Length);
     Assert.Equal(directory.Uri + "sub/", child.Uri);
     Assert.True(Directory.Exists(Path.Combine(temp.Path, "sub")));
-    Assert.Throws<FileSystemException>(() => directory.CreateFile("a b.txt", null));
-    Assert.Throws<FileSystemException>(() => directory.CreateDirectory("../escape"));
+    Assert.Throws<FileAlreadyExistsException>(() => directory.CreateFile("a b.txt", null));
+    Assert.Throws<InvalidNameException>(() => directory.CreateDirectory("../escape"));
   }
 }

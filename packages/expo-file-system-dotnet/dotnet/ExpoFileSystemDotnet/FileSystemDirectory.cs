@@ -41,26 +41,27 @@ internal sealed partial class FileSystemDirectory : FileSystemPath
   {
     if (!Location.HasDirectoryPath)
     {
-      throw FileSystemErrors.WrongTypeDirectory();
+      throw WrongTypeException.ForDirectory();
     }
   }
 
   [JS]
   public void Create(CreateOptions? options = null)
   {
+    options ??= new CreateOptions();
     var target = Location;
     EnsureWritable(target);
     EnsureCorrectType(target.NativePath);
     var path = target.NativePath;
     if (Directory.Exists(path))
     {
-      if (options?.Idempotent == true)
+      if (options.Idempotent)
       {
         return;
       }
-      if (options?.Overwrite != true)
+      if (!options.Overwrite)
       {
-        throw FileSystemErrors.AlreadyExists(target.Uri);
+        throw new FileAlreadyExistsException(target.Uri);
       }
     }
     try
@@ -69,15 +70,15 @@ internal sealed partial class FileSystemDirectory : FileSystemPath
       {
         Directory.Delete(path, recursive: true);
       }
-      if (options?.Intermediates != true && !Directory.Exists(target.Parent.NativePath))
+      if (!options.Intermediates && !Directory.Exists(target.Parent.NativePath))
       {
-        throw FileSystemErrors.UnableToCreate("parent directory does not exist");
+        throw new UnableToCreateException("parent directory does not exist");
       }
       Directory.CreateDirectory(path);
     }
     catch (Exception error) when (error is IOException or UnauthorizedAccessException)
     {
-      throw FileSystemErrors.UnableToCreate(error.Message, error);
+      throw new UnableToCreateException(error.Message);
     }
   }
 
@@ -167,11 +168,27 @@ internal sealed partial class FileSystemDirectory : FileSystemPath
   [JS]
   public void Rename(string newName) => RenameCore(newName);
 
+  [JS]
+  public void CopySync(FileSystemPath destination, RelocationOptions? options = null) =>
+      CopyCore(destination, options);
+
+  [JS]
+  public Task Copy(FileSystemPath destination, RelocationOptions? options = null) =>
+      CopyCoreAsync(destination, options);
+
+  [JS]
+  public void MoveSync(FileSystemPath destination, RelocationOptions? options = null) =>
+      MoveCore(destination, options);
+
+  [JS]
+  public Task Move(FileSystemPath destination, RelocationOptions? options = null) =>
+      MoveCoreAsync(destination, options);
+
   protected override void EnsureCorrectType(string nativePath)
   {
     if (File.Exists(nativePath))
     {
-      throw FileSystemErrors.FileAtDirectoryLocation();
+      throw new InvalidTypeDirectoryException();
     }
   }
 

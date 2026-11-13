@@ -87,12 +87,12 @@ internal sealed class FileSystemLocation
   {
     if (string.IsNullOrEmpty(input) || input.Contains('\0'))
     {
-      throw FileSystemErrors.InvalidLocation(input ?? "");
+      throw new InvalidLocationException(input ?? "");
     }
 
     if (!IsEncodable(input))
     {
-      throw FileSystemErrors.InvalidLocation(input);
+      throw new InvalidLocationException(input);
     }
 
     if (flavor == PathFlavor.Windows)
@@ -105,7 +105,7 @@ internal sealed class FileSystemLocation
           && IsSeparator(input[3])
       )
       {
-        throw FileSystemErrors.InvalidLocation(input);
+        throw new InvalidLocationException(input);
       }
       if (
           input.Length >= 3
@@ -125,7 +125,7 @@ internal sealed class FileSystemLocation
         var parts = input[2..].Split('\\', '/').Where(part => part.Length > 0).ToArray();
         if (parts.Length < 2 || !IsValidHost(parts[0]))
         {
-          throw FileSystemErrors.InvalidLocation(input);
+          throw new InvalidLocationException(input);
         }
         return Build(flavor, parts[0], null, parts[1..], isDirectory, input);
       }
@@ -138,12 +138,12 @@ internal sealed class FileSystemLocation
       {
         return Build(flavor, null, null, input.Split('/'), isDirectory, input);
       }
-      throw FileSystemErrors.InvalidLocation(input);
+      throw new InvalidLocationException(input);
     }
 
     if (!input.AsSpan(0, schemeEnd).Equals("file", StringComparison.OrdinalIgnoreCase))
     {
-      throw FileSystemErrors.InvalidLocation(input);
+      throw new InvalidLocationException(input);
     }
     var rest = input[(schemeEnd + 1)..];
     if (
@@ -152,7 +152,7 @@ internal sealed class FileSystemLocation
         || rest.Contains('#')
     )
     {
-      throw FileSystemErrors.InvalidLocation(input);
+      throw new InvalidLocationException(input);
     }
     rest = rest[2..];
     var slash = rest.IndexOf('/');
@@ -164,7 +164,7 @@ internal sealed class FileSystemLocation
     {
       if (authority.Length > 0)
       {
-        throw FileSystemErrors.InvalidLocation(input);
+        throw new InvalidLocationException(input);
       }
       return Build(flavor, null, null, decoded, isDirectory, input);
     }
@@ -174,7 +174,7 @@ internal sealed class FileSystemLocation
       var host = DecodeSegment(authority, flavor, input);
       if (!IsValidHost(host))
       {
-        throw FileSystemErrors.InvalidLocation(input);
+        throw new InvalidLocationException(input);
       }
       return Build(flavor, host, null, decoded, isDirectory, input);
     }
@@ -185,7 +185,7 @@ internal sealed class FileSystemLocation
         || decoded[0][1] != ':'
     )
     {
-      throw FileSystemErrors.InvalidLocation(input);
+      throw new InvalidLocationException(input);
     }
     return Build(flavor, null, DriveOf(decoded[0][0]), decoded.Skip(1), isDirectory, input);
   }
@@ -236,7 +236,7 @@ internal sealed class FileSystemLocation
         || (flavor == PathFlavor.Windows && (name.Contains('\\') || IsInvalidWindowsSegment(name)))
     )
     {
-      throw FileSystemErrors.InvalidName(name ?? "");
+      throw new InvalidNameException(name ?? "");
     }
   }
 
@@ -260,14 +260,14 @@ internal sealed class FileSystemLocation
           && IsInvalidWindowsSegment(segment)
       )
       {
-        throw FileSystemErrors.InvalidLocation(input);
+        throw new InvalidLocationException(input);
       }
       if (segments.Count < floor)
       {
         // The UNC share is kept as-is and can never be a dot segment.
         if (segment.Length == 0 || segment is "." or "..")
         {
-          throw FileSystemErrors.InvalidLocation(input);
+          throw new InvalidLocationException(input);
         }
         segments.Add(segment);
       }
@@ -340,11 +340,11 @@ internal sealed class FileSystemLocation
       }
       if (i + 2 >= segment.Length)
       {
-        throw FileSystemErrors.InvalidLocation(input);
+        throw new InvalidLocationException(input);
       }
       if (!char.IsAsciiHexDigit(segment[i + 1]) || !char.IsAsciiHexDigit(segment[i + 2]))
       {
-        throw FileSystemErrors.InvalidLocation(input);
+        throw new InvalidLocationException(input);
       }
       FlushLiteral();
       bytes.Add(Convert.ToByte(segment.Substring(i + 1, 2), 16));
@@ -359,11 +359,11 @@ internal sealed class FileSystemLocation
     }
     catch (DecoderFallbackException)
     {
-      throw FileSystemErrors.InvalidLocation(input);
+      throw new InvalidLocationException(input);
     }
     if (result.Contains('/') || result.Contains('\0') || (flavor == PathFlavor.Windows && result.Contains('\\')))
     {
-      throw FileSystemErrors.InvalidLocation(input);
+      throw new InvalidLocationException(input);
     }
     return result;
   }
