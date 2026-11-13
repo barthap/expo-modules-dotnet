@@ -3,7 +3,10 @@ namespace Expo.ModulesCore.Benchmarks;
 /// <summary>Sample statistics and calibration arithmetic for the benchmark runner.</summary>
 internal static class BenchmarkStatistics
 {
-  /// <summary>A case is noisy when its slowest sample exceeds its median by more than this ratio.</summary>
+  /// <summary>
+  /// A case is noisy when its slowest sample exceeds its median by more than this ratio, or when its
+  /// median exceeds its fastest sample by more than this ratio.
+  /// </summary>
   public const double NoisySpreadLimit = 1.20;
 
   public const int SampleCount = 10;
@@ -31,9 +34,29 @@ internal static class BenchmarkStatistics
     return values.Count == 0 ? throw EmptyValues() : values.Max() / Median(values);
   }
 
+  /// <summary>Median divided by the smallest value.</summary>
+  public static double Step(IReadOnlyList<double> values)
+  {
+    return Median(values) / Min(values);
+  }
+
+  /// <summary>
+  /// True when the median is far above the fastest sample. Spread cannot see this shape: when most
+  /// samples sit on a slow level, the median is slow too, and the maximum over the median stays small.
+  /// </summary>
+  public static bool IsStepped(IReadOnlyList<double> values)
+  {
+    return Step(values) > NoisySpreadLimit;
+  }
+
   public static bool IsNoisy(IReadOnlyList<double> values)
   {
-    return Spread(values) > NoisySpreadLimit;
+    return IsNoisy(Spread(values), Step(values));
+  }
+
+  public static bool IsNoisy(double spread, double step)
+  {
+    return spread > NoisySpreadLimit || step > NoisySpreadLimit;
   }
 
   /// <summary>

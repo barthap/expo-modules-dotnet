@@ -8,12 +8,22 @@ internal sealed record BenchmarkRow(
     double MedianNanoseconds,
     double MinNanoseconds,
     double Spread,
+    double Step,
     double BytesPerCall,
     double OwnedLinkedPerCall,
     double OwnedUnlinkedPerCall,
     double BorrowedPerCall,
-    double? ControlMedianNanoseconds)
+    double? ControlMedianNanoseconds,
+    double? ControlSpread = null,
+    double? ControlStep = null)
 {
+  /// <summary>Whether the managed samples are noisy by spread or by step.</summary>
+  public bool IsNoisy => BenchmarkStatistics.IsNoisy(Spread, Step);
+
+  /// <summary>Whether the control samples are noisy by spread or by step. False when the case has no control.</summary>
+  public bool IsControlNoisy =>
+      ControlSpread is { } spread && ControlStep is { } step && BenchmarkStatistics.IsNoisy(spread, step);
+
   /// <summary>Managed median minus control median, when the case has a control.</summary>
   public double? BridgeNanoseconds => ControlMedianNanoseconds is { } control ? MedianNanoseconds - control : null;
 }
@@ -68,11 +78,15 @@ internal static class BenchmarkRunner
     var handles = await CountHandlesAsync(host, DriverName, benchmarkCase.IsAsync, options.HandlePassCalls);
 
     double? controlMedian = null;
+    double? controlSpread = null;
+    double? controlStep = null;
     if (benchmarkCase.ControlCall is not null)
     {
       Install(host, ControlDriverName, benchmarkCase, benchmarkCase.ControlCall);
       var control = await SampleAsync(host, ControlDriverName, benchmarkCase.IsAsync, options);
       controlMedian = BenchmarkStatistics.Median(control.NanosecondsPerCall);
+      controlSpread = BenchmarkStatistics.Spread(control.NanosecondsPerCall);
+      controlStep = BenchmarkStatistics.Step(control.NanosecondsPerCall);
     }
 
     return new BenchmarkRow(
@@ -80,11 +94,14 @@ internal static class BenchmarkRunner
         BenchmarkStatistics.Median(managed.NanosecondsPerCall),
         BenchmarkStatistics.Min(managed.NanosecondsPerCall),
         BenchmarkStatistics.Spread(managed.NanosecondsPerCall),
+        BenchmarkStatistics.Step(managed.NanosecondsPerCall),
         bytesPerCall,
         handles.OwnedLinked,
         handles.OwnedUnlinked,
         handles.Borrowed,
-        controlMedian);
+        controlMedian,
+        controlSpread,
+        controlStep);
   }
 
   private static async Task VerifyAsync(ExpoModuleTestHost host, BenchmarkCase benchmarkCase)

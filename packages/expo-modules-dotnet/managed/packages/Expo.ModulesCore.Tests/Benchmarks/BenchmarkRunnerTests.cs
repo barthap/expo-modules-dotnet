@@ -45,6 +45,21 @@ public sealed class BenchmarkRunnerTests
     Assert.True(row.MedianNanoseconds > 0);
   }
 
+  // The native ns/call and bridge ns/call columns come from the control samples, so the row keeps the
+  // control's spread and step to flag a noisy control.
+  [Fact]
+  public async Task Run_CaseWithAControl_KeepsTheSpreadAndStepOfBothSampleSets()
+  {
+    using var host = BenchmarkCases.CreateHost();
+
+    var row = await BenchmarkRunner.RunAsync(host, Case("function: no arguments", BenchmarkDirection.None), Small);
+
+    Assert.True(row.Spread >= 1);
+    Assert.True(row.Step >= 1);
+    Assert.True(row.ControlSpread >= 1);
+    Assert.True(row.ControlStep >= 1);
+  }
+
   [Fact]
   public async Task Run_NumbersVersusStrings_DifferOnlyInLinking()
   {
@@ -115,6 +130,9 @@ public sealed class BenchmarkRunnerTests
     var row = await BenchmarkRunner.RunAsync(host, Case("JS: empty driver loop", BenchmarkDirection.None), Small);
 
     Assert.Null(row.ControlMedianNanoseconds);
+    Assert.Null(row.ControlSpread);
+    Assert.Null(row.ControlStep);
+    Assert.False(row.IsControlNoisy);
     Assert.Equal(0, row.OwnedLinkedPerCall);
     Assert.Equal(0, row.OwnedUnlinkedPerCall);
     Assert.Equal(0, row.BorrowedPerCall);

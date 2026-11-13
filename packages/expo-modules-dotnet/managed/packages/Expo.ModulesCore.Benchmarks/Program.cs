@@ -14,7 +14,7 @@ for (var index = 0; index < args.Length; index++)
     case "--help":
       Console.WriteLine("Usage: Expo.ModulesCore.Benchmarks [--filter <regex>] [--help]");
       Console.WriteLine("  --filter <regex>  run only the cases whose \"<name> (<direction>)\" text matches");
-      Console.WriteLine("  exit codes: 0 success, 1 noisy rows, 2 no case matches, 3 a case failed");
+      Console.WriteLine("  exit codes: 0 success, 1 noisy samples, 2 no case matches, 3 a case failed");
       return 0;
     case "--filter" when index + 1 < args.Length:
       filter = args[++index];
@@ -37,9 +37,7 @@ catch (ArgumentException exception)
 }
 
 // The filter text carries the direction, so one direction of a pair can be selected.
-static string FilterText(BenchmarkCase benchmarkCase) => benchmarkCase.Direction == BenchmarkDirection.None
-    ? benchmarkCase.Name
-    : $"{benchmarkCase.Name} ({BenchmarkReport.DirectionLabel(benchmarkCase.Direction)})";
+static string FilterText(BenchmarkCase benchmarkCase) => BenchmarkReport.CaseLabel(benchmarkCase);
 
 var selected = BenchmarkCases.All
     .Where(benchmarkCase => pattern is null || pattern.IsMatch(FilterText(benchmarkCase)))
@@ -80,11 +78,10 @@ Console.WriteLine(BenchmarkReport.Table(rows));
 Console.WriteLine();
 Console.WriteLine("async rows use the testhost executor");
 
-var noisy = BenchmarkReport.NoisyRows(rows);
-foreach (var row in noisy)
+var warnings = BenchmarkReport.NoiseWarnings(rows);
+foreach (var warning in warnings)
 {
-  Console.WriteLine(
-      $"warning: {FilterText(row.Case)} is noisy (spread {row.Spread.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} above {BenchmarkStatistics.NoisySpreadLimit.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)})");
+  Console.WriteLine(warning);
 }
 
-return noisy.Count > 0 ? ExitNoisy : 0;
+return warnings.Count > 0 ? ExitNoisy : 0;

@@ -55,8 +55,39 @@ internal static class BenchmarkReport
 
   public static IReadOnlyList<BenchmarkRow> NoisyRows(IReadOnlyList<BenchmarkRow> rows)
   {
-    return [.. rows.Where(row => row.Spread > BenchmarkStatistics.NoisySpreadLimit)];
+    return [.. rows.Where(row => row.IsNoisy || row.IsControlNoisy)];
   }
+
+  /// <summary>The case name, with the direction in parentheses when the case has one. The filter matches this text.</summary>
+  public static string CaseLabel(BenchmarkCase benchmarkCase) => benchmarkCase.Direction == BenchmarkDirection.None
+      ? benchmarkCase.Name
+      : $"{benchmarkCase.Name} ({DirectionLabel(benchmarkCase.Direction)})";
+
+  /// <summary>One line per noisy sample set. Each line says whether the managed or the control samples are noisy.</summary>
+  public static IReadOnlyList<string> NoiseWarnings(IReadOnlyList<BenchmarkRow> rows)
+  {
+    var warnings = new List<string>();
+    foreach (var row in rows)
+    {
+      if (row.IsNoisy)
+      {
+        warnings.Add(NoiseWarning(row, "managed", row.Spread, row.Step));
+      }
+
+      if (row.IsControlNoisy)
+      {
+        warnings.Add(NoiseWarning(row, "control", row.ControlSpread!.Value, row.ControlStep!.Value));
+      }
+    }
+
+    return warnings;
+  }
+
+  private static string NoiseWarning(BenchmarkRow row, string samples, double spread, double step) =>
+      $"warning: {CaseLabel(row.Case)} has noisy {samples} samples " +
+      $"(spread {Ratio(spread)}, step {Ratio(step)}, limit {Ratio(BenchmarkStatistics.NoisySpreadLimit)})";
+
+  private static string Ratio(double value) => value.ToString("0.00", CultureInfo.InvariantCulture);
 
   public static string DirectionLabel(BenchmarkDirection direction) => direction switch
   {
@@ -99,17 +130,20 @@ internal static class BenchmarkReport
 
   private static IEnumerable<string> Cells(BenchmarkRow row)
   {
-    var isNoisy = row.Spread > BenchmarkStatistics.NoisySpreadLimit;
+    // The floor row has no call, so no handle is created and the handle columns do not apply.
+    var hasCall = row.Case.Call.Length > 0;
     yield return row.Case.IsAsync ? $"{row.Case.Name} (testhost executor)" : row.Case.Name;
     yield return DirectionLabel(row.Case.Direction);
     yield return Nanoseconds(row.MedianNanoseconds);
     yield return Nanoseconds(row.MinNanoseconds);
-    yield return row.Spread.ToString("0.00", CultureInfo.InvariantCulture) + (isNoisy ? " (noisy)" : "");
+    yield return Ratio(row.Spread) + (row.IsNoisy ? " (noisy)" : "");
     yield return Nanoseconds(row.BytesPerCall);
-    yield return Handles(row.OwnedLinkedPerCall);
-    yield return Handles(row.OwnedUnlinkedPerCall);
-    yield return Handles(row.BorrowedPerCall);
-    yield return row.ControlMedianNanoseconds is { } control ? Nanoseconds(control) : "-";
+    yield return hasCall ? Handles(row.OwnedLinkedPerCall) : "-";
+    yield return hasCall ? Handles(row.OwnedUnlinkedPerCall) : "-";
+    yield return hasCall ? Handles(row.BorrowedPerCall) : "-";
+    yield return row.ControlMedianNanoseconds is { } control
+        ? Nanoseconds(control) + (row.IsControlNoisy ? " (noisy)" : "")
+        : "-";
     yield return row.BridgeNanoseconds is { } bridge ? Nanoseconds(bridge) : "-";
   }
 

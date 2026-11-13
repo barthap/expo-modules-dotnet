@@ -14,11 +14,17 @@ public sealed class BenchmarkReportTests
       double median = 100,
       double spread = 1.1,
       double? control = 40,
-      bool isAsync = false)
+      bool isAsync = false,
+      double step = 1.0,
+      double? controlSpread = 1.0,
+      double? controlStep = 1.0,
+      string call = "m.f()")
   {
     return new BenchmarkRow(
-        new BenchmarkCase(name, direction, "", "m.f()", control is null ? null : "n.f()", "true", isAsync),
-        median, median - 1, spread, 8, 2, 1, 3, control);
+        new BenchmarkCase(name, direction, "", call, control is null ? null : "n.f()", "true", isAsync),
+        median, median - 1, spread, step, 8, 2, 1, 3, control,
+        control is null ? null : controlSpread,
+        control is null ? null : controlStep);
   }
 
   private static string[] Cells(string line) =>
@@ -48,6 +54,34 @@ public sealed class BenchmarkReportTests
     Assert.Contains("1.50 (noisy)", table);
     Assert.Contains("async (testhost executor)", table);
     Assert.DoesNotContain("1.10 (noisy)", table);
+  }
+
+  [Fact]
+  public void Table_MarksANoisyControlAfterTheNativeValue()
+  {
+    var cells = Cells(BenchmarkReport.Table([Row(controlSpread: 1.5)]).Split('\n')[2]);
+
+    Assert.Equal("1.10", cells[4]);
+    Assert.Equal("40.0 (noisy)", cells[9]);
+  }
+
+  [Fact]
+  public void Table_MarksASteppedManagedRowInTheSpreadColumn()
+  {
+    var cells = Cells(BenchmarkReport.Table([Row(spread: 1.0, step: 1.5)]).Split('\n')[2]);
+
+    Assert.Equal("1.00 (noisy)", cells[4]);
+    Assert.Equal("40.0", cells[9]);
+  }
+
+  // The floor row makes no call, so it creates no handle. A zero would read as a measured result.
+  [Fact]
+  public void Table_PrintsDashesInTheHandleColumnsOfTheFloorRow()
+  {
+    var cells = Cells(BenchmarkReport.Table([Row(direction: BenchmarkDirection.None, control: null, call: "")]).Split('\n')[2]);
+
+    Assert.Equal(["-", "-", "-"], cells[6..9]);
+    Assert.Equal("8.0", cells[5]);
   }
 
   [Fact]
@@ -114,12 +148,40 @@ public sealed class BenchmarkReportTests
   }
 
   [Fact]
-  public void NoisyRows_ReturnsOnlyRowsAboveTheLimit()
+  public void NoisyRows_ReturnsRowsWithNoisyManagedOrControlSamples()
   {
-    var quiet = Row(name: "quiet", spread: BenchmarkStatistics.NoisySpreadLimit);
-    var noisy = Row(name: "noisy", spread: BenchmarkStatistics.NoisySpreadLimit + 0.01);
+    var limit = BenchmarkStatistics.NoisySpreadLimit;
+    var quiet = Row(name: "quiet", spread: limit, step: limit, controlSpread: limit, controlStep: limit);
+    var wide = Row(name: "wide", spread: limit + 0.01);
+    var stepped = Row(name: "stepped", step: limit + 0.01);
+    var controlWide = Row(name: "control wide", controlSpread: limit + 0.01);
+    var controlStepped = Row(name: "control stepped", controlStep: limit + 0.01);
 
-    Assert.Equal([noisy], BenchmarkReport.NoisyRows([quiet, noisy]));
+    Assert.Equal(
+        [wide, stepped, controlWide, controlStepped],
+        BenchmarkReport.NoisyRows([quiet, wide, stepped, controlWide, controlStepped]));
+  }
+
+  [Fact]
+  public void NoiseWarnings_SayWhichSamplesAreNoisy()
+  {
+    var warnings = BenchmarkReport.NoiseWarnings(
+        [Row(name: "a", spread: 1.5), Row(name: "b", controlStep: 1.3), Row(name: "c", spread: 1.5, controlSpread: 1.4)]);
+
+    Assert.Equal(
+        [
+          "warning: a (round trip) has noisy managed samples (spread 1.50, step 1.00, limit 1.20)",
+          "warning: b (round trip) has noisy control samples (spread 1.00, step 1.30, limit 1.20)",
+          "warning: c (round trip) has noisy managed samples (spread 1.50, step 1.00, limit 1.20)",
+          "warning: c (round trip) has noisy control samples (spread 1.40, step 1.00, limit 1.20)",
+        ],
+        warnings);
+  }
+
+  [Fact]
+  public void NoiseWarnings_AreEmptyForQuietRows()
+  {
+    Assert.Empty(BenchmarkReport.NoiseWarnings([Row(), Row(control: null)]));
   }
 
   private static string HermesRefPath()

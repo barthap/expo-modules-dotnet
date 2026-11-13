@@ -34,12 +34,48 @@ public sealed class BenchmarkStatisticsTests
   }
 
   [Fact]
+  public void Step_IsMedianOverMin()
+  {
+    Assert.Equal(1.5, BenchmarkStatistics.Step([10, 15, 15]), 10);
+  }
+
+  // Seven slow samples and three fast ones: max over median is 1.0, so spread sees nothing, but the
+  // typical sample is 56% above the fastest. That is the shape of a run that sits on a slow level.
+  [Fact]
+  public void IsStepped_SeesAMajorityOnASlowLevelThatSpreadMisses()
+  {
+    double[] values = [320, 320, 320, 320, 320, 320, 320, 205, 205, 205];
+
+    Assert.True(BenchmarkStatistics.Spread(values) <= BenchmarkStatistics.NoisySpreadLimit);
+    Assert.True(BenchmarkStatistics.IsStepped(values));
+    Assert.True(BenchmarkStatistics.IsNoisy(values));
+  }
+
+  [Fact]
+  public void IsStepped_BoundaryIsExclusive()
+  {
+    Assert.False(BenchmarkStatistics.IsStepped([10, 12, 12]));
+    Assert.True(BenchmarkStatistics.IsStepped([10, 12.1, 12.1]));
+  }
+
+  [Fact]
+  public void IsNoisy_IsTrueWhenOnlyTheSpreadIsAboveTheLimit()
+  {
+    double[] values = [10, 10, 10, 10, 13];
+
+    Assert.False(BenchmarkStatistics.IsStepped(values));
+    Assert.True(BenchmarkStatistics.IsNoisy(values));
+  }
+
+  [Fact]
   public void EmptyInputThrows()
   {
     double[] empty = [];
     Assert.Throws<ArgumentException>(() => BenchmarkStatistics.Median(empty));
     Assert.Throws<ArgumentException>(() => BenchmarkStatistics.Min(empty));
     Assert.Throws<ArgumentException>(() => BenchmarkStatistics.Spread(empty));
+    Assert.Throws<ArgumentException>(() => BenchmarkStatistics.Step(empty));
+    Assert.Throws<ArgumentException>(() => BenchmarkStatistics.IsStepped(empty));
     Assert.Throws<ArgumentException>(() => BenchmarkStatistics.IsNoisy(empty));
   }
 
