@@ -39,7 +39,8 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
 Usage: scripts/bench-managed.sh [-- <benchmark args...>]
 
 Builds everything in Release, then runs the call-path benchmark against the
-Hermes-backed native JSI testhost. The table goes to stdout, progress to stderr.
+Hermes-backed native JSI testhost. Stdout carries only the header, the table, and
+the warning lines. Build output and progress go to stderr.
 
 Benchmark arguments (after --):
   --filter <regex>   Run only the cases whose "<name> (<direction>)" matches
@@ -55,11 +56,14 @@ scripts/test-managed.sh.
 
 Exit codes (the benchmark's own code is passed through):
   0    Success
-  1    Benchmark: at least one row is noisy (the table is still printed).
+  1    Benchmark: at least one sample set is noisy (the table is still printed).
        Also this script: the Hermes prebuilt was not found (a hint is printed).
   2    Benchmark: --filter matches no case
   3    Benchmark: a case failed verification or threw
-  64   Benchmark: unknown argument or invalid regex
+  4    Benchmark: tiered compilation is not off, or the native testhost is not
+       optimized (the table is still printed)
+  64   Benchmark: unknown argument or invalid regex.
+       Also this script: an unknown argument before the benchmark arguments.
   70   This script: a build step failed
 EOF
 	exit 0

@@ -1,4 +1,4 @@
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
   [switch]$Help,
   [ValidateSet('x64', 'x86', 'arm64', 'arm64ec')]
@@ -15,7 +15,8 @@ if ($Help) {
 Usage: scripts\bench-managed.ps1 [-Arch <x64|x86|arm64|arm64ec>] [-- <benchmark args...>]
 
 Builds everything in Release, then runs the call-path benchmark against the
-Hermes-backed native JSI testhost. The table goes to stdout, progress to the host.
+Hermes-backed native JSI testhost. Stdout carries only the header, the table, and
+the warning lines. Build output and progress go to the host.
 
 Benchmark arguments (after --):
   --filter <regex>   Run only the cases whose "<name> (<direction>)" matches
@@ -31,11 +32,14 @@ scripts\test-managed.ps1.
 
 Exit codes (the benchmark's own code is passed through):
   0    Success
-  1    Benchmark: at least one row is noisy (the table is still printed).
+  1    Benchmark: at least one sample set is noisy (the table is still printed).
        Also this script: the Hermes prebuilt was not found (a hint is printed).
   2    Benchmark: --filter matches no case
   3    Benchmark: a case failed verification or threw
-  64   Benchmark: unknown argument or invalid regex
+  4    Benchmark: tiered compilation is not off, or the native testhost is not
+       optimized (the table is still printed)
+  64   Benchmark: unknown argument or invalid regex.
+       Also this script: an unknown argument before the benchmark arguments.
   70   This script: a build step failed
 '@ | Write-Host
   exit 0
@@ -64,6 +68,19 @@ function Invoke-BuildStep {
   }
 }
 
+# Benchmark arguments follow a leading --. PowerShell consumes the first -- itself, so it is dropped
+# here only when it still arrives. Like the sh script, reject a leading argument that is not a
+# benchmark option, before any build step runs. Unlike the sh script, this cannot tell
+# "-- --filter x" from "--filter x", so both are accepted.
+$forwardedArgs = @($BenchmarkArgs)
+if ($forwardedArgs.Count -gt 0 -and $forwardedArgs[0] -eq '--') {
+  $forwardedArgs = @($forwardedArgs | Select-Object -Skip 1)
+}
+if ($forwardedArgs.Count -gt 0 -and !([string]$forwardedArgs[0]).StartsWith('--')) {
+  [Console]::Error.WriteLine("Unknown argument: $($forwardedArgs[0]) (benchmark arguments go after --, see -Help).")
+  exit 64
+}
+
 if (!(Test-Path -LiteralPath (Join-Path $HermesPrebuiltRoot 'include\hermes\hermes.h'))) {
   [Console]::Error.WriteLine("Hermes prebuilt was not found at $HermesPrebuiltRoot. Run scripts\build-hermes-windows.ps1 first.")
   exit 1
@@ -74,12 +91,6 @@ if (
 ) {
   [Console]::Error.WriteLine("Hermes runtime DLL was not found for $Arch at $HermesPrebuiltRoot. Run scripts\build-hermes-windows.ps1 -Arch $Arch first.")
   exit 1
-}
-
-# Benchmark arguments follow a leading --.
-$forwardedArgs = @($BenchmarkArgs)
-if ($forwardedArgs.Count -gt 0 -and $forwardedArgs[0] -eq '--') {
-  $forwardedArgs = @($forwardedArgs | Select-Object -Skip 1)
 }
 
 $benchmarkProject = Join-Path $repoRoot 'packages\expo-modules-dotnet\managed\packages\Expo.ModulesCore.Benchmarks\Expo.ModulesCore.Benchmarks.csproj'
