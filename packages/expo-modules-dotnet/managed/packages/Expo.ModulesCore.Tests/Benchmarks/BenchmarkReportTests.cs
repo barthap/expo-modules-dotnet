@@ -100,6 +100,19 @@ public sealed class BenchmarkReportTests
     Assert.Contains("quick JIT for loops: ", header);
   }
 
+  // The test process has its own runtime config, so the header of this process cannot show the switch of the
+  // benchmark program. This proves that the benchmark build writes the switch to its runtime config, which
+  // the runtime reads at start-up. A real run of the program shows the header line for it.
+  [Fact]
+  public void BenchmarkProgram_RuntimeConfigDisablesTieredCompilation()
+  {
+    var path = Path.Combine(AppContext.BaseDirectory, "Expo.ModulesCore.Benchmarks.runtimeconfig.json");
+    using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+
+    var properties = document.RootElement.GetProperty("runtimeOptions").GetProperty("configProperties");
+    Assert.False(properties.GetProperty("System.Runtime.TieredCompilation").GetBoolean());
+  }
+
   [Fact]
   public void NoisyRows_ReturnsOnlyRowsAboveTheLimit()
   {
