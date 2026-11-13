@@ -4055,10 +4055,12 @@ public sealed partial class ExpoModulesGeneratorTests
         "SharedObjectCodec<global::Expo.TestModules.CacheEntry>.Encode(__expoState.Value.Item1, runtime, __expoState.Value.Item2)",
         text
     );
-    Assert.DoesNotContain(
-        "SharedObjectCodec<global::Expo.TestModules.CacheEntry>.Encode(__expoResult, runtime, GeneratedFunction.CurrentRuntimeContext)",
-        text
-    );
+    var factories = AsyncSettlementFactories(text);
+    Assert.NotEmpty(factories);
+    foreach (var factory in factories)
+    {
+      Assert.DoesNotContain("CurrentRuntimeContext", factory, StringComparison.Ordinal);
+    }
 
     // Generated paths stay free of reflection, dynamic dispatch, JSON, and boxed argument arrays.
     Assert.DoesNotContain("System.Reflection", text);

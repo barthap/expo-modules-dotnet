@@ -1,4 +1,7 @@
+using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
+using Expo.JSI;
 using Expo.ModulesCore;
 
 namespace Expo.ModulesCore.Tests.SharedObjects;
@@ -34,6 +37,8 @@ public sealed partial class OtherEntry : SharedObject
 
 public sealed record EntryPair(Entry First, Entry? Second);
 
+public sealed record HeldEntry(ArrayBuffer Data, Entry Entry);
+
 [ExpoModule("CompositeEntries", Classes = new[] { typeof(Entry), typeof(OtherEntry) })]
 public sealed partial class CompositeEntriesModule
 {
@@ -51,8 +56,23 @@ public sealed partial class CompositeEntriesModule
 
   private static IReadOnlyList<Entry>? stashed;
 
+  private static JavaScriptCallback<ValueTuple<IReadOnlyList<Entry>>, Entry?>? storedCallback;
+
+  // Holds the async methods below until a test opens it.
+  public static TaskCompletionSource Gate { get; private set; } = NewGate();
+
+  public static Entry? LastHeld;
+
+  public static Entry? LastCallbackResult;
+
+  private static TaskCompletionSource NewGate() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+
   public static void Reset()
   {
+    Gate = NewGate();
+    LastHeld = null;
+    LastCallbackResult = null;
+    storedCallback = null;
     CallCount = 0;
     LastList = null;
     LastDictionary = null;
@@ -121,4 +141,38 @@ public sealed partial class CompositeEntriesModule
 
   [JS]
   public Entry ReturnNativeFirst() => nativeFirst!;
+
+  [JS]
+  public async Task<IReadOnlyList<Entry>> HoldEntriesAsync(Entry first)
+  {
+    await Gate.Task;
+    return new[] { first, new Entry("late") };
+  }
+
+  // The result holds a Retain() copy of the argument leaf and a native-created instance.
+  [JS]
+  public async Task<HeldEntry> HoldLeafAndEntryAsync(ArrayBuffer data)
+  {
+    await Gate.Task;
+    return new HeldEntry(data.Retain(), LastHeld = new Entry("held"));
+  }
+
+  [JS]
+  public Entry? CallWithEntries(IReadOnlyList<Entry> entries, JavaScriptCallback<ValueTuple<IReadOnlyList<Entry>>, Entry?> callback) =>
+      LastCallbackResult = callback.Invoke(ValueTuple.Create(entries));
+
+  // The callback argument holds instances that were never paired before the encode.
+  [JS]
+  public Entry? CallWithNativeEntries(JavaScriptCallback<ValueTuple<IReadOnlyList<Entry>>, Entry?> callback) =>
+      LastCallbackResult = callback.Invoke(ValueTuple.Create<IReadOnlyList<Entry>>(new[] { new Entry("n0"), new Entry("n1") }));
+
+  [JS]
+  public void StoreCallback(JavaScriptCallback<ValueTuple<IReadOnlyList<Entry>>, Entry?> callback) => storedCallback = callback;
+
+  [JS]
+  public async Task<Entry?> CallStoredAsync(IReadOnlyList<Entry> entries)
+  {
+    await Task.Yield();
+    return LastCallbackResult = await storedCallback!.InvokeAsync(ValueTuple.Create(entries));
+  }
 }

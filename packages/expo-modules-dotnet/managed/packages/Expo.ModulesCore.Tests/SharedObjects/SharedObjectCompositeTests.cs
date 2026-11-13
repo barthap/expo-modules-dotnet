@@ -10,7 +10,7 @@ namespace Expo.ModulesCore.Tests.SharedObjects;
 // A concrete shared object is an ordinary codec element: each list element, dictionary value, and
 // record field decodes to the registry's managed instance and encodes to its paired object, with
 // the context of the binding that runs.
-public sealed class SharedObjectCompositeTests
+public sealed partial class SharedObjectCompositeTests
 {
   private const string ErrHelper =
       "const err = f => { try { f(); return 'no error'; } " +

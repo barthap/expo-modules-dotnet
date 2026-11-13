@@ -451,10 +451,14 @@ public sealed partial class ExpoModulesGenerator
           .FirstOrDefault(item => item.Name == parameter.Name);
       var fieldCodec = GetCodecAt(parameterLocation, parameter.Type, diagnostics, codecs);
       // Composition rule: generated record codecs call field codecs directly with Decode and
-      // Encode, passing the runtime and the context. A field needs both methods, so a decode-only
-      // codec stays out of records.
+      // Encode, passing the runtime and the context. A field needs an encode-capable
+      // JavaScriptCodec, so a decode-only codec and a static helper stay out of records.
       if (property is null ||
-          fieldCodec is not { Capabilities: ExpoCodecCapabilities.DecodeAndEncode })
+          fieldCodec is not
+          {
+            Shape: ExpoCodecShape.JavaScriptCodec,
+            Capabilities: ExpoCodecCapabilities.DecodeAndEncode,
+          })
       {
         diagnostics.Add(new ExpoDiagnosticModel(
             ExpoModulesDiagnostics.UnsupportedRecordField.Id,

@@ -147,7 +147,7 @@ public sealed partial class ExpoModulesGeneratorTests
         "[JS] public int Use(WithCallback value) => 0;"
     ));
 
-    Assert.Contains("EXPOJSI", string.Join(",", GeneratorDiagnosticIds(result)), StringComparison.Ordinal);
+    Assert.Equal(new[] { "EXPOJSI007", "EXPOJSI001" }, GeneratorDiagnosticIds(result));
     Assert.DoesNotContain("\"use\"", GeneratedText(result), StringComparison.Ordinal);
   }
 
@@ -166,15 +166,78 @@ public sealed partial class ExpoModulesGeneratorTests
   [Fact]
   public void ForeignModuleSharedObjectInCompositeReportsExpoJsi024()
   {
+    // No module lists Entry in Classes, so the ownership check reports it at its declaration.
     var result = GeneratorTestHost.Run(CompositeSharedObjectSource(
-        string.Empty,
+        "[ExpoSharedObject] public sealed partial class Mine : SharedObject { }",
         "[JS] public int Use(IReadOnlyList<Entry> value) => 0;",
-        classes: string.Empty
+        classes: "typeof(Mine)"
     ));
 
     var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI024");
     Assert.Contains("Entry", diagnostic.GetMessage(), StringComparison.Ordinal);
-    Assert.DoesNotContain(result.Diagnostics, item => item.Id == "EXPOJSI023");
+    Assert.Equal(new[] { "EXPOJSI024" }, GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+  }
+
+  [Fact]
+  public void AsyncSettlementDoesNotReadCurrentRuntimeContext()
+  {
+    var result = GeneratorTestHost.Run(CompositeSharedObjectSource(
+        string.Empty,
+        "[JS] public Task<IReadOnlyList<Entry>> ListAsync() => Task.FromResult<IReadOnlyList<Entry>>(new Entry[0]);"
+    ));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var factory = Assert.Single(AsyncSettlementFactories(GeneratedText(result)));
+    Assert.DoesNotContain("CurrentRuntimeContext", factory, StringComparison.Ordinal);
+    Assert.Contains(
+        "JavaScriptArrayCodec<global::Expo.TestModules.Entry, SharedObjectCodec<global::Expo.TestModules.Entry>>.Encode(__expoState.Value.Item1, runtime, __expoState.Value.Item2)",
+        factory,
+        StringComparison.Ordinal
+    );
+  }
+
+  [Fact]
+  public void CallbackWithSharedObjectArgsAndResultIsAccepted()
+  {
+    var result = GeneratorTestHost.Run(CompositeSharedObjectSource(
+        string.Empty,
+        "[JS] public int Use(JavaScriptCallback<ValueTuple<IReadOnlyList<Entry>>, Entry?> callback) => 0;"
+    ));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var source = GeneratedText(result);
+    Assert.Contains("JavaScriptCallbackCodec<", source, StringComparison.Ordinal);
+    Assert.Contains(
+        "JavaScriptArrayCodec<global::Expo.TestModules.Entry, SharedObjectCodec<global::Expo.TestModules.Entry>>",
+        source,
+        StringComparison.Ordinal
+    );
+    Assert.Contains(
+        "NullableReferenceCodec<global::Expo.TestModules.Entry, SharedObjectCodec<global::Expo.TestModules.Entry>>",
+        source,
+        StringComparison.Ordinal
+    );
+  }
+
+  // Each Promise factory of the generated text, from its signature to the abandon callback.
+  private static IReadOnlyList<string> AsyncSettlementFactories(string text)
+  {
+    const string start = "static (runtime, __expoState) =>";
+    const string end = "static __expoState =>";
+    var factories = new List<string>();
+    for (var index = text.IndexOf(start, StringComparison.Ordinal);
+        index >= 0;
+        index = text.IndexOf(start, index + start.Length, StringComparison.Ordinal))
+    {
+      var stop = text.IndexOf(end, index, StringComparison.Ordinal);
+      Assert.True(stop > index);
+      factories.Add(text[index..stop]);
+    }
+
+    return factories;
   }
 
   [Fact]
