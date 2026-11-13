@@ -87,6 +87,9 @@ internal static unsafe class NativeTestHost
     public readonly uint OwnedValuesSwept;
     public readonly uint OwnedValuesAbandoned;
     public readonly uint OwnedValuesTracked;
+    public readonly uint OwnedValuesCreatedLinked;
+    public readonly uint OwnedValuesCreatedUnlinked;
+    public readonly uint BorrowedValuesCreated;
   }
 
   internal static CreateResult CreateRuntime()

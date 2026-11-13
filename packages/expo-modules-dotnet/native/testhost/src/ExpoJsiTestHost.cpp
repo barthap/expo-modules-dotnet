@@ -15,6 +15,7 @@
 #include "ExpoJsiBridgeTestHooks.h"
 #include "HermesConsoleRuntimeConnector.h"
 #include "HermesConsoleRuntimeTestControl.h"
+#include "ValueHandle.h"
 
 // Test-only deterministic gate for blocking a single AsValue/Resolve/Reject
 // native call mid-flight so managed tests can race Dispose against it without
@@ -187,6 +188,26 @@ expo_jsi_testhost_runtime_t *runtimeFor(expo_jsi_runtime_handle runtime)
   return nullptr;
 }
 
+// Counts a value handle that a table entry or the testhost hands back. Mirrors
+// ValueHandle::owned: an owned handle that holds undefined, null, a boolean, or
+// a number is not linked into the runtime's owned-value list.
+void countCreatedValue(expo_jsi_testhost_runtime_t *testhost, const expo_jsi_value_result &result)
+{
+  if (testhost == nullptr || result.ok == 0 || result.value == nullptr) {
+    return;
+  }
+  if (!result.value->isOwned()) {
+    testhost->counters.borrowed_values_created++;
+    return;
+  }
+  const auto &value = result.value->value();
+  if (value.isUndefined() || value.isNull() || value.isBool() || value.isNumber()) {
+    testhost->counters.owned_values_created_unlinked++;
+  } else {
+    testhost->counters.owned_values_created_linked++;
+  }
+}
+
 expo_jsi_value_result countedCreateNumber(expo_jsi_runtime_handle runtime, double value)
 {
   auto *testhost = runtimeFor(runtime);
@@ -194,7 +215,9 @@ expo_jsi_value_result countedCreateNumber(expo_jsi_runtime_handle runtime, doubl
     testhost->counters.deprecated_number_creates++;
   }
   const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
-  return api->create_number(runtime, value);
+  auto result = api->create_number(runtime, value);
+  countCreatedValue(testhost, result);
+  return result;
 }
 
 expo_jsi_value_result countedCreateBool(expo_jsi_runtime_handle runtime, uint8_t value)
@@ -204,7 +227,9 @@ expo_jsi_value_result countedCreateBool(expo_jsi_runtime_handle runtime, uint8_t
     testhost->counters.deprecated_bool_creates++;
   }
   const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
-  return api->create_bool(runtime, value);
+  auto result = api->create_bool(runtime, value);
+  countCreatedValue(testhost, result);
+  return result;
 }
 
 expo_jsi_value_result countedCreatePrimitiveValue(expo_jsi_runtime_handle runtime,
@@ -216,7 +241,9 @@ expo_jsi_value_result countedCreatePrimitiveValue(expo_jsi_runtime_handle runtim
     testhost->counters.primitive_value_creates++;
   }
   const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
-  return api->create_primitive_value(runtime, kind, value);
+  auto result = api->create_primitive_value(runtime, kind, value);
+  countCreatedValue(testhost, result);
+  return result;
 }
 
 uint8_t countedGetBool(expo_jsi_runtime_handle runtime,
@@ -338,7 +365,9 @@ expo_jsi_value_result countedPromiseAsValue(expo_jsi_runtime_handle runtime,
   const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
   if (testhost != nullptr) {
     PromiseCallGateGuard guard(*testhost, PromiseCallOperation::AsValue, promise);
-    return api->promise_as_value(runtime, promise);
+    auto result = api->promise_as_value(runtime, promise);
+    countCreatedValue(testhost, result);
+    return result;
   }
   return api->promise_as_value(runtime, promise);
 }
@@ -504,6 +533,236 @@ expo_jsi_error countedSetNativeState(expo_jsi_runtime_handle runtime,
   return error;
 }
 
+// Wrappers for the table entries that return a value handle, so tests can count
+// the handles a call path creates. Each forwards unchanged and counts the result.
+expo_jsi_value_result countedCreateString(expo_jsi_runtime_handle runtime,
+                                          const uint8_t *data,
+                                          int32_t length)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->create_string(runtime, data, length);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedCloneValue(expo_jsi_runtime_handle runtime,
+                                        expo_jsi_value_handle value)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->clone_value(runtime, value);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedCreateError(expo_jsi_runtime_handle runtime,
+                                         const uint8_t *message,
+                                         int32_t messageLength)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->create_error(runtime, message, messageLength);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedGetGlobalObject(expo_jsi_runtime_handle runtime)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->get_global_object(runtime);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedCreateObject(expo_jsi_runtime_handle runtime)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->create_object(runtime);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedValueRetainAs(expo_jsi_runtime_handle runtime,
+                                           expo_jsi_value_handle value,
+                                           expo_jsi_value_expectation expectation)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->value_retain_as(runtime, value, expectation);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedCreateArray(expo_jsi_runtime_handle runtime, uint32_t length)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->create_array(runtime, length);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedArrayGetValueAtIndex(expo_jsi_runtime_handle runtime,
+                                                  expo_jsi_value_handle array,
+                                                  uint32_t index)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->array_get_value_at_index(runtime, array, index);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedObjectGetProperty(expo_jsi_runtime_handle runtime,
+                                               expo_jsi_value_handle object,
+                                               const char *name,
+                                               int32_t nameLength)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->object_get_property(runtime, object, name, nameLength);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedFunctionCall(expo_jsi_runtime_handle runtime,
+                                          expo_jsi_value_handle function,
+                                          const expo_jsi_value_handle *arguments,
+                                          uint32_t argumentCount)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->function_call(runtime, function, arguments, argumentCount);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedFunctionCallWithThis(expo_jsi_runtime_handle runtime,
+                                                  expo_jsi_value_handle function,
+                                                  expo_jsi_value_handle thisObject,
+                                                  const expo_jsi_value_handle *arguments,
+                                                  uint32_t argumentCount)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result =
+    api->function_call_with_this(runtime, function, thisObject, arguments, argumentCount);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedFunctionCallAsConstructor(expo_jsi_runtime_handle runtime,
+                                                       expo_jsi_value_handle function,
+                                                       const expo_jsi_value_handle *arguments,
+                                                       uint32_t argumentCount)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->function_call_as_constructor(runtime, function, arguments, argumentCount);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedCreateHostFunction(
+  expo_jsi_runtime_handle runtime,
+  const char *name,
+  int32_t nameLength,
+  uint32_t parameterCount,
+  expo_jsi_host_function_callback_fn callback,
+  void *callbackContext,
+  expo_jsi_release_callback_context_fn releaseCallbackContext)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->create_host_function(
+    runtime, name, nameLength, parameterCount, callback, callbackContext, releaseCallbackContext);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedCreateHostObject(
+  expo_jsi_runtime_handle runtime,
+  expo_jsi_host_object_get_fn get,
+  expo_jsi_host_object_set_fn set,
+  expo_jsi_host_object_get_property_names_fn getPropertyNames,
+  void *callbackContext,
+  expo_jsi_release_callback_context_fn releaseCallbackContext)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->create_host_object(
+    runtime, get, set, getPropertyNames, callbackContext, releaseCallbackContext);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedGetArgumentValue(expo_jsi_runtime_handle runtime,
+                                              expo_jsi_arguments_handle arguments,
+                                              uint32_t index)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->get_argument_value(runtime, arguments, index);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedCreateObjectWithPrototype(expo_jsi_runtime_handle runtime,
+                                                       expo_jsi_value_handle prototype)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->create_object_with_prototype(runtime, prototype);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedCreateClass(expo_jsi_runtime_handle runtime,
+                                         const char *name,
+                                         int32_t nameLength)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->create_class(runtime, name, nameLength);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedCreateClassWithSuperclass(expo_jsi_runtime_handle runtime,
+                                                       const char *name,
+                                                       int32_t nameLength,
+                                                       expo_jsi_value_handle superclass)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->create_class_with_superclass(runtime, name, nameLength, superclass);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedArrayBufferAsValue(expo_jsi_runtime_handle runtime,
+                                                expo_jsi_array_buffer_handle arrayBuffer)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->array_buffer_as_value(runtime, arrayBuffer);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
+expo_jsi_value_result countedMutableBufferAsValue(expo_jsi_runtime_handle runtime,
+                                                  expo_jsi_mutable_buffer_handle mutableBuffer)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->mutable_buffer_as_value(runtime, mutableBuffer);
+  countCreatedValue(testhost, result);
+  return result;
+}
+
 const expo_jsi_api *makeCountedApi(expo_jsi_testhost_runtime_t &runtime)
 {
   runtime.innerApi = expo::dotnet::api();
@@ -521,6 +780,26 @@ const expo_jsi_api *makeCountedApi(expo_jsi_testhost_runtime_t &runtime)
   runtime.countedApi.runtime_can_execute_sync = countedCanExecuteSync;
   runtime.countedApi.runtime_execute_sync = countedExecuteSync;
   runtime.countedApi.object_set_native_state = countedSetNativeState;
+  runtime.countedApi.create_string = countedCreateString;
+  runtime.countedApi.clone_value = countedCloneValue;
+  runtime.countedApi.create_error = countedCreateError;
+  runtime.countedApi.get_global_object = countedGetGlobalObject;
+  runtime.countedApi.create_object = countedCreateObject;
+  runtime.countedApi.value_retain_as = countedValueRetainAs;
+  runtime.countedApi.create_array = countedCreateArray;
+  runtime.countedApi.array_get_value_at_index = countedArrayGetValueAtIndex;
+  runtime.countedApi.object_get_property = countedObjectGetProperty;
+  runtime.countedApi.function_call = countedFunctionCall;
+  runtime.countedApi.function_call_with_this = countedFunctionCallWithThis;
+  runtime.countedApi.function_call_as_constructor = countedFunctionCallAsConstructor;
+  runtime.countedApi.create_host_function = countedCreateHostFunction;
+  runtime.countedApi.create_host_object = countedCreateHostObject;
+  runtime.countedApi.get_argument_value = countedGetArgumentValue;
+  runtime.countedApi.create_object_with_prototype = countedCreateObjectWithPrototype;
+  runtime.countedApi.create_class = countedCreateClass;
+  runtime.countedApi.create_class_with_superclass = countedCreateClassWithSuperclass;
+  runtime.countedApi.array_buffer_as_value = countedArrayBufferAsValue;
+  runtime.countedApi.mutable_buffer_as_value = countedMutableBufferAsValue;
   return &runtime.countedApi;
 }
 
@@ -627,6 +906,7 @@ extern "C" expo_jsi_value_result expo_jsi_testhost_evaluate_script(
         expo::dotnet::createOwnedValueHandle(testhost->runtime, std::move(value)),
         makeOk(),
       };
+      countCreatedValue(testhost, result);
     });
     return result;
   } catch (const jsi::JSError &error) {

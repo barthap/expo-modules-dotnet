@@ -46,6 +46,9 @@ typedef struct expo_jsi_testhost_counters {
   uint32_t owned_values_swept;
   uint32_t owned_values_abandoned;
   uint32_t owned_values_tracked;
+  uint32_t owned_values_created_linked;
+  uint32_t owned_values_created_unlinked;
+  uint32_t borrowed_values_created;
 } expo_jsi_testhost_counters;
 
 EXPO_JSI_TESTHOST_EXPORT expo_jsi_testhost_create_result expo_jsi_testhost_create_runtime(void);
