@@ -766,6 +766,19 @@ expo_jsi_value_result countedMutableBufferAsValue(expo_jsi_runtime_handle runtim
   return result;
 }
 
+expo_jsi_weak_object_lock_result countedWeakObjectLock(expo_jsi_runtime_handle runtime,
+                                                       expo_jsi_weak_object_handle weakObject)
+{
+  auto *testhost = runtimeFor(runtime);
+  const auto *api = testhost != nullptr ? testhost->innerApi : expo::dotnet::api();
+  auto result = api->weak_object_lock(runtime, weakObject);
+  // The lock result carries its value handle next to a found flag instead of in a value result.
+  if (result.found != 0) {
+    countCreatedValue(testhost, expo_jsi_value_result{result.ok, result.value, result.error});
+  }
+  return result;
+}
+
 const expo_jsi_api *makeCountedApi(expo_jsi_testhost_runtime_t &runtime)
 {
   runtime.innerApi = expo::dotnet::api();
@@ -803,6 +816,7 @@ const expo_jsi_api *makeCountedApi(expo_jsi_testhost_runtime_t &runtime)
   runtime.countedApi.create_class_with_superclass = countedCreateClassWithSuperclass;
   runtime.countedApi.array_buffer_as_value = countedArrayBufferAsValue;
   runtime.countedApi.mutable_buffer_as_value = countedMutableBufferAsValue;
+  runtime.countedApi.weak_object_lock = countedWeakObjectLock;
   return &runtime.countedApi;
 }
 
