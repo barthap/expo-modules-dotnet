@@ -89,14 +89,14 @@ internal static class BenchmarkCases
   {
     var make = $"make{shape}({makeArguments})";
     cases.Add(new BenchmarkCase(
-        $"{name} (argument)",
+        name,
         BenchmarkDirection.Argument,
         $"m.resetReceived(); var a = {Native}.{make};",
         $"m.take{shape}(a)",
         $"{Native}.take{shape}(a)",
         $"m.receivedCount() === {expectedCount} && m.receivedChecksum() === {expectedChecksum}"));
     cases.Add(new BenchmarkCase(
-        $"{name} (return)",
+        name,
         BenchmarkDirection.Return,
         "",
         $"m.{make}",

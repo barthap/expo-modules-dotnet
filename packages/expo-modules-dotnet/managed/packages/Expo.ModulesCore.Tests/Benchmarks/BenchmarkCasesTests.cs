@@ -38,9 +38,9 @@ public sealed class BenchmarkCasesTests
   [Fact]
   public void CaseNamesWithDirectionAreUnique()
   {
-    var names = BenchmarkCases.All.Select(benchmarkCase => benchmarkCase.Name).ToList();
+    var keys = BenchmarkCases.All.Select(benchmarkCase => (benchmarkCase.Name, benchmarkCase.Direction)).ToList();
 
-    Assert.Equal(names.Count, names.Distinct(StringComparer.Ordinal).Count());
+    Assert.Equal(keys.Count, keys.Distinct().Count());
     Assert.Contains(BenchmarkCases.All, benchmarkCase => benchmarkCase.Direction == BenchmarkDirection.Argument);
     Assert.Contains(BenchmarkCases.All, benchmarkCase => benchmarkCase.Direction == BenchmarkDirection.Return);
   }
@@ -60,12 +60,12 @@ public sealed class BenchmarkCasesTests
   [Fact]
   public void ArrayOfNumbersAndArrayOfStringsExist()
   {
-    var names = BenchmarkCases.All.Select(benchmarkCase => benchmarkCase.Name).ToHashSet();
+    var keys = BenchmarkCases.All.Select(benchmarkCase => (benchmarkCase.Name, benchmarkCase.Direction)).ToHashSet();
 
-    Assert.Contains("array: 100 numbers (argument)", names);
-    Assert.Contains("array: 100 numbers (return)", names);
-    Assert.Contains("array: 100 strings (argument)", names);
-    Assert.Contains("array: 100 strings (return)", names);
+    Assert.Contains(("array: 100 numbers", BenchmarkDirection.Argument), keys);
+    Assert.Contains(("array: 100 numbers", BenchmarkDirection.Return), keys);
+    Assert.Contains(("array: 100 strings", BenchmarkDirection.Argument), keys);
+    Assert.Contains(("array: 100 strings", BenchmarkDirection.Return), keys);
   }
 
   [Fact]
