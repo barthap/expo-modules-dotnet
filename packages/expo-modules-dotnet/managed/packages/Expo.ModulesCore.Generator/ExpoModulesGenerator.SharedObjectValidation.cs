@@ -138,11 +138,11 @@ public sealed partial class ExpoModulesGenerator
       if (issue is null)
       {
         // An unattributed (authored abstract) base selects the decode-only base codec; otherwise the annotation
-        // selects the nullable or exact codec. The type argument is the exact class without `?`.
+        // selects the nullable reference codec over the exact codec. The type argument is the exact class without `?`.
         var exact = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         codec = !HasExpoSharedObjectAttribute(typeSymbol)
             ? SharedObjectBaseCodec($"SharedObjectBaseCodec<{exact}>")
-            : SharedObjectCodec(typeSymbol.NullableAnnotation == NullableAnnotation.Annotated ? $"NullableSharedObjectCodec<{exact}>" : $"SharedObjectCodec<{exact}>");
+            : SharedObjectCodec(typeSymbol.NullableAnnotation == NullableAnnotation.Annotated ? $"NullableReferenceCodec<{exact}, SharedObjectCodec<{exact}>>" : $"SharedObjectCodec<{exact}>");
         return true;
       }
       diagnostics.Add(CreateUnsupportedSharedObjectUsage(memberName, $"{positionDescription} uses shared-object type '{GetDiagnosticTypeName(typeSymbol)}', {issue}", location));

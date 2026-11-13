@@ -6179,7 +6179,7 @@ public sealed partial class ExpoModulesGeneratorTests
 
   // The nullable shared-object codec text with the class name left as $T. A test replaces $C with
   // this text first and $T with Entry or Handle second.
-  private const string NullableSharedObjectCodecText = "NullableSharedObjectCodec<global::Expo.TestModules.$T>";
+  private const string NullableSharedObjectText = "NullableReferenceCodec<global::Expo.TestModules.$T, SharedObjectCodec<global::Expo.TestModules.$T>>";
   private const string NullableSharedObjectArgDecode = "var __expoArg0 = $C.Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);";
   private const string NullableSharedObjectArgDecodeAsync = "var __expoArg0 = $C.Decode(arguments.GetValue(0), jsRuntime, __expoRuntimeContext);";
   private const string NullableSharedObjectEncodeAsyncContext = "var __expoRuntimeContext = GeneratedFunction.CurrentRuntimeContext;";
@@ -6233,7 +6233,7 @@ public sealed partial class ExpoModulesGeneratorTests
   }
 
   private static string ExpandNullableSharedObjectText(string text, string type) =>
-      text.Replace("$C", NullableSharedObjectCodecText, StringComparison.Ordinal).Replace("$T", type, StringComparison.Ordinal);
+      text.Replace("$C", NullableSharedObjectText, StringComparison.Ordinal).Replace("$T", type, StringComparison.Ordinal);
 
   // Characterization: the polymorphic bases and every nested shape keep their diagnostics, with and
   // without the annotation. The run without the annotation is the oracle for the expected diagnostic.
@@ -6276,7 +6276,7 @@ public sealed partial class ExpoModulesGeneratorTests
       Assert.Contains(expectedReason, diagnostic.GetMessage(), StringComparison.Ordinal);
       var text = GeneratedText(result);
       Assert.DoesNotContain(absentFragment, text, StringComparison.Ordinal);
-      Assert.DoesNotContain("NullableSharedObjectCodec", text, StringComparison.Ordinal);
+      Assert.DoesNotContain("NullableReferenceCodec<global::Expo.TestModules.", text, StringComparison.Ordinal);
     }
   }
 
@@ -6410,7 +6410,7 @@ public sealed partial class ExpoModulesGeneratorTests
     var text = GeneratedText(result);
     Assert.DoesNotContain(absentFragment, text, StringComparison.Ordinal);
     Assert.DoesNotContain("SharedObjectBaseCodec", text, StringComparison.Ordinal);
-    Assert.DoesNotContain("NullableSharedObjectCodec", text, StringComparison.Ordinal);
+    Assert.DoesNotContain("NullableReferenceCodec<global::Expo.TestModules.", text, StringComparison.Ordinal);
   }
 
   [Theory]
@@ -6546,8 +6546,8 @@ public sealed partial class ExpoModulesGeneratorTests
 
   // The generated glue of a nullable concrete shared object compiles clean and uses the nullable
   // codec for every argument decode and encode. A shared object is registry-owned, so the glue emits
-  // no release. The receiver decode reads thisValue, and the negative lookbehind keeps the
-  // exact-codec patterns from matching inside NullableSharedObjectCodec.
+  // no release. The nullable type resolves to NullableReferenceCodec over the exact codec, so the
+  // exact codec is never called directly for a nullable argument or result.
   private static void AssertNullableSharedObjectGlue(GeneratorRunResult result, string typeName)
   {
     Assert.Empty(GeneratorDiagnosticIds(result));
@@ -6557,8 +6557,9 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.DoesNotContain("CodecRelease", text, StringComparison.Ordinal);
     Assert.DoesNotContain($"Codec<{typeName}?>", text, StringComparison.Ordinal);
     var escapedTypeName = Regex.Escape(typeName);
-    Assert.DoesNotMatch($@"(?<!Nullable)SharedObjectCodec<{escapedTypeName}>\.Decode\(arguments", text);
-    Assert.DoesNotMatch($@"(?<!Nullable)SharedObjectCodec<{escapedTypeName}>\.Encode\(", text);
+    Assert.Contains($"NullableReferenceCodec<{typeName}, SharedObjectCodec<{typeName}>>", text, StringComparison.Ordinal);
+    Assert.DoesNotMatch($@"\bSharedObjectCodec<{escapedTypeName}>\.Decode\(arguments", text);
+    Assert.DoesNotMatch($@"\bSharedObjectCodec<{escapedTypeName}>\.Encode\(", text);
   }
 
   // PathBase is an authored abstract base with no attribute. FileEntry and DirEntry are its

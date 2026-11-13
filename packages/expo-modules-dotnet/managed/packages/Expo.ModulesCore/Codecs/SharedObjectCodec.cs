@@ -15,13 +15,8 @@ namespace Expo.ModulesCore.Codecs;
 /// <see cref="GeneratedSharedObjectClass" />, so a repeated encode returns the strictly equal
 /// JavaScript object.
 /// </para>
-/// <para>
-/// Unlike <see cref="IJavaScriptCodec{T}" /> codecs, shared-object conversion requires the
-/// <see cref="DotnetRuntimeContext" /> that owns the registry, so generated code passes the
-/// current (or captured) runtime context explicitly at every call site.
-/// </para>
 /// </remarks>
-public static class SharedObjectCodec<T>
+public readonly struct SharedObjectCodec<T> : IJavaScriptCodec<T>
     where T : SharedObject
 {
   /// <summary>
@@ -30,14 +25,14 @@ public static class SharedObjectCodec<T>
   public static T Decode(
       JavaScriptValueRef value,
       JavaScriptRuntime runtime,
-      DotnetRuntimeContext runtimeContext
+      DotnetRuntimeContext context
   )
   {
     ArgumentNullException.ThrowIfNull(runtime);
-    ArgumentNullException.ThrowIfNull(runtimeContext);
+    ArgumentNullException.ThrowIfNull(context);
 
     using var owned = value.Retain();
-    return DecodeOwned(owned, runtimeContext);
+    return DecodeOwned(owned, context);
   }
 
   /// <summary>
@@ -49,14 +44,14 @@ public static class SharedObjectCodec<T>
   public static T Decode(
       JavaScriptValue value,
       JavaScriptRuntime runtime,
-      DotnetRuntimeContext runtimeContext
+      DotnetRuntimeContext context
   )
   {
     ArgumentNullException.ThrowIfNull(value);
     ArgumentNullException.ThrowIfNull(runtime);
-    ArgumentNullException.ThrowIfNull(runtimeContext);
+    ArgumentNullException.ThrowIfNull(context);
 
-    return DecodeOwned(value, runtimeContext);
+    return DecodeOwned(value, context);
   }
 
   /// <summary>
@@ -70,12 +65,12 @@ public static class SharedObjectCodec<T>
   public static JavaScriptValue Encode(
       T value,
       JavaScriptRuntime runtime,
-      DotnetRuntimeContext runtimeContext
+      DotnetRuntimeContext context
   )
   {
     ArgumentNullException.ThrowIfNull(value);
     ArgumentNullException.ThrowIfNull(runtime);
-    ArgumentNullException.ThrowIfNull(runtimeContext);
+    ArgumentNullException.ThrowIfNull(context);
     if (value.GetType() != typeof(T))
     {
       throw new InvalidOperationException(
@@ -83,18 +78,18 @@ public static class SharedObjectCodec<T>
       );
     }
 
-    var registration = GeneratedSharedObjectClass.GetRegistration(runtimeContext, typeof(T));
-    using var objectValue = runtimeContext.SharedObjects.GetOrCreateJavaScriptObject(
+    var registration = GeneratedSharedObjectClass.GetRegistration(context, typeof(T));
+    using var objectValue = context.SharedObjects.GetOrCreateJavaScriptObject(
         value,
         registration
     );
     return objectValue.AsValue();
   }
 
-  private static T DecodeOwned(JavaScriptValue value, DotnetRuntimeContext runtimeContext)
+  private static T DecodeOwned(JavaScriptValue value, DotnetRuntimeContext context)
   {
     using var objectValue = value.AsObject();
-    var managed = runtimeContext.SharedObjects.ResolveManaged(objectValue);
+    var managed = context.SharedObjects.ResolveManaged(objectValue);
     if (managed is not T instance || instance.GetType() != typeof(T))
     {
       throw new InvalidOperationException(
