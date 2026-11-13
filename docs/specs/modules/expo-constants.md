@@ -23,11 +23,23 @@ package. It SHALL expose exactly six getter-only `[JS]` properties:
 
 The two native version properties SHALL remain available even though upstream
 `expo-constants@57.0.2` removed them. The package SHALL NOT export
-`expoConfig`, other compatibility fields, or methods. It SHALL NOT install an
-upstream package alias, use `NativeModulesProxy`, or register into the Expo
+`expoConfig`, other compatibility fields, or methods. It SHALL NOT install a
+package alias itself, use `NativeModulesProxy`, or register into the Expo
 global registry. Access on Android, iOS, Linux, or an unknown OS SHALL fail
 through a catchable `PlatformNotSupportedException`. It SHALL NOT read device
 or installation identity or persist `sessionId`.
+
+The package SHALL declare a substitution of `expo-constants`
+`build/ExponentConstants.js` by `src/index.ts`, for the range `~18.0.13`
+(`### Requirement: Dotnet Modules Declare Upstream Substitutions` in
+`dotnet-autolinking.md`). The default export of `src/index.ts` SHALL be the
+registered `ExponentConstants` module object, so that upstream
+`expo-constants` reads the six properties: upstream copies them with an object
+spread, which reads own enumerable properties, and generated `[JS]` properties
+are own enumerable accessors. The module does not provide `manifest`, so
+upstream `Constants.expoConfig` is `null` when the substitution is on, and
+upstream `Constants.platform` is the string `'windows'` instead of upstream's
+per-platform manifest object.
 
 #### Scenario: Native versions retain their named sources
 - **GIVEN** a desktop host supplies its native versions through
@@ -50,3 +62,9 @@ or installation identity or persist `sessionId`.
 - **GIVEN** the module is registered on a host other than Windows or macOS
 - **WHEN** JavaScript first accesses it
 - **THEN** it SHALL receive a catchable unsupported-platform error
+
+#### Scenario: Upstream expo-constants reads the module through the substitution
+- **GIVEN** a Windows app that opts in to `expo-constants`
+- **WHEN** upstream `expo-constants` evaluates
+- **THEN** its `Constants` SHALL have the six values of this module
+- **AND** `Constants.expoConfig` SHALL be `null`

@@ -133,6 +133,55 @@ disk fails `resolve`/`generate` with an error naming the package and path. See
 `packages/expo-modules-dotnet-autolinking/README.md` and
 `docs/specs/dotnet-autolinking.md` for the full contract.
 
+### Replacing an upstream package on Windows
+
+A module that implements the full native shape of an upstream Expo package can
+declare that it replaces the upstream native-accessor file. Upstream code then
+reaches the .NET module on Windows, when the app opts in:
+
+```json
+// packages/expo-asset-dotnet/expo-module.config.json
+{
+  "platforms": ["dotnet"],
+  "dotnet": {
+    "projects": [
+      {
+        "path": "dotnet/ExpoAssetDotnet/ExpoAssetDotnet.csproj",
+        "assemblyName": "ExpoAssetDotnet"
+      }
+    ],
+    "substitutions": [
+      {
+        "package": "expo-asset",
+        "versionRange": "~12.0.13",
+        "accessor": "build/ExpoAsset.js",
+        "replacement": "src/index.ts"
+      }
+    ]
+  }
+}
+```
+
+`accessor` is the upstream file that calls `requireNativeModule`, relative to
+the upstream package. `replacement` is your entry point, and it must export
+what that file exports. Declare only the upstream versions whose native shape
+your module matches in full. The app selects substitutions in its Metro config:
+
+```javascript
+// metro.config.js
+const { makeMetroConfig } = require('expo-desktop-metro-config');
+const { withDotnetModules } = require('expo-modules-dotnet/metro');
+
+module.exports = withDotnetModules(makeMetroConfig(__dirname), {
+  substitute: ['expo-asset'],
+});
+```
+
+Only Windows resolution changes. When Metro starts, the wrapper checks that the
+installed upstream version is in `versionRange` and that the accessor file
+exists. See `### Requirement: Windows Apps Opt In To Substitutions Through Metro`
+(`dotnet-autolinking.md`).
+
 ### First module
 
 A module is a class attributed with `[ExpoModule("Name")]`. Methods exposed to
