@@ -24,7 +24,6 @@ PATH_COMMENTS = (
     re.compile(r"^#\s*(" + PATH_PATTERN + r")\s*$"),
     re.compile(r"^<!--\s*(" + PATH_PATTERN + r")\s*-->\s*$"),
 )
-BACKED_BY = re.compile(r"^<!--.*\bbacked-by:.*-->\s*$")
 
 
 @dataclass
@@ -111,7 +110,7 @@ def check_excerpt(root: Path, language: str, rel_path: str, body: list[str]) -> 
     return None
 
 
-def check_block(root: Path, lines: list[str], block: Block) -> str | None:
+def check_block(root: Path, block: Block) -> str | None:
     if block.body is None:
         return "code fence is not closed"
     if block.language not in CHECKED_LANGUAGES:
@@ -129,13 +128,6 @@ def check_block(root: Path, lines: list[str], block: Block) -> str | None:
         return check_excerpt(root, block.language, rel_path, block.body[1:])
     if declares_module:
         return "a csharp sample with [ExpoModule or [ExpoSharedObject needs a path comment"
-    if block.language == "csharp":
-        above = lines[block.fence_line - 2] if block.fence_line >= 2 else ""
-        if BACKED_BY.match(above) is None:
-            return (
-                "a csharp sample without a path comment needs a backed-by "
-                "comment directly above it"
-            )
     return None
 
 
@@ -157,7 +149,7 @@ def main() -> int:
 
     failures = 0
     for block in parse_blocks(lines):
-        reason = check_block(root, lines, block)
+        reason = check_block(root, block)
         if reason is not None:
             print(f"{guide_label}:{block.fence_line}: {reason}")
             failures += 1

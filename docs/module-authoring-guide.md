@@ -13,7 +13,6 @@ concrete file that demonstrates it.
 
 ### How it works
 
-<!-- backed-by: spec "Requirement: Generated Bindings Avoid Hot-Path Reflection" (modules-core-boundary.md); spec "Requirement: Sync Function Generation Uses Direct Calls" (modules-core-boundary.md) -->
 The Roslyn generator reads `[ExpoModule]`, `[JS]` and the other attributes at
 build time and emits direct-call glue with no runtime reflection. C++ owns JSI,
 C# owns module logic, and a C ABI with opaque handles connects them. This guide
@@ -61,7 +60,6 @@ project file below shows.
 > libraries in separate repos, or as app-local modules, is a planned future
 > workflow and is not supported yet.
 
-<!-- backed-by: spec "Requirement: Dotnet Modules Declare Autolinking Metadata" (dotnet-autolinking.md); spec "Requirement: Aggregator Is The Single NativeAOT Publish Unit" (dotnet-autolinking.md) -->
 A dotnet Expo module package lives at `packages/<name>/dotnet/<AssemblyName>/`
 next to its JavaScript facade in `packages/<name>/src/`. The module project is
 a plain SDK-style csproj that references `Expo.ModulesCore` (which pulls in
@@ -100,7 +98,6 @@ a plain SDK-style csproj that references `Expo.ModulesCore` (which pulls in
 </Project>
 ```
 
-<!-- backed-by: spec "Requirement: Dotnet Modules Declare Autolinking Metadata" (dotnet-autolinking.md); spec "Requirement: Aggregator Is The Single NativeAOT Publish Unit" (dotnet-autolinking.md) -->
 The generator reference is conditioned on `PublishAot`: normal builds pull in
 the generator as a live analyzer project, while NativeAOT publishes use the
 generator's prebuilt DLL so the analyzer itself does not need to be
@@ -109,7 +106,6 @@ build (not this csproj) is the actual NativeAOT publish unit.
 
 ### Autolinking metadata
 
-<!-- backed-by: spec "Requirement: Dotnet Modules Declare Autolinking Metadata" (dotnet-autolinking.md); spec "Requirement: Autolinking Generates One App-Level Aggregator" (dotnet-autolinking.md) -->
 `expo-module.config.json` at the package root declares the dotnet platform and
 points at the csproj(s):
 
@@ -128,7 +124,6 @@ points at the csproj(s):
 }
 ```
 
-<!-- backed-by: spec "Requirement: Dotnet Modules Declare Autolinking Metadata" (dotnet-autolinking.md); spec "Requirement: Autolinking Generates One App-Level Aggregator" (dotnet-autolinking.md) -->
 The `expo-modules-dotnet-autolinking` CLI's `resolve` command walks app
 dependencies for packages that declare `"dotnet"` in `platforms`, and `generate`
 turns the resolved manifest into a single app-level `ExpoDotnetHost` aggregator
@@ -140,7 +135,6 @@ disk fails `resolve`/`generate` with an error naming the package and path. See
 
 ### First module
 
-<!-- backed-by: spec "Requirement: Generated JavaScript Member Names Are Lower Camel" (modules-core-boundary.md); spec "Requirement: Generated Bindings Avoid Hot-Path Reflection" (modules-core-boundary.md) -->
 A module is a class attributed with `[ExpoModule("Name")]`. Methods exposed to
 JavaScript are attributed with `[JS]` (optionally `[JS("jsName")]` to rename):
 
@@ -180,7 +174,6 @@ public readonly record struct ExampleUser(string Name, int Age);
 public readonly record struct ExampleUserSummary(string Name, int Age, string Summary);
 ```
 
-<!-- backed-by: spec "Requirement: Generated JavaScript Member Names Are Lower Camel" (modules-core-boundary.md); spec "Requirement: Generated Bindings Avoid Hot-Path Reflection" (modules-core-boundary.md) -->
 The Roslyn generator (`Expo.ModulesCore.Generator`) reads these attributes at
 compile time and emits direct-call dispatch glue; there is no runtime
 reflection on the hot path. The module class must be `partial` so the
@@ -191,7 +184,6 @@ JavaScript name lowercases the first C# character: `Add` becomes `add`,
 
 ### TypeScript facade
 
-<!-- backed-by: spec "Requirement: Typed JavaScript Facades Remain Registry-Owned" (modules-core-boundary.md); spec "Requirement: Generated Record Codecs Use Lower-Camel JavaScript Fields" (modules-core-boundary.md) -->
 The TypeScript side in `packages/<name>/src/` declares the native module shape
 and wraps it in an ergonomic public API:
 
@@ -259,7 +251,6 @@ export function addStatusListener(listener: (payload: string) => void): EventSub
 }
 ```
 
-<!-- backed-by: spec "Requirement: Typed JavaScript Facades Remain Registry-Owned" (modules-core-boundary.md); spec "Requirement: Generated Record Codecs Use Lower-Camel JavaScript Fields" (modules-core-boundary.md) -->
 `requireDotnetModule` is the dotnet-backed counterpart of Expo's
 `requireNativeModule` — it looks up the module by the name passed to
 `[ExpoModule("...")]`. Record fields already cross the boundary with
@@ -267,7 +258,6 @@ lower-camel JavaScript names, so the facade should declare `name`, `age`, and
 `summary` directly. Do not add a PascalCase translation object or rely on a
 PascalCase decode fallback.
 
-<!-- backed-by: spec "Requirement: Typed JavaScript Facades Remain Registry-Owned" (modules-core-boundary.md); spec "Requirement: Generated Record Codecs Use Lower-Camel JavaScript Fields" (modules-core-boundary.md) -->
 `DotnetModule` and `DotnetEventEmitter` are type bases, not usable JavaScript
 module constructors. Obtain module objects through `requireDotnetModule`, and
 do not use `instanceof` with either base because native registry objects do not
@@ -279,13 +269,11 @@ with the returned subscription's `remove()` method.
 
 ### Declare a module
 
-<!-- backed-by: test GeneratorEmitsDeterministicProviderForAssembly; source ExpoModulesGenerator.CreateModuleModel -->
 <!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/modules.mdx -->
 `[ExpoModule("Name")]` on a `partial` class declares a module. `[ExpoModule]`
 without an argument strips a trailing `Module` from the class name, so
 `MathModule` registers as `Math`. Upstream uses the class name verbatim.
 
-<!-- backed-by: spec "Requirement: Runtime Context Owns Module Instances" (modules-core-boundary.md); source Module; test GeneratorReportsUnsupportedModuleConstructor -->
 The `Module` base class is optional. A module without it declares a
 parameterless constructor or a constructor that takes `DotnetRuntimeContext`.
 Another constructor shape is build error `EXPOJSI003`. `V2MathModule` has no
@@ -310,34 +298,28 @@ internal sealed partial class V2MathModule
 
 ### Functions
 
-<!-- backed-by: spec "Requirement: Generated JavaScript Member Names Are Lower Camel" (modules-core-boundary.md); test GeneratorEmitsDefaultAndExplicitFunctionNames -->
 `[JS]` exports a method. The default JavaScript name lowercases the first
 character. `[JS("name")]` sets the name.
 
-<!-- backed-by: test GeneratorReportsDuplicateJavaScriptFunctionName; test GeneratorRejectsPropertyThatCollidesWithDuplicateMethodName -->
 Two `[JS]` members that resolve to one JavaScript name are build errors
 (`EXPOJSI005` for functions, `EXPOJSI016` for members). A C# overload
 therefore cannot export one JavaScript function with several shapes.
 
-<!-- backed-by: spec "Requirement: Optional Nullable Reference Arguments Preserve Authored Defaults" (modules-core-boundary.md); spec "Requirement: Generated Parameter Defaults Render Every Constant" (modules-core-boundary.md); test GeneratedProviderUsesDefaultForMissingOrUndefinedOptionalNullableArguments; test GeneratedProviderAppliesEnumValueTypeAndEdgeParameterDefaults; source ExpoModulesGenerator.GetDefaultValueExpression -->
 Omitting a parameter that has a C# default value, or passing `undefined`, uses
 the default value. A default can be any C# constant, including an enum member,
 `NaN` and `default`, for nullable and non-nullable parameters.
 
-<!-- backed-by: source ExpoModulesGenerator.GetRequiredParameterCount; source GeneratedFunction.RequireArgumentCount; test GeneratedAsyncArgumentCountFailureRejectsPromise -->
 The generated function checks the argument count. The minimum is the number of
 parameters without a default. The maximum is the number of parameters. A call
 outside that range throws, and an async function rejects its Promise. A
 trailing nullable parameter without a default is required.
 
-<!-- backed-by: spec "Requirement: Unsupported Signatures Are Build Diagnostics" (modules-core-boundary.md) -->
 Unsupported parameter, return, constructor, method, and property shapes and
 duplicate exported names are reported as generator build diagnostics, not
 runtime failures.
 
 ### Asynchronous functions
 
-<!-- backed-by: spec "Requirement: Async Function Generation Returns Promises" (modules-core-boundary.md); spec "Requirement: Async Function Failures Reject Promises" (modules-core-boundary.md) -->
 A `[JS]` method returning `Task` or `Task<T>` is generated as a
 promise-returning JavaScript function instead of a direct-call one:
 
@@ -351,7 +333,6 @@ promise-returning JavaScript function instead of a direct-call one:
   }
 ```
 
-<!-- backed-by: spec "Requirement: Async Function Generation Returns Promises" (modules-core-boundary.md); spec "Requirement: Async Function Failures Reject Promises" (modules-core-boundary.md); spec "Requirement: Module Failures Become JavaScript Errors" (modules-core-boundary.md) -->
 Arguments are decoded and captured before the authored method is awaited.
 Argument validation/decoding failures, an authored method throwing
 synchronously, and a faulted or canceled task all reject the returned
@@ -361,10 +342,8 @@ The rejection carries the same `code` and `message` as a synchronous throw; see
 
 ### Properties
 
-<!-- backed-by: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md) -->
 Annotate an instance property with `[JS]` to expose an own JavaScript accessor:
 
-<!-- backed-by: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md) -->
 ```csharp
 [JS]
 public bool Ready { get; set; }
@@ -376,17 +355,14 @@ public bool IsReadOnly => true;
 public bool ReadyWithExplicitName => Ready;
 ```
 
-<!-- backed-by: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md) -->
 JavaScript reads and writes these as properties, not functions:
 
-<!-- backed-by: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md) -->
 ```ts
 nativeModule.ready = true;
 console.log(nativeModule.ready);
 console.log(nativeModule.isReadOnly);
 ```
 
-<!-- backed-by: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md) -->
 The property must be an instance, non-indexed property with a public or
 internal getter and a supported codec. `init` accessors are not supported. A
 public or internal ordinary setter makes it writable; no setter or an
@@ -394,7 +370,6 @@ inaccessible setter makes it read-only. In strict-mode JavaScript, assigning a
 getter-only property throws `TypeError`. Getter exceptions and setter codec
 failures surface as catchable JavaScript errors.
 
-<!-- backed-by: spec "Requirement: Generated Module Value Ownership" (managed-jsi-wrappers.md) -->
 `JavaScriptValue` properties use the same explicit ownership rule as methods.
 The setter receives an invocation-owned wrapper: do not dispose or store that
 wrapper. Call `Retain()` if the module needs a copy after the setter returns,
@@ -411,7 +386,6 @@ generated module codec today.
 
 ### Constants
 
-<!-- backed-by: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md); spec "Requirement: Expo Constants Dotnet Exposes Typed Host Values" (modules/expo-constants.md) -->
 <!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/modules.mdx -->
 There is no `[Constant]` attribute. A constant is a getter-only `[JS]` property,
 and its getter runs on every JavaScript read. Upstream reads a constant once:
@@ -440,7 +414,6 @@ its values this way:
 ### Naming conventions
 
 <!-- upstream: expo/expo packages/expo-sqlite/ios/SQLiteModule.swift; expo/expo packages/expo-crypto/ios/CryptoModule.swift; expo/expo#53016 docs/pages/modules/v2/reference/concurrency.mdx -->
-<!-- backed-by: spec "Requirement: Generated JavaScript Member Names Are Lower Camel" (modules-core-boundary.md); test GeneratorEmitsDefaultAndExplicitFunctionNames -->
 Upstream names an asynchronous function with an Async suffix
 (`deleteDatabaseAsync`) and its synchronous twin with a `Sync` suffix
 (`deleteDatabaseSync`). Upstream module names carry an `Expo` prefix
@@ -454,7 +427,6 @@ keep their names: `ExpoAsset`, `ExponentConstants`, `FileSystem` and
 
 ### Supported types
 
-<!-- backed-by: spec "Requirement: ModulesCore Avoids Inert Authored Syntax" (modules-core-boundary.md); spec "Requirement: Non-Null Collections Compose Recursively" (modules-core-boundary.md) -->
 Supported parameter and return types, decoded/encoded through generated
 compile-time codecs (`Expo.ModulesCore.Codecs`):
 
@@ -493,14 +465,12 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
 
 ### Enums
 
-<!-- backed-by: spec "Requirement: String Enums Cross As Declared JavaScript Values" (modules-core-boundary.md); test DeclaredStringsCrossBothWays; test OnlyDeclaredStringsDecode; test GeneratorUsesExplicitNumberEnumRepresentation -->
 <!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/types.mdx -->
 A string enum crosses as the C# member name, so `ImageFormat.Png` crosses as
 `"Png"`. To cross as another string, such as one that is not a C# name, set
 `[EnumMember(Value = ...)]` from `System.Runtime.Serialization` on the member.
 This is the C# form of a Swift raw value:
 
-<!-- backed-by: spec "Requirement: String Enums Cross As Declared JavaScript Values" (modules-core-boundary.md); test DeclaredStringsCrossBothWays -->
 ```csharp
 using System.Runtime.Serialization;
 
@@ -525,7 +495,6 @@ too.
 on the enum, or on one parameter or return value, where it wins over the enum's
 own attribute.
 
-<!-- backed-by: spec "Requirement: Invalid String Enum Declarations Are Build Diagnostics" (modules-core-boundary.md); test GeneratorReportsInvalidEnumJavaScriptValues; test GeneratorReportsDuplicateEnumJavaScriptValues; test GeneratorReportsAliasedStringEnumMembers -->
 The build fails with `EXPOJSI033` for an empty or invalid value, or a value on
 an enum that crosses as a number. It fails with `EXPOJSI034` when two members
 cross as one string, and with `EXPOJSI035` when two members of a string enum
@@ -533,7 +502,6 @@ have one number, such as `Default = Fast`.
 
 ### Leaf ownership
 
-<!-- backed-by: spec "Requirement: Boundary Leaf Ownership Is Explicit" (ownership-and-scoped-refs.md); source JavaScriptValue.Retain -->
 **Leaf ownership.** A `JavaScriptValue`, `ArrayBuffer`, or `Uint8Array` is a
 leaf. These rules apply at any depth, also inside records, lists, and
 dictionaries:
@@ -545,14 +513,12 @@ dictionaries:
    the call or the returned `Task` completes.
 4. A leaf you get back from a callback is yours. Dispose it.
 
-<!-- backed-by: spec "Requirement: Boundary Leaf Ownership Is Explicit" (ownership-and-scoped-refs.md); source JavaScriptValue.Retain -->
 Call `JavaScriptValue.Retain()` on the JavaScript runtime thread. In an async
 method, call it before the first `await`. See
 `docs/specs/ownership-and-scoped-refs.md`.
 
 ### Nullable values
 
-<!-- backed-by: spec "Requirement: Nullable Reference Codecs Are Annotation-Driven" (modules-core-boundary.md); spec "Requirement: Ownership-Bearing Nullable References Are Build Diagnostics" (modules-core-boundary.md) -->
 Nullable reference types work for `ArrayBuffer?`, `Uint8Array?`, and for the
 codecs that carry no JSI ownership: `string?`, `Uri?`, `byte[]?`, positional
 reference records, `[Union]` types, and the `IReadOnlyList<T>?`,
@@ -561,14 +527,12 @@ Nullable elements and dictionary values work wherever the nested type is
 supported, so `IReadOnlyList<string?>?` composes. `List<T>` stays unsupported
 in both forms, because its non-nullable form has no codec either.
 
-<!-- backed-by: spec "Requirement: Nullable Reference Codecs Are Annotation-Driven" (modules-core-boundary.md); spec "Requirement: Ownership-Bearing Nullable References Are Build Diagnostics" (modules-core-boundary.md) -->
 `JavaScriptValue?`, `SharedObject?`, and `SharedRef<T>?` are build
 diagnostics. `JavaScriptValue` already represents JavaScript `null` and
 `undefined`. The others carry shared-object identity, and a null axis
 multiplies those states. A nullable concrete `[ExpoSharedObject]` class is
 supported; see [Shared objects](#shared-objects).
 
-<!-- backed-by: spec "Requirement: Nullable Reference Codecs Are Annotation-Driven" (modules-core-boundary.md); spec "Requirement: Ownership-Bearing Nullable References Are Build Diagnostics" (modules-core-boundary.md) -->
 Decoding treats JavaScript `null` and `undefined` alike as C# `null`, and C#
 `null` encodes as JavaScript `null`, never `undefined`. A non-nullable reference
 stays strict: JavaScript `null` fails the argument decode before your code runs.
@@ -579,7 +543,6 @@ unannotated reference keeps its strict codec.
 
 ### Closure arguments
 
-<!-- backed-by: spec "Requirement: Sync Function Generation Uses Direct Calls" (modules-core-boundary.md); spec "Requirement: Nullish Callback Parameters Decode To Null Without Retention" (modules-core-boundary.md) -->
 `JavaScriptCallback<TResult>` (zero arguments) and
 `JavaScriptCallback<TArgs, TResult>` (one to eight arguments via `ValueTuple`)
 let a `[JS]` method accept a JavaScript function and call back into it:
@@ -595,7 +558,6 @@ let a `[JS]` method accept a JavaScript function and call back into it:
   }
 ```
 
-<!-- backed-by: spec "Requirement: Sync Function Generation Uses Direct Calls" (modules-core-boundary.md); spec "Requirement: Nullish Callback Parameters Decode To Null Without Retention" (modules-core-boundary.md) -->
 The callback is retained and owned by the current `DotnetRuntimeContext`.
 Calling `Invoke` while already executing on the owning JavaScript runtime runs
 synchronously; `InvokeAsync` schedules the call through the runtime for later,
@@ -603,14 +565,12 @@ event-style use. Invoking a callback after its runtime context has torn down
 fails loudly instead of touching released native state — don't cache a
 callback past the lifetime of the module/runtime that received it.
 
-<!-- backed-by: spec "Requirement: Boundary Leaf Ownership Is Explicit" (ownership-and-scoped-refs.md) -->
 Leaves follow rules 3 and 4 in Leaf ownership above. A leaf you pass as an
 argument stays yours. With `InvokeAsync`, keep it alive until the returned task
 completes. A leaf in the callback result is yours, so dispose it.
 
 ## Shared objects
 
-<!-- backed-by: spec "Requirement: Shared-Object Codecs Preserve Managed And JavaScript Identity" (modules-core-boundary.md) -->
 A shared object is an expensive native resource (file handle, image, crypto
 key) held by JavaScript as a class instance while C# keeps the original
 managed object. Both sides always see the same instance: converting the same
@@ -655,7 +615,6 @@ public sealed partial class ExampleCounter : SharedObject
 }
 ```
 
-<!-- backed-by: spec "Requirement: Public SharedObject Authoring Is Explicit" (modules-core-boundary.md) -->
 Declaration constraints (violations produce `EXPOJSI021`–`EXPOJSI028`
 diagnostics):
 
@@ -670,13 +629,11 @@ diagnostics):
   defaults), async, and codec rules as module members. `release`,
   `constructor`, `__proto__`, and the event-emitter method names are reserved.
 
-<!-- backed-by: source ExpoModulesGenerator.GetFunctions -->
 Static `[JS]` members are not supported. The generator reports them as an
 unsupported shape.
 
 ### Per-instance events
 
-<!-- backed-by: spec "Requirement: Shared Objects Declare Typed Awaitable Events" (modules-core-boundary.md) -->
 Declare shared-object events with the same awaitable typed shape as module
 events. They follow the module naming rule, so `OnChange` emits `change`. The
 generated delegate becomes available when the object first pairs with its
@@ -696,7 +653,6 @@ JavaScript instance:
   }
 ```
 
-<!-- backed-by: spec "Requirement: Shared Objects Declare Typed Awaitable Events" (modules-core-boundary.md); spec "Requirement: Shared-Object Listeners Are JavaScript-Owned And Instance Scoped" (modules-core-boundary.md) -->
 Listeners belong to one JavaScript shared-object instance. A listener on one
 counter never receives another counter's event. The returned subscription has
 an idempotent `remove()` method; call it when the listener is no longer needed.
@@ -706,7 +662,6 @@ collected.
 
 ### Module ownership
 
-<!-- backed-by: spec "Requirement: Modules Explicitly Own Shared-Object Classes" (modules-core-boundary.md); spec "Requirement: Authored Abstract Bases Decode As Parameters" (modules-core-boundary.md) -->
 Exactly one module owns each shared class through the retained
 `[ExpoModule(Classes = ...)]` shape:
 
@@ -724,7 +679,6 @@ public sealed partial class ExampleMathModule : Module
 }
 ```
 
-<!-- backed-by: spec "Requirement: Modules Explicitly Own Shared-Object Classes" (modules-core-boundary.md); spec "Requirement: Authored Abstract Bases Decode As Parameters" (modules-core-boundary.md) -->
 The owning module exposes each constructible class as a class-name property
 (`module.ExampleCounter`). Exposed class names must not collide with the
 module's functions, properties, observing hooks, or event-runtime members.
@@ -743,7 +697,6 @@ sealed class; a `[JS]` member inherited from the abstract base is not exported.
 
 ### Lifetime and release
 
-<!-- backed-by: spec "Requirement: Public SharedObject Release Is Exactly Once" (modules-core-boundary.md) -->
 - `OnRelease()` runs exactly once per instance — on explicit JavaScript
   `release()`, deterministic garbage collection, or context teardown,
   whichever comes first. It runs synchronously and must be thread-agnostic:
@@ -754,21 +707,17 @@ sealed class; a `[JS]` member inherited from the abstract base is not exported.
 
 ### `SharedRef<T>`
 
-<!-- backed-by: spec "Requirement: SharedRef Is A Non-Owning SharedObject" (modules-core-boundary.md) -->
 `SharedRef<T>` is a non-owning shared wrapper: releasing the shared object
 does NOT dispose or clean up `Ref`. Derive a sealed class and add explicit
 cleanup in `OnRelease` only if your subclass owns the resource.
 
 ### TypeScript facade and cleanup recipe
 
-<!-- backed-by: spec "Requirement: Shared-Object TypeScript Facades Type Event Maps" (modules-core-boundary.md) -->
 The facade class extends `DotnetSharedObject` and types the module's class
 property, as the `ExampleCounter` declaration in `## Get started` shows.
 
-<!-- backed-by: spec "Requirement: TypeScript Facades Expose Explicit Release" (modules-core-boundary.md) -->
 Release deterministically with `try`/`finally`:
 
-<!-- backed-by: spec "Requirement: TypeScript Facades Expose Explicit Release" (modules-core-boundary.md) -->
 ```ts
 const counter = new module.ExampleCounter(40);
 const subscription = counter.addListener('change', value => {
@@ -782,25 +731,21 @@ try {
 }
 ```
 
-<!-- backed-by: spec "Requirement: TypeScript Facades Expose Explicit Release" (modules-core-boundary.md) -->
 `Symbol.dispose` / `using` support is deferred pending a TypeScript/runtime
 compatibility review; use explicit `release()`.
 
 ## Records
 
-<!-- backed-by: spec "Requirement: Generated Record Codecs Use Lower-Camel JavaScript Fields" (modules-core-boundary.md); source ExpoModulesGenerator.EmitRecordCodec -->
 Positional `record`, `record class` and `record struct` types (including simple
 nested records) map to and from plain JavaScript objects with lower-camel field
 names. For example, `ExampleUser.Name` and `ExampleUser.Age` map to `name` and
 `age`. Decode reads only those lower-camel names; there is no PascalCase
 compatibility fallback.
 
-<!-- backed-by: spec "Requirement: Record Fields With Defaults Are Optional In JavaScript" (modules-core-boundary.md); spec "Requirement: Required Record Fields Name The Missing Field" (modules-core-boundary.md); test GeneratorEmitsDefaultedRecordFieldDecodeInBothOverloads -->
 ```csharp
 public record Options(string Name, int Count = 5, string? Label = null);
 ```
 
-<!-- backed-by: spec "Requirement: Record Fields With Defaults Are Optional In JavaScript" (modules-core-boundary.md); spec "Requirement: Required Record Fields Name The Missing Field" (modules-core-boundary.md); test GeneratedProviderAppliesOmittedOrUndefinedRecordFieldDefaults; test GeneratedProviderNamesMissingRequiredRecordField; test GeneratedProviderEncodesEveryRecordFieldIncludingDefaults -->
 A field with a C# default is optional: when JavaScript omits it or passes
 `undefined`, the record gets the default. A field of a nullable type without a
 default is optional too and decodes as `null`. Every other field is required.
@@ -811,21 +756,18 @@ so `label: null` stays `null` even when the default is not `null`, and
 contains `Value for property 'name' is required, got undefined`. Encoding writes
 every field, also one equal to its default.
 
-<!-- backed-by: spec "Requirement: Record Fields With Defaults Are Optional In JavaScript" (modules-core-boundary.md); test GeneratorRejectsDefaultOnJavaScriptValueRecordFields -->
 A `JavaScriptValue` field is optional and holds a JavaScript `undefined` value
 when omitted. A default on a `JavaScriptValue` field, or on a `record struct`
 field that holds one, is build error `EXPOJSI007`.
 
 ## Unions
 
-<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); source UnionAttribute -->
 A union is a value that JavaScript passes as one of several shapes, such as
 `string | ArrayBuffer | number`. Declare it as an `abstract record` with
 `[Union]`. Each case is a nested `sealed record` that derives from the union
 and has one positional parameter, the payload. The payload's own codec decides
 the JavaScript shape. Read a union with `switch` or `is` patterns:
 
-<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test ThreeCasesDecodeByKind -->
 ```csharp
 [Union]
 public abstract record NonceInput
@@ -845,14 +787,12 @@ public int NonceSize(NonceInput nonce) => nonce switch
 };
 ```
 
-<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test FailedAttemptMovesToTheNextCase; test RecordsArePickedByTheirFields -->
 The cases are tried in declaration order, and the first case whose payload
 decodes wins. Put the more specific case first: `Uri` before `string`, `int`
 before `double`, and the record with more required fields first. A case must
 not have the same name as its payload type, because inside the union body the
 name means the case: write `Address(Uri Value)`, not `Uri(Uri Value)`.
 
-<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test MismatchNamesTheReceivedKind -->
 A case is tried only when its payload can decode the JavaScript kind of the
 value:
 
@@ -866,13 +806,11 @@ value:
 | `JavaScriptValue` | any |
 | another `[Union]` | the kinds of its cases |
 
-<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test IntegerGateSendsNonExactNumbersToTheLaterNumberCase; test LoneIntegerCaseTruncatesLikeItsCodec -->
 An integer case followed by another number case takes only a whole number
 that its type holds. With `Whole(int)` and then `Fraction(double)`, `3`
 decodes as `Whole`, and `2.5` and `3e9` as `Fraction`. The last number case
 decodes like its codec, so a lone `int` case still truncates `2.5` to `2`.
 
-<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test NonNullableUnionRejectsNullishWithTheMismatchError; source UnionCaseMismatchException -->
 When no case takes the value, JavaScript gets an `Error` with `code`
 `ERR_UNION_CASE_MISMATCH` and a message such as
 `'NonceInput' expected string or byte[] or int, but received boolean`. If a
@@ -880,14 +818,12 @@ case was tried and failed, its error follows after `→ Caused by:`. JavaScript
 `null` and `undefined` fail the same way. A `NonceInput?` turns them into C#
 `null`.
 
-<!-- backed-by: spec "Requirement: Boundary Leaf Ownership Is Explicit" (ownership-and-scoped-refs.md); test FailedRecordAttemptReleasesItsLeaseAndFallsThrough -->
 A union holds the leaves of the case it holds and follows the rules in
 `### Leaf ownership`. A case that is tried and fails releases what it decoded
 before the next case is tried. A union works in every position: parameters,
 returns, properties, record fields, list elements, dictionary values,
 callbacks, events, and shared-object members.
 
-<!-- backed-by: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); test GeneratorReportsInvalidUnionDeclarationOnce; test GeneratorReportsInvalidUnionCases; test GeneratorReportsDuplicateUnionPayload; test GeneratorReportsUnreachableUnionCases -->
 The build reports `EXPOJSI029` for an invalid union declaration, a union that
 contains itself, or a union from a referenced assembly. Declare a union in the
 project that uses it. `EXPOJSI030` reports an invalid case, `EXPOJSI031` two
@@ -897,7 +833,6 @@ callback payloads are not supported.
 
 ## Binary data
 
-<!-- backed-by: source ByteArrayCodec; spec "Requirement: Module-facing ArrayBuffer And Binary Codecs" (modules-core-boundary.md); spec "Requirement: Uint8Array Is A Byte View" (modules-core-boundary.md) -->
 The binary types are `ArrayBuffer`, plus `byte[]`, `Memory<byte>` and
 `ReadOnlyMemory<byte>` as convenience types. These copy in both directions.
 `Span<byte>` and `ReadOnlySpan<byte>` borrow one synchronous input parameter,
@@ -911,13 +846,11 @@ accepted. `byte[]` and `ArrayBuffer` parameters do not accept a
 "Module-facing ArrayBuffer And Binary Codecs" requirement in
 `docs/specs/modules-core-boundary.md`.
 
-<!-- backed-by: source ByteArrayCodec; spec "Requirement: Module-facing ArrayBuffer And Binary Codecs" (modules-core-boundary.md); spec "Requirement: Uint8Array Is A Byte View" (modules-core-boundary.md) -->
 `byte[]` decodes only from and encodes only to `ArrayBuffer`, and `Uint8Array` is
 the only typed array.
 
 ## Events
 
-<!-- backed-by: spec "Requirement: Typed Event Members Are Awaitable Generated Properties" (modules-core-boundary.md); spec "Requirement: Typed Event Members Initialize Before Lifecycle Hooks" (modules-core-boundary.md) -->
 Use a typed `[Event]` member for new events. It declares both the JavaScript
 event name and its one payload type, then the generator supplies one cached,
 awaitable delegate per module instance. Declare a payload-less event as
@@ -938,7 +871,6 @@ public sealed partial class ExampleMathModule : Module
 }
 ```
 
-<!-- backed-by: spec "Requirement: Typed Event Members Are Awaitable Generated Properties" (modules-core-boundary.md); spec "Requirement: Typed Event Members Initialize Before Lifecycle Hooks" (modules-core-boundary.md) -->
 A bare `[Event]` drops a leading `On` or `on` from the C# property name when an
 uppercase letter follows it, then lowercases the first character of the rest,
 as the upstream Swift and Kotlin `@Event` macros do. `OnStatus` emits `status`
@@ -952,7 +884,6 @@ real dispatch task. Await it when the calling code needs to observe target
 lookup, payload encoding, scheduling, or teardown failures; a `[JS]` method
 returning that task exposes the result as a JavaScript Promise.
 
-<!-- backed-by: spec "Requirement: Typed Event Members Are Awaitable Generated Properties" (modules-core-boundary.md); spec "Requirement: Typed Event Members Initialize Before Lifecycle Hooks" (modules-core-boundary.md) -->
 Generated registration initializes typed event members before `[OnCreate]`
 runs. Reading one from an authored constructor fails with a clear
 `InvalidOperationException`, because registration has not initialized it yet.
@@ -961,7 +892,6 @@ fail if JavaScript has not attached the event target yet.
 
 ### Event payload ownership
 
-<!-- backed-by: spec "Requirement: Typed Event Payload Ownership Is Explicit" (modules-core-boundary.md) -->
 For ordinary payloads, keep mutable payload state stable until the event task
 completes. Direct `ArrayBuffer` and `JavaScriptValue` payloads have different
 lifetime rules:
@@ -978,7 +908,6 @@ lifetime rules:
 - A direct `Uint8Array` or `Uint8Array?` gets no lease; keep it alive until the
   task completes.
 
-<!-- backed-by: spec "Requirement: Typed Event Payload Ownership Is Explicit" (modules-core-boundary.md) -->
 Records, lists, and dictionaries that hold `JavaScriptValue`, `ArrayBuffer`,
 `ArrayBuffer?`, or `Uint8Array` are valid payloads, and so is a direct
 `Uint8Array` or `Uint8Array?`. These leaves stay yours (rule 3 in Leaf ownership under `## Types`):
@@ -989,12 +918,10 @@ convertible.
 
 ### Observing hooks
 
-<!-- backed-by: spec "Requirement: Event Observing Hooks Use Module Object Functions" (modules-core-boundary.md) -->
 To react when JavaScript adds or removes listeners, declare hook methods with
 `[OnStartObserving]` / `[OnStopObserving]` (optionally naming a specific event,
 for example `[OnStopObserving("change")]`):
 
-<!-- backed-by: spec "Requirement: Event Observing Hooks Use Module Object Functions" (modules-core-boundary.md) -->
 ```csharp
 [OnStartObserving]
 public void Start(string eventName) { /* first listener for eventName added */ }
@@ -1003,19 +930,16 @@ public void Start(string eventName) { /* first listener for eventName added */ }
 public void Stop() { /* last listener for change removed */ }
 ```
 
-<!-- backed-by: spec "Requirement: Event Observing Hooks Use Module Object Functions" (modules-core-boundary.md) -->
 A hook names the JavaScript event name, so a hook for a typed `OnChange` event
 names `change`. A hook that names an event the module does not declare, such
 as the old `onChange`, is build error `EXPOJSI010`.
 
-<!-- backed-by: spec "Requirement: Event Observing Hooks Use Module Object Functions" (modules-core-boundary.md) -->
 Typed events are registered as `_expoDotnet.NativeModule` instances, so the
 inherited `EventEmitter`/`addListener` JavaScript methods work through the
 prototype chain. You don't need (and can't declare) `[JS]` members named
 `startObserving` or `stopObserving` — those names are reserved for generated
 observing hooks.
 
-<!-- backed-by: spec "Requirement: Event Modules Use NativeModule Objects" (modules-core-boundary.md) -->
 On the JS facade side, subscribe with `addListener`:
 
 ```ts
@@ -1025,7 +949,6 @@ export function addStatusListener(listener: (payload: string) => void): EventSub
 }
 ```
 
-<!-- backed-by: spec "Requirement: Event Modules Use NativeModule Objects" (modules-core-boundary.md) -->
 A typed `OnStatus` event emits `status`. This changes the JavaScript name for
 modules written when a bare `[Event]` kept the prefix, and for a module that
 moves a legacy `[Events("onStatus")]` event to a typed `OnStatus` member.
@@ -1035,7 +958,6 @@ left on the old name raises no error and receives no events.
 
 ### Legacy `[Events]` and `SendEventAsync`
 
-<!-- backed-by: spec "Requirement: Event Modules Use NativeModule Objects" (modules-core-boundary.md) -->
 `[Events("name1", "name2", ...)]` and the inherited `SendEventAsync` methods
 remain supported for migration and interop. The event list must be non-empty
 and non-duplicated:
@@ -1060,14 +982,12 @@ internal sealed partial class ShowcaseModule : Module
 }
 ```
 
-<!-- backed-by: spec "Requirement: Event Modules Use NativeModule Objects" (modules-core-boundary.md) -->
 Emitting a name outside the declared list fails loudly; an async `[JS]` caller
 observes that failure as a rejected Promise. Prefer typed `[Event]` members for
 new events so the name and payload type are checked at compile time.
 
 ## Errors
 
-<!-- backed-by: spec "Requirement: Coded Exceptions" (modules-core-boundary.md); spec "Requirement: Module Failures Become JavaScript Errors" (modules-core-boundary.md); test EveryFailurePointConvertsAndReleasesTheError; test CodeIsDerivedFromTheClassNameWithTheIosRule -->
 Throw a subclass of `CodedException` to give JavaScript a stable `code`. A
 synchronous `[JS]` function, property getter or setter, shared-object method
 or shared-object constructor throws an `Error`; an async method rejects its
@@ -1113,7 +1033,6 @@ Showcase.failWithCodeAsync('blank').catch((error) => {
 
 ### Codes
 
-<!-- backed-by: spec "Requirement: Coded Exceptions" (modules-core-boundary.md); test CodeIsDerivedFromTheClassNameWithTheIosRule; test ConstructorsBindAsTheSpecExpects; test NullExplicitCodeDerivesAndEmptyExplicitCodeStaysEmpty -->
 Without an explicit code, the code comes from the class name, with the iOS
 rule: remove a generic arity suffix and one trailing `Exception` or `Error`,
 put `_` before each uppercase letter that follows another character (pairs do
@@ -1132,7 +1051,6 @@ Pass an explicit code as the first constructor argument. A `null` code derives
 the code from the class name. An empty code, or a `Code` override that returns
 an empty string, gives an `Error` without a `code` property.
 
-<!-- backed-by: source CodedException; test SubclassCanOverrideCodeAndMessage -->
 ```csharp
 public sealed class SaveFailedException(string path, Exception inner)
     : CodedException("ERR_SAVE", $"Unable to save {path}", inner);
@@ -1147,7 +1065,6 @@ public sealed class RephrasedException() : CodedException("original")
 
 ### Plain exceptions and cancellation
 
-<!-- backed-by: spec "Requirement: Module Failures Become JavaScript Errors" (modules-core-boundary.md); spec "Requirement: Async Function Failures Reject Promises" (modules-core-boundary.md); test CanceledTaskRejectsWithoutCode; test DecodeArityAndEncodeFailuresRejectWithoutCode -->
 Any other exception gives an `Error` without a `code` property and with the
 same message rules. So do argument-count, argument-decode and result-encode
 failures. A canceled `Task` rejects with an `Error` without a `code`, whose
@@ -1155,7 +1072,6 @@ message is the `OperationCanceledException` message.
 
 ### The cause chain
 
-<!-- backed-by: spec "Requirement: Module Failures Become JavaScript Errors" (modules-core-boundary.md); test ConverterBuildsAnErrorWithTheCodeAndTheCauseChain; test SyncThrowAndAsyncRejectionCarryTheSameError; test ConverterFailureOnSyncPathFallsBackToTheMessageResult; test CreatePromiseThrowingErrorFactoryRejectsWithTheOriginalMessage -->
 `error.message` is the thrown exception's `Message`, followed by the message
 of each inner exception, from the direct inner exception to the root, each
 after a line feed and `→ Caused by: `. This is the iOS format. Only the thrown
@@ -1165,7 +1081,6 @@ JavaScript gets an `Error` whose message is that exception's `ToString()` text,
 which holds the type name and the stack trace. The async path rejects with the
 plain `Message` instead.
 
-<!-- backed-by: test ConverterBuildsAnErrorWithTheCodeAndTheCauseChain -->
 ```csharp
 throw new CodedException(
     "ERR_SAVE",
@@ -1184,7 +1099,6 @@ it, or with a cause whose message the module wrote.
 
 ### Lifecycle hooks
 
-<!-- backed-by: spec "Requirement: Runtime Context Owns Module Instances" (modules-core-boundary.md) -->
 `[OnCreate]` and `[OnDestroy]` mark parameterless instance methods called once
 per module instance:
 
@@ -1203,7 +1117,6 @@ per module instance:
   }
 ```
 
-<!-- backed-by: spec "Requirement: Runtime Context Owns Module Instances" (modules-core-boundary.md) -->
 `OnCreate` runs once, right after the module instance is stored in the owning
 `DotnetRuntimeContext`'s module registry. `OnDestroy` runs once when that
 runtime context is disposed, before `IDisposable.Dispose`; all modules'
@@ -1211,13 +1124,11 @@ destroy/dispose callbacks run even if one throws, with failures aggregated
 into a single `AggregateException` after cleanup finishes. Neither hook is
 exposed as a JavaScript-visible module property.
 
-<!-- backed-by: spec "Requirement: Runtime Context Owns Module Instances" (modules-core-boundary.md) -->
 A module instance is scoped to one `DotnetRuntimeContext` (one JavaScript
 runtime); a second runtime gets its own instance.
 
 ### Runtime context
 
-<!-- backed-by: spec "Requirement: Runtime Context Exposes Host-Supplied App Directories" (modules-core-boundary.md); source Module.RuntimeContext; test UnconfiguredContextDirectoriesThrowFromBothConstructors; test HostAppMetadataKeepsIndependentNativeVersionsWithoutInventingDefaults -->
 `DotnetRuntimeContext` is the module's context. `Module` exposes it as the
 `protected RuntimeContext` property, and a module without the base class takes
 it in its constructor. `CacheDirectory` and `PersistentFilesDirectory` come
@@ -1242,7 +1153,6 @@ public sealed partial class ExpoConstantsModule : Module
   }
 ```
 
-<!-- backed-by: spec "Requirement: Runtime Context Owns Module Instances" (modules-core-boundary.md); source ModuleRegistry.GetOrCreateModule -->
 `ModuleRegistry` is the context-owned registry that holds one instance of each
 module per runtime. Authored code has no supported way to look up another
 module yet. `GetOrCreateModule` is the registration helper that the
@@ -1256,33 +1166,26 @@ and `context.module<T>()`.
 
 ## Threading
 
-<!-- backed-by: spec "Requirement: Sync Function Generation Uses Direct Calls" (modules-core-boundary.md) -->
 A synchronous `[JS]` function runs inside the current JavaScript call, on the
 JavaScript thread. It does not hop threads.
 
-<!-- backed-by: spec "Requirement: Async Function Arguments Are Captured Before Await" (modules-core-boundary.md); spec "Requirement: Async Managed Promise Helper" (promises.md); source ExpoModulesGenerator.EmitAsyncHostFunctionBody; test AsyncSharedResultCompletedOnAnotherThreadPreservesIdentity -->
 An async `[JS]` method is called on the JavaScript thread, and its arguments are
 decoded there. It runs there until its first `await` that yields. Code after
 that `await` can run on another thread. The Promise settles on the runtime.
 
 <!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/concurrency.mdx -->
-<!-- backed-by: spec "Requirement: Async Function Arguments Are Captured Before Await" (modules-core-boundary.md); spec "Requirement: Async Managed Promise Helper" (promises.md); source ExpoModulesGenerator.EmitAsyncHostFunctionBody; test AsyncSharedResultCompletedOnAnotherThreadPreservesIdentity -->
 To move work off the JavaScript thread, `await Task.Run(...)` inside the `Task`
 method. C# has no option like Swift `@JS(.concurrent)`. Kotlin moves work with
 `withContext(Dispatchers.IO)` in a `suspend fun`.
 
-<!-- backed-by: spec "Requirement: Typed Event Tasks Carry Dispatch Outcomes" (modules-core-boundary.md) -->
 A typed event dispatches inline when invoked with runtime access. Otherwise it
 schedules. It never blocks the caller.
 
-<!-- backed-by: spec "Requirement: Sync Function Generation Uses Direct Calls" (modules-core-boundary.md) -->
 `JavaScriptCallback.Invoke` runs synchronously on the owning runtime.
 `InvokeAsync` schedules the call.
 
-<!-- backed-by: spec "Requirement: Public SharedObject Release Is Exactly Once" (modules-core-boundary.md) -->
 `OnRelease()` must not depend on a thread.
 
-<!-- backed-by: spec "Requirement: Boundary Leaf Ownership Is Explicit" (ownership-and-scoped-refs.md); source JavaScriptValue.Retain -->
 `JavaScriptValue.Retain()` runs on the JavaScript thread, so in an async method
 call it before the first `await`.
 
@@ -1292,7 +1195,6 @@ for how the underlying promise capability is settled.
 
 ## Tooling
 
-<!-- backed-by: spec "Requirement: Autolinking Generates One App-Level Aggregator" (dotnet-autolinking.md); spec "Requirement: CLI Stages Loader-Expected Artifacts" (dotnet-autolinking.md) -->
 The `expo-modules-dotnet-autolinking` CLI has these commands:
 
 - `resolve`: discovers dotnet Expo module packages and prints the linking
@@ -1341,30 +1243,9 @@ subset works. `Not yet` means it is not built.
 | Closure arguments | Supported | Not supported yet | Partial: `JavaScriptCallback` as a parameter only |
 | JavaScript values as arguments | Supported | Supported | Partial: `JavaScriptValue` only |
 
-<!-- backed-by: Modules: test GeneratorEmitsDeterministicProviderForAssembly; source ExpoModulesGenerator.CreateModuleModel -->
-<!-- backed-by: Synchronous functions: source ExpoModulesGenerator.GetRequiredParameterCount; source GeneratedFunction.RequireArgumentCount; spec "Requirement: Optional Nullable Reference Arguments Preserve Authored Defaults" (modules-core-boundary.md); test GeneratorReportsDuplicateJavaScriptFunctionName; test GeneratedProviderUsesDefaultForMissingOrUndefinedOptionalNullableArguments; test GeneratedAsyncArgumentCountFailureRejectsPromise; test GeneratorPreservesLeafFreeCodecPolicyModuleOutputContract -->
-<!-- backed-by: Asynchronous functions: spec "Requirement: Async Function Generation Returns Promises" (modules-core-boundary.md) -->
-<!-- backed-by: Properties: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md) -->
-<!-- backed-by: Constants: spec "Requirement: `[JS]` Instance Properties Are JavaScript Accessors" (modules-core-boundary.md); spec "Requirement: Expo Constants Dotnet Exposes Typed Host Values" (modules/expo-constants.md) -->
-<!-- backed-by: Functions that run off the JavaScript thread: test AsyncSharedResultCompletedOnAnotherThreadPreservesIdentity; spec "Requirement: Async Managed Promise Helper" (promises.md); source ExpoModulesGenerator.EmitAsyncHostFunctionBody -->
-<!-- backed-by: Events: spec "Requirement: Typed Event Members Are Awaitable Generated Properties" (modules-core-boundary.md) -->
-<!-- backed-by: Inline and blocking events: spec "Requirement: Typed Event Tasks Carry Dispatch Outcomes" (modules-core-boundary.md) -->
-<!-- backed-by: Shared objects: spec "Requirement: Public SharedObject Authoring Is Explicit" (modules-core-boundary.md) -->
-<!-- backed-by: Static members of shared objects: source ExpoModulesGenerator.GetFunctions -->
-<!-- backed-by: Records: spec "Requirement: Generated Record Codecs Use Lower-Camel JavaScript Fields" (modules-core-boundary.md); spec "Requirement: Record Fields With Defaults Are Optional In JavaScript" (modules-core-boundary.md); spec "Requirement: Required Record Fields Name The Missing Field" (modules-core-boundary.md) -->
-<!-- backed-by: Enums: spec "Requirement: String Enums Cross As Declared JavaScript Values" (modules-core-boundary.md); test DeclaredStringsCrossBothWays -->
-<!-- backed-by: Unions: spec "Requirement: Named Unions Decode Cases In Declaration Order" (modules-core-boundary.md); source UnionAttribute -->
-<!-- backed-by: Byte arrays: source ByteArrayCodec -->
-<!-- backed-by: Array buffers: spec "Requirement: Module-facing ArrayBuffer And Binary Codecs" (modules-core-boundary.md) -->
-<!-- backed-by: Typed arrays: spec "Requirement: Uint8Array Is A Byte View" (modules-core-boundary.md) -->
-<!-- backed-by: Tuples: source ValueTupleCodec -->
-<!-- backed-by: Closure arguments: source JavaScriptCallback -->
-<!-- backed-by: JavaScript values as arguments: spec "Requirement: Generated Module Value Ownership" (managed-jsi-wrappers.md) -->
-
 ## Syntax mapping: C# and Swift and Kotlin
 
 <!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/; expo/expo#53039 docs/pages/modules/v2/migrate/from-v1.mdx -->
-<!-- backed-by: source ExpoModuleAttribute; source JSAttribute; source EventAttribute; source OnCreateAttribute; source OnDestroyAttribute; source OnStartObservingAttribute; source OnStopObservingAttribute; source ExpoSharedObjectAttribute; source JSEnumAttribute; source UnionAttribute; source JavaScriptCallback; source DotnetRuntimeContext; source CodedException -->
 | Concept | C# | Swift | Kotlin |
 | --- | --- | --- | --- |
 | Module | `[ExpoModule("Name")]` on a `partial` class; the `Module` base class is optional | `@ExpoModule("Name")` on a `public final class` that subclasses `Module` | `@ExpoModule("Name")` on a class |
@@ -1396,7 +1277,6 @@ C# uses attributes (`[OnCreate]`, `[OnDestroy]`, `[OnStartObserving]`,
 
 ## Platform matrix
 
-<!-- backed-by: spec "Requirement: Aggregator Is The Single NativeAOT Publish Unit" (dotnet-autolinking.md); spec "Requirement: Generated Bindings Avoid Hot-Path Reflection" (modules-core-boundary.md) -->
 | Platform | HostFXR (dev loader) | NativeAOT | Mono AOT |
 |---|---|---|---|
 | Windows | yes | yes | no |
@@ -1419,7 +1299,6 @@ See the root `README.md`'s "Platform support" section and
 
 ## Verification
 
-<!-- backed-by: spec "Requirement: Authored Packages Own Their Behavior Tests" (modules-core-boundary.md) -->
 Each repo-local authored package owns a non-packable `.Tests` project. Follow
 the `ExampleModule.Tests.csproj` reference shape:
 
@@ -1446,7 +1325,6 @@ using Xunit;
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
 ```
 
-<!-- backed-by: spec "Requirement: Authored Packages Own Their Behavior Tests" (modules-core-boundary.md) -->
 Keep direct C# unit tests in the same project for behavior that does not need
 JavaScript or Hermes. Use `Expo.ModulesCore.Testing` only when testing the
 generated module surface. Register the generated provider explicitly; TestCore
@@ -1459,7 +1337,6 @@ does not scan assemblies for providers:
     );
 ```
 
-<!-- backed-by: source ExpoModuleTestHost -->
 `ExpoModuleTestHost` owns the Hermes runtime and module context. Keep it in a
 `using` scope. Read and dispose `JavaScriptValue` instances inside
 `host.Runtime.Execute(...)`, including values fulfilled by
@@ -1535,7 +1412,6 @@ provide the native testhost.
 
 ## Troubleshooting
 
-<!-- backed-by: spec "Requirement: Dotnet Modules Declare Autolinking Metadata" (dotnet-autolinking.md); spec "Requirement: CLI Stages Loader-Expected Artifacts" (dotnet-autolinking.md); spec "Requirement: Mobile Staging Destinations Are Loader-Owned" (dotnet-autolinking.md); spec "Requirement: NativeAOT Publish Handles Mobile Toolchains" (dotnet-autolinking.md) -->
 - **A new module doesn't show up in the app**: confirm
   `expo-module.config.json` lists `"dotnet"` in `platforms` and the
   `dotnet.projects[].path` is correct; run the CLI's `resolve` command to see
