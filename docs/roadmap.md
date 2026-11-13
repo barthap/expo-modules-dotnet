@@ -45,8 +45,13 @@ matches it, even if existing C# modules must change.
 - Promises, events (also on shared objects), and JavaScript callbacks
 - Shared objects (`SharedObject`, `SharedRef<T>`), also as nullable and
   abstract-base parameters
-- Codecs for records, lists, dictionaries, nullable types, two-member unions,
-  `ArrayBuffer`, and `Uint8Array`
+- Codecs for records (with optional fields that have defaults), lists,
+  dictionaries, nullable types, named unions, string enums, `ArrayBuffer`,
+  and `Uint8Array`
+- Coded JavaScript errors, as upstream Expo modules have
+- Upstream event naming, without the `On` prefix
+- A module authoring guide that maps C# to the upstream Swift and Kotlin
+  syntax, with a feature support table
 - Autolinking of .NET modules on all four platforms
 - expo-desktop 1.0 prebuild for the desktop example app, on macOS and Windows
 - `expo-asset-dotnet`, `expo-constants-dotnet`, `expo-crypto-dotnet` (digests,
@@ -60,12 +65,8 @@ matches it, even if existing C# modules must change.
   stubs
 - A demo app that uses upstream Expo, expo-desktop, and .NET modules on all
   four platforms
-- Coded JavaScript errors, as upstream Expo modules have
-- Authoring API parity with upstream Expo Modules v2: unions, record field
-  defaults, constants, more typed arrays, tuples, callbacks as delegates,
-  and upstream naming for modules and events
-- A module authoring guide that maps C# to the upstream Swift and Kotlin
-  syntax, with a feature support table
+- Authoring API parity with upstream Expo Modules v2: constants, more typed
+  arrays, tuples, callbacks as delegates, and upstream naming for modules
 - TypeScript types generated with the upstream `typegen` tool
 - Desktop packaging for macOS (HostFXR and NativeAOT)
 - Mobile NativeAOT hardening
