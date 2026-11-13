@@ -298,6 +298,8 @@ public static partial class EntryPoints
         public int NativeAppVersionLength;
         public byte* NativeBuildVersion;
         public int NativeBuildVersionLength;
+        public byte* ResourcesDirectory;
+        public int ResourcesDirectoryLength;
     }
 
     // A null pointer configures nothing. Size is checked before Version and
@@ -310,9 +312,12 @@ public static partial class EntryPoints
         }
 
         var native = (NativeHostContext*)pointer;
+        // One explicit end offset per known pair, never sizeof(NativeHostContext):
+        // that grows with every appended pair and would move the earlier boundaries.
         var directoryPrefixSize = (uint)(sizeof(void*) == 8 ? 40 : 24);
         var appVersionPrefixSize = (uint)(sizeof(void*) == 8 ? 56 : 32);
-        var buildVersionPrefixSize = (uint)sizeof(NativeHostContext);
+        var buildVersionPrefixSize = (uint)(sizeof(void*) == 8 ? 72 : 40);
+        var resourcesPrefixSize = (uint)(sizeof(void*) == 8 ? 88 : 48);
         if (native->Size < directoryPrefixSize)
         {
             throw new InvalidOperationException(
@@ -326,7 +331,8 @@ public static partial class EntryPoints
             );
         }
         if ((native->Size > directoryPrefixSize && native->Size < appVersionPrefixSize)
-            || (native->Size > appVersionPrefixSize && native->Size < buildVersionPrefixSize))
+            || (native->Size > appVersionPrefixSize && native->Size < buildVersionPrefixSize)
+            || (native->Size > buildVersionPrefixSize && native->Size < resourcesPrefixSize))
         {
             throw new InvalidOperationException(
                 $"Expo .NET host context size {native->Size} ends inside a known optional field (partial pair)."
@@ -347,6 +353,9 @@ public static partial class EntryPoints
                 : null,
             native->Size >= buildVersionPrefixSize
                 ? DecodeDirectory(native->NativeBuildVersion, native->NativeBuildVersionLength, "native_build_version")
+                : null,
+            native->Size >= resourcesPrefixSize
+                ? DecodeDirectory(native->ResourcesDirectory, native->ResourcesDirectoryLength, "resources_directory")
                 : null
         );
         return (directories, metadata);

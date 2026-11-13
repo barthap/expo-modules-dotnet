@@ -91,6 +91,16 @@ public static partial class EntryPoints
     );
     CheckEqual(
         pointerSize == 8 ? 72 : 40,
+        OffsetOf(origin, &value.ResourcesDirectory),
+        "ResourcesDirectory offset"
+    );
+    CheckEqual(
+        pointerSize == 8 ? 80 : 44,
+        OffsetOf(origin, &value.ResourcesDirectoryLength),
+        "ResourcesDirectoryLength offset"
+    );
+    CheckEqual(
+        pointerSize == 8 ? 88 : 48,
         sizeof(NativeHostContext),
         "sizeof(NativeHostContext)"
     );
@@ -163,6 +173,8 @@ public static partial class EntryPoints
     );
     Check(unconfiguredMetadata.NativeAppVersion is null, "null struct pointer configured app version");
     Check(unconfiguredMetadata.NativeBuildVersion is null, "null struct pointer configured build version");
+    Check(unconfiguredMetadata.ResourcesDirectory is null, "null struct pointer configured resources directory");
+    var resources = Path.Combine(root, "expo-dotnet-abi-harness", "resources-π");
 
     WithDirectories(cache, persistent, (nint pointer) =>
     {
@@ -221,6 +233,29 @@ public static partial class EntryPoints
       CheckEqual("9", metadata.NativeBuildVersion, "full context: build version");
     });
 
+    WithFullHostContext(cache, persistent, "2.4", "9", resources, (nint pointer) =>
+    {
+      var (_, metadata) = DecodeHostContext(pointer);
+      CheckEqual("9", metadata.NativeBuildVersion, "full context with resources: build version");
+      CheckEqual(resources, metadata.ResourcesDirectory, "full context with resources: resources directory");
+    });
+
+    WithFullHostContext(null, null, null, null, resources, (nint pointer) =>
+    {
+      var (_, metadata) = DecodeHostContext(pointer);
+      Check(metadata.NativeAppVersion is null, "resources only: app version was configured");
+      CheckEqual(resources, metadata.ResourcesDirectory, "resources only: resources directory");
+    });
+
+    // A host built against the two-version header supplies no resources pair.
+    WithFullHostContext(null, null, "2.4", "9", resources, (nint pointer) =>
+    {
+      ((NativeHostContext*)pointer)->Size = (uint)(sizeof(void*) == 8 ? 72 : 40);
+      var (_, metadata) = DecodeHostContext(pointer);
+      CheckEqual("9", metadata.NativeBuildVersion, "two-version prefix: build version");
+      Check(metadata.ResourcesDirectory is null, "two-version prefix read resources tail");
+    });
+
     WithHostContext(null, null, null, "1.0.0.0", (nint pointer) =>
     {
       var (_, metadata) = DecodeHostContext(pointer);
@@ -249,7 +284,7 @@ public static partial class EntryPoints
     WithHostContext(null, null, "vęrsion-π", "9", (nint pointer) =>
     {
       var native = (NativeHostContext*)pointer;
-      native->Size = (uint)(sizeof(NativeHostContext) - (sizeof(void*) == 8 ? 16 : 8));
+      native->Size = (uint)(sizeof(void*) == 8 ? 56 : 32);
       var (_, metadata) = DecodeHostContext(pointer);
       CheckEqual("vęrsion-π", metadata.NativeAppVersion, "one-version prefix");
       Check(metadata.NativeBuildVersion is null, "one-version prefix read build tail");
@@ -352,6 +387,27 @@ public static partial class EntryPoints
       CheckCreateFails(pointer, "partial", "truncated build-version pair");
     });
 
+    WithFullHostContext(null, null, "2.4", "9", Path.Combine(root, "resources"), (nint pointer) =>
+    {
+      ((NativeHostContext*)pointer)->Size = (uint)(sizeof(void*) == 8 ? 80 : 44);
+      CheckCreateFails(pointer, "partial", "truncated resources-directory pair");
+    });
+
+    WithFullHostContext(null, null, null, null, "relative/resources", (nint pointer) =>
+    {
+      CheckCreateFails(pointer, "fully qualified", "relative resources directory");
+    });
+
+    WithFullHostContext(null, null, null, null, string.Empty, (nint pointer) =>
+    {
+      CheckCreateFails(pointer, "resourcesDirectory", "empty resources directory");
+    });
+
+    WithFullHostContext(null, null, null, null, Path.Combine(root, "bad\0dir"), (nint pointer) =>
+    {
+      CheckCreateFails(pointer, "NUL", "embedded NUL in resources directory");
+    });
+
     WithHostContext(null, null, "2.4", "9", (nint pointer) =>
     {
       ((NativeHostContext*)pointer)->NativeAppVersionLength = -1;
@@ -391,6 +447,18 @@ public static partial class EntryPoints
         NativeAppVersionLength = invalidUtf8.Length,
       };
       CheckCreateFails((nint)(&native), string.Empty, "invalid UTF-8 app version");
+    }
+
+    fixed (byte* invalid = invalidUtf8)
+    {
+      var native = new NativeHostContext
+      {
+        Size = (uint)sizeof(NativeHostContext),
+        Version = ExpectedHostAbiVersion,
+        ResourcesDirectory = invalid,
+        ResourcesDirectoryLength = invalidUtf8.Length,
+      };
+      CheckCreateFails((nint)(&native), string.Empty, "invalid UTF-8 resources directory");
     }
   }
 
@@ -478,14 +546,32 @@ public static partial class EntryPoints
     }
   }
 
-  private static unsafe void WithHostContext(
+  private static void WithHostContext(
       string? cacheDirectory,
       string? persistentFilesDirectory,
       string? nativeAppVersion,
       string? nativeBuildVersion,
       DirectoriesCallback body
   )
+      => WithFullHostContext(
+          cacheDirectory,
+          persistentFilesDirectory,
+          nativeAppVersion,
+          nativeBuildVersion,
+          null,
+          body
+      );
+
+  private static unsafe void WithFullHostContext(
+      string? cacheDirectory,
+      string? persistentFilesDirectory,
+      string? nativeAppVersion,
+      string? nativeBuildVersion,
+      string? resourcesDirectory,
+      DirectoriesCallback body
+  )
   {
+    fixed (byte* resources = BorrowedBytes(resourcesDirectory))
     fixed (byte* cache = BorrowedBytes(cacheDirectory))
     fixed (byte* persistent = BorrowedBytes(persistentFilesDirectory))
     fixed (byte* appVersion = BorrowedBytes(nativeAppVersion))
@@ -505,6 +591,8 @@ public static partial class EntryPoints
         NativeAppVersionLength = nativeAppVersion is null ? 0 : Encoding.UTF8.GetByteCount(nativeAppVersion),
         NativeBuildVersion = buildVersion,
         NativeBuildVersionLength = nativeBuildVersion is null ? 0 : Encoding.UTF8.GetByteCount(nativeBuildVersion),
+        ResourcesDirectory = resources,
+        ResourcesDirectoryLength = resourcesDirectory is null ? 0 : Encoding.UTF8.GetByteCount(resourcesDirectory),
       };
       body((nint)(&native));
     }
