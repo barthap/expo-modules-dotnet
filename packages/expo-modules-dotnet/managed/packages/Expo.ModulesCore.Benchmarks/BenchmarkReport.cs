@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using Expo.ModulesCore.Testing;
 
 namespace Expo.ModulesCore.Benchmarks;
 
@@ -31,9 +32,10 @@ internal static class BenchmarkReport
     builder.AppendLine($"configuration: {Configuration}");
     builder.AppendLine($"runtime: {RuntimeInformation.FrameworkDescription}");
     builder.AppendLine($"jit: {(RuntimeFeature.IsDynamicCodeCompiled ? "RyuJIT (dynamic code compiled)" : "NativeAOT (no JIT)")}");
-    builder.AppendLine($"tiered compilation: {RuntimeSetting("System.Runtime.TieredCompilation", "TieredCompilation")}");
+    builder.AppendLine($"tiered compilation: {TieredCompilation}");
     builder.AppendLine($"tiered PGO: {RuntimeSetting("System.Runtime.TieredPGO", "TieredPGO")}");
     builder.AppendLine($"quick JIT for loops: {RuntimeSetting("System.Runtime.TieredCompilation.QuickJitForLoops", "TC_QuickJitForLoops")}");
+    builder.AppendLine($"native testhost: {(HermesTestRuntime.NativeTestHostIsOptimized ? "optimized" : "not optimized")}");
     builder.AppendLine($"platform: {RuntimeInformation.RuntimeIdentifier}");
     builder.AppendLine($"logical processors: {Environment.ProcessorCount.ToString(CultureInfo.InvariantCulture)}");
     builder.Append($"hermes ref: {HermesRef()}");
@@ -105,18 +107,66 @@ internal static class BenchmarkReport
       "Release";
 #endif
 
-  // Reads a setting that the runtime config or a DOTNET_ environment variable sets. When neither
-  // sets it, the runtime default is in effect, and this does not say what that default is.
-  private static string RuntimeSetting(string configSwitch, string environmentName)
+  internal const string TieredCompilationSwitch = "System.Runtime.TieredCompilation";
+
+  private static string TieredCompilation => RuntimeSetting(TieredCompilationSwitch, "TieredCompilation");
+
+  /// <summary>Whether tiered compilation is explicitly off in this process. The default is on.</summary>
+  public static bool TieredCompilationIsOff() => ReadSetting(TieredCompilationSwitch, "TieredCompilation").Enabled == false;
+
+  /// <summary>
+  /// One line per setting that makes the medians unreliable: tiered compilation that is not off, and a
+  /// native testhost that is not optimized.
+  /// </summary>
+  public static IReadOnlyList<string> SettingWarnings(bool tieredCompilationIsOff, bool nativeTesthostIsOptimized)
   {
-    if (AppContext.TryGetSwitch(configSwitch, out var enabled))
+    var warnings = new List<string>();
+    if (!tieredCompilationIsOff)
     {
-      return enabled ? "on (runtime config)" : "off (runtime config)";
+      warnings.Add(
+          "warning: tiered compilation is not off, so the medians are not steady state " +
+          "(unset DOTNET_TieredCompilation, or set it to 0)");
     }
 
-    var fromEnvironment = Environment.GetEnvironmentVariable($"DOTNET_{environmentName}")
-        ?? Environment.GetEnvironmentVariable($"COMPlus_{environmentName}");
-    return fromEnvironment is null ? "runtime default" : $"{(fromEnvironment == "0" ? "off" : "on")} (environment)";
+    if (!nativeTesthostIsOptimized)
+    {
+      warnings.Add(
+          "warning: the native testhost is not optimized, so every native cost is inflated " +
+          "(use scripts/bench-managed.sh, or build the testhost with CMAKE_BUILD_TYPE=Release)");
+    }
+
+    return warnings;
+  }
+
+  // Reads a setting that the runtime config or a DOTNET_ environment variable sets. The environment
+  // variable wins over the runtime config, as the runtime does since .NET 9. When neither sets it,
+  // the runtime default is in effect, and this does not say what that default is.
+  internal static string RuntimeSetting(
+      string configSwitch,
+      string environmentName,
+      Func<string, string?>? getEnvironment = null,
+      Func<string, bool?>? getSwitch = null)
+  {
+    var (enabled, source) = ReadSetting(configSwitch, environmentName, getEnvironment, getSwitch);
+    return enabled is null ? "runtime default" : $"{(enabled.Value ? "on" : "off")} ({source})";
+  }
+
+  private static (bool? Enabled, string Source) ReadSetting(
+      string configSwitch,
+      string environmentName,
+      Func<string, string?>? getEnvironment = null,
+      Func<string, bool?>? getSwitch = null)
+  {
+    getEnvironment ??= Environment.GetEnvironmentVariable;
+    getSwitch ??= name => AppContext.TryGetSwitch(name, out var value) ? value : null;
+
+    var fromEnvironment = getEnvironment($"DOTNET_{environmentName}") ?? getEnvironment($"COMPlus_{environmentName}");
+    if (fromEnvironment is not null)
+    {
+      return (fromEnvironment != "0", "environment");
+    }
+
+    return getSwitch(configSwitch) is { } enabled ? (enabled, "runtime config") : (null, "");
   }
 
   // The file is embedded at build time, so the program does not depend on the current directory.

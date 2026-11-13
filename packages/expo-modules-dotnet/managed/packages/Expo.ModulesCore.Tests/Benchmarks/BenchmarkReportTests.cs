@@ -1,5 +1,6 @@
 using System.Globalization;
 using Expo.ModulesCore.Benchmarks;
+using Expo.ModulesCore.Testing;
 using Xunit;
 
 namespace Expo.ModulesCore.Tests.Benchmarks;
@@ -132,6 +133,66 @@ public sealed class BenchmarkReportTests
     Assert.Contains("tiered compilation: ", header);
     Assert.Contains("tiered PGO: ", header);
     Assert.Contains("quick JIT for loops: ", header);
+  }
+
+  // The runtime lets a DOTNET_ environment variable win over the runtime config since .NET 9, so a
+  // header that read the config first would print "off" while the runtime tiers. The seam passes the
+  // environment and the switch in, so no test changes process-wide state.
+  [Theory]
+  [InlineData("1", false, "on (environment)")]
+  [InlineData("0", true, "off (environment)")]
+  [InlineData(null, false, "off (runtime config)")]
+  [InlineData(null, true, "on (runtime config)")]
+  [InlineData(null, null, "runtime default")]
+  public void RuntimeSetting_TheEnvironmentVariableWinsOverTheRuntimeConfig(
+      string? environmentValue,
+      bool? configValue,
+      string expected)
+  {
+    var text = BenchmarkReport.RuntimeSetting(
+        "Some.Switch",
+        "SomeSetting",
+        name => name == "DOTNET_SomeSetting" ? environmentValue : null,
+        _ => configValue);
+
+    Assert.Equal(expected, text);
+  }
+
+  [Fact]
+  public void RuntimeSetting_ReadsTheLegacyEnvironmentPrefixWhenTheNewOneIsUnset()
+  {
+    var text = BenchmarkReport.RuntimeSetting(
+        "Some.Switch",
+        "SomeSetting",
+        name => name == "COMPlus_SomeSetting" ? "0" : null,
+        _ => true);
+
+    Assert.Equal("off (environment)", text);
+  }
+
+  [Fact]
+  public void Header_ReportsWhetherTheNativeTesthostIsOptimized()
+  {
+    var expected = HermesTestRuntime.NativeTestHostIsOptimized ? "optimized" : "not optimized";
+
+    Assert.Contains($"native testhost: {expected}{Environment.NewLine}", BenchmarkReport.Header());
+  }
+
+  [Fact]
+  public void SettingWarnings_AreEmptyWhenTieringIsOffAndTheTesthostIsOptimized()
+  {
+    Assert.Empty(BenchmarkReport.SettingWarnings(tieredCompilationIsOff: true, nativeTesthostIsOptimized: true));
+  }
+
+  [Fact]
+  public void SettingWarnings_NameEachSettingThatMakesTheMediansUnreliable()
+  {
+    var tiered = Assert.Single(BenchmarkReport.SettingWarnings(false, true));
+    var native = Assert.Single(BenchmarkReport.SettingWarnings(true, false));
+
+    Assert.Contains("tiered compilation is not off", tiered);
+    Assert.Contains("native testhost is not optimized", native);
+    Assert.Equal(2, BenchmarkReport.SettingWarnings(false, false).Count);
   }
 
   // The test process has its own runtime config, so the header of this process cannot show the switch of the

@@ -75,6 +75,12 @@ expo_jsi_testhost_wait_until_idle(expo_jsi_testhost_runtime_handle testhost_runt
 EXPO_JSI_TESTHOST_EXPORT expo_jsi_error
 expo_jsi_testhost_collect_garbage(expo_jsi_testhost_runtime_handle testhost_runtime);
 
+// Returns 1 when this library was compiled with NDEBUG, 0 otherwise. CMake defines NDEBUG for
+// Release, RelWithDebInfo, and MinSizeRel with clang, gcc, and MSVC, and defines it for no empty
+// build type, so it tells an optimized build from a build without optimization flags on every
+// platform. The benchmark header reports it.
+EXPO_JSI_TESTHOST_EXPORT uint8_t expo_jsi_testhost_is_optimized_build(void);
+
 EXPO_JSI_TESTHOST_EXPORT expo_jsi_error
 expo_jsi_testhost_install_benchmark_controls(expo_jsi_testhost_runtime_handle testhost_runtime);
 

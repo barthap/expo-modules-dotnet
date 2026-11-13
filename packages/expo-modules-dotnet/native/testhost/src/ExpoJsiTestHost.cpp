@@ -1014,6 +1014,15 @@ extern "C" expo_jsi_error expo_jsi_testhost_collect_garbage(
   }
 }
 
+extern "C" uint8_t expo_jsi_testhost_is_optimized_build(void)
+{
+#ifdef NDEBUG
+  return 1;
+#else
+  return 0;
+#endif
+}
+
 extern "C" expo_jsi_error expo_jsi_testhost_install_benchmark_controls(
   expo_jsi_testhost_runtime_handle testhostRuntime)
 {

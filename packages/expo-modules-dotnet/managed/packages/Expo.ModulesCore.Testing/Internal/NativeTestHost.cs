@@ -18,6 +18,7 @@ internal static unsafe class NativeTestHost
   private static delegate* unmanaged[Cdecl]<nint, void> drainTasks;
   private static delegate* unmanaged[Cdecl]<nint, ExpoJsiError> waitUntilIdle;
   private static delegate* unmanaged[Cdecl]<nint, ExpoJsiError> collectGarbage;
+  private static delegate* unmanaged[Cdecl]<byte> isOptimizedBuild;
   private static delegate* unmanaged[Cdecl]<nint, ExpoJsiError> installBenchmarkControls;
   private static delegate* unmanaged[Cdecl]<nint, void> pauseRuntimeExecutor;
   private static delegate* unmanaged[Cdecl]<nint, void> resumeRuntimeExecutor;
@@ -152,6 +153,12 @@ internal static unsafe class NativeTestHost
     }
   }
 
+  internal static bool IsOptimizedBuild()
+  {
+    EnsureLoaded();
+    return isOptimizedBuild() != 0;
+  }
+
   internal static void InstallBenchmarkControls(nint testHostRuntime)
   {
     EnsureLoaded();
@@ -281,6 +288,11 @@ internal static unsafe class NativeTestHost
       (delegate* unmanaged[Cdecl]<nint, ExpoJsiError>)LoadExport(
           library,
           "expo_jsi_testhost_collect_garbage"
+      );
+    isOptimizedBuild =
+      (delegate* unmanaged[Cdecl]<byte>)LoadExport(
+          library,
+          "expo_jsi_testhost_is_optimized_build"
       );
     installBenchmarkControls =
       (delegate* unmanaged[Cdecl]<nint, ExpoJsiError>)LoadExport(
