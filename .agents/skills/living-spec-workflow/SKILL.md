@@ -91,9 +91,6 @@ Classify the task before writing:
 - Improvement audit or direction: discover mode.
 - Current-state audit: update living specs from code/tests/docs.
 - Proposed behavior change: create a delta spec before code.
-- Spike/proof: record hypothesis, commands, expected/actual results,
-  artifacts, ownership/lifetime findings, scheduler findings, and stop/go
-  decision.
 - Docs maintenance: update front-door docs and remove stale ones.
 
 Ask only when capability scope is ambiguous or when multiple plausible package
@@ -120,25 +117,30 @@ For non-trivial behavior changes, run this sequence. `<ID>` is `EMC-<n>` and
    headings at `###`, and do not hard-wrap paragraphs (see
    [references/notion.md](references/notion.md)). Run `notion-tracker`
    `push-spec <ID> <dir>spec.md`. The delta spec is never committed.
-5. **Approval gate.** The owner approves in chat or ticks "Spec approved" in
+5. **Independent review.** Run this step when the delta spec changes the C
+   ABI, handle ownership or lifetime, or runtime scheduling, or when the owner
+   asks for it. Other delta specs skip it. See "Independent Delta Spec
+   Review" below. Push the delta spec again if the review changed it.
+6. **Approval gate.** The owner approves in chat or ticks "Spec approved" in
    Notion. On approval in chat, run `set <ID> "Spec approved=__YES__"`. Do not
    plan while it is unticked. If the delta spec later changes in a material
    way, untick it and ask again.
-6. **Refresh.** Run `pull <ID>` again before planning. The owner may have
+7. **Refresh.** Run `pull <ID>` again before planning. The owner may have
    edited the page. Notion wins on any difference.
-7. **Plan.** Use Superpowers writing-plans and save the plan as
+8. **Plan.** Use Superpowers writing-plans and save the plan as
    `<dir>plan.md`. The plan stays local; never commit it or copy it to
    Notion.
-8. **Implement.** Use TDD or the closest practical equivalent for the change.
+9. **Implement.** Use TDD or the closest practical equivalent for the change.
    Commit in plan/task slices as work becomes verified instead of waiting to
    split the entire tree retroactively.
-9. **Verify** with repo-owned commands.
-10. **Merge** accepted deltas into `docs/specs/` on the same branch. The PR
-    diff of `docs/specs/` is how reviewers read the delta.
-11. **PR.** After the owner approves the push and the PR, run
+10. **Verify** with repo-owned commands.
+11. **Merge** accepted deltas into `docs/specs/` on the same branch. The PR
+    diff of `docs/specs/` is how reviewers read the delta. Keep the reasons
+    too, see "Reasons In Living Specs" below.
+12. **PR.** After the owner approves the push and the PR, run
     `set <ID> "Status=In review" "PR=<url>"`. Add deferred follow-ups as new rows
     (`Idea`, or `Backlog` with a brief) that depend on this one.
-12. **Done.** The owner merges on GitHub. Reconcile mode, or the owner, sets
+13. **Done.** The owner merges on GitHub. Reconcile mode, or the owner, sets
     Status to `Done`. The local `<dir>` can be deleted after that.
 
 Before any commit, check staged content for local absolute paths, usernames,
@@ -170,6 +172,40 @@ Artifact meanings:
 - Plan (`<dir>plan.md`): the Superpowers implementation plan. Local and
   transient. The Superpowers SDD `review-package` script takes this path.
 
+## Independent Delta Spec Review
+
+The session that wrote a delta spec is not an independent reviewer of it.
+
+- Dispatch one fresh-context subagent. Give it the path of `<dir>spec.md` and
+  the paths of the living specs the delta changes. Give it nothing else from
+  this session: no summary, no conclusions.
+- Ask for unresolved problems in correctness, coherence, feasibility, and
+  missing cases, each with the section it is about. The last line of the
+  review is `READY` or `NOT READY`.
+- Cross-model review: when Codex is enabled in the user's global agent
+  instructions, also get a review from Codex with the same input and the same
+  prompt. Neither reviewer sees the other's review. When Codex is disabled,
+  skip this and say that only one model family reviewed.
+- Fix the findings you agree with. Report every finding to the owner with what
+  you did about it, including the ones you did not act on.
+- Reviewers advise and the owner decides. A `READY` line does not tick "Spec
+  approved".
+- Never report a review that did not run, and never count a failed or partial
+  response as a review.
+
+## Reasons In Living Specs
+
+The delta spec and the brief stay in Notion, so `docs/specs/` is the only
+place a later reader finds why a requirement is the way it is.
+
+- For each decision in the delta spec that a later reader could undo or
+  "simplify", write one or two sentences of reason next to the requirement it
+  explains.
+- Where a rejected option looks attractive, name it and say why it lost.
+- Write reasons as current state: no item IDs, no change history, no "we
+  decided".
+- Everything else from the delta spec stays in Notion.
+
 ## Superpowers Integration Rules
 
 Use Superpowers normally, with these repo overrides:
@@ -184,8 +220,7 @@ Use Superpowers normally, with these repo overrides:
   worktrees, pushes, PRs, comments, or publishing without explicit approval.
 - Preserve Superpowers review gates: get user approval for the delta spec before
   planning (the "Spec approved" checkbox), and verify before claiming
-  completion.
-- After implementation, do not leave the delta spec as the only source of
+  completion.- After implementation, do not leave the delta spec as the only source of
   truth. Merge accepted requirements into `docs/specs/`.
 - Invoke branch-finishing choices only after implementation, verification,
   and living-spec merge are complete. Branch disposition is a user choice;
@@ -229,8 +264,6 @@ aspirational `SHALL`s unless the artifact is explicitly a future-facing delta.
 - Do not expose raw JSI layouts to C#.
 - Do not accept runtime hot-path reflection, `object?[]`, JSON, or dynamic
   invocation as the normal v2 generated-binding path.
-- Keep module behavior proof code temporary under `Expo.JSI.Tests/Modules`
-  until `Expo.ModulesCore` and `Expo.ModulesCore.Tests` exist.
 
 ## Git And Publishing Rules
 
@@ -253,7 +286,7 @@ rg "self[-]contained planning package|planning[ ]artifacts,[ ]not[ ]implementati
 For code changes:
 
 ```sh
-scripts/test-jsi.sh
+scripts/test-managed.sh
 scripts/format.sh --check --all
 git diff --check
 ```
@@ -261,7 +294,10 @@ git diff --check
 For module-layer work, also check the v2 hot path:
 
 ```sh
-rg "Assembly.GetTypes|MethodInfo.Invoke|Delegate.DynamicInvoke|object\\?\\[\\]|JsonSerializer" managed/packages
+rg "Assembly.GetTypes|MethodInfo.Invoke|Delegate.DynamicInvoke|object\\?\\[\\]|JsonSerializer" packages/expo-modules-dotnet/managed/packages
 ```
+
+The only expected matches are assertions in `Expo.ModulesCore.Generator.Tests`
+that generated code does not contain these patterns.
 
 Never claim completion without fresh verification evidence.
