@@ -39,21 +39,22 @@ internal static class BenchmarkStatistics
   /// <summary>
   /// Next iteration count for calibration: scales <paramref name="iterations"/> so the next sample lands
   /// on <see cref="SampleTarget"/>, at least doubling while <paramref name="elapsed"/> is under a tenth of
-  /// the target, never below 1.
+  /// the target, never below 1. <paramref name="target"/> defaults to <see cref="SampleTarget"/>.
   /// </summary>
-  public static int NextIterations(int iterations, TimeSpan elapsed)
+  public static int NextIterations(int iterations, TimeSpan elapsed, TimeSpan? target = null)
   {
+    var sampleTarget = target ?? SampleTarget;
     var doubled = (double)iterations * 2;
     var scaled = elapsed <= TimeSpan.Zero
       ? doubled
-      : iterations * (SampleTarget.TotalMilliseconds / elapsed.TotalMilliseconds);
-    var next = elapsed < SampleTarget / 10 ? Math.Max(scaled, doubled) : scaled;
+      : iterations * (sampleTarget.TotalMilliseconds / elapsed.TotalMilliseconds);
+    var next = elapsed < sampleTarget / 10 ? Math.Max(scaled, doubled) : scaled;
     return (int)Math.Clamp(Math.Round(next), 1, int.MaxValue);
   }
 
-  public static bool IsCalibrated(TimeSpan elapsed)
+  public static bool IsCalibrated(TimeSpan elapsed, TimeSpan? target = null)
   {
-    return elapsed >= SampleTarget / 2;
+    return elapsed >= (target ?? SampleTarget) / 2;
   }
 
   private static void RequireValues(IReadOnlyList<double> values)

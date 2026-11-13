@@ -56,6 +56,16 @@ public sealed class BenchmarkStatisticsTests
   }
 
   [Fact]
+  public void CalibrationHelpers_UseAGivenTargetInsteadOfTheDefault()
+  {
+    var target = TimeSpan.FromMilliseconds(2);
+
+    Assert.Equal(2000, BenchmarkStatistics.NextIterations(1000, TimeSpan.FromMilliseconds(1), target));
+    Assert.True(BenchmarkStatistics.IsCalibrated(TimeSpan.FromMilliseconds(1), target));
+    Assert.False(BenchmarkStatistics.IsCalibrated(TimeSpan.FromMilliseconds(1)));
+  }
+
+  [Fact]
   public void IsCalibrated_AtHalfTarget()
   {
     Assert.True(BenchmarkStatistics.IsCalibrated(TimeSpan.FromMilliseconds(25)));

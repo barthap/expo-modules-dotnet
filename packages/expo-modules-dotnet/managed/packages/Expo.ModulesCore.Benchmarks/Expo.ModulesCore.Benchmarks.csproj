@@ -9,6 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="../../../../../scripts/hermes-ref.txt" LogicalName="hermes-ref.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../Expo.ModulesCore/Expo.ModulesCore.csproj" />
     <ProjectReference Include="../Expo.ModulesCore.Testing/Expo.ModulesCore.Testing.csproj" />
     <ProjectReference
