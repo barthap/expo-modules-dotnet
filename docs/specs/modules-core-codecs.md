@@ -9,9 +9,9 @@ protocol, binary codecs, and named unions.
 
 ### Requirement: Generator Conversion Policy Is Typed
 
-Generator analysis and emission SHALL read decode operation, runtime-context
-requirement, resource ownership, capabilities, and codec shape from typed
-`ExpoCodecDescriptor` fields. Production generator code SHALL
+Generator analysis and emission SHALL read decode operation, resource
+ownership, capabilities, and codec shape from typed `ExpoCodecDescriptor`
+fields. Production generator code SHALL
 NOT compare, prefix-match, or parse emitted codec-expression text to make a
 conversion decision.
 
@@ -26,7 +26,22 @@ conversion decision.
 The leaf and the codec contract are defined in `### Requirement: Boundary Leaf
 Ownership Is Explicit` in `ownership-and-scoped-refs.md`.
 
-`IJavaScriptCodec<T>` SHALL declare `static virtual void Release(T value)`
+`IJavaScriptCodec<T>` SHALL declare
+`Decode(JavaScriptValueRef, JavaScriptRuntime, DotnetRuntimeContext)`,
+`Decode(JavaScriptValue, JavaScriptRuntime, DotnetRuntimeContext)`, and
+`Encode(T, JavaScriptRuntime, DotnetRuntimeContext)` as static abstract
+members. The context SHALL be the `DotnetRuntimeContext` that owns the binding
+that runs. A composite SHALL pass the runtime and the context to each child
+unchanged. A codec that does not use the context SHALL ignore it.
+
+The context is a parameter because a shared-object codec needs the registry
+that the context owns, and a codec is a static type that holds no state. A
+codec instance that carries the context was rejected: the generator would write
+each codec twice, as a type and as a constructor expression, and `default` of
+such a codec would compile with a null context. Ambient state was rejected
+because settlement code runs after the host-function frame exits.
+
+`IJavaScriptCodec<T>` SHALL also declare `static virtual void Release(T value)`
 with an empty default body. There SHALL be no second codec protocol.
 `JavaScriptValueCodec`, `ArrayBufferCodec`, and `Uint8ArrayCodec` SHALL
 dispose the leaf.
@@ -51,11 +66,11 @@ No codec SHALL use finalizers, reflection, or ambient state to release.
 
 Every generated record codec SHALL use one `Encode` text with no null guard.
 Encoding a null class record SHALL fail with a catchable JavaScript error.
-`Release` SHALL skip a null record. `JavaScriptCallbackCodec`,
-`NullableJavaScriptCallbackCodec`, `SharedObjectCodec<T>`,
-`NullableSharedObjectCodec<T>`, and `SharedObjectBaseCodec<TBase>` are static
-classes with no `Release`: the runtime context retains callbacks and the
-registry owns shared objects.
+`Release` SHALL skip a null record. `SharedObjectCodec<T>` SHALL be an ordinary
+`IJavaScriptCodec<T>` with the default empty `Release`: the registry owns
+shared objects. `JavaScriptCallbackCodec`, `NullableJavaScriptCallbackCodec`,
+and `SharedObjectBaseCodec<TBase>` are static classes with no `Release`: the
+runtime context retains callbacks and the registry owns shared objects.
 
 #### Scenario: A missing override leaks
 - **GIVEN** a composite codec over `ArrayBufferCodec`, holding JS-created
@@ -90,11 +105,20 @@ registry owns shared objects.
 - **THEN** the call SHALL fail with a catchable JavaScript error
 - **AND** the leaves of the other records SHALL release exactly once
 
+#### Scenario: Composite over shared objects releases nothing
+- **GIVEN** a `[JS]` method takes `IReadOnlyList<Entry?>` and returns
+  `IReadOnlyDictionary<string, Entry>` for a concrete shared-object class
+  `Entry`
+- **WHEN** the method is generated and called
+- **THEN** generated glue SHALL NOT emit or call `Release` for the argument or
+  the result
+- **AND** every instance SHALL stay active after the call
+
 ### Requirement: Generated Bindings Release Leaves After Each Call
 
-Generated bindings with no `HoldsLeaves` argument or result SHALL keep their
-generated text. The generator SHALL emit `Release` only for a `HoldsLeaves`
-descriptor.
+Generated bindings with no `HoldsLeaves` argument or result SHALL contain no
+`Release` call and no leaf-release `try` / `finally`. The generator SHALL emit
+`Release` only for a `HoldsLeaves` descriptor.
 
 Sync: a leaf-bearing sync function, property getter or setter, shared-object
 member, shared-object constructor factory, or span function SHALL declare its
@@ -105,9 +129,11 @@ releases nothing. The span lease SHALL keep its own `using`.
 Async: the outer `catch` SHALL release leaf-bearing arguments until
 `CreatePromise` returns. After that, only the Promise lambda SHALL release
 them. With a leaf-free result, the lambda SHALL release them when the `Task`
-completes. A leaf-bearing result SHALL travel to the factory in a `StrongBox`
-with the leaf-bearing arguments. The factory SHALL release them after it
-encodes, and abandon SHALL release them without encoding. A fault or cancel
+completes. The result SHALL travel to the factory in a `StrongBox` with the
+runtime context and the leaf-bearing arguments. The factory SHALL be a `static`
+lambda and SHALL read the context only from that state. The factory SHALL
+release the arguments after it encodes, and abandon SHALL release them without
+encoding. A fault or cancel
 SHALL release them in the lambda's `catch`.
 
 A `Release` failure SHALL replace the original outcome. In a sync `finally` it
@@ -127,17 +153,22 @@ local declarations and helper type arguments.
 | `[Union]` type with any `HoldsLeaves` payload | `JavaScriptCodec` | `HoldsLeaves` |
 | Record with any `HoldsLeaves` field | `JavaScriptCodec` | `HoldsLeaves` |
 | `JavaScriptCallback<...>` and `JavaScriptCallback<...>?` | `StaticHelper` | `ContextRetained` |
-| Direct `[ExpoSharedObject]` class `T` and `T?` | `StaticHelper` | `Borrowed` |
-| Authored abstract base `TBase` (parameter only; decode-only `SharedObjectBaseCodec<TBase>`) | `StaticHelper` | `Borrowed` |
+| `[ExpoSharedObject]` class `T` and `T?`, in every position | `JavaScriptCodec` | `Borrowed` |
+| List, dictionary, nullable, or record over shared objects and no leaf | `JavaScriptCodec` | `Borrowed` |
+| Authored abstract base `TBase` (direct parameter only; decode-only `SharedObjectBaseCodec<TBase>`) | `StaticHelper` | `Borrowed` |
 
 A record codec model SHALL store whether the record holds leaves and whether it
 is a value type, and a union codec model SHALL store whether the union holds
 leaves, so a cache hit rebuilds the same descriptor.
 
+`ExpoCodecDescriptor` SHALL NOT carry a runtime-context requirement. Every
+codec call passes the context.
+
 #### Scenario: Leaf-free member text is unchanged
 - **GIVEN** the leaf-free output contract sources
 - **WHEN** the generator runs
-- **THEN** the output hashes SHALL equal the hashes from before leaf release
+- **THEN** the output SHALL equal the pinned leaf-free hashes, and SHALL
+  contain no `Release` call
 
 #### Scenario: Later field decode fails
 - **GIVEN** a record parameter whose first field is an `ArrayBuffer` and whose
@@ -238,8 +269,12 @@ directly, each with exactly one positional parameter, the payload, which SHALL
 have no default value and SHALL NOT be nullable. Case order SHALL be the source
 order of the case declarations, which SHALL all be in one partial declaration.
 A payload SHALL be a type whose codec is an ordinary `JavaScriptCodec` with
-`DecodeAndEncode` and no runtime context, or another `[Union]` declared in the
-same assembly. A payload type MAY be declared in a referenced assembly, and
+`DecodeAndEncode`, and that is not itself a shared-object class, or another
+`[Union]` declared in the same assembly. A shared-object payload stays rejected
+because a union picks a case by value kind and first successful decode, and a
+record case can decode a shared-object instance of the same kind. A record,
+list, or dictionary payload that contains a shared object is an ordinary
+payload of kind `Object` and SHALL be accepted. A payload type MAY be declared in a referenced assembly, and
 then SHALL decode and encode through the same codec as when that type is a
 method parameter: a positional record, an enum, or a list or dictionary of
 them. A union SHALL be accepted in every codec position: parameters, returns,
@@ -425,6 +460,14 @@ A later case is unreachable when:
   exactly once
 - **AND** an event payload or callback argument SHALL stay with the author, and
   a callback result SHALL belong to the author
+
+#### Scenario: Union payload holds a shared object inside a record
+- **GIVEN** a `[Union]` with a case `Opened(OpenResult Value)`, where
+  `OpenResult` is a record with an `Entry` shared-object field
+- **WHEN** the generator runs and JavaScript passes and receives the union
+- **THEN** the generator SHALL report no diagnostic
+- **AND** the field SHALL decode to the managed instance and encode to the
+  strictly equal JavaScript object
 
 #### Scenario: Leaf payload releases once
 - **GIVEN** `string Write(Content content)` where `Content` has cases

@@ -613,6 +613,7 @@ public sealed partial class ExpoModulesGenerator
     // Encode, so the payload needs both. A shared-object payload stays out of unions, because a
     // union picks a case by value kind and first successful decode, and a record case can decode a
     // shared-object instance of the same kind. Usage-level [JSEnum] is not read.
+    // @ref docs/specs/modules-core-codecs.md "Named Unions Decode Cases In Declaration Order"
     var payloadDiagnostics = new List<ExpoDiagnosticModel>();
     var codec = IsUnionCaseType(payloadType) || IsSharedObjectRelatedType(payloadType)
         ? null

@@ -996,6 +996,7 @@ public sealed partial class ExpoModulesGenerator
   // the leaf-bearing arguments: the factory encodes the result with that context and then releases
   // the leaves, and the abandon callback releases them without encoding. A fault or cancel releases
   // them in the lambda's catch.
+  // @ref docs/specs/modules-core-codecs.md "Generated Bindings Release Leaves After Each Call"
   private static void EmitAsyncResultSettlement(
       StringBuilder builder,
       ExpoFunctionModel function,

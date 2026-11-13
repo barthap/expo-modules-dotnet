@@ -366,10 +366,11 @@ JavaScript error before authored code runs.
 ### Requirement: Shared-Object Codecs Preserve Managed And JavaScript Identity
 
 The generator SHALL provide compile-time codecs for each valid, owned, sealed
-authored shared-object type used directly as a method parameter, method return,
-constructor parameter, or property type, with or without a nullable annotation.
-The codec SHALL be bound to the current `DotnetRuntimeContext` and exact managed
-class. `SharedObject`, `SharedRef<T>`, and other polymorphic base types SHALL
+authored shared-object type, with or without a nullable annotation, in a direct
+position (method parameter, method return, constructor parameter, property
+type) and in every composed position that "Shared Objects Compose In Every
+Codec Position" lists. The codec SHALL use the `DotnetRuntimeContext` it
+receives as its context argument and the exact managed class. `SharedObject`, `SharedRef<T>`, and other polymorphic base types SHALL
 NOT be generated-boundary codec types; an authored abstract base is the one
 decode-only exception (see "Authored Abstract Bases Decode As Parameters") and
 SHALL NOT be an encode-side codec type.
@@ -463,6 +464,114 @@ and scoped wrapper before returning.
 - **THEN** the return encode SHALL receive the current `DotnetRuntimeContext`
 - **AND** the generated source SHALL compile
 
+### Requirement: Shared Objects Compose In Every Codec Position
+
+A valid concrete `[ExpoSharedObject]` class `T`, and `T?`, SHALL be accepted as
+a list element, a dictionary value, a record field, a nullable inner type, a
+callback argument, a callback result, an async result, and a typed event
+payload or a part of one, on modules and on shared objects, nested to any depth
+that the composite codecs allow. The class SHALL pass the same validity and
+module-ownership rules as in a direct position: module ownership is a
+declaration-level check, so it is the same in every position. Each element
+SHALL decode and encode through `SharedObjectCodec<T>` with the context of the
+binding that runs, so identity rules apply to each element as they do to a
+direct value.
+
+`SharedObject`, `SharedRef<T>`, an authored abstract base, and an invalid
+shared-object class inside a composed type SHALL report `EXPOJSI023` with a
+reason that names the type and the rule, except in a typed event payload, which
+reports the event payload diagnostic. A direct shared-object payload of a
+`[Union]` case SHALL report `EXPOJSI030`.
+
+If an encode fails after an earlier element was paired, that element SHALL stay
+paired and registry-owned, and generated glue SHALL dispose the partial
+JavaScript container. If a decode fails after an earlier shared-object element
+decoded, that element needs no cleanup.
+
+#### Scenario: List of nullable shared objects round-trips with identity
+- **GIVEN** a module method
+  `IReadOnlyList<Entry?> Echo(IReadOnlyList<Entry?> entries)`
+- **WHEN** JavaScript passes `[a, null, b, a]`
+- **THEN** authored code SHALL receive the original managed instances and
+  `null` in order
+- **AND** the returned array SHALL hold elements strictly equal to `a`, `null`,
+  `b`, and `a`
+
+#### Scenario: Dictionary and record hold shared objects
+- **GIVEN** a method that takes and returns `Dictionary<string, Entry>`, and a
+  method that takes and returns a record with an `Entry` field and an `Entry?`
+  field
+- **WHEN** JavaScript calls them with live instances
+- **THEN** each value SHALL decode to its managed instance and encode to the
+  strictly equal JavaScript object
+
+#### Scenario: First pairing happens inside a composite
+- **GIVEN** authored code returns a list of three instances that were never
+  paired
+- **WHEN** the result is encoded
+- **THEN** each instance SHALL be paired once, with its generated class
+  prototype
+- **AND** a second call that returns the same instances SHALL return strictly
+  equal objects
+
+#### Scenario: Async result holds shared objects
+- **GIVEN** an async method returns `Task<IReadOnlyList<Entry>>` and completes
+  after the host-function frame exits
+- **WHEN** the Promise resolves
+- **THEN** the encode SHALL use the context captured in the frame
+- **AND** generated code SHALL NOT read `GeneratedFunction.CurrentRuntimeContext`
+  during settlement
+
+#### Scenario: Async result holds a leaf and a shared object
+- **GIVEN** an async method that takes an `ArrayBuffer` and returns a record
+  with an `ArrayBuffer` field and an `Entry` field
+- **WHEN** the task completes after the frame exits, and in a second run the
+  Promise is abandoned before the factory runs
+- **THEN** the first run SHALL encode both fields with the context from the
+  factory state and release each leaf once
+- **AND** the abandoned run SHALL release each leaf once, SHALL NOT encode, and
+  SHALL NOT pair the `Entry`
+
+#### Scenario: Callback carries shared objects
+- **GIVEN** a parameter
+  `JavaScriptCallback<ValueTuple<IReadOnlyList<Entry>>, Entry?>` (callback
+  arguments are a value tuple)
+- **WHEN** authored code invokes it, during the call and later through
+  `InvokeAsync`
+- **THEN** JavaScript SHALL receive an array of the paired objects
+- **AND** authored code SHALL receive the managed instance that JavaScript
+  returned, or `null`
+
+#### Scenario: Event payload holds a shared object
+- **GIVEN** a module event and a shared-object event whose payload is a record
+  with an `Entry` field
+- **WHEN** authored code emits it
+- **THEN** each listener SHALL receive an object whose field is the paired
+  JavaScript object
+- **AND** the instance SHALL stay active after the emit task completes
+
+#### Scenario: Wrong or released element fails the call
+- **GIVEN** a parameter `IReadOnlyList<Entry>`
+- **WHEN** JavaScript passes an array that holds a plain object, `null`, a
+  released instance, or an instance of another shared class
+- **THEN** the call SHALL fail before authored code runs, with the exact
+  codec's error
+
+#### Scenario: Encode fails at a later element
+- **GIVEN** authored code returns a list whose second element is a released
+  instance
+- **WHEN** the result is encoded
+- **THEN** the call SHALL fail with the released-instance error
+- **AND** the first element SHALL stay paired and SHALL NOT be released by
+  generated glue
+
+#### Scenario: Bases inside composed types stay rejected
+- **GIVEN** `IReadOnlyList<SharedObject>`, `IReadOnlyList<SharedRef<int>>`, a
+  record with an abstract-base field, and `IReadOnlyList<PathBase>` for an
+  authored abstract base
+- **WHEN** the generator runs
+- **THEN** it SHALL report `EXPOJSI023` for each and SHALL NOT emit the member
+
 ### Requirement: Authored Abstract Bases Decode As Parameters
 
 A top-level, non-generic, abstract class whose base chain reaches
@@ -470,15 +579,16 @@ A top-level, non-generic, abstract class whose base chain reaches
 carries no `[ExpoSharedObject]` attribute, SHALL be accepted as a parameter type
 of generated module methods and of supported shared-object constructors and
 methods. It SHALL select `SharedObjectBaseCodec<TBase>` with the descriptor
-`StaticHelper`, `DecodeOnly`, requiring `DotnetRuntimeContext`, and `Borrowed`.
-Decoding SHALL resolve the registry entry exactly as the exact codec does and
+`StaticHelper`, `DecodeOnly`, and `Borrowed`. Decoding SHALL resolve the registry entry exactly as the exact codec does and
 SHALL accept the managed instance when it is an instance of `TBase`; it SHALL
 NOT construct, clone, or substitute an instance. The codec has no `Release`: a
 shared object is registry-owned, never a leaf holder. The same type as a
 return, async result, or property, with a nullable annotation, nested,
 generic, or inside a composed codec SHALL report `EXPOJSI023` with a reason
 that names the rule. A concrete non-sealed class SHALL keep its existing
-diagnostic.
+diagnostic. A base stays out of composed types because a composite needs both
+`Decode` and `Encode` from its child, and a base has no JavaScript class to
+encode to. Accepting it would need a decode-only rule for every composite.
 
 #### Scenario: Base parameter receives any generated subclass
 - **GIVEN** an abstract `PathBase : SharedObject` with generated sealed

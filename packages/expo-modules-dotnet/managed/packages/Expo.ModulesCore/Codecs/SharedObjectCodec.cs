@@ -16,6 +16,8 @@ namespace Expo.ModulesCore.Codecs;
 /// JavaScript object.
 /// </para>
 /// </remarks>
+// The codec keeps the default empty Release: the registry owns shared objects.
+// @ref docs/specs/modules-core-codecs.md "Codecs Release Leaves Through One Protocol"
 public readonly struct SharedObjectCodec<T> : IJavaScriptCodec<T>
     where T : SharedObject
 {
