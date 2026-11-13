@@ -109,6 +109,34 @@ ResolvedAppDirectories resolveAppDirectories()
   return directories;
 }
 
+// The read-only directory of the managed host artifact this adapter loaded:
+// the bundle's Managed resources folder, or the resources root when the bundle
+// has no Managed folder. Resource files such as app.config are staged next to
+// the artifact. An empty string means "not configured": the managed side then
+// sees null, never a guessed path.
+// @ref docs/specs/runtime-and-abi.md "Platform Adapters Follow A Defined App-Directory Policy"
+std::string resolveResourcesDirectory(const expo::modules::dotnet::ManagedModuleConfig &config)
+{
+  const std::string &artifact =
+    config.loaderKind == expo::modules::dotnet::ManagedLoaderKind::NativeAot
+      ? config.nativeLibraryPath
+      : config.assemblyPath;
+  NSString *directory =
+    artifact.empty()
+      ? nil
+      : [@(artifact.c_str()) stringByDeletingLastPathComponent];
+  BOOL isDirectory = NO;
+  const char *utf8 = directory.UTF8String;
+  if (directory.length == 0 || !directory.isAbsolutePath || utf8 == nullptr ||
+      ![[NSFileManager defaultManager] fileExistsAtPath:directory isDirectory:&isDirectory] ||
+      !isDirectory) {
+    NSLog(@"[ExpoModulesDotnet] Managed resources directory is not an existing absolute "
+          @"directory, so it stays unconfigured.");
+    return "";
+  }
+  return std::string(utf8);
+}
+
 bool readBundleVersion(
   NSDictionary *info,
   NSString *key,
@@ -232,6 +260,8 @@ public:
         return false;
       }
 
+      const auto resourcesDirectory = resolveResourcesDirectory(moduleConfig_);
+
       expo::modules::dotnet::expo_dotnet_host_context hostContext{};
       hostContext.size = sizeof(hostContext);
       hostContext.version = EXPO_DOTNET_HOST_ABI_VERSION;
@@ -256,6 +286,12 @@ public:
         hostContext.native_build_version =
           reinterpret_cast<const uint8_t *>(buildVersion->data());
         hostContext.native_build_version_length = static_cast<int32_t>(buildVersion->size());
+      }
+      if (!resourcesDirectory.empty()) {
+        hostContext.resources_directory =
+          reinterpret_cast<const uint8_t *>(resourcesDirectory.data());
+        hostContext.resources_directory_length =
+          static_cast<int32_t>(resourcesDirectory.size());
       }
 
       expo::modules::dotnet::RuntimeContextResult result;
