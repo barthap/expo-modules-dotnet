@@ -18,6 +18,7 @@ internal static unsafe class NativeTestHost
   private static delegate* unmanaged[Cdecl]<nint, void> drainTasks;
   private static delegate* unmanaged[Cdecl]<nint, ExpoJsiError> waitUntilIdle;
   private static delegate* unmanaged[Cdecl]<nint, ExpoJsiError> collectGarbage;
+  private static delegate* unmanaged[Cdecl]<nint, ExpoJsiError> installBenchmarkControls;
   private static delegate* unmanaged[Cdecl]<nint, void> pauseRuntimeExecutor;
   private static delegate* unmanaged[Cdecl]<nint, void> resumeRuntimeExecutor;
   private static delegate* unmanaged[Cdecl]<nint, int, void> dropNextRuntimeTask;
@@ -151,6 +152,16 @@ internal static unsafe class NativeTestHost
     }
   }
 
+  internal static void InstallBenchmarkControls(nint testHostRuntime)
+  {
+    EnsureLoaded();
+    var error = installBenchmarkControls(testHostRuntime);
+    if (error.Code != 0)
+    {
+      ThrowNativeError(error, "Failed to install benchmark controls.");
+    }
+  }
+
   internal static void SetSyncExecutionSupported(nint testHostRuntime, bool supported)
   {
     EnsureLoaded();
@@ -270,6 +281,11 @@ internal static unsafe class NativeTestHost
       (delegate* unmanaged[Cdecl]<nint, ExpoJsiError>)LoadExport(
           library,
           "expo_jsi_testhost_collect_garbage"
+      );
+    installBenchmarkControls =
+      (delegate* unmanaged[Cdecl]<nint, ExpoJsiError>)LoadExport(
+          library,
+          "expo_jsi_testhost_install_benchmark_controls"
       );
     pauseRuntimeExecutor =
       (delegate* unmanaged[Cdecl]<nint, void>)LoadExport(

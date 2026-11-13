@@ -14,6 +14,7 @@ include("${REPO_ROOT}/cmake/ExpoHermesPrebuilt.cmake")
 add_library(
   expo_jsi_testhost SHARED
   src/ExpoJsiTestHost.cpp
+  src/BenchmarkControls.cpp
   "${ADAPTER_ROOT}/native/packages/jsi/src/LongLivedObjectCollection.cpp"
   "${ADAPTER_ROOT}/native/packages/jsi/src/RuntimeState.cpp"
   "${ADAPTER_ROOT}/native/packages/jsi/src/ExpoJsiBridge.cpp"

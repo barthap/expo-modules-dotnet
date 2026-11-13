@@ -59,6 +59,11 @@ public sealed class HermesTestRuntime : IDisposable
     NativeTestHost.CollectGarbageForTesting(GetTestHostRuntime());
   }
 
+  internal void InstallBenchmarkControls()
+  {
+    NativeTestHost.InstallBenchmarkControls(GetTestHostRuntime());
+  }
+
   internal void SetSyncExecutionSupportedForTesting(bool supported)
   {
     NativeTestHost.SetSyncExecutionSupported(GetTestHostRuntime(), supported);

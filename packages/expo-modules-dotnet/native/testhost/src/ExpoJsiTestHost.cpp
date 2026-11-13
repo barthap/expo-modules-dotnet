@@ -11,6 +11,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "BenchmarkControls.h"
 #include "ExpoJsiBridge.h"
 #include "ExpoJsiBridgeTestHooks.h"
 #include "HermesConsoleRuntimeConnector.h"
@@ -994,6 +995,27 @@ extern "C" expo_jsi_error expo_jsi_testhost_collect_garbage(
     return makeError(22, error.what());
   } catch (...) {
     return makeError(23, "Unknown native exception while collecting Hermes garbage.");
+  }
+}
+
+extern "C" expo_jsi_error expo_jsi_testhost_install_benchmark_controls(
+  expo_jsi_testhost_runtime_handle testhostRuntime)
+{
+  auto *testhost = static_cast<expo_jsi_testhost_runtime_t *>(testhostRuntime);
+  if (testhost == nullptr) {
+    return makeError(20, "Testhost runtime is null.");
+  }
+
+  try {
+    testhost->connector.runtimeExecutor().executeSync(
+      [](jsi::Runtime &runtime) { installBenchmarkControls(runtime); });
+    return makeOk();
+  } catch (const jsi::JSError &error) {
+    return makeError(21, error.what());
+  } catch (const std::exception &error) {
+    return makeError(22, error.what());
+  } catch (...) {
+    return makeError(23, "Unknown native exception while installing benchmark controls.");
   }
 }
 
