@@ -5464,6 +5464,25 @@ public sealed partial class ExpoModulesGeneratorTests
     }
   }
 
+  // An abandoned Promise never runs the factory, so the abandon callback releases the
+  // leaf-bearing argument that the state carries next to a leaf-free result.
+  [Fact]
+  public void GeneratedAbandonCallbackReleasesLeafArgumentOfLeafFreeAsyncResult()
+  {
+    var result = GeneratorTestHost.Run(ModuleSource(string.Empty, "[JS] public Task<int> M(ArrayBuffer value) => Task.FromResult(0);"));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var body = HostFunctionBody(GeneratedText(result), "Rejects_m_HostFunction");
+    var abandonStart = body.IndexOf("static __expoState =>", StringComparison.Ordinal);
+    Assert.True(abandonStart >= 0);
+    var abandon = body[abandonStart..];
+    Assert.Contains(
+        "CodecRelease.Release<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>(__expoState.Value.Item3, ref __expoReleaseFailures);",
+        abandon);
+    Assert.DoesNotContain("Encode(", abandon);
+  }
+
   // A faulted, canceled or encode-failing task rejects through the scheduler, so every async
   // settlement shape must hand the converter to CreatePromise.
   [Theory]
