@@ -610,10 +610,11 @@ public sealed partial class ExpoModulesGenerator
     }
 
     // The record-field rule: the union codec calls the payload codec directly with Decode and
-    // Encode, and a codec that needs a runtime context stays out of unions. Usage-level [JSEnum] is
-    // not read.
+    // Encode, so the payload needs both. A shared-object payload stays out of unions, because a
+    // union picks a case by value kind and first successful decode, and a record case can decode a
+    // shared-object instance of the same kind. Usage-level [JSEnum] is not read.
     var payloadDiagnostics = new List<ExpoDiagnosticModel>();
-    var codec = IsUnionCaseType(payloadType)
+    var codec = IsUnionCaseType(payloadType) || IsSharedObjectRelatedType(payloadType)
         ? null
         : GetCodec(payloadType, payloadDiagnostics, scratch);
     var enumErrors = payloadDiagnostics.Where(item => IsEnumDeclarationDiagnostic(item.DescriptorId)).ToArray();
@@ -627,7 +628,6 @@ public sealed partial class ExpoModulesGenerator
       {
         Shape: ExpoCodecShape.JavaScriptCodec,
         Capabilities: ExpoCodecCapabilities.DecodeAndEncode,
-        ContextRequirement: ExpoContextRequirement.None,
       })
     {
       return $"its payload type '{payloadType.ToDisplayString()}' has no union codec";

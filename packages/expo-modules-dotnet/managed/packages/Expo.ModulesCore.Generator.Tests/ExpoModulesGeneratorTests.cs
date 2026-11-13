@@ -3546,22 +3546,12 @@ public sealed partial class ExpoModulesGeneratorTests
   }
 
   [Theory]
-  [InlineData(
-      "[JS] public void StoreAll(System.Collections.Generic.IReadOnlyList<CacheEntry> entries) { }",
-      "StoreAll")]
-  [InlineData(
-      "[JS] public void StoreMap(System.Collections.Generic.Dictionary<string, CacheEntry> entries) { }",
-      "StoreMap")]
-  [InlineData(
-      "[JS] public void StoreHolder(Holder holder) { }",
-      "StoreHolder")]
-  [InlineData(
-      "[JS] public void Subscribe(JavaScriptCallback<CacheEntry> callback) { }",
-      "Subscribe")]
-  [InlineData(
-      "[JS] public System.Collections.Generic.IReadOnlyList<CacheEntry> LoadAll() => null!;",
-      "LoadAll")]
-  public void GeneratorReportsNestedSharedObjectComposition(string member, string memberName)
+  [InlineData("[JS] public void StoreAll(System.Collections.Generic.IReadOnlyList<CacheEntry> entries) { }")]
+  [InlineData("[JS] public void StoreMap(System.Collections.Generic.Dictionary<string, CacheEntry> entries) { }")]
+  [InlineData("[JS] public void StoreHolder(Holder holder) { }")]
+  [InlineData("[JS] public void Subscribe(JavaScriptCallback<CacheEntry> callback) { }")]
+  [InlineData("[JS] public System.Collections.Generic.IReadOnlyList<CacheEntry> LoadAll() => null!;")]
+  public void GeneratorAcceptsConcreteSharedObjectComposition(string member)
   {
     var result = GeneratorTestHost.Run(
         $$"""
@@ -3584,13 +3574,8 @@ public sealed partial class ExpoModulesGeneratorTests
         """
     );
 
-    var diagnostic = Assert.Single(result.Diagnostics, item => item.Id == "EXPOJSI023");
-    Assert.Contains(memberName, diagnostic.GetMessage());
-    Assert.Contains("CacheEntry", diagnostic.GetMessage());
-    Assert.Contains("composed codec", diagnostic.GetMessage());
-    Assert.NotEqual(Location.None, diagnostic.Location);
-    Assert.DoesNotContain(result.Diagnostics, item =>
-        item.Id.StartsWith("CS", StringComparison.Ordinal) && item.Severity == DiagnosticSeverity.Error);
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerErrors(result);
   }
 
   [Theory]
@@ -6235,20 +6220,42 @@ public sealed partial class ExpoModulesGeneratorTests
   private static string ExpandNullableSharedObjectText(string text, string type) =>
       text.Replace("$C", NullableSharedObjectText, StringComparison.Ordinal).Replace("$T", type, StringComparison.Ordinal);
 
-  // Characterization: the polymorphic bases and every nested shape keep their diagnostics, with and
+  // A concrete shared object composes in every position, with and without the annotation.
+  [Theory]
+  [InlineData("", "[JS] public int M(IReadOnlyList<Entry$N> values) => 0;", "")]
+  [InlineData("", "[JS] public IReadOnlyList<Handle$N> M() => null!;", "")]
+  [InlineData("", "[JS] public int M(Dictionary<string, Handle$N> values) => 0;", "")]
+  [InlineData("public sealed record Holder(Entry$N Field);", "[JS] public int M(Holder holder) => 0;", "")]
+  [InlineData("", "[JS] public int M(JavaScriptCallback<Entry$N> callback) => 0;", "")]
+  [InlineData("", "[JS] public int M(JavaScriptCallback<ValueTuple<Handle$N>, int> callback) => 0;", "")]
+  [InlineData("", "", "[JS] public int Take(IReadOnlyList<Handle$N> values) => 0;")]
+  public void GeneratorAcceptsConcreteSharedObjectsInComposedTypes(
+      string declarations,
+      string moduleMembers,
+      string entryMembers)
+  {
+    foreach (var annotation in new[] { string.Empty, "?" })
+    {
+      var result = GeneratorTestHost.Run(
+          NullableConcreteSharedObjectSource(
+              moduleMembers.Replace("$N", annotation, StringComparison.Ordinal),
+              entryMembers.Replace("$N", annotation, StringComparison.Ordinal),
+              declarations.Replace("$N", annotation, StringComparison.Ordinal)
+          )
+      );
+
+      AssertNoCompilerErrors(result);
+      Assert.Empty(GeneratorDiagnosticIds(result));
+    }
+  }
+
+  // Characterization: the polymorphic bases and the event payloads keep their diagnostics, with and
   // without the annotation. The run without the annotation is the oracle for the expected diagnostic.
   [Theory]
   [InlineData("", "[JS] public int M(SharedObject$N value) => 0;", "", "EXPOJSI023", "M", "which is the polymorphic SharedObject base", "\"m\"")]
   [InlineData("", "[JS] public SharedRef<Resource>$N M() => null!;", "", "EXPOJSI023", "M", "which is the SharedRef<T> managed carrier base", "\"m\"")]
-  [InlineData("", "[JS] public int M(IReadOnlyList<Entry$N> values) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "\"m\"")]
-  [InlineData("", "[JS] public IReadOnlyList<Handle$N> M() => null!;", "", "EXPOJSI023", "M", "inside a composed codec", "\"m\"")]
-  [InlineData("", "[JS] public int M(Dictionary<string, Handle$N> values) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "\"m\"")]
-  [InlineData("public sealed record Holder(Entry$N Field);", "[JS] public int M(Holder holder) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "\"m\"")]
-  [InlineData("", "[JS] public int M(JavaScriptCallback<Entry$N> callback) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "\"m\"")]
-  [InlineData("", "[JS] public int M(JavaScriptCallback<ValueTuple<Handle$N>, int> callback) => 0;", "", "EXPOJSI023", "M", "inside a composed codec", "\"m\"")]
   [InlineData("", "[Event] public partial Func<Entry$N, Task> OnEntry { get; }", "", "EXPOJSI019", "OnEntry", "no encode-capable codec is available", "\"entry\"")]
   [InlineData("", "", "[Event] public partial Func<Handle$N, Task> OnHandle { get; }", "EXPOJSI027", "OnHandle", "no encode-capable codec is available", "\"handle\"")]
-  [InlineData("", "", "[JS] public int Take(IReadOnlyList<Handle$N> values) => 0;", "EXPOJSI023", "Take", "inside a composed codec", "\"take\"")]
   [InlineData("", "", "[JS] public Entry(SharedRef<Resource>$N source) { }", "EXPOJSI023", "Entry", "which is the SharedRef<T> managed carrier base", "ConstructSharedObject_")]
   public void GeneratorKeepsSharedObjectDiagnosticsForNullableBasesAndNestedShapes(
       string declarations,

@@ -435,7 +435,7 @@ public sealed class GeneratorOutputContractTests
 
         namespace Expo.TestModules;
 
-        [ExpoModule("PolicyDiagnostics")]
+        [ExpoModule("PolicyDiagnostics", Classes = new[] { typeof(PolicyEntry) })]
         public sealed partial class PolicyDiagnosticsModule
         {
           [JS] public int OptionalValue(JavaScriptValue? value) => 0;
@@ -447,7 +447,17 @@ public sealed class GeneratorOutputContractTests
           [JS] public JavaScriptCallback<int> CallbackProperty { get; set; }
           [JS] public int TwoSpans(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second) => 0;
           [JS] public Task<int> AsyncSpan(ReadOnlySpan<byte> value) => Task.FromResult(0);
+          [JS] public int ConcreteList(IReadOnlyList<PolicyEntry?> value) => 0;
+          [JS] public IReadOnlyDictionary<string, PolicyEntry> ConcreteDictionary(Dictionary<string, PolicyEntry> value) => value;
+          [JS] public PolicyHolder ConcreteRecord(PolicyHolder value) => value;
         }
+
+        [ExpoSharedObject]
+        public sealed partial class PolicyEntry : SharedObject
+        {
+        }
+
+        public sealed record PolicyHolder(PolicyEntry First, PolicyEntry? Second);
         """
     );
 
@@ -455,7 +465,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:5496E6F38DB283AA2111BF0D34F6C08C2458D18B4E9E0FF9E2147697D7B91AD8",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:270D74E33F40E9C229D0219993094663608D204CB8879D970341FF57DCE63885",
         },
         result.GetOutputContract()
     );
@@ -465,7 +475,7 @@ public sealed class GeneratorOutputContractTests
           "EXPOJSI015|Error|Property 'CallbackProperty' uses unsupported type 'global::Expo.ModulesCore.JavaScriptCallback<int>'|0|0|0|0",
           "EXPOJSI001|Error|Parameter 'value' on 'OptionalValue' uses unsupported type 'global::Expo.JSI.JavaScriptValue'|12|49|12|54",
           "EXPOJSI023|Error|'OptionalSharedObject' cannot be exported to JavaScript: parameter 'value' uses shared-object type 'global::Expo.ModulesCore.SharedObject', which is the polymorphic SharedObject base|15|53|15|58",
-          "EXPOJSI023|Error|'SharedObjects' cannot be exported to JavaScript: parameter 'value' uses shared-object type 'global::Expo.ModulesCore.SharedObject' inside a composed codec; shared-object types are supported only directly at the generated boundary|16|60|16|65",
+          "EXPOJSI023|Error|'SharedObjects' cannot be exported to JavaScript: parameter 'value' uses shared-object type 'global::Expo.ModulesCore.SharedObject' inside a composed codec, which is the polymorphic SharedObject base|16|60|16|65",
           "EXPOJSI001|Error|Parameter 'value' on 'MutableList' uses unsupported type 'global::System.Collections.Generic.List<int>'|17|40|17|45",
           "EXPOJSI013|Error|Method 'TwoSpans' declares multiple span parameters (first, second); at most one Span<byte> or ReadOnlySpan<byte> parameter is supported|19|72|19|78",
           "EXPOJSI012|Error|Method 'AsyncSpan' parameter 'value' uses 'global::System.ReadOnlySpan<byte>', which is supported only by synchronous Expo module methods|20|53|20|58",

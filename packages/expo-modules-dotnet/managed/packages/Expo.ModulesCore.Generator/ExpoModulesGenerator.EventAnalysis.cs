@@ -218,7 +218,11 @@ public sealed partial class ExpoModulesGenerator
         {
           var scratch = codecs.Fork();
           var scratchDiagnostics = new List<ExpoDiagnosticModel>();
-          eventCodec = AsCompositeChildCodec(GetCodecAt(property.Locations.FirstOrDefault(), payloadType, scratchDiagnostics, scratch));
+          // A typed event payload stays free of shared objects, whether the type is one itself or
+          // sits inside a composed type.
+          eventCodec = IsSharedObjectRelatedType(payloadType) || TryFindNestedSharedObjectType(payloadType, out _, includeValidClasses: true)
+              ? null
+              : AsCompositeChildCodec(GetCodecAt(property.Locations.FirstOrDefault(), payloadType, scratchDiagnostics, scratch));
           if (eventCodec is null)
           {
             // A union from a referenced assembly and an invalid enum are reported here; the other

@@ -22,13 +22,6 @@ internal enum ExpoDecodeOperation
   DecodeToDictionary,
 }
 
-/// <summary>Whether decode and encode take the current runtime context.</summary>
-internal enum ExpoContextRequirement
-{
-  None,
-  DotnetRuntimeContext,
-}
-
 /// <summary>
 /// Who releases the wrapper leaves of a value. A value that holds leaves has at least one, and
 /// generated glue releases it through its codec's <c>Release</c>.
@@ -49,7 +42,6 @@ internal sealed record ExpoCodecDescriptor(
     ExpoCodecShape Shape,
     ExpoCodecCapabilities Capabilities,
     ExpoDecodeOperation DecodeOperation,
-    ExpoContextRequirement ContextRequirement,
     ExpoResourceOwnership ResourceOwnership)
 {
   /// <summary>
