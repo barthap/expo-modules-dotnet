@@ -6,6 +6,14 @@
         "path": "dotnet/ExpoAssetDotnet/ExpoAssetDotnet.csproj",
         "assemblyName": "ExpoAssetDotnet"
       }
+    ],
+    "substitutions": [
+      {
+        "package": "expo-asset",
+        "versionRange": "~12.0.13",
+        "accessor": "build/ExpoAsset.js",
+        "replacement": "src/index.ts"
+      }
     ]
   }
 }

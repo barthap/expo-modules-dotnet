@@ -26,4 +26,19 @@ describe('dotnet autolinking metadata', () => {
     const projectPath = resolve(packageRoot, config.dotnet.projects[0].path);
     expect(existsSync(projectPath)).toBe(true);
   });
+
+  it('declares that it can replace the expo-asset native-accessor file', () => {
+    const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+    const config = JSON.parse(readFileSync(resolve(packageRoot, 'expo-module.config.json'), 'utf8'));
+
+    expect(config.dotnet.substitutions).toEqual([
+      {
+        package: 'expo-asset',
+        versionRange: '~12.0.13',
+        accessor: 'build/ExpoAsset.js',
+        replacement: 'src/index.ts',
+      },
+    ]);
+    expect(existsSync(resolve(packageRoot, config.dotnet.substitutions[0].replacement))).toBe(true);
+  });
 });
