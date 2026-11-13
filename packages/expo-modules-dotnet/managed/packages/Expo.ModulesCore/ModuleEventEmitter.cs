@@ -153,7 +153,7 @@ public sealed class ModuleEventEmitter : IDisposable
     await ExecuteEventAsync(
         runtime =>
         {
-          using var payloadValue = TCodec.Encode(payload, runtime);
+          using var payloadValue = TCodec.Encode(payload, runtime, context);
           return Emit(runtime, module, eventName, payloadValue);
         },
         cancellationToken

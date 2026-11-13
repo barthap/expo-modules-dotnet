@@ -631,8 +631,9 @@ public sealed class DotnetRuntimeContextTests
   )
   {
     GeneratedFunction.RequireArgumentCount("Lifecycle.value", arguments, 0);
+    var __expoRuntimeContext = GeneratedFunction.CurrentRuntimeContext;
     var module = (LifecycleModule)context;
-    return DoubleCodec.Encode(module.Value(), runtime);
+    return DoubleCodec.Encode(module.Value(), runtime, __expoRuntimeContext);
   }
 
   private static void CollectGarbage()

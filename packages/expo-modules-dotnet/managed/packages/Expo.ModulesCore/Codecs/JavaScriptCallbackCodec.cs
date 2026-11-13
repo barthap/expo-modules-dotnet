@@ -14,7 +14,7 @@ public static class JavaScriptCallbackCodec<TResult, TResultCodec>
     return JavaScriptCallback<TResult>.FromOwnedFunction(
         context,
         function,
-        static (result, jsRuntime) => TResultCodec.Decode(result, jsRuntime)
+        static (result, jsRuntime, jsContext) => TResultCodec.Decode(result, jsRuntime, jsContext)
     );
   }
 }
@@ -33,8 +33,8 @@ public static class JavaScriptCallbackCodec<TArgs, TArgsCodec, TResult, TResultC
     return JavaScriptCallback<TArgs, TResult>.FromOwnedFunction(
         context,
         function,
-        static (args, jsRuntime) => TArgsCodec.Encode(args, jsRuntime),
-        static (result, jsRuntime) => TResultCodec.Decode(result, jsRuntime)
+        static (args, jsRuntime, jsContext) => TArgsCodec.Encode(args, jsRuntime, jsContext),
+        static (result, jsRuntime, jsContext) => TResultCodec.Decode(result, jsRuntime, jsContext)
     );
   }
 }

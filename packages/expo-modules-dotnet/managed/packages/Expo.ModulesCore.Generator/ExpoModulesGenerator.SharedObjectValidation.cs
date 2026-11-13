@@ -138,26 +138,38 @@ public sealed partial class ExpoModulesGenerator
       if (issue is null)
       {
         // An unattributed (authored abstract) base selects the decode-only base codec; otherwise the annotation
-        // selects the nullable or exact codec. The type argument is the exact class without `?`.
+        // selects the nullable reference codec over the exact codec. The type argument is the exact class without `?`.
         var exact = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         codec = !HasExpoSharedObjectAttribute(typeSymbol)
             ? SharedObjectBaseCodec($"SharedObjectBaseCodec<{exact}>")
-            : SharedObjectCodec(typeSymbol.NullableAnnotation == NullableAnnotation.Annotated ? $"NullableSharedObjectCodec<{exact}>" : $"SharedObjectCodec<{exact}>");
+            : SharedObjectCodec(typeSymbol.NullableAnnotation == NullableAnnotation.Annotated ? $"NullableReferenceCodec<{exact}, SharedObjectCodec<{exact}>>" : $"SharedObjectCodec<{exact}>");
         return true;
       }
       diagnostics.Add(CreateUnsupportedSharedObjectUsage(memberName, $"{positionDescription} uses shared-object type '{GetDiagnosticTypeName(typeSymbol)}', {issue}", location));
       return true;
     }
+    // A valid concrete class inside a composed type resolves through GetCodec like any other child.
+    // Only a type that cannot be a composite child is reported here.
     if (!TryFindNestedSharedObjectType(typeSymbol, out var nestedSharedObjectType)) return false;
-    diagnostics.Add(CreateUnsupportedSharedObjectUsage(memberName, $"{positionDescription} uses shared-object type '{GetDiagnosticTypeName(nestedSharedObjectType)}' inside a composed codec; shared-object types are supported only directly at the generated boundary", location));
+    var nestedIssue = GetDirectSharedObjectBoundaryIssue(nestedSharedObjectType, isParameter: false) ?? "which is not a valid shared-object class";
+    diagnostics.Add(CreateUnsupportedSharedObjectUsage(memberName, $"{positionDescription} uses shared-object type '{GetDiagnosticTypeName(nestedSharedObjectType)}' inside a composed codec, {nestedIssue}", location));
     return true;
   }
 
-  private static ExpoCodecDescriptor SharedObjectCodec(string expression) => new(expression, ExpoCodecShape.StaticHelper, ExpoCodecCapabilities.DecodeAndEncode, ExpoDecodeOperation.Decode, ExpoContextRequirement.DotnetRuntimeContext, ExpoResourceOwnership.Borrowed);
+  // A valid concrete class is an ordinary codec, so it composes in every position. Module ownership
+  // is a declaration-level check and does not depend on the position.
+  private static ExpoCodecDescriptor? TryGetSharedObjectCodec(ITypeSymbol typeSymbol) =>
+      HasExpoSharedObjectAttribute(typeSymbol) && GetDirectSharedObjectBoundaryIssue(typeSymbol, isParameter: false) is null
+          ? SharedObjectCodec($"SharedObjectCodec<{typeSymbol.WithNullableAnnotation(NullableAnnotation.NotAnnotated).ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>")
+          : null;
 
-  // An authored abstract base is decode-only and accepted only at parameters.
-  private static ExpoCodecDescriptor SharedObjectBaseCodec(string expression) => new(expression, ExpoCodecShape.StaticHelper, ExpoCodecCapabilities.DecodeOnly, ExpoDecodeOperation.Decode, ExpoContextRequirement.DotnetRuntimeContext, ExpoResourceOwnership.Borrowed);
+  private static ExpoCodecDescriptor SharedObjectCodec(string expression) => OrdinaryCodec(expression);
 
+  // An authored abstract base is decode-only, accepted only at parameters, and a static helper, so
+  // it cannot be a composite child.
+  private static ExpoCodecDescriptor SharedObjectBaseCodec(string expression) => new(expression, ExpoCodecShape.StaticHelper, ExpoCodecCapabilities.DecodeOnly, ExpoDecodeOperation.Decode, ExpoResourceOwnership.Borrowed);
+
+  // Finds the first shared-object type inside a composed type that cannot be a composite child.
   private static bool TryFindNestedSharedObjectType(ITypeSymbol typeSymbol, out ITypeSymbol sharedObjectType) => TryFindNestedSharedObjectType(typeSymbol, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default), out sharedObjectType);
 
   private static bool TryFindNestedSharedObjectType(ITypeSymbol typeSymbol, HashSet<ITypeSymbol> visitedTypes, out ITypeSymbol sharedObjectType)
@@ -176,7 +188,12 @@ public sealed partial class ExpoModulesGenerator
   {
     foreach (var typeSymbol in typeSymbols)
     {
-      if (IsSharedObjectRelatedType(typeSymbol)) { sharedObjectType = typeSymbol; return true; }
+      if (IsSharedObjectRelatedType(typeSymbol))
+      {
+        // A valid concrete class is a composite child; keep looking for a type that is not.
+        if (TryGetSharedObjectCodec(typeSymbol) is null) { sharedObjectType = typeSymbol; return true; }
+        continue;
+      }
       if (TryFindNestedSharedObjectType(typeSymbol, visitedTypes, out sharedObjectType)) return true;
     }
     sharedObjectType = null!;

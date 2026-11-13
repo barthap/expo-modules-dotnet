@@ -99,14 +99,13 @@ public sealed partial class ExpoModulesGenerator
   private static string GetCodecTypeArgumentName(ITypeSymbol typeSymbol) =>
       typeSymbol.ToDisplayString(CodecTypeArgumentFormat);
 
-  // The ordinary row of the descriptor table: a JavaScriptCodec with Decode, no context, and no
+  // The ordinary row of the descriptor table: a JavaScriptCodec with Decode and Encode and no
   // wrapper leaf. Branches that differ set their fields explicitly.
   private static ExpoCodecDescriptor OrdinaryCodec(string expression) => new(
       expression,
       ExpoCodecShape.JavaScriptCodec,
       ExpoCodecCapabilities.DecodeAndEncode,
       ExpoDecodeOperation.Decode,
-      ExpoContextRequirement.None,
       ExpoResourceOwnership.Borrowed
   );
 
@@ -452,12 +451,13 @@ public sealed partial class ExpoModulesGenerator
           .FirstOrDefault(item => item.Name == parameter.Name);
       var fieldCodec = GetCodecAt(parameterLocation, parameter.Type, diagnostics, codecs);
       // Composition rule: generated record codecs call field codecs directly with Decode and
-      // Encode. A field needs both, and a context-bearing codec has no runtime context there.
+      // Encode, passing the runtime and the context. A field needs an encode-capable
+      // JavaScriptCodec, so a decode-only codec and a static helper stay out of records.
       if (property is null ||
           fieldCodec is not
           {
+            Shape: ExpoCodecShape.JavaScriptCodec,
             Capabilities: ExpoCodecCapabilities.DecodeAndEncode,
-            ContextRequirement: ExpoContextRequirement.None,
           })
       {
         diagnostics.Add(new ExpoDiagnosticModel(
@@ -580,10 +580,7 @@ public sealed partial class ExpoModulesGenerator
       _ => "Decode",
     };
 
-    var contextArgument = codec.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext
-        ? ", GeneratedFunction.CurrentRuntimeContext"
-        : string.Empty;
-    return $"{codec.Expression}.{methodName}(arguments.GetValue({index}), {runtimeParameterName}{contextArgument})";
+    return $"{codec.Expression}.{methodName}(arguments.GetValue({index}), {runtimeParameterName}, __expoRuntimeContext)";
   }
 
   private static bool TryGetTaskResultType(
@@ -662,6 +659,13 @@ public sealed partial class ExpoModulesGenerator
     if (TryGetJavaScriptCallbackCodec(typeSymbol, diagnostics, codecs, "JavaScriptCallbackCodec") is { } callbackCodec)
     {
       return callbackCodec;
+    }
+
+    // A shared-object type without a valid concrete class has no codec here; the analysis that owns
+    // the position reports it.
+    if (IsSharedObjectRelatedType(typeSymbol))
+    {
+      return TryGetSharedObjectCodec(typeSymbol);
     }
 
     if (typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == ArrayBufferMetadataName)
@@ -902,7 +906,6 @@ public sealed partial class ExpoModulesGenerator
       ExpoCodecShape.StaticHelper,
       ExpoCodecCapabilities.DecodeOnly,
       ExpoDecodeOperation.Decode,
-      ExpoContextRequirement.DotnetRuntimeContext,
       ExpoResourceOwnership.ContextRetained
   );
 

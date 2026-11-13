@@ -218,6 +218,10 @@ public sealed partial class ExpoModulesGenerator
         {
           var scratch = codecs.Fork();
           var scratchDiagnostics = new List<ExpoDiagnosticModel>();
+          // A concrete shared object, alone or inside a composed type, is an ordinary child. A base
+          // or an invalid class resolves to no codec, and GetCodec reports no diagnostic for it, so
+          // the event payload diagnostic below is the only one reported.
+          // @ref docs/specs/modules-core-shared-objects.md "Shared Objects Compose In Every Codec Position"
           eventCodec = AsCompositeChildCodec(GetCodecAt(property.Locations.FirstOrDefault(), payloadType, scratchDiagnostics, scratch));
           if (eventCodec is null)
           {

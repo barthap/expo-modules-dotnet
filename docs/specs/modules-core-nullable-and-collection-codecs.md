@@ -98,14 +98,14 @@ keeping its existing copy-in-both-directions behavior.
 `JavaScriptArrayCodec<T, TCodec>` SHALL implement
 `IJavaScriptCodec<IReadOnlyList<T>>`, and `JavaScriptDictionaryCodec<T,
 TCodec>` SHALL implement `IJavaScriptCodec<Dictionary<string, T>>` and
-`IJavaScriptCodec<IReadOnlyDictionary<string, T>>`. Their existing
-`DecodeToArray`, `DecodeToDictionary`, and `Encode` methods SHALL keep their
-signatures and behavior. Generated bindings SHALL support a non-null
-`IReadOnlyList<T>`, `Dictionary<string, T>`, or `IReadOnlyDictionary<string,
-T>` wherever a codec of `T` is supported: as a list element, a dictionary
-value, a nullable container's content, a callback result or argument, a
-generated record field, and a typed event payload. A list element or
-dictionary value MAY be `ArrayBuffer`, `JavaScriptValue`, or any type that
+`IJavaScriptCodec<IReadOnlyDictionary<string, T>>`. Their `DecodeToArray`,
+`DecodeToDictionary`, and `Encode` methods SHALL take the runtime and the
+context, and SHALL pass both to each child codec. Generated bindings SHALL
+support a non-null `IReadOnlyList<T>`, `Dictionary<string, T>`, or
+`IReadOnlyDictionary<string, T>` wherever a codec of `T` is supported: as a
+list element, a dictionary value, a nullable container's content, a callback
+result or argument, a generated record field, and a typed event payload. A
+list element or dictionary value MAY be `ArrayBuffer`, `JavaScriptValue`, or any type that
 holds a leaf. The same `JavaScriptArrayCodec<T, TCodec>` and
 `JavaScriptDictionaryCodec<T, TCodec>` SHALL serve it.
 
@@ -225,8 +225,8 @@ nullability.
 A nullable annotation SHALL NOT change shared-object type identity.
 `SharedObject?` and `SharedRef<T>?` SHALL report `EXPOJSI023` with the same
 reason as the non-null form. A valid concrete class annotated as nullable SHALL
-select `NullableSharedObjectCodec<T>` (see "Nullable Concrete Shared Objects
-Bypass The Registry On Null"). A rejected member is rejected at error severity,
+select `NullableReferenceCodec<T, SharedObjectCodec<T>>` (see "Nullable
+Concrete Shared Objects Bypass The Registry On Null"). A rejected member is rejected at error severity,
 no binding is emitted, and no shared-object codec is selected.
 
 #### Scenario: Excluded nullable parameter or return reports the method codes
@@ -293,6 +293,14 @@ no binding is emitted, and no shared-object codec is selected.
   does for `IReadOnlyList<SharedObject>`
 - **AND** it SHALL NOT emit the member
 
+#### Scenario: Nullable concrete shared object inside a composed codec
+- **GIVEN** a parameter `IReadOnlyList<Entry?>` for a concrete shared-object
+  class `Entry`
+- **WHEN** the generator analyzes the parameter
+- **THEN** it SHALL select
+  `JavaScriptArrayCodec<Entry?, NullableReferenceCodec<Entry, SharedObjectCodec<Entry>>>`
+  and emit the binding with no diagnostic
+
 #### Scenario: Valid concrete shared object stays accepted
 - **GIVEN** a generated method parameter declares a non-null top-level, sealed,
   non-generic `[ExpoSharedObject]` class
@@ -300,7 +308,7 @@ no binding is emitted, and no shared-object codec is selected.
 - **THEN** it SHALL select `SharedObjectCodec<T>` and emit the binding with no
   diagnostic
 - **AND** the same class annotated as nullable SHALL select
-  `NullableSharedObjectCodec<T>`
+  `NullableReferenceCodec<T, SharedObjectCodec<T>>`
 
 #### Scenario: Rejected nullable type does not fall back
 - **GIVEN** codec resolution has handled an annotated excluded reference
@@ -392,11 +400,10 @@ SHALL be accepted as parameters of generated module methods, sync and async,
 and of supported shared-object constructors and methods, including with an
 authored `= null` default. They SHALL resolve to
 `NullableJavaScriptCallbackCodec<...>` with the same type arguments as the
-non-null codec, `DecodeOnly`, requiring `DotnetRuntimeContext`, and
-`ContextRetained`. JavaScript `null` and `undefined` SHALL decode to C#
-`null` without calling `AsFunction` and without registering a callback with
-the context. A non-null function SHALL decode through the non-null codec
-unchanged. A nullable callback is never a leaf holder: generated glue SHALL
+non-null codec, `DecodeOnly`, and `ContextRetained`. JavaScript `null` and
+`undefined` SHALL decode to C# `null` without calling `AsFunction` and without
+registering a callback with the context. A non-null function SHALL decode
+through the non-null codec unchanged. A nullable callback is never a leaf holder: generated glue SHALL
 NOT release or dispose it at invocation end. Its argument and result types
 follow the non-null rule, so they can hold leaves at any depth.
 
@@ -444,7 +451,8 @@ follow the non-null rule, so they can hold leaves at any depth.
 A top-level, non-generic, sealed `[ExpoSharedObject]` class annotated as
 nullable, including a concrete subclass of `SharedRef<T>`, SHALL be accepted
 on every boundary that accepts the non-null class and SHALL select
-`NullableSharedObjectCodec<T>` with the non-annotated exact type. JavaScript
+`NullableReferenceCodec<T, SharedObjectCodec<T>>` with the non-annotated exact
+type. JavaScript
 `null` and `undefined` SHALL decode to C# `null` without resolving registry
 identity. C# `null` SHALL encode as JavaScript `null` without class
 registration or pairing. A non-null value SHALL use `SharedObjectCodec<T>`
@@ -481,8 +489,8 @@ glue SHALL NOT release or dispose it at invocation end.
   carried value
 
 #### Scenario: Bases and nested shapes stay rejected
-- **GIVEN** `SharedObject?`, `SharedRef<X>?`, `IReadOnlyList<T?>`, a record
-  with a `T?` field, and `Func<T?, Task>`
+- **GIVEN** `SharedObject?`, `SharedRef<X>?`, `IReadOnlyList<SharedObject?>`,
+  a record with a `SharedObject?` field, and `Func<SharedObject?, Task>`
 - **WHEN** the generator runs
 - **THEN** it SHALL report `EXPOJSI023` (or the event code) with the
   existing reasons

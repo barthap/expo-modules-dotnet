@@ -607,7 +607,7 @@ covers duplicate method names.
 - **AND** a type that holds a leaf is not in this scenario in any of these
   positions
 
-#### Scenario: Record field needs a runtime context
+#### Scenario: Record field holds a callback
 - **GIVEN** a generated record has a `JavaScriptCallback` field, or a field
   whose codec the generic-argument rule rejects
 - **WHEN** a `[JS]` method parameter, return, async result, or shared-object
@@ -616,6 +616,7 @@ covers duplicate method names.
 - **AND** the using member SHALL report its unsupported-type diagnostic
 - **AND** a `[JS]` property whose type contains a callback SHALL keep
   reporting only `EXPOJSI015`
+- **AND** a record with a concrete shared-object field SHALL be accepted
 
 #### Scenario: Async method returns a byte span
 - **GIVEN** an async `[JS]` method returns `Task<Span<byte>>` or

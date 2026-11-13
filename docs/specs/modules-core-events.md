@@ -286,7 +286,13 @@ encode them on the owning runtime and SHALL dispose only the encoded value. A
 null `ArrayBuffer?` or `Uint8Array?` inside such a payload, and a direct null
 `Uint8Array?`, SHALL encode as JavaScript `null`. The author keeps every leaf
 and SHALL keep it alive until the returned task completes. A payload
-containing `JavaScriptCallback` SHALL stay rejected.
+containing `JavaScriptCallback` SHALL stay rejected. A payload that is or
+contains a concrete shared-object class SHALL be valid. Generated glue SHALL
+encode it on the owning runtime with the emitter's context and SHALL NOT
+release the instance. A payload that contains `SharedObject`, `SharedRef<T>`,
+an authored abstract base, or an invalid shared-object class SHALL stay
+rejected with the event payload diagnostic: `EXPOJSI019` on a module event and
+`EXPOJSI027` on a shared-object event.
 Event-safety classification SHALL run before general codec resolution can
 mutate generated-record-codec state, and SHALL inspect only encoded inputs
 such as selected record-constructor parameters, list elements, dictionary
@@ -340,7 +346,8 @@ or blank explicit names; unsupported static, indexed, non-partial, implemented,
 setter, explicit-interface, ref-return, `[JS]`, or modifier shapes; unsupported
 delegate types; and file-local, nested, generic, or non-partial containers.
 `EXPOJSI019` covers payloads with no encode-capable event codec, a callback
-codec, or a nullable annotation on a `JavaScriptValue` at any depth.
+codec, a nullable annotation on a `JavaScriptValue` at any depth, or a
+shared-object type that is not a valid concrete class.
 Legacy-only invalid or duplicate `[Events]` declarations SHALL continue to use
 `EXPOJSI009`.
 Duplicate detection SHALL compare derived and explicit JavaScript names, not C#
@@ -365,6 +372,12 @@ safely.
 - **THEN** it SHALL report `EXPOJSI019`
 - **AND** it SHALL not emit reflection, dynamic conversion, callback `Encode`
   source, or a secondary compiler error
+
+#### Scenario: Event payload holds a shared-object base
+- **GIVEN** a typed module event whose payload is `IReadOnlyList<SharedObject>`
+  or a record with an authored abstract-base field
+- **WHEN** the generator analyzes it
+- **THEN** it SHALL report `EXPOJSI019` and SHALL NOT report `EXPOJSI023`
 
 #### Scenario: Typed and legacy event names collide
 - **GIVEN** `[Events("status")]` and `[Event] ... OnStatus` occur on one module
@@ -578,7 +591,10 @@ proceeds. It SHALL perform no later registry or weak-wrapper access.
 
 Shared-object event validation SHALL use `EXPOJSI026` for invalid placement or
 property shapes, `EXPOJSI027` for unsupported event payloads, and `EXPOJSI028`
-for duplicate effective names. `[Event]` on a class that is neither an
+for duplicate effective names. `EXPOJSI027` covers payloads with no
+encode-capable event codec, a callback codec, a nullable annotation on a
+`JavaScriptValue` at any depth, or a shared-object type that is not a valid
+concrete class. `[Event]` on a class that is neither an
 `[ExpoModule]` nor a valid `[ExpoSharedObject]` SHALL report `EXPOJSI026`.
 Rejected reproducible partial properties SHALL receive inert matching
 implementations so the Expo diagnostic does not cause a secondary compiler
@@ -593,6 +609,13 @@ source order SHALL NOT select one declaration for dispatch glue.
 - **THEN** it SHALL report `EXPOJSI027`
 - **AND** it SHALL not emit reflection, dynamic conversion, or callback encode
   source
+
+#### Scenario: Event payload holds a shared-object base
+
+- **GIVEN** a shared-object event whose payload is `IReadOnlyList<SharedObject>`
+  or a record with an authored abstract-base field
+- **WHEN** the generator analyzes it
+- **THEN** it SHALL report `EXPOJSI027` and SHALL NOT report `EXPOJSI023`
 
 #### Scenario: Derived shared-object event names collide
 

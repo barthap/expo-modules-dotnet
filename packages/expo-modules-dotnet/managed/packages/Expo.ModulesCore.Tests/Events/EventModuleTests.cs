@@ -834,7 +834,7 @@ public sealed class GeneratedEventModuleTests
           $"Uint8Array.from([{bytes}]).buffer",
           "typed-events-array-buffer-payload.js"
       );
-      return ArrayBufferCodec.Decode(value.Ref, runtime);
+      return ArrayBufferCodec.Decode(value.Ref, runtime, CodecTestContext.Unused);
     });
   }
 

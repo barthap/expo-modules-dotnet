@@ -4,7 +4,7 @@ namespace Expo.ModulesCore.Codecs;
 
 public readonly struct ArrayBufferCodec : IJavaScriptCodec<ArrayBuffer>
 {
-  public static ArrayBuffer Decode(JavaScriptValueRef value, JavaScriptRuntime runtime)
+  public static ArrayBuffer Decode(JavaScriptValueRef value, JavaScriptRuntime runtime, DotnetRuntimeContext context)
   {
     var arrayBuffer = value.AsArrayBuffer();
     if (arrayBuffer.TryGetMutableBuffer() is { } native)
@@ -14,10 +14,10 @@ public readonly struct ArrayBufferCodec : IJavaScriptCodec<ArrayBuffer>
     return new ArrayBuffer(arrayBuffer.Retain());
   }
 
-  public static ArrayBuffer Decode(JavaScriptValue value, JavaScriptRuntime runtime) =>
-      Decode(value.Ref, runtime);
+  public static ArrayBuffer Decode(JavaScriptValue value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
+      Decode(value.Ref, runtime, context);
 
-  public static JavaScriptValue Encode(ArrayBuffer value, JavaScriptRuntime runtime)
+  public static JavaScriptValue Encode(ArrayBuffer value, JavaScriptRuntime runtime, DotnetRuntimeContext context)
   {
     ArgumentNullException.ThrowIfNull(value);
     return value.Encode(runtime);
@@ -29,6 +29,6 @@ public readonly struct ArrayBufferCodec : IJavaScriptCodec<ArrayBuffer>
   public static JavaScriptValue EncodeCopy(ReadOnlySpan<byte> bytes, JavaScriptRuntime runtime)
   {
     using var buffer = ArrayBuffer.CopyFrom(bytes);
-    return Encode(buffer, runtime);
+    return buffer.Encode(runtime);
   }
 }

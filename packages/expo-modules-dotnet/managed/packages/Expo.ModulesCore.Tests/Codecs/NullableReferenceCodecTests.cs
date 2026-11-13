@@ -22,8 +22,8 @@ public sealed class NullableReferenceCodecTests
 
       // ThrowingStringCodec fails on every call, so a decode that reached the inner codec would
       // throw instead of returning null. That is what keeps the non-nullable codec strict.
-      Assert.Null(NullableReferenceCodec<string, ThrowingStringCodec>.Decode(nullish.Ref, runtime));
-      Assert.Null(NullableReferenceCodec<string, ThrowingStringCodec>.Decode(nullish, runtime));
+      Assert.Null(NullableReferenceCodec<string, ThrowingStringCodec>.Decode(nullish.Ref, runtime, CodecTestContext.Unused));
+      Assert.Null(NullableReferenceCodec<string, ThrowingStringCodec>.Decode(nullish, runtime, CodecTestContext.Unused));
       return true;
     });
   }
@@ -37,8 +37,8 @@ public sealed class NullableReferenceCodecTests
     {
       using var value = fixture.Evaluate("'kept'", "nullable-reference-decode-value.js");
 
-      Assert.Equal("kept", NullableReferenceCodec<string, StringCodec>.Decode(value.Ref, runtime));
-      Assert.Equal("kept", NullableReferenceCodec<string, StringCodec>.Decode(value, runtime));
+      Assert.Equal("kept", NullableReferenceCodec<string, StringCodec>.Decode(value.Ref, runtime, CodecTestContext.Unused));
+      Assert.Equal("kept", NullableReferenceCodec<string, StringCodec>.Decode(value, runtime, CodecTestContext.Unused));
       return true;
     });
   }
@@ -50,7 +50,7 @@ public sealed class NullableReferenceCodecTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      using var encoded = NullableReferenceCodec<string, ThrowingStringCodec>.Encode(null, runtime);
+      using var encoded = NullableReferenceCodec<string, ThrowingStringCodec>.Encode(null, runtime, CodecTestContext.Unused);
 
       Assert.Equal(JavaScriptValueKind.Null, encoded.Kind);
       return true;
@@ -64,7 +64,7 @@ public sealed class NullableReferenceCodecTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      using var encoded = NullableReferenceCodec<string, StringCodec>.Encode("kept", runtime);
+      using var encoded = NullableReferenceCodec<string, StringCodec>.Encode("kept", runtime, CodecTestContext.Unused);
 
       Assert.Equal(JavaScriptValueKind.String, encoded.Kind);
       Assert.Equal("kept", encoded.AsString());
@@ -85,20 +85,21 @@ public sealed class NullableReferenceCodecTests
           "nullable-byte-array-value.js"
       );
 
-      Assert.Null(NullableReferenceCodec<byte[], ByteArrayCodec>.Decode(nullish.Ref, runtime));
+      Assert.Null(NullableReferenceCodec<byte[], ByteArrayCodec>.Decode(nullish.Ref, runtime, CodecTestContext.Unused));
       Assert.Equal(
           new byte[] { 1, 2, 3 },
-          NullableReferenceCodec<byte[], ByteArrayCodec>.Decode(buffer.Ref, runtime)
+          NullableReferenceCodec<byte[], ByteArrayCodec>.Decode(buffer.Ref, runtime, CodecTestContext.Unused)
       );
 
-      using var encodedNull = NullableReferenceCodec<byte[], ByteArrayCodec>.Encode(null, runtime);
+      using var encodedNull = NullableReferenceCodec<byte[], ByteArrayCodec>.Encode(null, runtime, CodecTestContext.Unused);
       Assert.Equal(JavaScriptValueKind.Null, encodedNull.Kind);
 
       using var encodedValue = NullableReferenceCodec<byte[], ByteArrayCodec>.Encode(
           new byte[] { 4, 5 },
-          runtime
+          runtime,
+          CodecTestContext.Unused
       );
-      Assert.Equal(new byte[] { 4, 5 }, ByteArrayCodec.Decode(encodedValue, runtime));
+      Assert.Equal(new byte[] { 4, 5 }, ByteArrayCodec.Decode(encodedValue, runtime, CodecTestContext.Unused));
       return true;
     });
   }
@@ -114,8 +115,8 @@ public sealed class NullableReferenceCodecTests
     {
       using var nullish = fixture.Evaluate(expression, "nullable-list-container-nullish.js");
 
-      Assert.Null(NullableReadOnlyListCodec<string, StringCodec>.Decode(nullish.Ref, runtime));
-      Assert.Null(NullableReadOnlyListCodec<string, StringCodec>.Decode(nullish, runtime));
+      Assert.Null(NullableReadOnlyListCodec<string, StringCodec>.Decode(nullish.Ref, runtime, CodecTestContext.Unused));
+      Assert.Null(NullableReadOnlyListCodec<string, StringCodec>.Decode(nullish, runtime, CodecTestContext.Unused));
       return true;
     });
   }
@@ -133,17 +134,17 @@ public sealed class NullableReferenceCodecTests
       );
 
       var decoded = NullableReadOnlyListCodec<string?, NullableReferenceCodec<string, StringCodec>>
-          .Decode(values.Ref, runtime);
+          .Decode(values.Ref, runtime, CodecTestContext.Unused);
       Assert.Equal(new[] { "one", null, "two" }, decoded);
 
       using var encodedNull =
           NullableReadOnlyListCodec<string?, NullableReferenceCodec<string, StringCodec>>
-              .Encode(null, runtime);
+              .Encode(null, runtime, CodecTestContext.Unused);
       Assert.Equal(JavaScriptValueKind.Null, encodedNull.Kind);
 
       using var encoded =
           NullableReadOnlyListCodec<string?, NullableReferenceCodec<string, StringCodec>>
-              .Encode(new[] { "one", null }, runtime);
+              .Encode(new[] { "one", null }, runtime, CodecTestContext.Unused);
       using var global = runtime.Global();
       global.SetProperty("nullableListRoundTrip", encoded);
       using var shape = fixture.Evaluate(
@@ -166,10 +167,10 @@ public sealed class NullableReferenceCodecTests
     {
       using var nullish = fixture.Evaluate(expression, "nullable-dictionary-container-nullish.js");
 
-      Assert.Null(NullableDictionaryCodec<string, StringCodec>.Decode(nullish.Ref, runtime));
-      Assert.Null(NullableDictionaryCodec<string, StringCodec>.Decode(nullish, runtime));
-      Assert.Null(NullableReadOnlyDictionaryCodec<string, StringCodec>.Decode(nullish.Ref, runtime));
-      Assert.Null(NullableReadOnlyDictionaryCodec<string, StringCodec>.Decode(nullish, runtime));
+      Assert.Null(NullableDictionaryCodec<string, StringCodec>.Decode(nullish.Ref, runtime, CodecTestContext.Unused));
+      Assert.Null(NullableDictionaryCodec<string, StringCodec>.Decode(nullish, runtime, CodecTestContext.Unused));
+      Assert.Null(NullableReadOnlyDictionaryCodec<string, StringCodec>.Decode(nullish.Ref, runtime, CodecTestContext.Unused));
+      Assert.Null(NullableReadOnlyDictionaryCodec<string, StringCodec>.Decode(nullish, runtime, CodecTestContext.Unused));
       return true;
     });
   }
@@ -187,14 +188,14 @@ public sealed class NullableReferenceCodecTests
       );
 
       var decoded = NullableDictionaryCodec<string?, NullableReferenceCodec<string, StringCodec>>
-          .Decode(values.Ref, runtime);
+          .Decode(values.Ref, runtime, CodecTestContext.Unused);
       Assert.NotNull(decoded);
       Assert.Equal("one", decoded["kept"]);
       Assert.Null(decoded["missing"]);
 
       using var encodedNull =
           NullableDictionaryCodec<string?, NullableReferenceCodec<string, StringCodec>>
-              .Encode(null, runtime);
+              .Encode(null, runtime, CodecTestContext.Unused);
       Assert.Equal(JavaScriptValueKind.Null, encodedNull.Kind);
 
       using var encoded =
@@ -205,7 +206,8 @@ public sealed class NullableReferenceCodecTests
                     ["kept"] = "one",
                     ["missing"] = null,
                   },
-                  runtime
+                  runtime,
+                  CodecTestContext.Unused
               );
       using var global = runtime.Global();
       global.SetProperty("nullableDictionaryRoundTrip", encoded);
@@ -232,21 +234,22 @@ public sealed class NullableReferenceCodecTests
 
       var decoded =
           NullableReadOnlyDictionaryCodec<string?, NullableReferenceCodec<string, StringCodec>>
-              .Decode(values.Ref, runtime);
+              .Decode(values.Ref, runtime, CodecTestContext.Unused);
       Assert.NotNull(decoded);
       Assert.Equal("one", decoded["kept"]);
       Assert.Null(decoded["missing"]);
 
       using var encodedNull =
           NullableReadOnlyDictionaryCodec<string?, NullableReferenceCodec<string, StringCodec>>
-              .Encode(null, runtime);
+              .Encode(null, runtime, CodecTestContext.Unused);
       Assert.Equal(JavaScriptValueKind.Null, encodedNull.Kind);
 
       using var encoded =
           NullableReadOnlyDictionaryCodec<string?, NullableReferenceCodec<string, StringCodec>>
               .Encode(
                   new Dictionary<string, string?>(StringComparer.Ordinal) { ["missing"] = null },
-                  runtime
+                  runtime,
+                  CodecTestContext.Unused
               );
       using var global = runtime.Global();
       global.SetProperty("nullableReadOnlyDictionaryRoundTrip", encoded);
@@ -273,7 +276,7 @@ public sealed class NullableReferenceCodecTests
 
       var decoded = NullableReadOnlyListCodec<
           IReadOnlyList<string>?,
-          NullableReadOnlyListCodec<string, StringCodec>>.Decode(values.Ref, runtime);
+          NullableReadOnlyListCodec<string, StringCodec>>.Decode(values.Ref, runtime, CodecTestContext.Unused);
       Assert.NotNull(decoded);
       Assert.Equal(2, decoded.Count);
       Assert.Equal(new[] { "one" }, decoded[0]);
@@ -285,13 +288,13 @@ public sealed class NullableReferenceCodecTests
   /// <summary>Fails on every conversion so a delegating call is impossible to miss.</summary>
   private readonly struct ThrowingStringCodec : IJavaScriptCodec<string>
   {
-    public static string Decode(JavaScriptValueRef value, JavaScriptRuntime runtime) =>
+    public static string Decode(JavaScriptValueRef value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
         throw new InvalidOperationException("The inner codec must not run for nullish input.");
 
-    public static string Decode(JavaScriptValue value, JavaScriptRuntime runtime) =>
+    public static string Decode(JavaScriptValue value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
         throw new InvalidOperationException("The inner codec must not run for nullish input.");
 
-    public static JavaScriptValue Encode(string value, JavaScriptRuntime runtime) =>
+    public static JavaScriptValue Encode(string value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
         throw new InvalidOperationException("The inner codec must not run for a null value.");
   }
 }
