@@ -5536,7 +5536,8 @@ public sealed partial class ExpoModulesGeneratorTests
 
     Assert.Empty(GeneratorDiagnosticIds(result));
     AssertNoCompilerDiagnostics(result);
-    var source = Assert.Single(result.GeneratedSources).Text;
+    // The generated text uses the platform's line ending.
+    var source = Assert.Single(result.GeneratedSources).Text.ReplaceLineEndings("\n");
     var codecStart = source.IndexOf("private readonly struct RequestCodec_", StringComparison.Ordinal);
     var codec = source[codecStart..source.IndexOf("\n  }\n", codecStart, StringComparison.Ordinal)];
     var fieldCalls = CountOccurrences(codec, "StringCodec.") + CountOccurrences(codec, "NumberCodec<int>.");
