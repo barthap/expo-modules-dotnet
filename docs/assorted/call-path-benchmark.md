@@ -106,9 +106,9 @@ Details for each column:
 ## What The Numbers Represent
 
 - A sync case runs fully on the runtime thread. The driver loop calls the host
-  function, the bridge calls managed code, and the result returns. The runtime
-  executor runs once per sample, to start the loop. So sync rows do not depend
-  on the testhost executor. The bridge code under test is the same code that a
+  function, the bridge calls managed code, and the result returns. The testhost
+  executor runs only the call that starts each sample. No sync call goes through
+  it. The bridge code under test is the same code that a
   React Native app links.
 - An async case goes through the runtime scheduler and the testhost executor,
   not through a React Native `CallInvoker`. The table marks it `testhost
@@ -124,11 +124,11 @@ Details for each column:
   optimized code with no dynamic profile data is also nearer to NativeAOT than
   the tiered steady state is. The setting is in the project file, so it holds
   for both scripts and for a direct run.
-- One caveat about tiering. The .NET documentation read for this benchmark does
-  not say in one sentence what happens to precompiled (ReadyToRun) framework
-  code when tiering is off. The pages imply that the runtime uses it as it is.
-  This was not measured. So framework code keeps its precompiled quality, while
-  the repo's own assemblies are compiled at full optimization.
+- One caveat about tiering. Whether the runtime uses precompiled (ReadyToRun)
+  framework code as it is when tiering is off was not measured, and the .NET
+  documentation does not state it directly. If it does, framework code keeps its
+  precompiled quality, while the repo's own assemblies are compiled at full
+  optimization.
 - The CPU is a desktop CPU, not a phone CPU.
 - The driver is JavaScript evaluated from source, not precompiled bytecode. The
   empty driver loop row shows its cost.
@@ -220,8 +220,9 @@ value, and 1 unlinked handle, the `undefined` that resolves the promise.
   argument with 4 fields creates 1, 5, and 1.
 - `docs/assorted/architecture-review.md` Finding 1 estimates "3 argument
   borrows + 3 argument value reads + 1 return value encode ≈ 7 allocations" for
-  a generated sync function with three parameters and a return value, and
-  counts two heap allocations for each value handle. The table has no row with
+  a generated sync function with three parameters and a return value. The 7 is a
+  count of operations. The same page says each owned value is two heap
+  allocations, so do not divide the 7 by 2. The table has no row with
   that shape. The nearest row, two doubles and a double result, creates 3
   counted handles: 2 borrowed and 1 owned unlinked. A 12-field record argument
   creates 15 counted handles in one call. The estimate counts allocations and
@@ -232,13 +233,16 @@ value, and 1 unlinked handle, the `undefined` that resolves the promise.
 - An `ArrayBuffer` argument of 1,024 bytes takes 49,072.4 ns and a `Uint8Array`
   argument of the same size takes 52,220.8 ns. The native control for the
   `ArrayBuffer` takes 63.1 ns. The same `ArrayBuffer` as a return value takes
-  585.6 ns. The cost of an `ArrayBuffer` or `Uint8Array` argument is about 50
-  microseconds per call regardless of size.
+  585.6 ns. At 1,024 bytes, a binary argument costs about 49 to 52 microseconds
+  per call.
 
 ### The Binary Argument Cost
 
 This is a measured observation with limits.
 
+- A separate measurement of `ArrayBuffer` arguments at 0, 16, 1,024, and 16,384
+  bytes gave about the same cost for each size. The table has only the 1,024
+  byte row.
 - The decode of a binary argument calls the detached check twice, in
   `retainArrayBuffer` and in `tryGetMutableBuffer` in `ExpoJsiBridge.cpp`,
   through `isArrayBufferDetached` in `ArrayBufferCapabilities.h`.
@@ -246,8 +250,9 @@ This is a measured observation with limits.
   "not supported". The helper catches it and treats the buffer as not detached.
   So each decode throws and catches two C++ exceptions.
 - A temporary experiment that skipped the check reduced the `Uint8Array`
-  argument to about 3.8 microseconds. The experiment was reverted and is not
-  in the repository.
+  argument to about 3.8 microseconds. This figure is from the experiment with the
+  check skipped. It is not the shipped behavior. The experiment was reverted and
+  is not in the repository.
 - After that experiment, the remaining cost of the `ArrayBuffer` argument was not
   explained.
 
