@@ -138,4 +138,23 @@ public sealed class BenchmarkRunnerTests
 
     Assert.True(row.BytesPerCall < 64, $"bytes/call was {row.BytesPerCall}");
   }
+
+  // The last call of a loop leaves its buffer lease release on the executor. A timed sample must start
+  // with no such work pending, or its cost would be charged to the next sample or to the control.
+  [Fact]
+  public void Settle_LeavesNoDeferredWorkPending()
+  {
+    using var host = BenchmarkCases.CreateHost();
+    host.Runtime.Execute(_ =>
+    {
+      using var result = host.Evaluate(
+          "globalThis.a = __expoBenchNative.makeArrayBuffer(1024); for (var i = 0; i < 1000; i++) { m.takeArrayBuffer(a); } undefined",
+          "benchmark-test.js");
+      return true;
+    });
+
+    BenchmarkRunner.Settle(host);
+
+    Assert.Equal(0u, host.TestRuntime.Counters.LongLivedObjectsRemaining);
+  }
 }

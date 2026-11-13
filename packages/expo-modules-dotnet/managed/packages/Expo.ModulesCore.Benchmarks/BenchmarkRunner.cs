@@ -168,7 +168,7 @@ internal static class BenchmarkRunner
     var samples = new List<double>(options.SampleCount);
     for (var index = 0; index < options.SampleCount; index++)
     {
-      CollectGarbage(host);
+      Settle(host);
       samples.Add(await TimeDriverAsync(host, driverName, isAsync, iterations) / iterations);
     }
 
@@ -217,7 +217,7 @@ internal static class BenchmarkRunner
       bool isAsync,
       int n)
   {
-    CollectGarbage(host);
+    Settle(host);
     var before = GC.GetTotalAllocatedBytes(precise: true);
     await RunDriverAsync(host, driverName, isAsync, n);
     return GC.GetTotalAllocatedBytes(precise: true) - before;
@@ -253,11 +253,15 @@ internal static class BenchmarkRunner
     return (counters.OwnedValuesCreatedLinked, counters.OwnedValuesCreatedUnlinked, counters.BorrowedValuesCreated);
   }
 
-  private static void CollectGarbage(ExpoModuleTestHost host)
+  // Runs before every timed sample. Work that a previous sample left on the executor (for example
+  // buffer lease releases) must not land in the next sample or in the control.
+  internal static void Settle(ExpoModuleTestHost host)
   {
     GC.Collect();
     GC.WaitForPendingFinalizers();
     GC.Collect();
+    host.TestRuntime.WaitUntilIdle();
     host.TestRuntime.CollectGarbageForTesting();
+    host.TestRuntime.WaitUntilIdle();
   }
 }
