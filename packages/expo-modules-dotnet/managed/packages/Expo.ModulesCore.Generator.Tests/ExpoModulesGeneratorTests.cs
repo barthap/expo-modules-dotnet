@@ -6251,13 +6251,11 @@ public sealed partial class ExpoModulesGeneratorTests
     }
   }
 
-  // Characterization: the polymorphic bases and the event payloads keep their diagnostics, with and
+  // Characterization: the polymorphic bases keep their diagnostics, with and
   // without the annotation. The run without the annotation is the oracle for the expected diagnostic.
   [Theory]
   [InlineData("", "[JS] public int M(SharedObject$N value) => 0;", "", "EXPOJSI023", "M", "which is the polymorphic SharedObject base", "\"m\"")]
   [InlineData("", "[JS] public SharedRef<Resource>$N M() => null!;", "", "EXPOJSI023", "M", "which is the SharedRef<T> managed carrier base", "\"m\"")]
-  [InlineData("", "[Event] public partial Func<Entry$N, Task> OnEntry { get; }", "", "EXPOJSI019", "OnEntry", "no encode-capable codec is available", "\"entry\"")]
-  [InlineData("", "", "[Event] public partial Func<Handle$N, Task> OnHandle { get; }", "EXPOJSI027", "OnHandle", "no encode-capable codec is available", "\"handle\"")]
   [InlineData("", "", "[JS] public Entry(SharedRef<Resource>$N source) { }", "EXPOJSI023", "Entry", "which is the SharedRef<T> managed carrier base", "ConstructSharedObject_")]
   public void GeneratorKeepsSharedObjectDiagnosticsForNullableBasesAndNestedShapes(
       string declarations,

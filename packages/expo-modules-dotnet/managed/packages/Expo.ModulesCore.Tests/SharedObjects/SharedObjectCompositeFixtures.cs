@@ -23,6 +23,13 @@ public sealed partial class Entry : SharedObject
   [JS]
   public string Label { get; }
 
+  [Event]
+  public partial Func<EntryPair, Task> OnShared { get; }
+
+  // The other instance and this one reach the listener as paired objects.
+  [JS]
+  public Task EmitSharedAsync(Entry other) => OnShared(new EntryPair(this, other));
+
   protected override void OnRelease() => System.Threading.Interlocked.Increment(ref ReleaseCount);
 }
 
@@ -38,6 +45,14 @@ public sealed partial class OtherEntry : SharedObject
 public sealed record EntryPair(Entry First, Entry? Second);
 
 public sealed record HeldEntry(ArrayBuffer Data, Entry Entry);
+
+[Union]
+public abstract record EntryChoice
+{
+  public sealed record Held(EntryPair Value) : EntryChoice;
+  public sealed record Listed(IReadOnlyList<Entry> Value) : EntryChoice;
+  public sealed record Text(string Value) : EntryChoice;
+}
 
 [ExpoModule("CompositeEntries", Classes = new[] { typeof(Entry), typeof(OtherEntry) })]
 public sealed partial class CompositeEntriesModule
@@ -175,4 +190,17 @@ public sealed partial class CompositeEntriesModule
     await Task.Yield();
     return LastCallbackResult = await storedCallback!.InvokeAsync(ValueTuple.Create(entries));
   }
+
+  [Event]
+  public partial Func<EntryPair, Task> OnNote { get; }
+
+  // The second instance is native-created, so the event encode pairs it for the first time.
+  [JS]
+  public Task EmitNoteAsync(Entry first) => OnNote(new EntryPair(first, new Entry("native")));
+
+  [Event]
+  public partial Func<EntryChoice, Task> OnChoice { get; }
+
+  [JS]
+  public Task EmitChoiceAsync(Entry first) => OnChoice(new EntryChoice.Held(new EntryPair(first, null)));
 }

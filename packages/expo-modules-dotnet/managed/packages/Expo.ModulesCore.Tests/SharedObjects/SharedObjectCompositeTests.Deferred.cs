@@ -119,6 +119,65 @@ public sealed partial class SharedObjectCompositeTests
     Assert.Same(Entry.Constructed[0], CompositeEntriesModule.LastCallbackResult);
   }
 
+  [Fact]
+  public async Task ModuleEventPayloadHoldsSharedObject()
+  {
+    using var deferred = DeferredFixture.Create();
+
+    deferred.StartOutcome(
+        "(() => { globalThis.seen = []; m.addListener('note', value => seen.push(value)); return m.emitNoteAsync(a); })()"
+    );
+    await deferred.WaitForOutcomeAsync();
+
+    Assert.Equal(
+        "fulfilled:1:true:native:true:true",
+        deferred.ReadString(
+            "[__outcome.status, seen.length, seen[0].first === a, seen[0].second.label, " +
+            "Object.getPrototypeOf(seen[0].second) === m.Entry.prototype, m.takeOne(a) === a].join(':')"
+        )
+    );
+    // The emit neither released the payload instances nor disposed them.
+    Assert.Equal(0, Entry.ReleaseCount);
+  }
+
+  [Fact]
+  public async Task SharedObjectEventPayloadHoldsSharedObject()
+  {
+    using var deferred = DeferredFixture.Create();
+
+    deferred.StartOutcome(
+        "(() => { globalThis.seen = []; a.addListener('shared', value => seen.push(value)); return a.emitSharedAsync(b); })()"
+    );
+    await deferred.WaitForOutcomeAsync();
+
+    Assert.Equal(
+        "fulfilled:1:true:true:true",
+        deferred.ReadString(
+            "[__outcome.status, seen.length, seen[0].first === a, seen[0].second === b, m.takeOne(b) === b].join(':')"
+        )
+    );
+    Assert.Equal(0, Entry.ReleaseCount);
+  }
+
+  [Fact]
+  public async Task UnionEventPayloadWithRecordCaseHoldsSharedObject()
+  {
+    using var deferred = DeferredFixture.Create();
+
+    deferred.StartOutcome(
+        "(() => { globalThis.seen = []; m.addListener('choice', value => seen.push(value)); return m.emitChoiceAsync(a); })()"
+    );
+    await deferred.WaitForOutcomeAsync();
+
+    Assert.Equal(
+        "fulfilled:1:true:true",
+        deferred.ReadString(
+            "[__outcome.status, seen.length, seen[0].first === a, seen[0].second === null].join(':')"
+        )
+    );
+    Assert.Equal(0, Entry.ReleaseCount);
+  }
+
   private sealed class DeferredFixture : IDisposable
   {
     private DeferredFixture(HermesRuntimeFixture fixture, DotnetRuntimeContext context)

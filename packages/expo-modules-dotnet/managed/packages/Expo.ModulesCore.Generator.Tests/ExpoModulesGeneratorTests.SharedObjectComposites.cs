@@ -240,20 +240,162 @@ public sealed partial class ExpoModulesGeneratorTests
     return factories;
   }
 
-  [Fact]
-  public void EventPayloadWithConcreteSharedObjectStaysRejected()
+  // A module with an event, and the shared object Entry with the same event, so one payload can
+  // be checked on both owners.
+  private static string CompositeEventSource(string declarations, string payload, bool onSharedObject)
   {
-    var result = GeneratorTestHost.Run(CompositeSharedObjectSource(
-        string.Empty,
+    var moduleEvents = onSharedObject ? string.Empty : $"[Event] public partial Func<{payload}, Task> OnPayload {{ get; }}";
+    var entryEvents = onSharedObject ? $"[Event] public partial Func<{payload}, Task> OnPayload {{ get; }}" : string.Empty;
+    return
+        $$"""
+        #nullable enable
+        using System;
+        using System.Collections.Generic;
+        using System.Threading.Tasks;
+        using Expo.JSI;
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoSharedObject("Entry")]
+        public sealed partial class Entry : SharedObject
+        {
+          [JS] public Entry() { }
+
+          {{entryEvents}}
+        }
+
+        public sealed record EntryPair(Entry First, Entry? Second);
+
+        {{declarations}}
+
+        [ExpoModule("Composite", Classes = new[] { typeof(Entry) })]
+        public sealed partial class CompositeModule
+        {
+          {{moduleEvents}}
+        }
+        """;
+  }
+
+  private const string EventPayloadUnion =
+      """
+      [Union]
+      public abstract record Choice
+      {
+        public sealed record Held(EntryPair Value) : Choice;
+        public sealed record Listed(IReadOnlyList<Entry> Value) : Choice;
+        public sealed record Text(string Value) : Choice;
+      }
+      """;
+
+  [Theory]
+  [InlineData("Entry", false)]
+  [InlineData("Entry", true)]
+  [InlineData("Entry?", false)]
+  [InlineData("Entry?", true)]
+  [InlineData("EntryPair", false)]
+  [InlineData("EntryPair", true)]
+  [InlineData("IReadOnlyList<Entry>", false)]
+  [InlineData("IReadOnlyList<Entry>", true)]
+  [InlineData("Dictionary<string, Entry?>", false)]
+  [InlineData("Dictionary<string, Entry?>", true)]
+  public void EventPayloadWithConcreteSharedObjectIsAccepted(string payload, bool onSharedObject)
+  {
+    var result = GeneratorTestHost.Run(CompositeEventSource(string.Empty, payload, onSharedObject));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var source = GeneratedText(result);
+    Assert.Contains("SharedObjectCodec<global::Expo.TestModules.Entry>", source, StringComparison.Ordinal);
+    Assert.DoesNotContain("Release(", source, StringComparison.Ordinal);
+  }
+
+  [Theory]
+  [InlineData("IReadOnlyList<SharedObject>", false, "EXPOJSI019")]
+  [InlineData("IReadOnlyList<SharedObject>", true, "EXPOJSI027")]
+  [InlineData("IReadOnlyList<SharedRef<int>>", false, "EXPOJSI019")]
+  [InlineData("IReadOnlyList<SharedRef<int>>", true, "EXPOJSI027")]
+  [InlineData("BaseHolder", false, "EXPOJSI019")]
+  [InlineData("BaseHolder", true, "EXPOJSI027")]
+  [InlineData("IReadOnlyList<PathBase>", false, "EXPOJSI019")]
+  [InlineData("IReadOnlyList<PathBase>", true, "EXPOJSI027")]
+  [InlineData("IReadOnlyList<Unsealed>", false, "EXPOJSI019")]
+  [InlineData("IReadOnlyList<Unsealed>", true, "EXPOJSI027")]
+  [InlineData("Unsealed", false, "EXPOJSI019")]
+  [InlineData("Unsealed", true, "EXPOJSI027")]
+  [InlineData("SharedObject", false, "EXPOJSI019")]
+  [InlineData("SharedObject", true, "EXPOJSI027")]
+  public void EventPayloadWithSharedObjectBaseReportsEventDiagnostic(string payload, bool onSharedObject, string expectedId)
+  {
+    var result = GeneratorTestHost.Run(CompositeEventSource(
         """
-        [Event] public partial Func<Entry, Task> Direct { get; }
-        [Event] public partial Func<IReadOnlyList<Entry>, Task> InList { get; }
-        [Event] public partial Func<EntryPair, Task> InRecord { get; }
-        """
+        public abstract class PathBase : SharedObject { }
+        public sealed record BaseHolder(PathBase Base);
+        [ExpoSharedObject] public partial class Unsealed : SharedObject { }
+        """,
+        payload,
+        onSharedObject
     ));
 
-    Assert.Equal(3, result.Diagnostics.Count(item => item.Id == "EXPOJSI019"));
-    Assert.DoesNotContain(result.Diagnostics, item => item.Id == "EXPOJSI023");
+    Assert.Contains(expectedId, GeneratorDiagnosticIds(result));
+    Assert.Equal(1, GeneratorDiagnosticIds(result).Count(id => id == expectedId));
+    Assert.DoesNotContain(
+        result.Diagnostics,
+        item => item.Id == "EXPOJSI023" && item.GetMessage().Contains("OnPayload", StringComparison.Ordinal)
+    );
+    Assert.DoesNotContain("\"payload\"", GeneratedText(result), StringComparison.Ordinal);
+  }
+
+  [Theory]
+  [InlineData(false, "EXPOJSI019")]
+  [InlineData(true, "EXPOJSI027")]
+  public void EventPayloadWithCallbackStaysRejected(bool onSharedObject, string expectedId)
+  {
+    var result = GeneratorTestHost.Run(CompositeEventSource(
+        "public sealed record WithCallback(JavaScriptCallback<int> Callback, Entry Entry);",
+        "WithCallback",
+        onSharedObject
+    ));
+
+    Assert.Equal(new[] { expectedId }, GeneratorDiagnosticIds(result));
+  }
+
+  [Theory]
+  [InlineData(false)]
+  [InlineData(true)]
+  public void EventPayloadUnionHoldingConcreteSharedObjectIsAccepted(bool onSharedObject)
+  {
+    var result = GeneratorTestHost.Run(CompositeEventSource(EventPayloadUnion, "Choice", onSharedObject));
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    Assert.Contains("SharedObjectCodec<global::Expo.TestModules.Entry>", GeneratedText(result), StringComparison.Ordinal);
+  }
+
+  [Theory]
+  [InlineData(false)]
+  [InlineData(true)]
+  public void EventPayloadUnionHoldingSharedObjectBaseReportsEventDiagnostic(bool onSharedObject)
+  {
+    var result = GeneratorTestHost.Run(CompositeEventSource(
+        """
+        public abstract class PathBase : SharedObject { }
+        public sealed record BaseHolder(PathBase Base);
+        [Union]
+        public abstract record Choice
+        {
+          public sealed record Held(BaseHolder Value) : Choice;
+          public sealed record Text(string Value) : Choice;
+        }
+        """,
+        "Choice",
+        onSharedObject
+    ));
+
+    // The union declaration is invalid because its record case holds a base, so it reports
+    // EXPOJSI030 on its own. The event then reports its payload diagnostic, and never EXPOJSI023.
+    Assert.Equal(new[] { "EXPOJSI030", onSharedObject ? "EXPOJSI027" : "EXPOJSI019" }, GeneratorDiagnosticIds(result));
+    Assert.DoesNotContain("\"payload\"", GeneratedText(result), StringComparison.Ordinal);
   }
 
   [Fact]
