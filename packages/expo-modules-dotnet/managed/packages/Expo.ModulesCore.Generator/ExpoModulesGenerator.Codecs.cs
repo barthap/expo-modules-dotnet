@@ -452,7 +452,7 @@ public sealed partial class ExpoModulesGenerator
           .FirstOrDefault(item => item.Name == parameter.Name);
       var fieldCodec = GetCodecAt(parameterLocation, parameter.Type, diagnostics, codecs);
       // Composition rule: generated record codecs call field codecs directly with Decode and
-      // Encode. A field needs both, and a context-bearing codec has no runtime context there.
+      // Encode. A field needs both, and a codec that needs a runtime context stays out of records.
       if (property is null ||
           fieldCodec is not
           {
@@ -580,10 +580,7 @@ public sealed partial class ExpoModulesGenerator
       _ => "Decode",
     };
 
-    var contextArgument = codec.ContextRequirement == ExpoContextRequirement.DotnetRuntimeContext
-        ? ", GeneratedFunction.CurrentRuntimeContext"
-        : string.Empty;
-    return $"{codec.Expression}.{methodName}(arguments.GetValue({index}), {runtimeParameterName}{contextArgument})";
+    return $"{codec.Expression}.{methodName}(arguments.GetValue({index}), {runtimeParameterName}, __expoRuntimeContext)";
   }
 
   private static bool TryGetTaskResultType(

@@ -64,7 +64,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:E66E82B4364FF0130CE2E9756D49FED1CF2E10DAAB478BF344895D16787C54BF",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:FEAFC66BB3DA7115BEC1CA6A5840AA498917469348B59B2E17AECA7374394607",
           "global__Expo_TestModules_ContractModule_DFCB3B03.Events.g.cs:5EDF4B279587289BFFB6A548BD0C43AF76CA8EF3440A2DB17C6C973139943F79",
         },
         result.GetOutputContract()
@@ -100,7 +100,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:CF15344B9013DB57C516A0C10025EA4D853FC4FD44123B699BF41B4AA854E785",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:7F1A6B1338D596556BE8134C3CFF28D1AEA5B53B30323FAD155C7643C3D00222",
         },
         result.GetOutputContract()
     );
@@ -203,7 +203,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:029BC6671874204484EF016FC3ECE1731B9CD7AF29EE8E02E1EAA49B8039E85F",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:2785DC4B5C08F300CA69E54C41100AE2CD990FB6DA8658B2B71D0AD5E5FEC934",
           "global__Expo_TestModules_PolicyLeafFreeModule_8D511E8D.Events.g.cs:EB0CCDFABDF861EE54188FA227D628F2A6534E012C2B43EAEF6AFB0C0CA9DE8A",
         },
         result.GetOutputContract()
@@ -258,7 +258,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:A8F56D6BD394B5252DC4272752560AA65BBEADC071C6332FC258149377F5B9F8",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:D11C62510C7DA44C11A823E3BC2021A5332A64ABCF8B3BEC4A173487DBCA1627",
         },
         result.GetOutputContract()
     );
@@ -316,7 +316,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:1D2F2F745A1AF761D26DA28669D46B0374EF5B9C0726876784D4307B9EF51DA8",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:5F9E8F25496491872AF6C564A86EF64621D17305767254E6383EBB65E89FDE59",
           "global__Expo_TestModules_PolicyEntry_7B42955D.SharedObjectEvents.g.cs:7350FE94400C181F149408B9E9810B59C0B87573FD669DAB1B5D5C808A9A2A92",
         },
         result.GetOutputContract()
@@ -355,7 +355,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:5D8C32CAAE2D1D88F5D490C21EA44394C058FFD818AF3318078D48372E4984C3",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:2D9269761804CF753749FE42D647B1D4CFABFE073E05CD4D4CC18B25CFD12DAB",
         },
         result.GetOutputContract()
     );
@@ -414,7 +414,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:9AA807FD8409F5491B9934AC49C5AC08067DFC834E60118FDFB4CF09A53A09A9",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:46954C1FAC8AD7D9A04DEDE4B787FCCF8B9A70ED5611148416921FFAE199DB3A",
         },
         result.GetOutputContract()
     );
@@ -455,7 +455,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:2E1AB916E578DEAD22DF80FC8AA98E236F3535F86DA91F0CB2789A4DB6B24B68",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:5496E6F38DB283AA2111BF0D34F6C08C2458D18B4E9E0FF9E2147697D7B91AD8",
         },
         result.GetOutputContract()
     );

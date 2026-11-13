@@ -272,7 +272,7 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.Contains("var __expoNumber = __expoKind == global::Expo.JSI.JavaScriptValueKind.Number ? value.AsDouble() : 0d;", codec, StringComparison.Ordinal);
     // int is not the last number case, so it takes only whole numbers that int holds.
     Assert.Contains("if (__expoKind == global::Expo.JSI.JavaScriptValueKind.Number && global::System.Double.IsInteger(__expoNumber) && __expoNumber >= -2147483648d && __expoNumber <= 2147483647d)", codec, StringComparison.Ordinal);
-    Assert.Contains("__expoPayload0 = NumberCodec<int>.Decode(value, runtime);", codec, StringComparison.Ordinal);
+    Assert.Contains("__expoPayload0 = NumberCodec<int>.Decode(value, runtime, context);", codec, StringComparison.Ordinal);
     Assert.Contains("return new global::Expo.TestModules.Payload.Count(__expoPayload0);", codec, StringComparison.Ordinal);
     Assert.Contains("throw new global::Expo.ModulesCore.UnionCaseMismatchException(\"Payload\", new[] { \"int\", \"double\", \"ArrayBuffer\" }, __expoKind, __expoFailure);", codec, StringComparison.Ordinal);
     // Each attempt lets a release failure propagate before it moves to the next case.
@@ -282,7 +282,7 @@ public sealed partial class ExpoModulesGeneratorTests
     // A buffer payload whose case construction throws is released before the rethrow.
     Assert.Contains("CodecRelease.Release<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>(__expoPayload2, ref __expoReleaseFailures);", codec, StringComparison.Ordinal);
     // Encode ends with the not-a-case throw; Release releases only the case it holds.
-    Assert.True(codec.IndexOf("global::Expo.TestModules.Payload.Buffer __expoCase2 => ArrayBufferCodec.Encode(__expoCase2.Value, runtime),", StringComparison.Ordinal) <
+    Assert.True(codec.IndexOf("global::Expo.TestModules.Payload.Buffer __expoCase2 => ArrayBufferCodec.Encode(__expoCase2.Value, runtime, context),", StringComparison.Ordinal) <
         codec.IndexOf("_ => throw global::Expo.ModulesCore.Codecs.UnionCodecErrors.NotACase(value, \"Expo.TestModules.Payload\"),", StringComparison.Ordinal));
     Assert.Contains("CodecRelease.Release<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>(__expoCase2.Value, ref __expoReleaseFailures);", codec, StringComparison.Ordinal);
     Assert.DoesNotContain("__expoCase0.Value, ref", codec, StringComparison.Ordinal);
@@ -311,10 +311,10 @@ public sealed partial class ExpoModulesGeneratorTests
   // A union with no leaf-bearing case keeps the leaf-free glue in every parameter position, not
   // only as the first synchronous parameter.
   [Theory]
-  [InlineData("[JS] public Task<int> M(Choice value) => Task.FromResult(0);", "var __expoArg0 = ChoiceUnionCodec_", ".Decode(arguments.GetValue(0), jsRuntime)")]
-  [InlineData("[JS] public int M(Choice? value) => 0;", "NullableReferenceCodec<global::Expo.TestModules.Choice, ChoiceUnionCodec_", ".Decode(arguments.GetValue(0), runtime)")]
-  [InlineData("[JS] public int M(IReadOnlyList<Choice> values) => 0;", "JavaScriptArrayCodec<global::Expo.TestModules.Choice, ChoiceUnionCodec_", ".DecodeToArray(arguments.GetValue(0), runtime)")]
-  [InlineData("[JS] public int M(string name, Choice value) => 0;", "var __expoArg1 = ChoiceUnionCodec_", ".Decode(arguments.GetValue(1), runtime)")]
+  [InlineData("[JS] public Task<int> M(Choice value) => Task.FromResult(0);", "var __expoArg0 = ChoiceUnionCodec_", ".Decode(arguments.GetValue(0), jsRuntime, __expoRuntimeContext)")]
+  [InlineData("[JS] public int M(Choice? value) => 0;", "NullableReferenceCodec<global::Expo.TestModules.Choice, ChoiceUnionCodec_", ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext)")]
+  [InlineData("[JS] public int M(IReadOnlyList<Choice> values) => 0;", "JavaScriptArrayCodec<global::Expo.TestModules.Choice, ChoiceUnionCodec_", ".DecodeToArray(arguments.GetValue(0), runtime, __expoRuntimeContext)")]
+  [InlineData("[JS] public int M(string name, Choice value) => 0;", "var __expoArg1 = ChoiceUnionCodec_", ".Decode(arguments.GetValue(1), runtime, __expoRuntimeContext)")]
   public void GeneratorKeepsLeafFreeUnionParametersWithoutRelease(string member, string expectedFragment, string expectedDecode)
   {
     var result = GeneratorTestHost.Run(ModuleSource(LeafFreeChoice, member));
@@ -447,20 +447,20 @@ public sealed partial class ExpoModulesGeneratorTests
   // a leaf-bearing union follows the leaf release rules of that position.
   [Theory]
   [InlineData(false, "[JS] public string M(Content content) => \"\";", "m", "__expoArg0 = ContentUnionCodec_")]
-  [InlineData(false, "[JS] public Task<string> M(Content content) => Task.FromResult(\"\");", "m", ".Decode(arguments.GetValue(0), jsRuntime);")]
+  [InlineData(false, "[JS] public Task<string> M(Content content) => Task.FromResult(\"\");", "m", ".Decode(arguments.GetValue(0), jsRuntime, __expoRuntimeContext);")]
   [InlineData(false, "[JS] public string M(Content? content) => \"\";", "m", "NullableReferenceCodec<" + ContentType + ", ContentUnionCodec_")]
   [InlineData(false, "[JS] public string M(Content? content = null) => \"\";", "m", "Undefined ? null : NullableReferenceCodec<" + ContentType + ", ContentUnionCodec_")]
   [InlineData(false, "[JS] public int M(IReadOnlyList<Content> parts) => 0;", "m", "JavaScriptArrayCodec<" + ContentType + ", ContentUnionCodec_")]
   [InlineData(false, "[JS] public int M(IReadOnlyDictionary<string, Content> parts) => 0;", "m", "JavaScriptDictionaryCodec<" + ContentType + ", ContentUnionCodec_")]
   [InlineData(false, "[JS] public Content M() => null!;", "m", "CodecRelease.Release<" + ContentType + ", ContentUnionCodec_")]
-  [InlineData(false, "[JS] public Task<Content> M() => Task.FromResult<Content>(null!);", "m", "StrongBox<" + ContentType + ">(__expoResult)")]
+  [InlineData(false, "[JS] public Task<Content> M() => Task.FromResult<Content>(null!);", "m", "StrongBox<(" + ContentType + ", global::Expo.ModulesCore.DotnetRuntimeContext)>((__expoResult, __expoRuntimeContext))")]
   [InlineData(false, "[JS] public Content? M() => null;", "m", "NullableReferenceCodec<" + ContentType + ", ContentUnionCodec_")]
   [InlineData(false, "[JS] public Content Value { get; set; } = null!;", "value", "__expoValue = ContentUnionCodec_")]
   [InlineData(false, "[JS] public Content? Maybe { get; set; }", "maybe", "NullableReferenceCodec<" + ContentType + ", ContentUnionCodec_")]
   [InlineData(false, "[JS] public Content Current => null!;", "current", "CodecRelease.Release<" + ContentType + ", ContentUnionCodec_")]
   [InlineData(false, "[JS] public IReadOnlyList<Content> M() => Array.Empty<Content>();", "m", "CodecRelease.Release<global::System.Collections.Generic.IReadOnlyList<" + ContentType + ">, JavaScriptArrayCodec<" + ContentType + ", ContentUnionCodec_")]
   [InlineData(false, "[JS] public Dictionary<string, Content> M() => new();", "m", "JavaScriptDictionaryCodec<" + ContentType + ", ContentUnionCodec_")]
-  [InlineData(false, "[JS] public int M(Holder holder) => 0;", "m", ".Decode(contentValue, runtime)")]
+  [InlineData(false, "[JS] public int M(Holder holder) => 0;", "m", ".Decode(contentValue, runtime, context)")]
   [InlineData(false, "[JS] public Holder M() => null!;", "m", "CodecRelease.Release<global::Expo.TestModules.Holder, HolderCodec_")]
   [InlineData(false, "[JS] public int M(Shelf shelf) => 0;", "m", "(value.Parts, ref __expoReleaseFailures);")]
   [InlineData(false, "[JS] public int M(JavaScriptCallback<ValueTuple<Content>, int> callback) => 0;", "m", "ValueTupleCodec<" + ContentType + ", ContentUnionCodec_")]
@@ -574,7 +574,7 @@ public sealed partial class ExpoModulesGeneratorTests
     var text = GeneratedText(result);
     Assert.Contains("private readonly struct ExternalRecordCodec_", text, StringComparison.Ordinal);
     var codec = UnionCodecText(text, "Sth");
-    Assert.Contains("NumberEnumCodec<global::External.ExternalLevel>.Decode(value, runtime)", codec, StringComparison.Ordinal);
+    Assert.Contains("NumberEnumCodec<global::External.ExternalLevel>.Decode(value, runtime, context)", codec, StringComparison.Ordinal);
     Assert.Contains("JavaScriptArrayCodec<global::External.ExternalRecord, ExternalRecordCodec_", codec, StringComparison.Ordinal);
     Assert.Contains("new[] { \"ExternalRecord\", \"ExternalLevel\", \"IReadOnlyList<ExternalRecord>\", \"string\" }", codec, StringComparison.Ordinal);
   }
@@ -599,8 +599,8 @@ public sealed partial class ExpoModulesGeneratorTests
   // A Uint8Array payload is a leaf with kind Object, so it pairs with a string or an ArrayBuffer
   // payload, takes an object that is a Uint8Array, and releases through its own codec.
   [Theory]
-  [InlineData("public sealed record Text(string Value) : Choice; public sealed record View(Uint8Array Value) : Choice;", "Text", "string", "Uint8ArrayCodec.Decode(value, runtime)")]
-  [InlineData("public sealed record Buffer(ArrayBuffer Value) : Choice; public sealed record View(Uint8Array Value) : Choice;", "Buffer", "ArrayBuffer", "Uint8ArrayCodec.Decode(value, runtime)")]
+  [InlineData("public sealed record Text(string Value) : Choice; public sealed record View(Uint8Array Value) : Choice;", "Text", "string", "Uint8ArrayCodec.Decode(value, runtime, context)")]
+  [InlineData("public sealed record Buffer(ArrayBuffer Value) : Choice; public sealed record View(Uint8Array Value) : Choice;", "Buffer", "ArrayBuffer", "Uint8ArrayCodec.Decode(value, runtime, context)")]
   public void GeneratorAcceptsUint8ArrayUnionPayloads(string cases, string firstCase, string firstPayload, string expectedFragment)
   {
     var result = GeneratorTestHost.Run(ModuleSource("[Union] public abstract record Choice { " + cases + " }", "[JS] public int M(Choice value) => 0;"));

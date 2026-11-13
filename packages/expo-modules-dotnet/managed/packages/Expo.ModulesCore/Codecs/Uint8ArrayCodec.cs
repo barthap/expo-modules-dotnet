@@ -4,7 +4,7 @@ namespace Expo.ModulesCore.Codecs;
 
 public readonly struct Uint8ArrayCodec : IJavaScriptCodec<Uint8Array>
 {
-  public static Uint8Array Decode(JavaScriptValueRef value, JavaScriptRuntime runtime)
+  public static Uint8Array Decode(JavaScriptValueRef value, JavaScriptRuntime runtime, DotnetRuntimeContext context)
   {
     if (!value.IsObject)
     {
@@ -26,7 +26,7 @@ public readonly struct Uint8ArrayCodec : IJavaScriptCodec<Uint8Array>
     var byteOffset = ReadIndex(obj.GetProperty("byteOffset"));
     var byteLength = ReadIndex(obj.GetProperty("byteLength"));
 
-    var buffer = ArrayBufferCodec.Decode(bufferRef, runtime);
+    var buffer = ArrayBufferCodec.Decode(bufferRef, runtime, context);
     try
     {
       return new Uint8Array(buffer, byteOffset, byteLength);
@@ -38,10 +38,13 @@ public readonly struct Uint8ArrayCodec : IJavaScriptCodec<Uint8Array>
     }
   }
 
-  public static Uint8Array Decode(JavaScriptValue value, JavaScriptRuntime runtime) =>
-      Decode(value.Ref, runtime);
+  public static Uint8Array Decode(JavaScriptValue value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
+      Decode(value.Ref, runtime, context);
 
-  public static JavaScriptValue Encode(Uint8Array value, JavaScriptRuntime runtime)
+  public static JavaScriptValue Encode(Uint8Array value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
+      EncodeView(value, runtime);
+
+  private static JavaScriptValue EncodeView(Uint8Array value, JavaScriptRuntime runtime)
   {
     ArgumentNullException.ThrowIfNull(value);
     using var bufferValue = value.Buffer.Encode(runtime);
@@ -59,7 +62,7 @@ public readonly struct Uint8ArrayCodec : IJavaScriptCodec<Uint8Array>
   public static JavaScriptValue EncodeCopy(ReadOnlySpan<byte> bytes, JavaScriptRuntime runtime)
   {
     using var view = Uint8Array.CopyFrom(bytes);
-    return Encode(view, runtime);
+    return EncodeView(view, runtime);
   }
 
   private static bool IsUint8ArrayPrototypeOf(JavaScriptValueRef value, JavaScriptRuntime runtime)

@@ -93,13 +93,15 @@ public sealed class GeneratedArrayModuleTests
         object context)
     {
       GeneratedFunction.RequireArgumentCount("Array.sum", arguments, 1);
+      var __expoRuntimeContext = GeneratedFunction.CurrentRuntimeContext;
 
       var module = (ArrayModule)context;
       var values = JavaScriptArrayCodec<double, DoubleCodec>.DecodeToArray(
           arguments.GetValue(0),
-          runtime
+          runtime,
+          __expoRuntimeContext
       );
-      return DoubleCodec.Encode(module.Sum(values), runtime);
+      return DoubleCodec.Encode(module.Sum(values), runtime, __expoRuntimeContext);
     }
 
     private static JavaScriptValue LabelsHostFunction(
@@ -109,9 +111,10 @@ public sealed class GeneratedArrayModuleTests
         object context)
     {
       GeneratedFunction.RequireArgumentCount("Array.labels", arguments, 0);
+      var __expoRuntimeContext = GeneratedFunction.CurrentRuntimeContext;
 
       var module = (ArrayModule)context;
-      return JavaScriptArrayCodec<string, StringCodec>.Encode(module.Labels(), runtime);
+      return JavaScriptArrayCodec<string, StringCodec>.Encode(module.Labels(), runtime, __expoRuntimeContext);
     }
   }
 }
@@ -173,8 +176,8 @@ public sealed class JavaScriptCollectionCodecTests
     {
       using var input = fixture.Evaluate("['a', 'b', 'c']", "array-owned-decode.js");
 
-      var decoded = JavaScriptArrayCodec<string, StringCodec>.Decode(input, runtime);
-      var array = JavaScriptArrayCodec<string, StringCodec>.DecodeToArray(input, runtime);
+      var decoded = JavaScriptArrayCodec<string, StringCodec>.Decode(input, runtime, CodecTestContext.Unused);
+      var array = JavaScriptArrayCodec<string, StringCodec>.DecodeToArray(input, runtime, CodecTestContext.Unused);
 
       Assert.Equal(new[] { "a", "b", "c" }, decoded);
       Assert.Equal(new[] { "a", "b", "c" }, array);
@@ -194,7 +197,7 @@ public sealed class JavaScriptCollectionCodecTests
       using var input = fixture.Evaluate("[1, 'x']", "array-owned-decode-throws.js");
 
       Assert.Throws<InvalidOperationException>(() =>
-          JavaScriptArrayCodec<int, NumberCodec<int>>.Decode(input, runtime));
+          JavaScriptArrayCodec<int, NumberCodec<int>>.Decode(input, runtime, CodecTestContext.Unused));
 
       using var inputArray = input.AsArray();
       Assert.Equal(2u, inputArray.Length);
@@ -205,9 +208,9 @@ public sealed class JavaScriptCollectionCodecTests
   private static (T ViaRef, T ViaOwned) RoundTrip<T, TCodec>(T value, JavaScriptRuntime runtime)
       where TCodec : IJavaScriptCodec<T>
   {
-    using var encoded = TCodec.Encode(value, runtime);
-    var viaRef = TCodec.Decode(encoded.Ref, runtime);
-    var viaOwned = TCodec.Decode(encoded, runtime);
+    using var encoded = TCodec.Encode(value, runtime, CodecTestContext.Unused);
+    var viaRef = TCodec.Decode(encoded.Ref, runtime, CodecTestContext.Unused);
+    var viaOwned = TCodec.Decode(encoded, runtime, CodecTestContext.Unused);
     return (viaRef, viaOwned);
   }
 

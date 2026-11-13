@@ -73,12 +73,10 @@ internal enum ExpoModuleConstructorStrategy
 }
 
 // ReturnCodec and AsyncResultCodec are null when the function has no codec (void, async void, the
-// other position, or a span return). A codec whose ContextRequirement is DotnetRuntimeContext
-// marks a direct encode location that must receive the current DotnetRuntimeContext explicitly.
-// For an async result, the generated host callback must capture
-// GeneratedFunction.CurrentRuntimeContext while the host-function frame is still valid and pass
-// that captured context into Promise settlement; settlement code must never consult the
-// thread-static accessor after the frame exits.
+// other position, or a span return). Every codec call receives the DotnetRuntimeContext. For an
+// async result, the generated host callback reads GeneratedFunction.CurrentRuntimeContext while the
+// host-function frame is still valid and carries it into Promise settlement in the factory state;
+// settlement code must never consult the thread-static accessor after the frame exits.
 internal sealed record ExpoFunctionModel(
     string MethodName,
     string JavaScriptName,
@@ -94,9 +92,8 @@ internal sealed record ExpoFunctionModel(
     ExpoReturnPassingKind ReturnPassingKind = ExpoReturnPassingKind.Codec,
     ExpoReturnPassingKind AsyncResultPassingKind = ExpoReturnPassingKind.Codec);
 
-// A Codec with a DotnetRuntimeContext requirement covers both direct decode/encode locations of
-// the property: the generated getter encode and the generated setter decode receive the current
-// DotnetRuntimeContext explicitly.
+// The generated getter encode and the generated setter decode each read the current
+// DotnetRuntimeContext once and pass it to the codec.
 internal sealed record ExpoPropertyModel(
     string PropertyName,
     string JavaScriptName,

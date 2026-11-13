@@ -551,12 +551,14 @@ public sealed class GeneratedCodecExpansionModuleTests
         object context)
     {
       GeneratedFunction.RequireArgumentCount("CodecExpansion.total", arguments, 1);
+      var __expoRuntimeContext = GeneratedFunction.CurrentRuntimeContext;
       var module = (CodecExpansionModule)context;
       var values = JavaScriptDictionaryCodec<double, DoubleCodec>.DecodeToDictionary(
           arguments.GetValue(0),
-          runtime
+          runtime,
+          __expoRuntimeContext
       );
-      return DoubleCodec.Encode(module.Total(values), runtime);
+      return DoubleCodec.Encode(module.Total(values), runtime, __expoRuntimeContext);
     }
 
     private static JavaScriptValue LabelsHostFunction(
@@ -566,8 +568,9 @@ public sealed class GeneratedCodecExpansionModuleTests
         object context)
     {
       GeneratedFunction.RequireArgumentCount("CodecExpansion.labels", arguments, 0);
+      var __expoRuntimeContext = GeneratedFunction.CurrentRuntimeContext;
       var module = (CodecExpansionModule)context;
-      return JavaScriptDictionaryCodec<string, StringCodec>.Encode(module.Labels(), runtime);
+      return JavaScriptDictionaryCodec<string, StringCodec>.Encode(module.Labels(), runtime, __expoRuntimeContext);
     }
   }
 }

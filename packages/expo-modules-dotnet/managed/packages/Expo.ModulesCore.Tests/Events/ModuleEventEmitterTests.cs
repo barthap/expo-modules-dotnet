@@ -77,7 +77,7 @@ public sealed class ModuleEventEmitterTests
           "Uint8Array.from([7, 8, 9]).buffer",
           "event-array-buffer-payload.js"
       );
-      return ArrayBufferCodec.Decode(value.Ref, runtime);
+      return ArrayBufferCodec.Decode(value.Ref, runtime, CodecTestContext.Unused);
     });
 
     fixture.ResetCounters();

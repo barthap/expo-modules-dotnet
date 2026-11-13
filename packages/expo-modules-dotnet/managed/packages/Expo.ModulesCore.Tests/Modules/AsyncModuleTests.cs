@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Expo.JSI;
@@ -347,14 +348,22 @@ public sealed class GeneratedAsyncModuleTests
       try
       {
         GeneratedFunction.RequireArgumentCount("Async.getValue", arguments, 0);
+        var __expoRuntimeContext = GeneratedFunction.CurrentRuntimeContext;
         var module = (AsyncModule)context;
         var __expoTask = module.GetValueAsync();
         using var __expoPromiseValue = jsRuntime.CreatePromise(
             async _ =>
             {
               var __expoResult = await __expoTask.ConfigureAwait(false);
-              return JavaScriptPromiseResult.Resolve(
-                  runtime => NumberCodec<int>.Encode(__expoResult, runtime)
+              return JavaScriptPromiseResult.ResolveOwned(
+                  new StrongBox<(int, DotnetRuntimeContext)>((__expoResult, __expoRuntimeContext)),
+                  static (runtime, __expoState) =>
+                  {
+                    return NumberCodec<int>.Encode(__expoState.Value.Item1, runtime, __expoState.Value.Item2);
+                  },
+                  static __expoState =>
+                  {
+                  }
               );
             }
         );
@@ -375,15 +384,23 @@ public sealed class GeneratedAsyncModuleTests
       try
       {
         GeneratedFunction.RequireArgumentCount("Async.requiresInt", arguments, 1);
+        var __expoRuntimeContext = GeneratedFunction.CurrentRuntimeContext;
         var module = (AsyncModule)context;
-        var __expoArg0 = NumberCodec<int>.Decode(arguments.GetValue(0), jsRuntime);
+        var __expoArg0 = NumberCodec<int>.Decode(arguments.GetValue(0), jsRuntime, __expoRuntimeContext);
         var __expoTask = module.RequiresIntAsync(__expoArg0);
         using var __expoPromiseValue = jsRuntime.CreatePromise(
             async _ =>
             {
               var __expoResult = await __expoTask.ConfigureAwait(false);
-              return JavaScriptPromiseResult.Resolve(
-                  runtime => NumberCodec<int>.Encode(__expoResult, runtime)
+              return JavaScriptPromiseResult.ResolveOwned(
+                  new StrongBox<(int, DotnetRuntimeContext)>((__expoResult, __expoRuntimeContext)),
+                  static (runtime, __expoState) =>
+                  {
+                    return NumberCodec<int>.Encode(__expoState.Value.Item1, runtime, __expoState.Value.Item2);
+                  },
+                  static __expoState =>
+                  {
+                  }
               );
             }
         );

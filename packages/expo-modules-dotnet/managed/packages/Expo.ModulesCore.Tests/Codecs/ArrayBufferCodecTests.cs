@@ -17,9 +17,9 @@ public sealed class ArrayBufferCodecTests
 
     Assert.Equal(new byte[] { 1, 2, 3 }, buffer.ToArray());
 
-    using var value = fixture.Runtime.Execute(runtime => ByteArrayCodec.Encode(source, runtime));
+    using var value = fixture.Runtime.Execute(runtime => ByteArrayCodec.Encode(source, runtime, CodecTestContext.Unused));
     source[1] = 88;
-    var decoded = fixture.Runtime.Execute(runtime => ByteArrayCodec.Decode(value, runtime));
+    var decoded = fixture.Runtime.Execute(runtime => ByteArrayCodec.Decode(value, runtime, CodecTestContext.Unused));
     Assert.Equal(new byte[] { 99, 2, 3 }, decoded);
   }
 
@@ -30,8 +30,8 @@ public sealed class ArrayBufferCodecTests
     fixture.Runtime.Execute(runtime =>
     {
       using var source = fixture.Evaluate("new Uint8Array([1, 2, 3]).buffer", "memory-codec-source.js");
-      var mutable = MemoryByteCodec.Decode(source, runtime);
-      var readOnly = ReadOnlyMemoryByteCodec.Decode(source, runtime);
+      var mutable = MemoryByteCodec.Decode(source, runtime, CodecTestContext.Unused);
+      var readOnly = ReadOnlyMemoryByteCodec.Decode(source, runtime, CodecTestContext.Unused);
       using var global = runtime.Global();
       global.SetProperty("memoryCodecSource", source);
       using var mutation = fixture.Evaluate("new Uint8Array(memoryCodecSource)[0] = 99", "memory-codec-mutation.js");
@@ -41,17 +41,17 @@ public sealed class ArrayBufferCodecTests
 
       var mutableSource = new byte[] { 4, 5, 6, 7 };
       var readOnlySource = new byte[] { 8, 9, 10, 11 };
-      using var encodedMutable = MemoryByteCodec.Encode(mutableSource.AsMemory(1, 2), runtime);
-      using var encodedReadOnly = ReadOnlyMemoryByteCodec.Encode(readOnlySource.AsMemory(1, 2), runtime);
-      using var encodedDefault = MemoryByteCodec.Encode(default, runtime);
-      using var encodedEmpty = ReadOnlyMemoryByteCodec.Encode(ReadOnlyMemory<byte>.Empty, runtime);
+      using var encodedMutable = MemoryByteCodec.Encode(mutableSource.AsMemory(1, 2), runtime, CodecTestContext.Unused);
+      using var encodedReadOnly = ReadOnlyMemoryByteCodec.Encode(readOnlySource.AsMemory(1, 2), runtime, CodecTestContext.Unused);
+      using var encodedDefault = MemoryByteCodec.Encode(default, runtime, CodecTestContext.Unused);
+      using var encodedEmpty = ReadOnlyMemoryByteCodec.Encode(ReadOnlyMemory<byte>.Empty, runtime, CodecTestContext.Unused);
       mutableSource[1] = 99;
       readOnlySource[1] = 99;
 
-      Assert.Equal(new byte[] { 5, 6 }, ByteArrayCodec.Decode(encodedMutable, runtime));
-      Assert.Equal(new byte[] { 9, 10 }, ByteArrayCodec.Decode(encodedReadOnly, runtime));
-      Assert.Empty(ByteArrayCodec.Decode(encodedDefault, runtime));
-      Assert.Empty(ByteArrayCodec.Decode(encodedEmpty, runtime));
+      Assert.Equal(new byte[] { 5, 6 }, ByteArrayCodec.Decode(encodedMutable, runtime, CodecTestContext.Unused));
+      Assert.Equal(new byte[] { 9, 10 }, ByteArrayCodec.Decode(encodedReadOnly, runtime, CodecTestContext.Unused));
+      Assert.Empty(ByteArrayCodec.Decode(encodedDefault, runtime, CodecTestContext.Unused));
+      Assert.Empty(ByteArrayCodec.Decode(encodedEmpty, runtime, CodecTestContext.Unused));
       return true;
     });
   }
@@ -86,8 +86,8 @@ public sealed class ArrayBufferCodecTests
     fixture.Runtime.Execute(runtime =>
     {
       using var value = fixture.Evaluate("new ArrayBuffer(2)", "codec-identity.js");
-      using var decoded = ArrayBufferCodec.Decode(value.Ref, runtime);
-      using var encoded = ArrayBufferCodec.Encode(decoded, runtime);
+      using var decoded = ArrayBufferCodec.Decode(value.Ref, runtime, CodecTestContext.Unused);
+      using var encoded = ArrayBufferCodec.Encode(decoded, runtime, CodecTestContext.Unused);
 
       Assert.True(runtime.StrictEquals(value, encoded));
       return true;
@@ -102,11 +102,11 @@ public sealed class ArrayBufferCodecTests
     using var decoded = first.Runtime.Execute(runtime =>
     {
       using var value = first.Evaluate("new ArrayBuffer(2)", "codec-cross-runtime.js");
-      return ArrayBufferCodec.Decode(value.Ref, runtime);
+      return ArrayBufferCodec.Decode(value.Ref, runtime, CodecTestContext.Unused);
     });
 
     Assert.Throws<InvalidOperationException>(() =>
-        second.Runtime.Execute(runtime => ArrayBufferCodec.Encode(decoded, runtime))
+        second.Runtime.Execute(runtime => ArrayBufferCodec.Encode(decoded, runtime, CodecTestContext.Unused))
     );
   }
 
@@ -144,7 +144,7 @@ public sealed class ArrayBufferCodecTests
     var buffer = fixture.Runtime.Execute(runtime =>
     {
       using var value = fixture.Evaluate("new ArrayBuffer(1)", "codec-concurrent-dispose.js");
-      return ArrayBufferCodec.Decode(value.Ref, runtime);
+      return ArrayBufferCodec.Decode(value.Ref, runtime, CodecTestContext.Unused);
     });
     fixture.ResetCounters();
 
@@ -162,8 +162,8 @@ public sealed class ArrayBufferCodecTests
     using var second = HermesRuntimeFixture.Create();
     using var buffer = ArrayBuffer.CopyFrom(new byte[] { 3 });
 
-    using var firstValue = first.Runtime.Execute(runtime => ArrayBufferCodec.Encode(buffer, runtime));
-    using var secondValue = second.Runtime.Execute(runtime => ArrayBufferCodec.Encode(buffer, runtime));
+    using var firstValue = first.Runtime.Execute(runtime => ArrayBufferCodec.Encode(buffer, runtime, CodecTestContext.Unused));
+    using var secondValue = second.Runtime.Execute(runtime => ArrayBufferCodec.Encode(buffer, runtime, CodecTestContext.Unused));
     buffer.WithBytes(bytes => bytes[0] = 9);
 
     var firstObserved = first.Runtime.Execute(runtime =>
@@ -204,6 +204,6 @@ public sealed class ArrayBufferCodecTests
 
   private static void EncodeOutsideRuntimeAccess(ArrayBuffer buffer, JavaScriptRuntime runtime)
   {
-    using var value = ArrayBufferCodec.Encode(buffer, runtime);
+    using var value = ArrayBufferCodec.Encode(buffer, runtime, CodecTestContext.Unused);
   }
 }

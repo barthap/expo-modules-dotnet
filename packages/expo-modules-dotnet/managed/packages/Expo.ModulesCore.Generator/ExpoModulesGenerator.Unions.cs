@@ -610,7 +610,8 @@ public sealed partial class ExpoModulesGenerator
     }
 
     // The record-field rule: the union codec calls the payload codec directly with Decode and
-    // Encode, and has no runtime context to pass. Usage-level [JSEnum] is not read.
+    // Encode, and a codec that needs a runtime context stays out of unions. Usage-level [JSEnum] is
+    // not read.
     var payloadDiagnostics = new List<ExpoDiagnosticModel>();
     var codec = IsUnionCaseType(payloadType)
         ? null

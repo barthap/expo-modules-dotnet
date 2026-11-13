@@ -940,7 +940,7 @@ public sealed class GeneratedSharedObjectTests
       );
       instance = SharedThingsModule.LastSeenCounter;
       using var value = fixture.Evaluate("Uint8Array.from([7, 8, 9]).buffer", sourceName);
-      payload = ArrayBufferCodec.Decode(value.Ref, runtime);
+      payload = ArrayBufferCodec.Decode(value.Ref, runtime, CodecTestContext.Unused);
       return true;
     });
     return (context!, instance!, payload!);
