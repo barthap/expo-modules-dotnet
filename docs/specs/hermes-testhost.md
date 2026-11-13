@@ -136,7 +136,7 @@ variable SHALL win over the runtime config, as in the runtime. When tiered
 compilation is not off, or the native testhost is not optimized, the benchmark
 SHALL print a warning with the table and SHALL exit with a code of its own,
 distinct from the noise code. Stdout SHALL carry only the header, the table,
-and the warning lines.
+the footer line `async rows use the testhost executor`, and the warning lines.
 
 Reasons to keep these as they are:
 

@@ -191,8 +191,10 @@ expo_jsi_testhost_runtime_t *runtimeFor(expo_jsi_runtime_handle runtime)
 
 // Counts a value handle that a table entry or the testhost hands back. Mirrors
 // ValueHandle::owned: an owned handle that holds undefined, null, a boolean, or
-// a number is not linked into the runtime's owned-value list. The borrowed `this` handle that the
-// bridge makes inside its host-function trampoline never reaches this table, so it is not counted.
+// a number is not linked into the runtime's owned-value list. Two borrowed handles that the bridge
+// makes inside its own trampolines never reach this table, so they are not counted: the `this`
+// handle of a host-function call, and the value handle that the host-object property setter
+// passes to managed code.
 // @ref docs/specs/hermes-testhost.md "Value Handle Creation Counters"
 void countCreatedValue(expo_jsi_testhost_runtime_t *testhost, const expo_jsi_value_result &result)
 {

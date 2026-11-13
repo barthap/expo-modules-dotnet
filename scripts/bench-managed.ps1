@@ -15,8 +15,8 @@ if ($Help) {
 Usage: scripts\bench-managed.ps1 [-Arch <x64|x86|arm64|arm64ec>] [-- <benchmark args...>]
 
 Builds everything in Release, then runs the call-path benchmark against the
-Hermes-backed native JSI testhost. Stdout carries only the header, the table, and
-the warning lines. Build output and progress go to the host.
+Hermes-backed native JSI testhost. Stdout carries only the header, the table, the footer
+line "async rows use the testhost executor", and the warning lines. Build output and progress go to the host.
 
 Benchmark arguments (after --):
   --filter <regex>   Run only the cases whose "<name> (<direction>)" matches

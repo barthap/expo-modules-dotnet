@@ -39,8 +39,8 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
 Usage: scripts/bench-managed.sh [-- <benchmark args...>]
 
 Builds everything in Release, then runs the call-path benchmark against the
-Hermes-backed native JSI testhost. Stdout carries only the header, the table, and
-the warning lines. Build output and progress go to stderr.
+Hermes-backed native JSI testhost. Stdout carries only the header, the table, the footer
+line "async rows use the testhost executor", and the warning lines. Build output and progress go to stderr.
 
 Benchmark arguments (after --):
   --filter <regex>   Run only the cases whose "<name> (<direction>)" matches

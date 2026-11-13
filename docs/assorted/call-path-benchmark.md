@@ -28,7 +28,8 @@ The testhost build directory is `build/jsi-testhost-bench` (Windows:
 `build\jsi-testhost-bench-windows`). It is not the directory the test runners
 use, and no script deletes it, so later runs build incrementally.
 
-Stdout carries only the header, the table, and the warning lines. Progress and
+Stdout carries only the header, the table, the footer line
+`async rows use the testhost executor`, and the warning lines. Progress and
 build output go to stderr in the sh script and to the host in the PowerShell
 script. Arguments after `--` go to the benchmark:
 
@@ -79,9 +80,9 @@ config, as it does in the runtime since .NET 9. The line then ends in
 With neither, the line says `runtime default` and does not say what that default
 is.
 
-CMake defines `NDEBUG` for Release, RelWithDebInfo, and MinSizeRel and not for
-an empty build type. This holds for clang, gcc, and MSVC, so the line tells a
-Release testhost from the test runners' testhost on every platform.
+The signal is `NDEBUG`, which the default Release flags of CMake define. It was
+observed on macOS with clang: the Release testhost of the scripts prints
+`optimized`.
 
 ## How To Read The Columns
 
