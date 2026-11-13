@@ -461,7 +461,7 @@ compile-time codecs (`Expo.ModulesCore.Codecs`):
   constructor parameter, including with `= null`. JavaScript `null` and
   `undefined` arrive as C# `null`, and a function is retained like a non-null
   callback. Its result and argument types can hold `JavaScriptValue`,
-  `ArrayBuffer`, and `Uint8Array` at any depth.
+  `ArrayBuffer`, `Uint8Array`, and shared objects at any depth.
 
 ### Enums
 
@@ -682,18 +682,57 @@ public sealed partial class ExampleMathModule : Module
 The owning module exposes each constructible class as a class-name property
 (`module.ExampleCounter`). Exposed class names must not collide with the
 module's functions, properties, observing hooks, or event-runtime members.
-Shared-object parameters, returns, and properties must use the exact sealed
-authored type directly at the boundary, optionally annotated as nullable
-(`ExampleCounter?`). JavaScript `null` and `undefined` arrive as C# `null`, and
+Shared-object parameters, returns, and properties use the exact sealed
+authored type, optionally annotated as nullable (`ExampleCounter?`). JavaScript `null` and `undefined` arrive as C# `null`, and
 C# `null` returns JavaScript `null`. A parameter may instead use an authored
 abstract base of several shared classes: a top-level, non-generic
 `abstract class` that derives from `SharedObject` and has no
 `[ExpoSharedObject]` attribute. Authored code receives the concrete instance
 JavaScript passed. A base parameter cannot be nullable, and returns and
 properties still use the exact sealed class. The `SharedObject`/`SharedRef<T>`
-bases, with or without `?`, and nested composition (records, lists,
-dictionaries, callbacks) are rejected. `[JS]` members must be declared on the
+bases, with or without `?`, are rejected. `[JS]` members must be declared on the
 sealed class; a `[JS]` member inherited from the abstract base is not exported.
+
+### Shared objects in lists, dictionaries, and records
+
+The exact sealed class, and its nullable form, also works inside composed
+types: as a list element, a dictionary value, or a record field.
+
+```csharp
+public record CounterPair(ExampleCounter Primary, ExampleCounter? Backup);
+
+[JS]
+public IReadOnlyList<ExampleCounter?> EchoCounters(IReadOnlyList<ExampleCounter?> counters) => counters;
+
+[JS]
+public Dictionary<string, ExampleCounter> EchoNamedCounters(Dictionary<string, ExampleCounter> counters) => counters;
+
+[JS]
+public CounterPair EchoPair(CounterPair pair) => pair;
+```
+
+Each element follows the same identity rule as a single value. JavaScript
+passes live instances, and your code receives the original managed objects, in
+order. A `null` element arrives as C# `null` only where the element type is
+nullable. Returning instances gives JavaScript objects that are strictly equal
+to the ones it already holds, and the first time an instance is returned, the
+generated code pairs it with its JavaScript class. The same instance twice in
+one list gives the same JavaScript object twice. The collection does not own
+its instances: the registry does, and releasing follows
+[Lifetime and release](#lifetime-and-release). A plain object, a released
+instance, or an instance of another shared class in an array fails the call
+before your code runs.
+
+The same types work as a callback argument or result, as an async result, and
+in a typed event payload.
+
+Three cases stay unsupported, and the generator reports each one:
+
+- `SharedObject`, `SharedRef<T>`, and an authored abstract base inside a
+  composed type. A base has no JavaScript class to encode to.
+- A shared object as the payload of a `[Union]` case. A record, list, or
+  dictionary payload that contains a shared object works.
+- A callback inside a list, dictionary, record, or nullable.
 
 ### Lifetime and release
 
@@ -1231,7 +1270,7 @@ subset works. `Not yet` means it is not built.
 | Asynchronous variants of synchronous functions | Supported | Not supported yet | Not yet |
 | Events | Supported | Supported | Differs: only the first character after the `On` prefix is lowercased, so `OnURLChange` sends `uRLChange` where Swift sends `urlChange` |
 | Inline and blocking events | Supported | Not supported yet | Not yet: no opt-in mode like Swift `@Event(.inline)` or `@Event(.blocking)`; typed events already dispatch inline when invoked with runtime access |
-| Shared objects | Supported | Supported | Supported |
+| Shared objects | Supported | Supported | Supported: also as list elements, dictionary values, record fields, callback arguments and results, async results, and event payloads; not as a `[Union]` case payload or as a base type inside a composed type |
 | Static members of shared objects | Supported | Not supported yet | Not yet |
 | Records | Supported | Supported | Partial: positional records only |
 | Enums | Supported | Supported | Supported: `[EnumMember(Value = ...)]` sets the string; `[JSEnum]` selects numbers |
