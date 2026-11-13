@@ -2482,6 +2482,7 @@ expo_jsi_value_result createHostFunction(
         expo_jsi_value_result result{};
         try {
           result = context->call(thisHandle.get(), &argumentsHandle);
+          // @ref docs/specs/runtime-and-abi.md "Host-Function Results Can Carry A Thrown Value"
           if (result.ok == 0 && result.value != nullptr) {
             // ABI 24: a failed host-function result with a value throws that value as is.
             if (result.error.release != nullptr) {

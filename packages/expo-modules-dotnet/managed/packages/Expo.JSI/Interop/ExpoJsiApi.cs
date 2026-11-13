@@ -353,6 +353,7 @@ internal readonly unsafe struct ExpoJsiApi
   /// </summary>
   internal void Validate()
   {
+    // @ref docs/specs/runtime-and-abi.md "ABI Version And Size Validation"
     if (this.Size < ExpoJsiApi.ExpectedSize)
     {
       throw new InvalidOperationException(

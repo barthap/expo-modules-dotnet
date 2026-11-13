@@ -12,7 +12,8 @@ work; deliver mode ships it.
 
 1. Do not modify source code, tests, specs, or build files. You may create
    or change Notion Roadmap rows and the "Considered and rejected" page.
-   Reconcile may also update the public `docs/roadmap.md` lists.
+   Reconcile may also update the public `docs/roadmap.md` lists and stale
+   lines in this skill.
 2. Run only read-only commands: searches, `git log`, typecheck or test in check
    mode when cheap. No installs, no formatters that write, no builds that write
    outside ignored directories.
@@ -135,6 +136,10 @@ Compare the rows with git branches, `gh pr list --state all`, and
   "Current state" and the planned-at SHA in `brief.md` and `push-brief` it.
   If the problem is gone, set `Rejected` with "fixed independently".
 - `Idea`: remove nothing, but report ideas that the specs show as shipped.
+
+Check this skill too: every script, path, and command that `SKILL.md` and
+its references name must exist, and no rule may contradict `AGENTS.md`. Fix a
+stale line in a docs-only commit on `main`.
 
 Then update the public `docs/roadmap.md`: move shipped features from Planned
 to Shipped and add newly planned large features. Commit it as a docs-only

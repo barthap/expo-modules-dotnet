@@ -232,6 +232,7 @@ public sealed class JavaScriptValue : IJavaScriptValueRepresentable, IDisposable
   /// </summary>
   public void Dispose()
   {
+    // @ref docs/specs/ownership-and-scoped-refs.md "Owned Wrappers Release Handles"
     var value = Interlocked.Exchange(ref handle, IntPtr.Zero);
     if (value != 0)
     {

@@ -22,3 +22,6 @@ AllowShortCaseLabelsOnASingleLine: false
 AllowShortFunctionsOnASingleLine: Empty
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
+
+# A spec reference must stay on one line: scripts/check-spec-refs.sh reads it by line.
+CommentPragmas: '^ (IWYU pragma:|@ref[ ])'

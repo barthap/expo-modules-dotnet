@@ -107,6 +107,7 @@ public static class GeneratedFunction
     return promiseValue.AsValue();
   }
 
+  // @ref docs/specs/modules-core-functions-and-properties.md "Module Failures Become JavaScript Errors"
   private const string CauseSeparator = "\n→ Caused by: ";
 
   /// <summary>

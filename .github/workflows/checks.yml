@@ -91,3 +91,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: scripts/check-guide-samples.sh
+
+  spec-refs:
+    name: spec-refs
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run CI')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s scripts/tests
+      - run: scripts/check-spec-refs.sh

@@ -842,9 +842,9 @@ length, and nothing is copied: your writes are visible to JavaScript after
 the call. `Uint8Array` and `Uint8Array?` work in every position too, and any
 `Uint8Array` instance, including a subclass such as a `Buffer` polyfill, is
 accepted. `byte[]` and `ArrayBuffer` parameters do not accept a
-`Uint8Array`; declare `Uint8Array` when JavaScript sends one. See the
-"Module-facing ArrayBuffer And Binary Codecs" requirement in
-`docs/specs/modules-core-boundary.md`.
+`Uint8Array`; declare `Uint8Array` when JavaScript sends one. See
+`### Requirement: Module-facing ArrayBuffer And Binary Codecs` in
+`docs/specs/modules-core-codecs.md`.
 
 `byte[]` decodes only from and encodes only to `ArrayBuffer`, and `Uint8Array` is
 the only typed array.
@@ -1442,9 +1442,9 @@ provide the native testhost.
 
 ## Further reading
 
-- `docs/specs/modules-core-boundary.md` — the normative spec behind
-  `## Modules` to `## Lifecycle and runtime context` above (attributes, codecs,
-  lifecycle, events, callbacks).
+- The `modules-core-*.md` specs listed in `docs/specs/README.md` — the
+  normative specs behind `## Modules` to `## Lifecycle and runtime context`
+  above (attributes, codecs, lifecycle, events, callbacks).
 - `docs/specs/dotnet-autolinking.md` — the normative spec behind
   `## Get started`, `## Platform matrix` and `## Troubleshooting` above.
 - `docs/specs/promises.md`, `docs/specs/runtime-scheduling.md` — the async/

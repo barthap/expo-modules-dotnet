@@ -10,8 +10,9 @@ owns the whole chain, from finding work to closing it:
 
 ```text
 discover/brief -> Notion row + brief -> brainstorm -> delta spec (Notion) ->
-Spec approved -> plan (local) -> implement -> verify -> merge into docs/specs
--> PR (In review) -> merged (Done)
+independent review (ABI, ownership, scheduling) -> Spec approved ->
+plan (local) -> implement -> verify -> merge into docs/specs ->
+PR (In review) -> merged (Done)
 ```
 
 The delivery half is the repo-local wrapper around the normal Superpowers flow.
@@ -136,7 +137,9 @@ For non-trivial behavior changes, run this sequence. `<ID>` is `EMC-<n>` and
 10. **Verify** with repo-owned commands.
 11. **Merge** accepted deltas into `docs/specs/` on the same branch. The PR
     diff of `docs/specs/` is how reviewers read the delta. Keep the reasons
-    too, see "Reasons In Living Specs" below.
+    too, see "Reasons In Living Specs" below. Put each requirement in the spec
+    for its capability, add `@ref` comments to the code, and run
+    `scripts/check-spec-refs.sh`; the rules are in `docs/specs/README.md`.
 12. **PR.** After the owner approves the push and the PR, run
     `set <ID> "Status=In review" "PR=<url>"`. Add deferred follow-ups as new rows
     (`Idea`, or `Backlog` with a brief) that depend on this one.
@@ -250,6 +253,9 @@ The system SHALL/SHOULD/MAY ...
 ```
 
 Use RFC 2119 keywords for requirement strength. Keep each requirement atomic.
+A requirement name is unique across all specs, because code and docs cite it by
+name. When you rename or move a requirement, update every `@ref` and citation;
+`scripts/check-spec-refs.sh` lists the broken ones.
 Ground requirements in code, tests, or accepted design. Do not invent
 aspirational `SHALL`s unless the artifact is explicitly a future-facing delta.
 
@@ -280,6 +286,7 @@ For docs/spec-only changes:
 
 ```sh
 git diff --check
+scripts/check-spec-refs.sh
 rg "self[-]contained planning package|planning[ ]artifacts,[ ]not[ ]implementation|expo[-]modules[-]windows[-]core|Phase[ ]1:[ ]clean[ ]separate[ ]research[ ]repo|create[ ]a[ ]clean[ ]local[ ]research[ ]repository" docs/README.md docs/specs docs/roadmap.md AGENTS.md .agents/skills
 ```
 
@@ -287,6 +294,7 @@ For code changes:
 
 ```sh
 scripts/test-managed.sh
+scripts/check-spec-refs.sh
 scripts/format.sh --check --all
 git diff --check
 ```

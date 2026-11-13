@@ -93,6 +93,10 @@ commit it.
   categories the value falls into and why .NET cannot answer it. Normative in
   `### Requirement: ABI Carries Only Host Knowledge` in
   `docs/specs/runtime-and-abi.md`.
+- Point surprising code to its requirement with a `@ref` comment, and keep
+  existing `@ref` comments true when the code or the requirement changes. The
+  form and the rules are in `docs/specs/README.md`, section "References To
+  Requirements".
 - Do not use runtime hot-path reflection for v2 generated bindings.
 - Treat HostFXR as a development loader; keep ABI and generated bindings
   NativeAOT-compatible.
@@ -126,6 +130,9 @@ Run the Hermes-backed managed test suite with `scripts/test-managed.sh`.
 For workspace/package changes, run `pnpm install --frozen-lockfile` or the
 repo-selected pnpm install command. For mobile JavaScript changes, run
 `pnpm --filter mobile-app typecheck`.
+
+Run `scripts/check-spec-refs.sh` after a change to `docs/specs/`, to a
+`@ref` comment, or to a requirement citation.
 
 Before finishing code changes, run `scripts/format.sh --check --all`. If it
 fails because files need formatting, run `scripts/format.sh` and then repeat

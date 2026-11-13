@@ -440,6 +440,7 @@ public sealed unsafe class JavaScriptRuntime
       Action<object>? disposeCallbackState
   ) => CreateHostFunction(name, parameterCount, callback, callbackState, disposeCallbackState, null);
 
+  // @ref docs/specs/host-functions-and-errors.md "Owned Callback-State Overload"
   /// <summary>
   /// Creates an owned JavaScript host function with managed callback-state disposal and an error factory.
   /// </summary>
@@ -778,6 +779,7 @@ public sealed unsafe class JavaScriptRuntime
     }
   }
 
+  // @ref docs/specs/host-functions-and-errors.md "Host-Function Error Factories Own No Pending Value"
   // The callback's handle scope was disposed when the try block unwound, so this scope sits
   // directly above the caller's frame and keeps scopes in stack order.
   private static ExpoJsiValueHandle CreateThrownValue(

@@ -39,6 +39,7 @@ public class CodedException : Exception
   // The iOS rule (CodedError.swift errorCodeFromString) on the CLR type name: drop the generic
   // arity suffix, drop one trailing Exception or Error, apply (.)([A-Z]) -> $1_$2 left to right
   // without overlapping pairs, uppercase invariantly, prefix ERR_. Runs only when Code is read.
+  // @ref docs/specs/modules-core-functions-and-properties.md "Coded Exceptions"
   internal static string DeriveCode(string typeName)
   {
     var name = typeName;

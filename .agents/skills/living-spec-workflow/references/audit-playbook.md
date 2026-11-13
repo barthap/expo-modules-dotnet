@@ -93,6 +93,8 @@ fix. No runnable demonstration strings.
 
 - Spec drift: a living spec that no longer matches code or tests. This is the
   highest-value docs finding, because specs are authoritative.
+- A `@ref` comment whose code no longer does what the requirement says. The
+  check script proves only that the requirement exists.
 - Wrong setup or authoring instructions.
 - Local absolute paths, usernames, or machine names in committed docs.
 

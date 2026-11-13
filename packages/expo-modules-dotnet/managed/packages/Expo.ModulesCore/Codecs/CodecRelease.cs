@@ -1,5 +1,6 @@
 namespace Expo.ModulesCore.Codecs;
 
+// @ref docs/specs/modules-core-codecs.md "Codecs Release Leaves Through One Protocol"
 /// <summary>Collects release failures so every leaf is attempted before one exception is thrown.</summary>
 /// <remarks>This helper is for codecs and generated bindings, not ordinary module author code.</remarks>
 public static class CodecRelease
