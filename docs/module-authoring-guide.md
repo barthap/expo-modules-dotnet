@@ -732,7 +732,8 @@ Three cases stay unsupported, and the generator reports each one:
   composed type. A base has no JavaScript class to encode to.
 - A shared object as the payload of a `[Union]` case. A record, list, or
   dictionary payload that contains a shared object works.
-- A callback inside a list, dictionary, record, or nullable.
+- A callback as a list element, dictionary value, or record field. A nullable
+  callback parameter is accepted.
 
 ### Lifetime and release
 
@@ -1270,7 +1271,7 @@ subset works. `Not yet` means it is not built.
 | Asynchronous variants of synchronous functions | Supported | Not supported yet | Not yet |
 | Events | Supported | Supported | Differs: only the first character after the `On` prefix is lowercased, so `OnURLChange` sends `uRLChange` where Swift sends `urlChange` |
 | Inline and blocking events | Supported | Not supported yet | Not yet: no opt-in mode like Swift `@Event(.inline)` or `@Event(.blocking)`; typed events already dispatch inline when invoked with runtime access |
-| Shared objects | Supported | Supported | Supported: also as list elements, dictionary values, record fields, callback arguments and results, async results, and event payloads; not as a `[Union]` case payload or as a base type inside a composed type |
+| Shared objects | Supported | Supported | Supported; see "Shared objects in lists, dictionaries, and records" for composed types |
 | Static members of shared objects | Supported | Not supported yet | Not yet |
 | Records | Supported | Supported | Partial: positional records only |
 | Enums | Supported | Supported | Supported: `[EnumMember(Value = ...)]` sets the string; `[JSEnum]` selects numbers |

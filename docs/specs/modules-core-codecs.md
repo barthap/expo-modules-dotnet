@@ -128,13 +128,14 @@ releases nothing. The span lease SHALL keep its own `using`.
 
 Async: the outer `catch` SHALL release leaf-bearing arguments until
 `CreatePromise` returns. After that, only the Promise lambda SHALL release
-them. With a leaf-free result, the lambda SHALL release them when the `Task`
-completes. The result SHALL travel to the factory in a `StrongBox` with the
-runtime context and the leaf-bearing arguments. The factory SHALL be a `static`
-lambda and SHALL read the context only from that state. The factory SHALL
-release the arguments after it encodes, and abandon SHALL release them without
-encoding. A fault or cancel
-SHALL release them in the lambda's `catch`.
+them. With a void result, the lambda SHALL release them when the `Task`
+completes. A non-void result SHALL travel to the factory in a `StrongBox` with
+the runtime context and the leaf-bearing arguments. The factory SHALL be a
+`static` lambda and SHALL read the context only from that state. The factory
+SHALL release the leaf-bearing result and arguments after it encodes. If the
+Promise is abandoned before the factory runs, the abandon callback SHALL
+release them instead, without encoding. A fault or cancel SHALL release them in
+the lambda's `catch`.
 
 A `Release` failure SHALL replace the original outcome. In a sync `finally` it
 replaces the result or the authored exception. In the async outer `catch` the
@@ -147,7 +148,7 @@ local declarations and helper type arguments.
 
 | Branch | Shape | ResourceOwnership |
 | --- | --- | --- |
-| Leaf-free types | as before | `Borrowed` |
+| Leaf-free types | `JavaScriptCodec` | `Borrowed` |
 | `JavaScriptValue`, `ArrayBuffer`, `Uint8Array` | `JavaScriptCodec` | `HoldsLeaves` |
 | List, dictionary, or nullable over a `HoldsLeaves` child | `JavaScriptCodec` | `HoldsLeaves` |
 | `[Union]` type with any `HoldsLeaves` payload | `JavaScriptCodec` | `HoldsLeaves` |
@@ -164,7 +165,7 @@ leaves, so a cache hit rebuilds the same descriptor.
 `ExpoCodecDescriptor` SHALL NOT carry a runtime-context requirement. Every
 codec call passes the context.
 
-#### Scenario: Leaf-free member text is unchanged
+#### Scenario: Leaf-free member has no release code
 - **GIVEN** the leaf-free output contract sources
 - **WHEN** the generator runs
 - **THEN** the output SHALL equal the pinned leaf-free hashes, and SHALL

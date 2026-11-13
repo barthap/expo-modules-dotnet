@@ -591,9 +591,10 @@ proceeds. It SHALL perform no later registry or weak-wrapper access.
 
 Shared-object event validation SHALL use `EXPOJSI026` for invalid placement or
 property shapes, `EXPOJSI027` for unsupported event payloads, and `EXPOJSI028`
-for duplicate effective names. `EXPOJSI027` covers a payload with a callback, a
-nullable `JavaScriptValue` at any depth, or a shared-object type that is not a
-valid concrete class. `[Event]` on a class that is neither an
+for duplicate effective names. `EXPOJSI027` covers payloads with no
+encode-capable event codec, a callback codec, a nullable annotation on a
+`JavaScriptValue` at any depth, or a shared-object type that is not a valid
+concrete class. `[Event]` on a class that is neither an
 `[ExpoModule]` nor a valid `[ExpoSharedObject]` SHALL report `EXPOJSI026`.
 Rejected reproducible partial properties SHALL receive inert matching
 implementations so the Expo diagnostic does not cause a secondary compiler

@@ -1440,6 +1440,24 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.Contains("? -0.0 :", source, StringComparison.Ordinal);
   }
 
+  // A record field named `context` must not collide with the codec's `context` parameter.
+  [Fact]
+  public void GeneratorCompilesRecordFieldNamedContext()
+  {
+    var result = GeneratorTestHost.Run(
+        ModuleSource(
+            "public record ContextRecord(string Context);",
+            "[JS] public ContextRecord Echo(ContextRecord value) => value;"
+        )
+    );
+
+    Assert.Empty(GeneratorDiagnosticIds(result));
+    AssertNoCompilerDiagnostics(result);
+    var source = GeneratedText(result);
+    Assert.Contains("__expoContext", source, StringComparison.Ordinal);
+    Assert.Contains("\"context\"", source, StringComparison.Ordinal);
+  }
+
   [Fact]
   public void GeneratorRendersValueTypeDefaultsAsDefaultExpressions()
   {
