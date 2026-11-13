@@ -2,7 +2,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
 namespace jsi = facebook::jsi;
 
@@ -15,6 +17,34 @@ volatile std::size_t sinkSize = 0;
 volatile std::uint8_t sinkByte = 0;
 
 constexpr const char *kString16 = "abcdefghijklmnop";
+
+// Constant names and values, as the generated decoder and encoder use for a record.
+constexpr const char *kNumberNames[] = {"n1", "n2", "n3", "n4", "n5", "n6"};
+constexpr const char *kStringNames[] = {"s1", "s2", "s3", "s4", "s5", "s6"};
+constexpr const char *kRecordNames[] = {"r1", "r2", "r3", "r4"};
+
+// The storage of a native-backed ArrayBuffer: zero-filled, owned by a vector, as the bridge's
+// allocated buffers are.
+class ZeroedBuffer final : public jsi::MutableBuffer {
+public:
+  explicit ZeroedBuffer(size_t size)
+    : bytes_(size, 0)
+  {
+  }
+
+  size_t size() const override
+  {
+    return bytes_.size();
+  }
+
+  std::uint8_t *data() override
+  {
+    return bytes_.data();
+  }
+
+private:
+  std::vector<std::uint8_t> bytes_;
+};
 
 [[noreturn]] void fail(jsi::Runtime &runtime, const char *control, const char *expected)
 {
@@ -107,11 +137,11 @@ void readRecord4(jsi::Runtime &runtime, const char *control, const jsi::Value &v
 void readRecord12(jsi::Runtime &runtime, const char *control, const jsi::Value &value)
 {
   jsi::Object object = readObject(runtime, control, value);
-  for (size_t i = 1; i <= 6; ++i) {
-    readNumber(runtime, control, object.getProperty(runtime, indexed("n", i).c_str()));
+  for (const char *name : kNumberNames) {
+    readNumber(runtime, control, object.getProperty(runtime, name));
   }
-  for (size_t i = 1; i <= 6; ++i) {
-    readString(runtime, control, object.getProperty(runtime, indexed("s", i).c_str()));
+  for (const char *name : kStringNames) {
+    readString(runtime, control, object.getProperty(runtime, name));
   }
 }
 
@@ -128,12 +158,12 @@ jsi::Object makeRecord4(jsi::Runtime &runtime)
 jsi::Object makeRecord12(jsi::Runtime &runtime)
 {
   jsi::Object object(runtime);
-  for (size_t i = 1; i <= 6; ++i) {
-    object.setProperty(runtime, indexed("n", i).c_str(), static_cast<double>(i));
+  double number = 1;
+  for (const char *name : kNumberNames) {
+    object.setProperty(runtime, name, number++);
   }
-  for (size_t i = 1; i <= 6; ++i) {
-    const std::string text = indexed("s", i);
-    object.setProperty(runtime, text.c_str(), jsi::String::createFromAscii(runtime, text));
+  for (const char *name : kStringNames) {
+    object.setProperty(runtime, name, jsi::String::createFromAscii(runtime, name));
   }
   return object;
 }
@@ -156,11 +186,9 @@ void readBytes(jsi::Runtime &runtime,
   }
 }
 
-jsi::Value construct(jsi::Runtime &runtime, const char *constructor, double length)
+jsi::ArrayBuffer makeNativeArrayBuffer(jsi::Runtime &runtime, size_t length)
 {
-  return runtime.global()
-    .getPropertyAsFunction(runtime, constructor)
-    .callAsConstructor(runtime, length);
+  return jsi::ArrayBuffer(runtime, std::make_shared<ZeroedBuffer>(length));
 }
 
 template <typename F>
@@ -277,8 +305,8 @@ void installBenchmarkControls(jsi::Runtime &runtime)
          1,
          [](jsi::Runtime &rt, const char *name, const jsi::Value *args, size_t count) {
            jsi::Object object = readObject(rt, name, argument(rt, name, args, count, 0));
-           for (size_t i = 1; i <= 4; ++i) {
-             readRecord12(rt, name, object.getProperty(rt, indexed("r", i).c_str()));
+           for (const char *recordName : kRecordNames) {
+             readRecord12(rt, name, object.getProperty(rt, recordName));
            }
            return jsi::Value::undefined();
          });
@@ -288,8 +316,8 @@ void installBenchmarkControls(jsi::Runtime &runtime)
          0,
          [](jsi::Runtime &rt, const char *, const jsi::Value *, size_t) {
            jsi::Object object(rt);
-           for (size_t i = 1; i <= 4; ++i) {
-             object.setProperty(rt, indexed("r", i).c_str(), makeRecord12(rt));
+           for (const char *recordName : kRecordNames) {
+             object.setProperty(rt, recordName, makeRecord12(rt));
            }
            return jsi::Value(std::move(object));
          });
@@ -459,7 +487,7 @@ void installBenchmarkControls(jsi::Runtime &runtime)
          1,
          [](jsi::Runtime &rt, const char *name, const jsi::Value *args, size_t count) {
            const size_t length = readCount(rt, name, argument(rt, name, args, count, 0));
-           return construct(rt, "ArrayBuffer", static_cast<double>(length));
+           return jsi::Value(rt, makeNativeArrayBuffer(rt, length));
          });
 
   define(runtime,
@@ -484,7 +512,12 @@ void installBenchmarkControls(jsi::Runtime &runtime)
          1,
          [](jsi::Runtime &rt, const char *name, const jsi::Value *args, size_t count) {
            const size_t length = readCount(rt, name, argument(rt, name, args, count, 0));
-           return construct(rt, "Uint8Array", static_cast<double>(length));
+           // The managed encoder looks up the constructor on every call and passes the buffer, the
+           // offset, and the length.
+           jsi::Value buffer(rt, makeNativeArrayBuffer(rt, length));
+           return rt.global()
+             .getPropertyAsFunction(rt, "Uint8Array")
+             .callAsConstructor(rt, buffer, 0.0, static_cast<double>(length));
          });
 
   runtime.global().setProperty(runtime, "__expoBenchNative", controls);
