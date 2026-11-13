@@ -133,6 +133,14 @@ disk fails `resolve`/`generate` with an error naming the package and path. See
 `packages/expo-modules-dotnet-autolinking/README.md` and
 `docs/specs/dotnet-autolinking.md` for the full contract.
 
+A module that reads the app's public Expo config sets `"appConfig": true` under
+`dotnet`. On Windows and macOS, the CLI then stages the config as `app.config`
+next to the managed artifacts, computed like upstream `expo-constants`, and
+the module reads it from `context.AppMetadata.ResourcesDirectory`. The app needs
+`expo-constants` among its dependencies. See
+`### Requirement: Staging Writes The App Config For Modules That Declare It`
+(`dotnet-autolinking.md`).
+
 ### Replacing an upstream package on Windows
 
 A module that implements the full native shape of an upstream Expo package can
@@ -1183,8 +1191,9 @@ runtime); a second runtime gets its own instance.
 it in its constructor. `CacheDirectory` and `PersistentFilesDirectory` come
 from the host through `AppDirectories` and throw
 `AppDirectoryNotConfiguredException` when the host supplied no value.
-`AppMetadata` returns `HostAppMetadata` with `NativeAppVersion` and
-`NativeBuildVersion`. `ExpoConstantsModule` reads `context.AppMetadata`:
+`AppMetadata` returns `HostAppMetadata` with `NativeAppVersion`,
+`NativeBuildVersion`, and `ResourcesDirectory`, each null when the host supplied
+no value. `ExpoConstantsModule` reads `context.AppMetadata`:
 
 ```csharp
 // packages/expo-constants-dotnet/dotnet/ExpoConstantsDotnet/ExpoConstantsModule.cs
@@ -1193,6 +1202,9 @@ public sealed partial class ExpoConstantsModule : Module
 {
   private readonly HostAppMetadata metadata;
   private readonly string sessionId;
+  private readonly object manifestLock = new();
+  private bool manifestLoaded;
+  private string? manifest;
 
   public ExpoConstantsModule(DotnetRuntimeContext context)
       : base(context)
