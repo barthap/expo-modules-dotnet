@@ -244,6 +244,15 @@ nullable native app and build versions, reject empty, whitespace-only, or NUL
 values when supplied, and SHALL NOT infer missing versions from process,
 assembly, or package metadata.
 
+`HostAppMetadata` SHALL also carry `ResourcesDirectory`: the host's read-only
+directory of staged managed artifacts and their resource files, or null when the
+host does not supply it. A supplied value SHALL NOT be empty, whitespace-only,
+or contain NUL, and SHALL be a fully qualified path. Unlike `CacheDirectory`
+and `PersistentFilesDirectory`, an unconfigured value is null, not an exception:
+it is optional host information, not app-scoped storage, and hosts without app
+files have nothing to put there. Module code SHALL NOT write to the
+directory.
+
 #### Scenario: Configured directory is returned verbatim
 - **GIVEN** a host supplied a fully qualified path for a directory
 - **WHEN** module code reads that accessor
@@ -270,6 +279,11 @@ assembly, or package metadata.
   left null
 - **AND** reading `AppMetadata` after disposal SHALL throw
   `ObjectDisposedException`
+
+#### Scenario: Resources directory is optional
+- **GIVEN** a runtime context whose host supplied no resources directory
+- **WHEN** module code reads `AppMetadata.ResourcesDirectory`
+- **THEN** it SHALL be null and SHALL NOT throw
 
 #### Scenario: Existing single-argument construction still compiles
 - **GIVEN** an existing caller constructs a runtime context with only a runtime

@@ -8,8 +8,15 @@ const outputDir = path.join(appRoot, '.expo', 'dotnet');
 const builtOutputDir = path.join(path.sep, 'built', 'dotnet');
 const destination = path.join(appRoot, 'macos', 'Managed');
 
+const manifest = { modules: [] };
+
 vi.mock('../discovery', () => ({
+  discoverDotnetManifestAsync: vi.fn(async () => manifest),
   resolveAppRoot: vi.fn(() => appRoot),
+}));
+
+vi.mock('../appConfig', () => ({
+  appConfigForPlatformAsync: vi.fn(async () => undefined),
 }));
 
 vi.mock('../paths', () => ({
@@ -167,6 +174,41 @@ describe('registerStageCommand', () => {
     ).rejects.toThrow(error);
     expect(log).not.toHaveBeenCalled();
 
+    log.mockRestore();
+  });
+
+  it.each(['windows', 'macos'])('discovers modules and stages the app config for %s', async (platform) => {
+    const { appConfigForPlatformAsync } = await import('../appConfig');
+    const { discoverDotnetManifestAsync } = await import('../discovery');
+    const { stageArtifactsAsync } = await import('../stage');
+    const { registerStageCommand } = await import('../commands/stageCommand');
+    vi.mocked(appConfigForPlatformAsync).mockResolvedValueOnce('{"name":"Example"}');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await makeProgram(registerStageCommand).parseAsync(['stage', '--platform', platform], {
+      from: 'user',
+    });
+
+    expect(discoverDotnetManifestAsync).toHaveBeenCalledWith(appRoot);
+    expect(appConfigForPlatformAsync).toHaveBeenCalledWith(platform, appRoot, manifest);
+    expect(vi.mocked(stageArtifactsAsync).mock.calls[0]?.[0]).toMatchObject({
+      appConfig: '{"name":"Example"}',
+    });
+    log.mockRestore();
+  });
+
+  it.each(['ios', 'android'])('runs no discovery for %s', async (platform) => {
+    const { appConfigForPlatformAsync } = await import('../appConfig');
+    const { discoverDotnetManifestAsync } = await import('../discovery');
+    const { registerStageCommand } = await import('../commands/stageCommand');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await makeProgram(registerStageCommand).parseAsync(['stage', '--platform', platform], {
+      from: 'user',
+    });
+
+    expect(discoverDotnetManifestAsync).not.toHaveBeenCalled();
+    expect(appConfigForPlatformAsync).not.toHaveBeenCalled();
     log.mockRestore();
   });
 });

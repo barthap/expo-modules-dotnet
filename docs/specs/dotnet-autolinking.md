@@ -35,6 +35,18 @@ A dotnet Expo module package SHALL declare `"dotnet"` in
 `expo-module.config.json` `platforms` and a `dotnet.projects` list of
 package-root-relative csproj paths with optional `assemblyName`.
 
+A package MAY set `dotnet.appConfig` to `true` when its module reads the app
+config that staging writes
+(`### Requirement: Staging Writes The App Config For Modules That Declare It`).
+Discovery SHALL fail with an error naming the package when the value is not a
+boolean, and the manifest SHALL record it per module. The CLI does not name the
+modules that need the app config itself; the module describes it.
+
+#### Scenario: appConfig is not a boolean
+- **GIVEN** a package with `"appConfig": "yes"`
+- **WHEN** discovery runs
+- **THEN** it SHALL fail with an error naming the package and `dotnet.appConfig`
+
 #### Scenario: Package without dotnet platform is skipped
 - **GIVEN** a dependency whose `expo-module.config.json` lacks `"dotnet"` in
   `platforms`
@@ -94,8 +106,10 @@ integer, so no private mirror type reaches the generated host's public surface.
 `HostAppMetadata` models and their platform-neutral validation. The aggregator
 SHALL construct both models and pass them to the runtime context constructor
 before module registration runs. The directory prefix SHALL retain its v2
-layout; complete native app and build version fields MAY follow. A null pointer
-means both models are unconfigured.
+layout; complete native app version, native build version, and resources
+directory fields MAY follow. The aggregator SHALL decode each optional pair
+against its own explicit end offset and SHALL pass the resources directory to
+`HostAppMetadata`. A null pointer means both models are unconfigured.
 
 The aggregator SHALL emit its own private UTF-8 decoder. It SHALL NOT reach the
 `Expo.JSI` decoder through a new `InternalsVisibleTo` edge. All decoding SHALL be
@@ -164,7 +178,10 @@ nativeaot platforms. Desktop staging SHALL also write an
 `ExpoDotnetHost.loader` marker containing the staged loader mode so packaged
 apps can select HostFXR or NativeAOT without relying on shell environment
 propagation. Environment variables MAY override the staged marker for local
-debugging. Staging SHALL skip byte-identical files.
+debugging. For `windows` and `macos`, staging also writes `app.config` when a
+resolved module declares `dotnet.appConfig`
+(`### Requirement: Staging Writes The App Config For Modules That Declare It`).
+Staging SHALL skip byte-identical files.
 
 #### Scenario: macOS hostfxr staging
 - **GIVEN** a built aggregator and `stage --platform macos`
@@ -529,7 +546,8 @@ no change to the native installer. Upstream `expo-asset` SHALL download assets
 through `ExpoAssetDotnet`. Upstream `Constants` SHALL take `sessionId`,
 `executionEnvironment`, `platform`, `nativeAppVersion`, `nativeBuildVersion`,
 and `expoVersion` from `ExpoConstantsDotnet`. Upstream `Constants.expoConfig`
-SHALL be `null` until the module provides a manifest. When the app opts in and
+SHALL hold the app's public config, which `ExpoConstantsDotnet` provides as
+`manifest`. When the app opts in and
 a selected module is not registered, startup SHALL fail with the
 `requireDotnetModule` error that names the module.
 
@@ -543,9 +561,82 @@ would hide it behind upstream's "not linked" warning.
 - **THEN** upstream `Constants.sessionId` SHALL equal `sessionId` of
   `expo-constants-dotnet`
 - **AND** upstream `Constants.executionEnvironment` SHALL be `bare`
-- **AND** upstream `Constants.expoConfig` SHALL be `null`
+- **AND** upstream `Constants.expoConfig.name` and `Constants.expoConfig.slug`
+  SHALL equal the values in the app config
 - **AND** upstream `Asset.downloadAsync()` SHALL return a local URI from the
   `ExpoAssetDotnet` cache
+
+### Requirement: Staging Writes The App Config For Modules That Declare It
+For `windows` and `macos`, `link` and `stage` SHALL write the project's public
+Expo config as `app.config` into the staging destination when any resolved
+module declares `dotnet.appConfig: true`. `stage` SHALL discover the modules of
+the project root to decide this, for `windows` and `macos` only; `ios` and
+`android` staging runs no discovery.
+
+The CLI SHALL resolve the app's `expo-constants` from the project root, then
+`@expo/config` and `@expo/env` from the realpath of the `expo-constants` package
+root, by walking `node_modules` folders without `NODE_PATH`. It SHALL fail with
+an error naming a package it cannot resolve; for `expo-constants` the error SHALL
+say to add it to the app's dependencies. It SHALL compute the config in a child
+Node process whose working directory is the project root: load env files with
+`@expo/env`, call
+`getConfig(projectRoot, { isPublicConfig: true, skipSDKVersionRequirement: true })`,
+delete `macos.config` and `windows.config`, and serialize with `JSON.stringify`.
+It SHALL compute the config before the managed build (`link`) or before staging
+(`stage`). When the computation fails or the result is not a JSON object, the
+command SHALL fail with the underlying error and SHALL leave the staging folder
+unchanged.
+
+Staging SHALL keep `app.config` through stale-file removal when it applies,
+compare it after stale-file removal on every run (identical content is skipped
+and reported as skipped, other content is written and reported as staged), and
+remove it when no resolved module declares `appConfig`. `ios` and `android`
+SHALL NOT get it. The Windows app targets SHALL delete
+`$(OutDir)Managed\app.config` when the staged folder has none, because their copy
+step never deletes and the adapter probes that folder first.
+
+The config comes from the same packages upstream's own `getAppConfig.js` uses:
+the app's `expo` does not declare `@expo/env`, and under pnpm the packages sit
+next to the real `expo-constants` folder in the store, not next to the app's
+link to it, while pnpm's hoisted store can hold another SDK's copy.
+`expo-constants-dotnet` does not list `expo-constants` as a peer dependency: its
+own code never imports it, and pnpm's `autoInstallPeers` would install a copy
+for the package, resolved against another SDK. The child process keeps env
+loading and the working-directory change out of the CLI. `isPublicConfig`
+filters only `ios.config` and `android.config`, where upstream keeps API keys,
+so the desktop equivalents are removed the same way.
+
+#### Scenario: Link writes the app config
+- **GIVEN** an app whose resolved modules include one that declares `appConfig`
+- **WHEN** `link --platform windows` or `link --platform macos` runs
+- **THEN** `<appRoot>/<platform>/Managed/app.config` SHALL equal the serialized
+  public config without `macos.config` and `windows.config`
+
+#### Scenario: Dependencies resolve through the pnpm store
+- **GIVEN** the app's `expo-constants` is a pnpm link whose `@expo/config` and
+  `@expo/env` exist only next to its real folder, and a different `@expo/env`
+  exists in pnpm's hoisted store
+- **WHEN** `link` computes the config
+- **THEN** it SHALL use the `@expo/config` and `@expo/env` next to the real
+  `expo-constants` folder
+
+#### Scenario: A second run keeps the file
+- **GIVEN** a previous `link` wrote `app.config`
+- **WHEN** `link` runs again
+- **THEN** the file SHALL exist with the current config
+
+#### Scenario: No module declares the app config
+- **GIVEN** no resolved module declares `appConfig`, and a previous
+  `app.config` exists
+- **WHEN** `link` or `stage` runs
+- **THEN** staging SHALL remove `app.config`
+
+#### Scenario: The config cannot be computed
+- **GIVEN** the project's app config throws when evaluated, or the app does not
+  declare `expo-constants`
+- **WHEN** `link` runs
+- **THEN** the command SHALL fail with that error before the managed build, and
+  the staging folder SHALL be unchanged
 
 ### Requirement: Android Gradle Hook Runs Before Native Library Merges
 `packages/expo-modules-dotnet/android/build.gradle` SHALL expose an

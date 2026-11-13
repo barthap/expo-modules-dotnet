@@ -217,7 +217,13 @@ describe('generateAggregator', () => {
         public int NativeAppVersionLength;
         public byte* NativeBuildVersion;
         public int NativeBuildVersionLength;
+        public byte* ResourcesDirectory;
+        public int ResourcesDirectoryLength;
     }`);
+    // Every optional pair has its own explicit end offset.
+    expect(entryPoints).toContain('var buildVersionPrefixSize = (uint)(sizeof(void*) == 8 ? 72 : 40);');
+    expect(entryPoints).toContain('var resourcesPrefixSize = (uint)(sizeof(void*) == 8 ? 88 : 48);');
+    expect(entryPoints).not.toContain('(uint)sizeof(NativeHostContext)');
 
     // Size is checked before Version, and both before any pointer is read.
     const sizeCheck = entryPoints.indexOf('if (native->Size < directoryPrefixSize)');

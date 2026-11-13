@@ -200,7 +200,9 @@ export default function App() {
       '| executionEnvironment',
       UpstreamConstants.executionEnvironment,
       '| expoConfig',
-      UpstreamConstants.expoConfig
+      UpstreamConstants.expoConfig === null
+        ? 'null'
+        : `name=${UpstreamConstants.expoConfig.name} slug=${UpstreamConstants.expoConfig.slug}`
     );
     void runAsset();
 
@@ -231,7 +233,7 @@ export default function App() {
             </Text>
             <Text style={styles.value}>
               {UpstreamConstants.executionEnvironment} · expoConfig{' '}
-              {UpstreamConstants.expoConfig === null ? 'null' : 'present'}
+              {UpstreamConstants.expoConfig?.name ?? 'null'}
             </Text>
           </View>
           {capabilities.map(capability => (

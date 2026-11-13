@@ -106,6 +106,12 @@ export function buildDotnetManifest(inputs: DotnetPackageInput[]): DotnetLinking
   for (const input of inputs) {
     const projects = input.dotnetConfig?.projects ?? [];
     const substitutions = resolveSubstitutions(input, projects.length > 0);
+    const appConfig: unknown = input.dotnetConfig?.appConfig ?? false;
+    if (typeof appConfig !== 'boolean') {
+      throw autolinkingError(
+        `Package "${input.packageName}" declares dotnet.appConfig that is not a boolean.`
+      );
+    }
     if (projects.length === 0) {
       continue;
     }
@@ -149,6 +155,7 @@ export function buildDotnetManifest(inputs: DotnetPackageInput[]): DotnetLinking
       packageRoot: input.packageRoot,
       projects: resolvedProjects,
       substitutions,
+      appConfig,
     });
   }
 

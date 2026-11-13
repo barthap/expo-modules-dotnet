@@ -7,5 +7,9 @@
       <ExpoDotnetManagedArtifacts Include="$(ExpoDotnetManagedDir)**\*.*" />
     </ItemGroup>
     <Copy SourceFiles="@(ExpoDotnetManagedArtifacts)" DestinationFiles="@(ExpoDotnetManagedArtifacts->'$(OutDir)Managed\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <!-- The copy never deletes, and the adapter probes $(OutDir)Managed first, so a
+         removed app.config must not survive there.
+         @ref docs/specs/dotnet-autolinking.md "Staging Writes The App Config For Modules That Declare It" -->
+    <Delete Files="$(OutDir)Managed\app.config" Condition="!Exists('$(ExpoDotnetManagedDir)app.config')" />
   </Target>
 </Project>

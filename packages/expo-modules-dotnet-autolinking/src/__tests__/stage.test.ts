@@ -134,6 +134,67 @@ describe('stageArtifactsAsync', () => {
     ]);
   });
 
+  describe('app config', () => {
+    async function makeBuildAsync() {
+      const root = await makeTempRootAsync();
+      const builtOutputDir = path.join(root, 'bin');
+      const nethostLibraryPath = path.join(root, 'host-pack', 'libnethost.dylib');
+      await writeFileAsync(path.join(builtOutputDir, 'ExpoDotnetHost.dll'), 'dll');
+      await writeFileAsync(nethostLibraryPath, 'nethost');
+      return { appRoot: path.join(root, 'app'), builtOutputDir, nethostLibraryPath };
+    }
+
+    it.each(['windows', 'macos'] as const)('writes app.config for %s and skips it when identical', async (platform) => {
+      const build = await makeBuildAsync();
+      const options = { ...build, platform, mode: 'hostfxr' as const, appConfig: '{"name":"Example"}' };
+
+      const first = await stageArtifactsAsync(options);
+      const second = await stageArtifactsAsync(options);
+
+      const appConfigPath = path.join(stageDestination(platform, build.appRoot), 'app.config');
+      await expect(fs.readFile(appConfigPath, 'utf8')).resolves.toBe('{"name":"Example"}');
+      expect(first.staged).toContain('app.config');
+      expect(second.skipped).toContain('app.config');
+      expect(second.staged).not.toContain('app.config');
+    });
+
+    it('rewrites app.config when the config changed', async () => {
+      const build = await makeBuildAsync();
+      await stageArtifactsAsync({ ...build, platform: 'windows', mode: 'hostfxr', appConfig: '{"name":"Old"}' });
+
+      const result = await stageArtifactsAsync({
+        ...build,
+        platform: 'windows',
+        mode: 'hostfxr',
+        appConfig: '{"name":"New"}',
+      });
+
+      expect(result.staged).toContain('app.config');
+      await expect(
+        fs.readFile(path.join(stageDestination('windows', build.appRoot), 'app.config'), 'utf8')
+      ).resolves.toBe('{"name":"New"}');
+    });
+
+    it('removes a previous app.config when no config is given', async () => {
+      const build = await makeBuildAsync();
+      await stageArtifactsAsync({ ...build, platform: 'windows', mode: 'hostfxr', appConfig: '{}' });
+
+      await stageArtifactsAsync({ ...build, platform: 'windows', mode: 'hostfxr' });
+
+      await expect(
+        pathExistsAsync(path.join(stageDestination('windows', build.appRoot), 'app.config'))
+      ).resolves.toBe(false);
+    });
+
+    it('rejects an app config for a platform other than windows and macos', async () => {
+      const build = await makeBuildAsync();
+
+      await expect(
+        stageArtifactsAsync({ ...build, platform: 'ios', mode: 'hostfxr', appConfig: '{}' })
+      ).rejects.toThrow(/app\.config.*windows and macos/s);
+    });
+  });
+
   it('removes stale destination files while preserving managed directory placeholders', async () => {
     const root = await makeTempRootAsync();
     const appRoot = path.join(root, 'app');

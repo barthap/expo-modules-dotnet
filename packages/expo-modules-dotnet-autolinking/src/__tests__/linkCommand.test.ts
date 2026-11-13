@@ -47,6 +47,10 @@ vi.mock('../paths', () => ({
   findAdapterPackageRoot: vi.fn(() => adapterPackageRoot),
 }));
 
+vi.mock('../appConfig', () => ({
+  appConfigForPlatformAsync: vi.fn(async () => undefined),
+}));
+
 vi.mock('../stage', () => ({
   stageArtifactsAsync: vi.fn(async () => stageResult),
   stageDestination: vi.fn(() => destination),
@@ -212,6 +216,50 @@ describe('registerLinkCommand', () => {
       program.parseAsync(['link', '--platform', 'linux'], { from: 'user' })
     ).rejects.toThrow('Unsupported link platform linux');
     expect(discoverDotnetManifestAsync).not.toHaveBeenCalled();
+  });
+
+  it('computes the app config before the build and stages it', async () => {
+    const { appConfigForPlatformAsync } = await import('../appConfig');
+    const { runDotnetBuildAsync } = await import('../build');
+    const { stageArtifactsAsync } = await import('../stage');
+    const { registerLinkCommand } = await import('../commands/linkCommand');
+    const order: string[] = [];
+    vi.mocked(appConfigForPlatformAsync).mockImplementationOnce(async () => {
+      order.push('appConfig');
+      return '{"name":"Example"}';
+    });
+    vi.mocked(runDotnetBuildAsync).mockImplementationOnce(async () => {
+      order.push('build');
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await makeProgram(registerLinkCommand).parseAsync(['link', '--platform', 'windows'], {
+      from: 'user',
+    });
+
+    expect(appConfigForPlatformAsync).toHaveBeenCalledWith('windows', appRoot, manifest);
+    expect(order).toEqual(['appConfig', 'build']);
+    expect(vi.mocked(stageArtifactsAsync).mock.calls[0]?.[0]).toMatchObject({
+      appConfig: '{"name":"Example"}',
+    });
+    log.mockRestore();
+  });
+
+  it('fails before the build and staging when the app config cannot be computed', async () => {
+    const { appConfigForPlatformAsync } = await import('../appConfig');
+    const { runDotnetBuildAsync } = await import('../build');
+    const { stageArtifactsAsync } = await import('../stage');
+    const { registerLinkCommand } = await import('../commands/linkCommand');
+    vi.mocked(appConfigForPlatformAsync).mockRejectedValueOnce(new Error('app config failed'));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await expect(
+      makeProgram(registerLinkCommand).parseAsync(['link', '--platform', 'macos'], { from: 'user' })
+    ).rejects.toThrow('app config failed');
+
+    expect(runDotnetBuildAsync).not.toHaveBeenCalled();
+    expect(stageArtifactsAsync).not.toHaveBeenCalled();
+    log.mockRestore();
   });
 });
 

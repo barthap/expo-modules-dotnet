@@ -60,6 +60,12 @@ typedef struct expo_dotnet_host_context {
   int32_t native_app_version_length;
   const uint8_t *native_build_version;
   int32_t native_build_version_length;
+
+  // Optional, independent of the fields above. The absolute read-only directory
+  // that holds the managed host artifact the adapter loaded and the resource
+  // files staged with it (such as app.config). Same borrowed UTF-8 rules.
+  const uint8_t *resources_directory;
+  int32_t resources_directory_length;
 } expo_dotnet_host_context;
 
 // The generated managed host mirrors this layout in a second language, so lock
@@ -83,7 +89,11 @@ static_assert(offsetof(expo_dotnet_host_context, native_build_version) ==
               (sizeof(void *) == 8 ? 56 : 32));
 static_assert(offsetof(expo_dotnet_host_context, native_build_version_length) ==
               (sizeof(void *) == 8 ? 64 : 36));
-static_assert(sizeof(expo_dotnet_host_context) == (sizeof(void *) == 8 ? 72 : 40));
+static_assert(offsetof(expo_dotnet_host_context, resources_directory) ==
+              (sizeof(void *) == 8 ? 72 : 40));
+static_assert(offsetof(expo_dotnet_host_context, resources_directory_length) ==
+              (sizeof(void *) == 8 ? 80 : 44));
+static_assert(sizeof(expo_dotnet_host_context) == (sizeof(void *) == 8 ? 88 : 48));
 
 // The host-context pointer may be null, which means every field is
 // unconfigured. The v3 suffix is load-bearing: a stale adapter and host pair

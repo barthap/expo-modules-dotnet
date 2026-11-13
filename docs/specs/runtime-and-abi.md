@@ -559,11 +559,11 @@ and corrupts memory at runtime.
 
 `expo_dotnet_host_context` SHALL begin with `uint32_t size` and
 `uint32_t version`. The next fields SHALL keep the existing directory pointer/length
-layout: cache directory, then persistent-files directory. Two optional UTF-8
-pointer/`int32_t` byte-length pairs SHALL follow: native app version, then
-native build version. The complete directory prefix is 40 bytes on 64-bit
-hosts and 24 bytes on 32-bit hosts. Each appended pair adds 16 or 8 bytes,
-respectively.
+layout: cache directory, then persistent-files directory. Three optional UTF-8
+pointer/`int32_t` byte-length pairs SHALL follow: native app version, native
+build version, then resources directory. The complete directory prefix is 40
+bytes on 64-bit hosts and 24 bytes on 32-bit hosts. Each appended pair adds 16
+or 8 bytes, respectively, so the complete struct is 88 or 48 bytes.
 
 Each string SHALL follow `### Requirement: UTF-8 String Contract` and SHALL NOT
 be NUL-terminated. The host SHALL keep supplied buffers valid for the duration of the
@@ -576,13 +576,16 @@ are unconfigured. At field level, `(null pointer, zero length)` SHALL mean that
 field is unconfigured, `(null pointer, nonzero length)` SHALL be rejected as an
 invalid pair, and `(non-null pointer, zero length)` SHALL decode as a supplied
 empty string, which managed validation then rejects. A negative byte length
-SHALL be rejected. All four fields SHALL be independent.
+SHALL be rejected. All five fields SHALL be independent.
 
 Managed decoding SHALL validate `size` before it reads `version`, and both before
 it reads payload fields. It SHALL reject a struct smaller than the complete
 directory prefix or whose size ends inside a known optional pointer/length pair.
 It SHALL read each optional pair only when `size` covers that whole pair and
-ignore unknown trailing fields. Version 1 SHALL remain valid for compatible
+ignore unknown trailing fields. Decoding SHALL compare `size` with one explicit
+end offset per known optional pair, not with the size of its own struct
+declaration, which grows with every appended pair and would move the earlier
+boundaries. Version 1 SHALL remain valid for compatible
 append-only fields; incompatible layout or meaning changes require a new struct
 version. Every rejection SHALL report through the existing structured
 `RuntimeContextResult` error channel before module registration.
@@ -610,11 +613,12 @@ assumed.
 - **AND** it SHALL NOT read either directory pointer
 
 #### Scenario: Compatible optional fields are decoded by size
-- **GIVEN** a version-1 struct containing only the directory prefix, one complete
-  version pair, both pairs, or both pairs plus future trailing fields
+- **GIVEN** a version-1 struct containing only the directory prefix, the prefix
+  and one, two, or three complete optional pairs, or all three pairs plus future
+  trailing fields
 - **WHEN** managed decoding runs
 - **THEN** it SHALL decode only the complete known fields and ignore the tail
-- **AND** it SHALL reject a size ending inside either known optional pair
+- **AND** it SHALL reject a size ending inside any known optional pair
 
 #### Scenario: Invalid UTF-8 fails loudly
 - **GIVEN** a directory field holds bytes that are not valid UTF-8
@@ -641,6 +645,13 @@ assumed.
 - **WHEN** managed decoding runs
 - **THEN** it SHALL fail through the structured result before module registration
 - **AND** it SHALL NOT substitute another version source
+
+#### Scenario: Malformed resources directory fails startup
+- **GIVEN** a supplied resources directory is empty, whitespace-only, relative,
+  contains NUL, or has invalid UTF-8
+- **WHEN** managed decoding runs
+- **THEN** it SHALL fail through the structured result before module
+  registration
 
 #### Scenario: Native layout is locked at compile time
 - **GIVEN** the shared header is compiled for a 32-bit or a 64-bit pointer target
@@ -698,6 +709,24 @@ introduced, because two unrelated apps can share an executable name, which
 reproduces the collision this ABI removes. No `%LOCALAPPDATA%` fallback SHALL be
 introduced either.
 
+The packaged and unpackaged Windows adapter and the macOS adapter SHALL also
+supply `resources_directory`: the absolute directory that contains the managed
+host artifact they loaded (`ExpoDotnetHost.dll` under HostFXR, the NativeAOT
+library under NativeAOT). They SHALL convert it to UTF-8 and keep the buffer
+alive in the frame that makes the create call. On every launch they SHALL check
+that it is non-empty, absolute, free of NUL, and an existing directory, and
+SHALL pass the unconfigured value and log a path-free message when a check
+fails. The field is independent of the two app-scoped directories, and the
+both-or-nothing rule does not apply to it. It needs no app identity: it is the
+location of the app's own read-only binaries, not writable storage, so the
+collision the directory rules prevent cannot occur. iOS, Android, and the
+development console app SHALL leave it unconfigured.
+
+Portable .NET cannot find this directory by itself: under HostFXR,
+`hostfxr_initialize_for_runtime_config` sets no application path, so
+`AppContext.BaseDirectory` is empty, and under NativeAOT `Assembly.Location` is
+empty. That makes it host identity under `ABI Carries Only Host Knowledge`.
+
 After validation a supplying adapter SHALL emit one durable marker that carries no
 raw path and no app identity. Committed artifacts SHALL record only sanitized path
 shapes, never a real user profile, machine path, or package identity.
@@ -722,6 +751,13 @@ shapes, never a real user profile, machine path, or package identity.
   for both directories
 - **AND** it SHALL NOT derive a path from an executable name or a user-wide root
 
+#### Scenario: Desktop adapters supply the resources directory
+- **GIVEN** the packaged Windows example, an unpackaged Windows run, or the macOS
+  example starts
+- **WHEN** the adapter creates the managed runtime context
+- **THEN** `HostAppMetadata.ResourcesDirectory` SHALL be the directory that
+  contains the managed host artifact the adapter loaded
+
 #### Scenario: Mobile and console hosts are unconfigured
 - **GIVEN** the iOS adapter, the Android adapter, or the development console app
   creates a runtime context
@@ -735,6 +771,9 @@ both HostFXR and NativeAOT modes against these directory rules.
 ### Requirement: Desktop Hosts Supply Native App Versions
 
 Native app versions are host identity under `ABI Carries Only Host Knowledge`.
+`HostAppMetadata` also carries the host-supplied resources directory under
+`### Requirement: Platform Adapters Follow A Defined App-Directory Policy`; it is
+null when the host does not supply it.
 Portable .NET SHALL NOT derive them from the generated host assembly, process
 working directory, or environment variables. The desktop adapters SHALL
 borrow UTF-8 buffers for the create call, and the generated host SHALL copy

@@ -2,6 +2,7 @@ import { spawn } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
+import { appConfigBasename } from './appConfig';
 import { defaultRid, dotnetBinary, sanitizedDotnetEnv, type LoaderMode } from './build';
 
 export type StagePlatform = 'macos' | 'windows' | 'ios' | 'android';
@@ -17,6 +18,11 @@ export interface StageOptions {
    */
   nethostLibraryPath?: string;
   runCommandAsync?: (command: string, args: string[]) => Promise<void>;
+  /**
+   * The serialized public app config to stage as app.config (windows and macos
+   * only). When it is absent, a previous app.config is removed as stale.
+   */
+  appConfig?: string;
 }
 
 interface StageFile {
@@ -63,6 +69,11 @@ export async function locateNethostLibraryAsync(rid: string): Promise<string> {
 export async function stageArtifactsAsync(
   options: StageOptions
 ): Promise<{ staged: string[]; skipped: string[] }> {
+  if (options.appConfig !== undefined && options.platform !== 'windows' && options.platform !== 'macos') {
+    throw new Error(
+      `[expo-modules-dotnet-autolinking] app.config is staged only for windows and macos, not ${options.platform}.`
+    );
+  }
   const destination = stageDestination(options.platform, options.appRoot);
   const stageFiles =
     options.mode === 'hostfxr'
@@ -72,7 +83,12 @@ export async function stageArtifactsAsync(
   await fs.mkdir(destination, { recursive: true });
   await removeStaleFilesAsync(
     destination,
-    new Set([...stageFiles.map((file) => file.basename), loaderMarkerBasename])
+    new Set([
+      ...stageFiles.map((file) => file.basename),
+      loaderMarkerBasename,
+      // Without a config, app.config is not expected, so a previous one is removed.
+      ...(options.appConfig !== undefined ? [appConfigBasename] : []),
+    ])
   );
 
   const staged: string[] = [];
@@ -94,6 +110,17 @@ export async function stageArtifactsAsync(
         '@rpath/libExpoDotnetHost.dylib',
         destinationPath,
       ]);
+    }
+  }
+
+  if (options.appConfig !== undefined) {
+    // @ref docs/specs/dotnet-autolinking.md "Staging Writes The App Config For Modules That Declare It"
+    const appConfigPath = path.join(destination, appConfigBasename);
+    if (await fileContentEqualsAsync(appConfigPath, options.appConfig)) {
+      skipped.push(appConfigBasename);
+    } else {
+      await fs.writeFile(appConfigPath, options.appConfig);
+      staged.push(appConfigBasename);
     }
   }
 
