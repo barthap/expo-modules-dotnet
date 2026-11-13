@@ -122,9 +122,21 @@ project, because `Expo.ModulesCore.Tests` references it, and SHALL NOT run it.
 
 Before each timed sample the benchmark SHALL collect garbage in .NET and in
 Hermes and wait until the testhost executor is idle, so deferred work of one
-sample does not land in the next sample or in a control row. A row whose
-slowest sample is more than 1.20 times its median SHALL be marked noisy, and the
-benchmark SHALL then exit with a non-zero code.
+sample does not land in the next sample or in a control row. A set of samples
+SHALL be noisy when its slowest sample is more than 1.20 times its median, or
+when its median is more than 1.20 times its fastest sample. The benchmark SHALL
+apply both checks to the managed samples and to the control samples of each
+row, SHALL mark the noisy set in the table, and SHALL then exit with a
+non-zero code. The warning for a row SHALL say whether the managed or the
+control samples are noisy.
+
+The header SHALL name the tiered compilation setting that is in effect and
+whether the native testhost was built with optimization. An environment
+variable SHALL win over the runtime config, as in the runtime. When tiered
+compilation is not off, or the native testhost is not optimized, the benchmark
+SHALL print a warning with the table and SHALL exit with a code of its own,
+distinct from the noise code. Stdout SHALL carry only the header, the table,
+and the warning lines.
 
 Reasons to keep these as they are:
 
@@ -138,6 +150,13 @@ Reasons to keep these as they are:
   median 55% above the steady value with no noisy mark. Fully optimized code
   with no dynamic profile data is also nearer to NativeAOT than the tiered
   steady state is.
+- A max over median check cannot see a step where most samples are slow, so
+  the median over minimum check covers that shape.
+- The environment wins over the runtime config in the runtime since .NET 9, so
+  a header that read the config first could print "off" while the runtime
+  tiers. The test runners build the native testhost without a build type, so a
+  direct run against that library gives inflated native costs. The header and
+  the warning make both visible.
 
 #### Scenario: A developer runs the benchmark
 
@@ -152,6 +171,32 @@ Reasons to keep these as they are:
 - **WHEN** the benchmark prints its table
 - **THEN** it SHALL mark the row as noisy
 - **AND** it SHALL exit with a non-zero code
+
+#### Scenario: Most samples sit on a slow level
+
+- **GIVEN** seven samples of a row at 320 ns and three at 205 ns
+- **WHEN** the benchmark checks the row
+- **THEN** it SHALL mark the row as noisy, because the median is more than 1.20
+  times the fastest sample
+- **AND** the spread of the row SHALL NOT be the reason
+
+#### Scenario: The control samples are noisy
+
+- **GIVEN** the managed samples of a row are quiet and its control samples are
+  noisy
+- **WHEN** the benchmark prints its table
+- **THEN** it SHALL mark the native value as noisy
+- **AND** the warning SHALL name the control samples
+- **AND** it SHALL exit with a non-zero code
+
+#### Scenario: The settings make the medians unreliable
+
+- **GIVEN** `DOTNET_TieredCompilation=1` is in the environment, or the native
+  testhost was built without optimization
+- **WHEN** the benchmark finishes
+- **THEN** the header SHALL show the setting that is in effect
+- **AND** the benchmark SHALL print a warning with the table
+- **AND** it SHALL exit with its settings code
 
 #### Scenario: A change breaks the benchmark project
 
@@ -343,15 +388,20 @@ count each value handle at the point where the counted API table, or the
 testhost's own script evaluation, returns it to managed code. A handle is
 linked when the bridge links it into the per-runtime owned-value list, which it
 does for every owned handle that does not hold undefined, null, a boolean, or a
-number. The borrowed `this` handle that the bridge creates inside a
-host-function call SHALL NOT be counted, and the benchmark documentation SHALL
-state it.
+number. Two borrowed handles that the bridge creates inside its own trampolines
+SHALL NOT be counted, because the counted API table does not see them: the
+`this` handle of a host-function call, and the value handle that the
+host-object property setter passes to managed code. The benchmark documentation
+SHALL state both. Every entry of the counted API table that returns a value
+handle SHALL be counted, including a handle that a result struct other than a
+value result carries, such as the weak-object lock result.
 
 Reason to keep next to the requirement: counting in the testhost table keeps
 the production bridge free of diagnostics. Counting in the bridge looks more
 complete, but it adds test-only code to production for one constant handle per
 call. The classification in the testhost mirrors the bridge, so a test compares
-the linked counter with the tracked-owned-values counter to catch drift.
+the linked counter with the tracked-owned-values counter, while an object, a
+string, and a number are held, to catch drift in any part of the rule.
 
 #### Scenario: A record decode creates a known number of handles
 
@@ -371,20 +421,31 @@ the linked counter with the tracked-owned-values counter to catch drift.
 
 #### Scenario: The linked count matches the tracked count
 
-- **GIVEN** a test holds non-primitive owned handles
+- **GIVEN** a test holds an object, a string, and a number
 - **WHEN** it reads the counters
-- **THEN** the linked counter SHALL equal the tracked-owned-values counter
+- **THEN** the linked counter SHALL be 2 and equal the tracked-owned-values
+  change, and the unlinked counter SHALL be 1
+
+#### Scenario: A weak-object lock is counted
+
+- **GIVEN** a test locks a weak reference whose object is alive
+- **WHEN** it reads the counters
+- **THEN** the linked counter SHALL be 1
 
 ### Requirement: Native Benchmark Controls
 
 The testhost SHALL expose a test-only export that installs native-only control
 functions, one per benchmark shape and direction. A control SHALL do the same
 traversal or construction in C++ through JSI, SHALL create no value handle, and
-SHALL NOT call managed code.
+SHALL NOT call managed code. A control SHALL build the same kind of value as
+the managed return, for example a native-backed `ArrayBuffer` and not one
+allocated by the JavaScript constructor, and SHALL use constant property names
+where the generated code uses constant names.
 
 Reason to keep next to the requirement: without the control, the numbers show
 whether a shape is slow but not how much of the time the bridge adds, so they
-cannot choose between fixes.
+cannot choose between fixes. A control that does extra or different work moves
+the error into the bridge column, where nobody can see it.
 
 #### Scenario: A control runs next to a managed case
 
