@@ -7,6 +7,8 @@ import { registerResolveCommand } from './commands/resolveCommand';
 import { registerStageCommand } from './commands/stageCommand';
 import { registerSyncWindowsCommand } from './commands/syncWindowsCommand';
 
+export { discoverDotnetManifestAsync } from './discovery';
+export type { DotnetLinkingManifest, DotnetModule, DotnetSubstitution } from './types';
 export { prepareWindowsSolutionAsync } from './windows/prepareWindowsSolution';
 export type { PrepareWindowsSolutionOptions } from './windows/prepareWindowsSolution';
 

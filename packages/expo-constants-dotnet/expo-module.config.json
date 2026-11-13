@@ -6,6 +6,14 @@
         "path": "dotnet/ExpoConstantsDotnet/ExpoConstantsDotnet.csproj",
         "assemblyName": "ExpoConstantsDotnet"
       }
+    ],
+    "substitutions": [
+      {
+        "package": "expo-constants",
+        "versionRange": "~18.0.13",
+        "accessor": "build/ExponentConstants.js",
+        "replacement": "src/index.ts"
+      }
     ]
   }
 }

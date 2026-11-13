@@ -9,6 +9,9 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "semver": "^7.7.0"
+  },
   "peerDependencies": {
     "expo": "*",
     "react": "*",
