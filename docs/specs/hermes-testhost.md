@@ -17,7 +17,9 @@ tag that the React Native version used by `apps/mobile-app` ships. macOS SHALL
 use `hermesvm.framework`, which `scripts/build-hermes-macos.sh` stages from the
 Hermes build tree into the prebuilt root together with the `hermes` headers. Windows SHALL use the official Hermes `hermesvm` shared
 library built from `scripts/hermes-ref.txt` and staged with `jsi.lib`,
-`hermesvm.lib`, and `hermesvm.dll`. Linux SHALL use the shared
+`hermesvm.lib`, and `hermesvm.dll`. The Windows build SHALL use the Visual
+Studio ClangCL toolset, because Hermes V1 uses compiler builtins such as
+`__builtin_expect` that MSVC does not have. Linux SHALL use the shared
 `libhermesvm.so` built via `scripts/build-hermes-linux.sh`; the shared
 library path is embedded in `libexpo_jsi_testhost.so` via rpath at CMake
 configure time, so no `LD_LIBRARY_PATH` management is required at runtime.

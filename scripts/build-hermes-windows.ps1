@@ -28,7 +28,7 @@ if (!$NuGetPackageRoot) {
 
 $sourceDir = Join-Path $HermesWorkDir 'source'
 $destRoot = Join-Path $sourceDir 'destroot'
-$officialFlavor = if ($EnableIntl) { 'windows-official-shared-intl' } else { 'windows-official-shared-no-intl' }
+$officialFlavor = if ($EnableIntl) { 'windows-official-clangcl-shared-intl' } else { 'windows-official-clangcl-shared-no-intl' }
 $officialBuildDir = Join-Path $HermesWorkDir "$officialFlavor\$Arch"
 
 function Invoke-Process {
@@ -195,6 +195,9 @@ function Try-BuildOfficialHermes {
     '-B', $officialBuildDir,
     '-G', 'Visual Studio 18 2026',
     '-A', $Arch,
+    # Hermes V1 uses compiler builtins that MSVC does not have, so it builds with the
+    # Visual Studio ClangCL toolset.
+    '-T', 'ClangCL',
     '-DCMAKE_BUILD_TYPE=Release',
     '-DBUILD_SHARED_LIBS=ON',
     '-DHERMES_ENABLE_DEBUGGER=OFF',
