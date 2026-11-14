@@ -28,7 +28,7 @@ if (!$NuGetPackageRoot) {
 
 $sourceDir = Join-Path $HermesWorkDir 'source'
 $destRoot = Join-Path $sourceDir 'destroot'
-$officialFlavor = if ($EnableIntl) { 'windows-official-clangcl-shared-intl' } else { 'windows-official-clangcl-shared-no-intl' }
+$officialFlavor = if ($EnableIntl) { 'windows-official-shared-intl' } else { 'windows-official-shared-no-intl' }
 $officialBuildDir = Join-Path $HermesWorkDir "$officialFlavor\$Arch"
 
 function Invoke-Process {
@@ -195,23 +195,29 @@ function Try-BuildOfficialHermes {
     '-B', $officialBuildDir,
     '-G', 'Visual Studio 18 2026',
     '-A', $Arch,
-    # Hermes V1 uses compiler builtins that MSVC does not have, so it builds with the
-    # Visual Studio ClangCL toolset.
-    '-T', 'ClangCL',
     '-DCMAKE_BUILD_TYPE=Release',
     '-DBUILD_SHARED_LIBS=ON',
     '-DHERMES_ENABLE_DEBUGGER=OFF',
     "-DHERMES_ENABLE_INTL=$(if ($EnableIntl) { 'ON' } else { 'OFF' })"
   )
-  Invoke-Process -FilePath 'cmake' -ArgumentList @(
-    '--build',
-    $officialBuildDir,
-    '--config',
-    $Configuration,
-    '--target',
-    'hermesvm',
-    '--parallel'
-  )
+  # MSVC reads extra options from the CL environment variable. Force the compatibility header
+  # into every compile, because Hermes V1 uses a compiler builtin that MSVC does not have.
+  $compatHeader = Join-Path $repoRoot 'scripts\hermes-msvc-compat.h'
+  $previousCl = $env:CL
+  $env:CL = "/FI`"$compatHeader`" $previousCl".Trim()
+  try {
+    Invoke-Process -FilePath 'cmake' -ArgumentList @(
+      '--build',
+      $officialBuildDir,
+      '--config',
+      $Configuration,
+      '--target',
+      'hermesvm',
+      '--parallel'
+    )
+  } finally {
+    $env:CL = $previousCl
+  }
 
   return (Stage-OfficialHermesArtifacts)
 }
