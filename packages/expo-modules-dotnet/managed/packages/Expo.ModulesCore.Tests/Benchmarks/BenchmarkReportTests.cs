@@ -28,8 +28,9 @@ public sealed class BenchmarkReportTests
         control is null ? null : controlStep);
   }
 
+  // The report ends lines with Environment.NewLine, so a line split on '\n' keeps a '\r' on Windows.
   private static string[] Cells(string line) =>
-      [.. line.Trim('|').Split('|').Select(cell => cell.Trim())];
+      [.. line.Trim().Trim('|').Split('|').Select(cell => cell.Trim())];
 
   [Fact]
   public void Table_HasTheElevenColumnsInOrder()
