@@ -10,8 +10,12 @@ verify the portable core.
 ### Requirement: Platform-Aware Hermes Prebuilt
 
 The repo-local Hermes prebuilt root SHALL support platform-specific native link
-layouts while preserving a common header root. macOS SHALL use
-`hermesvm.framework`. Windows SHALL use the official Hermes `hermesvm` shared
+layouts while preserving a common header root. Every platform SHALL build
+Hermes V1, the engine line that React Native ships, from the commit pinned in
+`scripts/hermes-ref.txt`. The pin SHALL be the full SHA of the Hermes release
+tag that the React Native version used by `apps/mobile-app` ships. macOS SHALL
+use `hermesvm.framework`, which `scripts/build-hermes-macos.sh` stages from the
+Hermes build tree into the prebuilt root together with the `hermes` headers. Windows SHALL use the official Hermes `hermesvm` shared
 library built from `scripts/hermes-ref.txt` and staged with `jsi.lib`,
 `hermesvm.lib`, and `hermesvm.dll`. Linux SHALL use the shared
 `libhermesvm.so` built via `scripts/build-hermes-linux.sh`; the shared
