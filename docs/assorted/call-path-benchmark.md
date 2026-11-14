@@ -81,8 +81,8 @@ With neither, the line says `runtime default` and does not say what that default
 is.
 
 The signal is `NDEBUG`, which the default Release flags of CMake define. It was
-observed on macOS with clang: the Release testhost of the scripts prints
-`optimized`.
+observed on macOS with clang and on Windows with MSVC: the Release testhost of
+the scripts prints `optimized`.
 
 ## How To Read The Columns
 
