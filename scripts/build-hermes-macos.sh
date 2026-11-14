@@ -110,6 +110,15 @@ echo "BUILD_TYPE=$BUILD_TYPE"
   bash utils/build-mac-framework.sh
 )
 
+# The Hermes install step stages only the jsi headers and the tools. Stage the
+# framework and the hermes headers from the build tree and the source tree.
+destroot="$source_dir/destroot"
+frameworks_dir="$destroot/Library/Frameworks/macosx"
+mkdir -p "$frameworks_dir" "$destroot/include/hermes"
+rm -rf "$frameworks_dir/hermesvm.framework"
+cp -R "$source_dir/build_macosx/lib/hermesvm.framework" "$frameworks_dir/"
+cp -R "$source_dir/API/hermes/." "$destroot/include/hermes/"
+
 framework="$source_dir/destroot/Library/Frameworks/macosx/hermesvm.framework/hermesvm"
 header="$source_dir/destroot/include/hermes/hermes.h"
 jsi_header="$source_dir/destroot/include/jsi/jsi.h"
