@@ -42,7 +42,9 @@ function Invoke-Process {
 
   Push-Location $WorkingDirectory
   try {
-    & $FilePath @ArgumentList
+    # Write to the host. A caller that assigns a function result would otherwise capture this
+    # output, and a failed build would print no error.
+    & $FilePath @ArgumentList | Out-Host
     if ($LASTEXITCODE -ne 0) {
       throw "$FilePath exited with code $LASTEXITCODE"
     }
