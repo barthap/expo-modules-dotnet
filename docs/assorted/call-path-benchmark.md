@@ -210,43 +210,43 @@ quick JIT for loops: runtime default
 native testhost: optimized
 platform: osx-arm64
 logical processors: 12
-hermes ref: 896d643e7453f507b062140f849f89ecf5448a88
+hermes ref: 3477757eb2475555cf8d8df24bfb1deb0613880d
 
 | case | direction | median ns/call | min ns/call | spread | bytes/call | owned linked | owned unlinked | borrowed | native ns/call | bridge ns/call |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| JS: empty driver loop | - | 16.4 | 15.3 | 1.01 | 0.0 | - | - | - | - | - |
-| function: no arguments | - | 225.1 | 220.6 | 1.02 | 152.0 | 0 | 1 | 0 | 45.9 | 179.2 |
-| function: two doubles, double result | round trip | 429.8 | 421.3 | 1.01 | 152.0 | 0 | 1 | 2 | 62.5 | 367.3 |
-| function: async, no arguments (testhost executor) | - | 46064.4 | 44555.3 | 1.02 | 1272.1 | 2 | 1 | 0 | - | - |
-| primitive: boolean | round trip | 327.4 | 325.6 | 1.01 | 152.0 | 0 | 1 | 1 | 52.8 | 274.6 |
-| primitive: int | round trip | 321.2 | 317.6 | 1.01 | 152.0 | 0 | 1 | 1 | 54.7 | 266.5 |
-| primitive: double | round trip | 320.2 | 317.8 | 1.01 | 152.0 | 0 | 1 | 1 | 53.4 | 266.8 |
-| string: 16 characters | argument | 395.8 | 391.4 | 1.02 | 208.0 | 0 | 1 | 1 | 66.4 | 329.4 |
-| string: 16 characters | return | 321.6 | 318.9 | 1.02 | 192.0 | 1 | 0 | 0 | 61.5 | 260.1 |
-| record: 4 fields | argument | 1318.5 | 1309.9 | 1.03 | 504.0 | 1 | 5 | 1 | 228.2 | 1090.3 |
-| record: 4 fields | return | 1201.0 | 1194.7 | 1.00 | 568.0 | 2 | 4 | 0 | 428.1 | 772.9 |
-| record: 12 fields | argument | 3877.0 | 3868.8 | 1.00 | 1168.0 | 7 | 7 | 1 | 765.6 | 3111.4 |
-| record: 12 fields | return | 3393.4 | 3372.9 | 1.01 | 1464.0 | 8 | 6 | 0 | 1414.9 | 1978.5 |
-| record: nested, 48 values | argument | 15628.9 | 15467.8 | 1.02 | 4224.0 | 33 | 25 | 1 | 2924.6 | 12704.3 |
-| record: nested, 48 values | return | 13761.9 | 13730.6 | 1.00 | 5816.0 | 34 | 24 | 0 | 5788.5 | 7973.4 |
-| dictionary: 4 numbers | argument | 1973.5 | 1955.2 | 1.03 | 1136.0 | 1 | 5 | 1 | 452.6 | 1520.9 |
-| dictionary: 4 numbers | return | 1574.4 | 1565.8 | 1.01 | 1032.0 | 2 | 4 | 1 | 508.9 | 1065.5 |
-| dictionary: 12 numbers | argument | 4077.6 | 4063.5 | 1.05 | 2392.0 | 1 | 13 | 1 | 1218.2 | 2859.4 |
-| dictionary: 12 numbers | return | 3505.8 | 3472.9 | 1.02 | 2208.0 | 2 | 12 | 1 | 1464.2 | 2041.6 |
-| array: 100 numbers | argument | 13727.2 | 13638.0 | 1.00 | 3168.0 | 1 | 101 | 1 | 1610.8 | 12116.4 |
-| array: 100 numbers | return | 16697.0 | 16601.9 | 1.01 | 5824.0 | 2 | 100 | 1 | 3702.1 | 12994.8 |
-| array: 1,000 numbers | argument | 137180.3 | 136517.7 | 1.01 | 24776.0 | 1 | 1001 | 1 | 15456.7 | 121723.6 |
-| array: 1,000 numbers | return | 161195.5 | 160682.2 | 1.01 | 56224.0 | 2 | 1000 | 1 | 36685.4 | 124510.1 |
-| array: 100 strings | argument | 22801.0 | 22538.1 | 1.01 | 6368.0 | 101 | 1 | 1 | 2749.6 | 20051.4 |
-| array: 100 strings | return | 27542.5 | 27390.8 | 1.00 | 12224.0 | 102 | 0 | 1 | 6713.4 | 20829.2 |
-| array: 100 records, 4 fields | argument | 115760.0 | 114132.6 | 1.02 | 35176.0 | 201 | 401 | 1 | 18274.2 | 97485.8 |
-| array: 100 records, 4 fields | return | 111525.7 | 110992.0 | 1.02 | 47424.0 | 202 | 400 | 1 | 41201.1 | 70324.6 |
-| array: 100 mixed values | argument | 24798.4 | 24721.0 | 1.00 | 6624.0 | 34 | 68 | 1 | 2150.3 | 22648.0 |
-| array: 100 mixed values | return | 21667.1 | 21565.7 | 1.01 | 10336.0 | 35 | 67 | 1 | 4838.2 | 16828.9 |
-| binary: ArrayBuffer, 1,024 bytes | argument | 48733.6 | 48599.7 | 1.00 | 240.0 | 0 | 1 | 1 | 63.0 | 48670.5 |
-| binary: ArrayBuffer, 1,024 bytes | return | 595.5 | 590.7 | 1.02 | 224.0 | 1 | 0 | 1 | 239.8 | 355.7 |
-| binary: Uint8Array, 1,024 bytes | argument | 51777.0 | 51543.9 | 1.02 | 1248.0 | 12 | 4 | 1 | 328.9 | 51448.1 |
-| binary: Uint8Array, 1,024 bytes | return | 1735.2 | 1730.4 | 1.01 | 904.0 | 6 | 4 | 1 | 371.5 | 1363.7 |
+| JS: empty driver loop | - | 7.0 | 6.7 | 1.01 | 0.0 | - | - | - | - | - |
+| function: no arguments | - | 200.2 | 197.9 | 1.02 | 152.0 | 0 | 1 | 0 | 22.0 | 178.1 |
+| function: two doubles, double result | round trip | 398.1 | 394.1 | 1.03 | 152.0 | 0 | 1 | 2 | 32.3 | 365.9 |
+| function: async, no arguments (testhost executor) | - | 49916.0 | 49392.9 | 1.05 | 1272.0 | 2 | 1 | 0 | - | - |
+| primitive: boolean | round trip | 302.8 | 300.1 | 1.02 | 152.0 | 0 | 1 | 1 | 25.8 | 277.1 |
+| primitive: int | round trip | 296.0 | 294.2 | 1.01 | 152.0 | 0 | 1 | 1 | 26.7 | 269.3 |
+| primitive: double | round trip | 294.3 | 292.4 | 1.00 | 152.0 | 0 | 1 | 1 | 26.6 | 267.7 |
+| string: 16 characters | argument | 371.9 | 367.2 | 1.03 | 208.0 | 0 | 1 | 1 | 38.9 | 333.0 |
+| string: 16 characters | return | 294.3 | 290.9 | 1.19 | 192.0 | 1 | 0 | 0 | 33.4 | 260.9 |
+| record: 4 fields | argument | 1240.9 | 1231.5 | 1.01 | 504.0 | 1 | 5 | 1 | 140.1 | 1100.9 |
+| record: 4 fields | return | 1095.6 | 1084.3 | 1.03 | 568.0 | 2 | 4 | 0 | 270.5 | 825.1 |
+| record: 12 fields | argument | 3691.4 | 3661.3 | 1.01 | 1168.0 | 7 | 7 | 1 | 550.1 | 3141.3 |
+| record: 12 fields | return | 3242.9 | 3226.3 | 1.01 | 1464.0 | 8 | 6 | 0 | 1031.6 | 2211.3 |
+| record: nested, 48 values | argument | 14896.9 | 14785.7 | 1.07 | 4224.0 | 33 | 25 | 1 | 2100.8 | 12796.1 |
+| record: nested, 48 values | return | 13173.6 | 13125.0 | 1.01 | 5816.0 | 34 | 24 | 0 | 4141.6 | 9032.0 |
+| dictionary: 4 numbers | argument | 1809.5 | 1788.4 | 1.01 | 1136.0 | 1 | 5 | 1 | 302.1 | 1507.4 |
+| dictionary: 4 numbers | return | 1495.5 | 1484.8 | 1.01 | 1032.0 | 2 | 4 | 1 | 366.5 | 1128.9 |
+| dictionary: 12 numbers | argument | 3781.8 | 3662.2 | 1.02 | 2392.0 | 1 | 13 | 1 | 793.3 | 2988.4 |
+| dictionary: 12 numbers | return | 3330.1 | 3313.2 | 1.02 | 2208.0 | 2 | 12 | 1 | 1152.5 | 2177.6 |
+| array: 100 numbers | argument | 12985.9 | 12852.7 | 1.03 | 3168.0 | 1 | 101 | 1 | 712.0 | 12273.8 |
+| array: 100 numbers | return | 15595.3 | 15525.7 | 1.01 | 5824.0 | 2 | 100 | 1 | 2634.3 | 12961.0 |
+| array: 1,000 numbers | argument | 128018.0 | 126784.7 | 1.03 | 24776.0 | 1 | 1001 | 1 | 6769.8 | 121248.2 |
+| array: 1,000 numbers | return | 151647.8 | 148842.0 | 1.02 | 56224.0 | 2 | 1000 | 1 | 25955.6 | 125692.1 |
+| array: 100 strings | argument | 21523.7 | 21358.1 | 1.01 | 6368.0 | 101 | 1 | 1 | 1656.2 | 19867.5 |
+| array: 100 strings | return | 26074.4 | 25860.7 | 1.01 | 12224.0 | 102 | 0 | 1 | 5279.2 | 20795.2 |
+| array: 100 records, 4 fields | argument | 106450.1 | 105570.6 | 1.01 | 35176.0 | 201 | 401 | 1 | 11694.4 | 94755.7 |
+| array: 100 records, 4 fields | return | 102296.2 | 101483.6 | 1.01 | 47424.0 | 202 | 400 | 1 | 26341.7 | 75954.5 |
+| array: 100 mixed values | argument | 22845.2 | 22745.3 | 1.04 | 6624.0 | 34 | 68 | 1 | 1141.6 | 21703.6 |
+| array: 100 mixed values | return | 20381.2 | 20348.2 | 1.01 | 10336.0 | 35 | 67 | 1 | 3610.9 | 16770.3 |
+| binary: ArrayBuffer, 1,024 bytes | argument | 485.8 | 481.3 | 1.03 | 728.0 | 0 | 1 | 1 | 36.5 | 449.3 |
+| binary: ArrayBuffer, 1,024 bytes | return | 492.4 | 490.1 | 1.02 | 224.0 | 1 | 0 | 1 | 143.1 | 349.4 |
+| binary: Uint8Array, 1,024 bytes | argument | 3060.0 | 3013.5 | 1.01 | 1736.0 | 12 | 4 | 1 | 194.5 | 2865.5 |
+| binary: Uint8Array, 1,024 bytes | return | 1588.9 | 1575.9 | 1.02 | 904.0 | 6 | 4 | 1 | 241.6 | 1347.3 |
 
 async rows use the testhost executor
 ```
@@ -257,8 +257,8 @@ value, and 1 unlinked handle, the `undefined` that resolves the promise.
 
 ## What The Snapshot Shows
 
-- The empty driver loop costs 16.4 ns per iteration. A call with no arguments
-  and no result takes 225.1 ns, of which 179.2 ns is above the native control.
+- The empty driver loop costs 7.0 ns per iteration. A call with no arguments
+  and no result takes 200.2 ns, of which 178.1 ns is above the native control.
 - The function rows with no arguments, two doubles, and a boolean, int, or
   double each allocate 152.0 bytes per call and create 1 owned unlinked handle.
   They create 0, 2, and 1 borrowed handles.
@@ -266,8 +266,8 @@ value, and 1 unlinked handle, the `undefined` that resolves the promise.
   numbers creates 101 owned unlinked handles, and an argument of 1,000 numbers
   creates 1,001.
 - An array of 100 strings creates 101 owned linked handles where an array of 100
-  numbers creates 101 unlinked ones. The argument takes 22,801.0 ns instead of
-  13,727.2 ns, and the return takes 27,542.5 ns instead of 16,697.0 ns.
+  numbers creates 101 unlinked ones. The argument takes 21,523.7 ns instead of
+  12,985.9 ns, and the return takes 26,074.4 ns instead of 15,595.3 ns.
 - A record argument with 12 fields creates 7 owned linked, 7 owned unlinked, and
   1 borrowed handle, 15 in all, plus the uncounted `this` handle. A record
   argument with 4 fields creates 1, 5, and 1.
@@ -281,26 +281,22 @@ value, and 1 unlinked handle, the `undefined` that resolves the promise.
   creates 15 counted handles in one call. The estimate counts allocations and
   the table counts handles, so the two numbers do not compare one to one.
 - In every row with a control, the bridge time is larger than the native control
-  time. For a 12-field record return the control takes 1,414.9 ns and the bridge
-  time is 1,978.5 ns. For the nested record return the numbers are 5,788.5 ns
-  and 7,973.4 ns.
-- An `ArrayBuffer` argument of 1,024 bytes takes 48,733.6 ns and a `Uint8Array`
-  argument of the same size takes 51,777.0 ns. The native control for the
-  `ArrayBuffer` takes 63.0 ns. The same `ArrayBuffer` as a return value takes
-  595.5 ns. At 1,024 bytes, a binary argument costs about 49 to 52 microseconds
-  per call.
+  time. For a 12-field record return the control takes 1,031.6 ns and the bridge
+  time is 2,211.3 ns. For the nested record return the numbers are 4,141.6 ns
+  and 9,032.0 ns.
+- An `ArrayBuffer` argument of 1,024 bytes takes 485.8 ns, and the same buffer
+  as a return value takes 492.4 ns. A `Uint8Array` argument of the same size
+  takes 3,060.0 ns and creates 16 owned handles, where the `ArrayBuffer`
+  argument creates 1.
 
-### The Binary Argument Cost
+### Binary Arguments On A Runtime Without The Detached Check
 
-This is a measured observation with limits.
-
-- A separate measurement of `ArrayBuffer` arguments at 0, 16, 1,024, and 16,384
-  bytes gave about the same cost for each size. The table has only the 1,024
-  byte row.
-- The decode of a binary argument calls the detached check twice, in
-  `retainArrayBuffer` and in `tryGetMutableBuffer` in `ExpoJsiBridge.cpp`,
-  through `isArrayBufferDetached` in `ArrayBufferCapabilities.h`.
-- On the pinned Hermes, that check throws an error that says the operation is
-  "not supported". The helper catches it and treats the buffer as not detached.
-  So each decode throws and catches two C++ exceptions.
-- The share of the argument cost that these exceptions take was not measured.
+The decode of a binary argument calls the detached check twice, in
+`retainArrayBuffer` and in `tryGetMutableBuffer` in `ExpoJsiBridge.cpp`, through
+`isArrayBufferDetached` in `ArrayBufferCapabilities.h`. The pinned Hermes
+implements `jsi::Runtime::detached`, so the check returns a value. A runtime
+that does not implement it throws an error that says the operation is "not
+supported". The helper catches it and treats the buffer as not detached, so each
+decode on such a runtime throws and catches two C++ exceptions. A measurement
+on a Hermes without the method gave 48,733.6 ns for the `ArrayBuffer` argument
+row, about the same at 0, 16, 1,024, and 16,384 bytes.
