@@ -39,6 +39,8 @@ public sealed class HermesRuntimeFixture : IDisposable
 
   public void CollectGarbageForTesting() => testRuntime.CollectGarbageForTesting();
 
+  public void InstallBenchmarkControls() => testRuntime.InstallBenchmarkControls();
+
   public void DisableSyncExecutionForTesting()
   {
     SetSyncExecutionSupportedForTesting(false);

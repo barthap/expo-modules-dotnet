@@ -46,6 +46,9 @@ typedef struct expo_jsi_testhost_counters {
   uint32_t owned_values_swept;
   uint32_t owned_values_abandoned;
   uint32_t owned_values_tracked;
+  uint32_t owned_values_created_linked;
+  uint32_t owned_values_created_unlinked;
+  uint32_t borrowed_values_created;
 } expo_jsi_testhost_counters;
 
 EXPO_JSI_TESTHOST_EXPORT expo_jsi_testhost_create_result expo_jsi_testhost_create_runtime(void);
@@ -71,6 +74,13 @@ expo_jsi_testhost_wait_until_idle(expo_jsi_testhost_runtime_handle testhost_runt
 
 EXPO_JSI_TESTHOST_EXPORT expo_jsi_error
 expo_jsi_testhost_collect_garbage(expo_jsi_testhost_runtime_handle testhost_runtime);
+
+// Returns 1 when this library was compiled with NDEBUG, 0 otherwise. The default Release flags of
+// CMake define NDEBUG. This was observed on macOS with clang only. The benchmark header reports it.
+EXPO_JSI_TESTHOST_EXPORT uint8_t expo_jsi_testhost_is_optimized_build(void);
+
+EXPO_JSI_TESTHOST_EXPORT expo_jsi_error
+expo_jsi_testhost_install_benchmark_controls(expo_jsi_testhost_runtime_handle testhost_runtime);
 
 EXPO_JSI_TESTHOST_EXPORT void expo_jsi_testhost_pause_runtime_executor(
   expo_jsi_testhost_runtime_handle testhost_runtime);

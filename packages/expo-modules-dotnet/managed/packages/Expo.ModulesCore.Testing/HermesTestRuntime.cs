@@ -59,6 +59,14 @@ public sealed class HermesTestRuntime : IDisposable
     NativeTestHost.CollectGarbageForTesting(GetTestHostRuntime());
   }
 
+  /// <summary>Whether the loaded native testhost library was compiled with optimization.</summary>
+  internal static bool NativeTestHostIsOptimized => NativeTestHost.IsOptimizedBuild();
+
+  internal void InstallBenchmarkControls()
+  {
+    NativeTestHost.InstallBenchmarkControls(GetTestHostRuntime());
+  }
+
   internal void SetSyncExecutionSupportedForTesting(bool supported)
   {
     NativeTestHost.SetSyncExecutionSupported(GetTestHostRuntime(), supported);

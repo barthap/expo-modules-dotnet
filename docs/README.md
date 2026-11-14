@@ -95,11 +95,13 @@ For current implementation work:
    behavior
 5. `docs/assorted/modules-core-generator-authoring.md` for module-library
    generator wiring and authoring background
-6. `docs/module-authoring-guide.md` for the module authoring guide. It follows
+6. `docs/assorted/call-path-benchmark.md` for call-path performance work: how
+   to run the benchmark, how to read it, and a results snapshot
+7. `docs/module-authoring-guide.md` for the module authoring guide. It follows
    the page order of the upstream Expo Modules API 2.0 docs, adapted to C#, and
    holds the feature-support table (Swift, Kotlin, C#)
-7. `docs/roadmap.md` for the project direction and planned features
-8. Git history only when historical rationale or proof evidence is needed
+8. `docs/roadmap.md` for the project direction and planned features
+9. Git history only when historical rationale or proof evidence is needed
 
 ## Verification
 

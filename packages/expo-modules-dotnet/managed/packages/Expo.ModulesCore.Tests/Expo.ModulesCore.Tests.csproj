@@ -16,6 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="../Expo.ModulesCore/Expo.ModulesCore.csproj" />
     <ProjectReference Include="../Expo.ModulesCore.Testing/Expo.ModulesCore.Testing.csproj" />
+    <ProjectReference Include="../Expo.ModulesCore.Benchmarks/Expo.ModulesCore.Benchmarks.csproj" />
     <ProjectReference Include="../Expo.ModulesCore.Tests.ExternalTypes/Expo.ModulesCore.Tests.ExternalTypes.csproj" />
     <ProjectReference
       Include="../Expo.ModulesCore.Generator/Expo.ModulesCore.Generator.csproj"
