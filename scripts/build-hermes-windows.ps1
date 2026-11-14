@@ -201,7 +201,8 @@ function Try-BuildOfficialHermes {
     # The pinned Hermes links its static VM library into hermesvm.dll with GNU linker options
     # that the MSVC linker ignores, so the DLL exports nothing and has no import library.
     # Newer Hermes code passes this option itself for MSVC.
-    '-DHERMES_EXTRA_LINKER_FLAGS=/WHOLEARCHIVE:hermesvm_a',
+    # The generator expression gives the full path, which the linker needs to match the library.
+    '-DHERMES_EXTRA_LINKER_FLAGS=/WHOLEARCHIVE:$<TARGET_FILE:hermesvm_a>',
     "-DHERMES_ENABLE_INTL=$(if ($EnableIntl) { 'ON' } else { 'OFF' })"
   )
   # MSVC reads extra options from the CL environment variable. Force the compatibility header
