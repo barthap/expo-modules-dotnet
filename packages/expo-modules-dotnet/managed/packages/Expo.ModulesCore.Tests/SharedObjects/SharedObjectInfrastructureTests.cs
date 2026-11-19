@@ -10,8 +10,9 @@ public sealed class GeneratedSharedObjectInfrastructureTests
   [Fact]
   public void HostFunctionConstructorCapabilityIsCharacterized()
   {
-    // Hermes accepts managed host functions as constructors, invokes their callbacks, and uses an
-    // object returned by the callback as the constructed result.
+    // Hermes V1 rejects a managed host function as a constructor, and does not invoke its callback.
+    // Generated classes therefore construct through a Proxy `construct` trap, not through the host
+    // function itself.
     using var fixture = HermesRuntimeFixture.Create();
 
     fixture.Runtime.Execute(runtime =>
@@ -24,12 +25,20 @@ public sealed class GeneratedSharedObjectInfrastructureTests
           state
       );
       using var argument = runtime.CreateString("constructed");
-      using var result = function.CallAsConstructor(argument);
-      using var resultObject = result.AsObject();
-      using var value = resultObject.GetProperty("value");
 
-      Assert.True(state.WasCalled);
-      Assert.Equal("constructed", value.AsString());
+      InvalidOperationException? error = null;
+      try
+      {
+        using var result = function.CallAsConstructor(argument);
+      }
+      catch (InvalidOperationException caught)
+      {
+        error = caught;
+      }
+
+      Assert.NotNull(error);
+      Assert.Contains("cannot be used as a constructor", error.Message);
+      Assert.False(state.WasCalled);
       return true;
     });
   }

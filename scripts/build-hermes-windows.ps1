@@ -42,7 +42,9 @@ function Invoke-Process {
 
   Push-Location $WorkingDirectory
   try {
-    & $FilePath @ArgumentList
+    # Write to the host. A caller that assigns a function result would otherwise capture this
+    # output, and a failed build would print no error.
+    & $FilePath @ArgumentList | Out-Host
     if ($LASTEXITCODE -ne 0) {
       throw "$FilePath exited with code $LASTEXITCODE"
     }
@@ -188,6 +190,18 @@ function Try-BuildOfficialHermes {
   }
 
   New-Item -ItemType Directory -Force -Path $officialBuildDir | Out-Null
+  # Hermes also applies its extra linker flags to its tools, which do not link the VM archive,
+  # so each flag is limited to the hermesvm target.
+  $forHermesVm = '$<$<STREQUAL:$<TARGET_PROPERTY:NAME>,hermesvm>:{0}>'
+  $hermesVmLinkerFlags = @(
+    # The pinned Hermes links its static VM library into hermesvm.dll with GNU linker options
+    # that the MSVC linker ignores, so the DLL exports nothing and has no import library.
+    # Newer Hermes code passes this option itself for MSVC.
+    # The generator expression gives the full path, which the linker needs to match the library.
+    '/WHOLEARCHIVE:$<TARGET_FILE:hermesvm_a>',
+    # The sampling profiler calls timeBeginPeriod, but the pinned Hermes does not link its library.
+    'winmm.lib'
+  ) | ForEach-Object { $forHermesVm -f $_ }
   Invoke-Process -FilePath 'cmake' -ArgumentList @(
     '-S', $sourceDir,
     '-B', $officialBuildDir,
@@ -196,17 +210,27 @@ function Try-BuildOfficialHermes {
     '-DCMAKE_BUILD_TYPE=Release',
     '-DBUILD_SHARED_LIBS=ON',
     '-DHERMES_ENABLE_DEBUGGER=OFF',
+    "-DHERMES_EXTRA_LINKER_FLAGS=$($hermesVmLinkerFlags -join ';')",
     "-DHERMES_ENABLE_INTL=$(if ($EnableIntl) { 'ON' } else { 'OFF' })"
   )
-  Invoke-Process -FilePath 'cmake' -ArgumentList @(
-    '--build',
-    $officialBuildDir,
-    '--config',
-    $Configuration,
-    '--target',
-    'hermesvm',
-    '--parallel'
-  )
+  # MSVC reads extra options from the CL environment variable. Force the compatibility header
+  # into every compile, because Hermes V1 uses a compiler builtin that MSVC does not have.
+  $compatHeader = Join-Path $repoRoot 'scripts\hermes-msvc-compat.h'
+  $previousCl = $env:CL
+  $env:CL = "/FI`"$compatHeader`" $previousCl".Trim()
+  try {
+    Invoke-Process -FilePath 'cmake' -ArgumentList @(
+      '--build',
+      $officialBuildDir,
+      '--config',
+      $Configuration,
+      '--target',
+      'hermesvm',
+      '--parallel'
+    )
+  } finally {
+    $env:CL = $previousCl
+  }
 
   return (Stage-OfficialHermesArtifacts)
 }

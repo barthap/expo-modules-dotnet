@@ -18,7 +18,7 @@ bool isArrayBufferDetached([[maybe_unused]] facebook::jsi::Runtime &runtime,
     try {
       return arrayBuffer.detached(runtime);
     } catch (const std::exception &error) {
-      // The pinned Hermes test runtime exposes the JSI method but reports that detachment is not
+      // A Hermes runtime can expose the JSI method but report that detachment is not
       // implemented. Treat that capability gap as "not detached"; engines that support the check
       // still get the strict validation required by the bridge contract.
       if (std::string_view(error.what()).find("not supported") != std::string_view::npos) {
