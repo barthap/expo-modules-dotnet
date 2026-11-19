@@ -64,7 +64,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:E66E82B4364FF0130CE2E9756D49FED1CF2E10DAAB478BF344895D16787C54BF",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:FEAFC66BB3DA7115BEC1CA6A5840AA498917469348B59B2E17AECA7374394607",
           "global__Expo_TestModules_ContractModule_DFCB3B03.Events.g.cs:5EDF4B279587289BFFB6A548BD0C43AF76CA8EF3440A2DB17C6C973139943F79",
         },
         result.GetOutputContract()
@@ -100,7 +100,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:CF15344B9013DB57C516A0C10025EA4D853FC4FD44123B699BF41B4AA854E785",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:7F1A6B1338D596556BE8134C3CFF28D1AEA5B53B30323FAD155C7643C3D00222",
         },
         result.GetOutputContract()
     );
@@ -203,7 +203,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:029BC6671874204484EF016FC3ECE1731B9CD7AF29EE8E02E1EAA49B8039E85F",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:2785DC4B5C08F300CA69E54C41100AE2CD990FB6DA8658B2B71D0AD5E5FEC934",
           "global__Expo_TestModules_PolicyLeafFreeModule_8D511E8D.Events.g.cs:EB0CCDFABDF861EE54188FA227D628F2A6534E012C2B43EAEF6AFB0C0CA9DE8A",
         },
         result.GetOutputContract()
@@ -258,7 +258,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:A8F56D6BD394B5252DC4272752560AA65BBEADC071C6332FC258149377F5B9F8",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:D11C62510C7DA44C11A823E3BC2021A5332A64ABCF8B3BEC4A173487DBCA1627",
         },
         result.GetOutputContract()
     );
@@ -316,7 +316,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:1D2F2F745A1AF761D26DA28669D46B0374EF5B9C0726876784D4307B9EF51DA8",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:5F9E8F25496491872AF6C564A86EF64621D17305767254E6383EBB65E89FDE59",
           "global__Expo_TestModules_PolicyEntry_7B42955D.SharedObjectEvents.g.cs:7350FE94400C181F149408B9E9810B59C0B87573FD669DAB1B5D5C808A9A2A92",
         },
         result.GetOutputContract()
@@ -355,7 +355,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:5D8C32CAAE2D1D88F5D490C21EA44394C058FFD818AF3318078D48372E4984C3",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:2D9269761804CF753749FE42D647B1D4CFABFE073E05CD4D4CC18B25CFD12DAB",
         },
         result.GetOutputContract()
     );
@@ -414,7 +414,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:9AA807FD8409F5491B9934AC49C5AC08067DFC834E60118FDFB4CF09A53A09A9",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:46954C1FAC8AD7D9A04DEDE4B787FCCF8B9A70ED5611148416921FFAE199DB3A",
         },
         result.GetOutputContract()
     );
@@ -435,7 +435,7 @@ public sealed class GeneratorOutputContractTests
 
         namespace Expo.TestModules;
 
-        [ExpoModule("PolicyDiagnostics")]
+        [ExpoModule("PolicyDiagnostics", Classes = new[] { typeof(PolicyEntry) })]
         public sealed partial class PolicyDiagnosticsModule
         {
           [JS] public int OptionalValue(JavaScriptValue? value) => 0;
@@ -447,7 +447,17 @@ public sealed class GeneratorOutputContractTests
           [JS] public JavaScriptCallback<int> CallbackProperty { get; set; }
           [JS] public int TwoSpans(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second) => 0;
           [JS] public Task<int> AsyncSpan(ReadOnlySpan<byte> value) => Task.FromResult(0);
+          [JS] public int ConcreteList(IReadOnlyList<PolicyEntry?> value) => 0;
+          [JS] public IReadOnlyDictionary<string, PolicyEntry> ConcreteDictionary(Dictionary<string, PolicyEntry> value) => value;
+          [JS] public PolicyHolder ConcreteRecord(PolicyHolder value) => value;
         }
+
+        [ExpoSharedObject]
+        public sealed partial class PolicyEntry : SharedObject
+        {
+        }
+
+        public sealed record PolicyHolder(PolicyEntry First, PolicyEntry? Second);
         """
     );
 
@@ -455,7 +465,7 @@ public sealed class GeneratorOutputContractTests
     Assert.Equal(
         new[]
         {
-          "ExpoModulesProvider_Expo_TestModules.g.cs:2E1AB916E578DEAD22DF80FC8AA98E236F3535F86DA91F0CB2789A4DB6B24B68",
+          "ExpoModulesProvider_Expo_TestModules.g.cs:270D74E33F40E9C229D0219993094663608D204CB8879D970341FF57DCE63885",
         },
         result.GetOutputContract()
     );
@@ -465,7 +475,7 @@ public sealed class GeneratorOutputContractTests
           "EXPOJSI015|Error|Property 'CallbackProperty' uses unsupported type 'global::Expo.ModulesCore.JavaScriptCallback<int>'|0|0|0|0",
           "EXPOJSI001|Error|Parameter 'value' on 'OptionalValue' uses unsupported type 'global::Expo.JSI.JavaScriptValue'|12|49|12|54",
           "EXPOJSI023|Error|'OptionalSharedObject' cannot be exported to JavaScript: parameter 'value' uses shared-object type 'global::Expo.ModulesCore.SharedObject', which is the polymorphic SharedObject base|15|53|15|58",
-          "EXPOJSI023|Error|'SharedObjects' cannot be exported to JavaScript: parameter 'value' uses shared-object type 'global::Expo.ModulesCore.SharedObject' inside a composed codec; shared-object types are supported only directly at the generated boundary|16|60|16|65",
+          "EXPOJSI023|Error|'SharedObjects' cannot be exported to JavaScript: parameter 'value' uses shared-object type 'global::Expo.ModulesCore.SharedObject' inside a composed codec, which is the polymorphic SharedObject base|16|60|16|65",
           "EXPOJSI001|Error|Parameter 'value' on 'MutableList' uses unsupported type 'global::System.Collections.Generic.List<int>'|17|40|17|45",
           "EXPOJSI013|Error|Method 'TwoSpans' declares multiple span parameters (first, second); at most one Span<byte> or ReadOnlySpan<byte> parameter is supported|19|72|19|78",
           "EXPOJSI012|Error|Method 'AsyncSpan' parameter 'value' uses 'global::System.ReadOnlySpan<byte>', which is supported only by synchronous Expo module methods|20|53|20|58",

@@ -6,13 +6,13 @@ namespace Expo.ModulesCore.Codecs;
 public readonly struct NumberEnumCodec<TEnum> : IJavaScriptCodec<TEnum>
     where TEnum : struct, Enum
 {
-  public static TEnum Decode(JavaScriptValueRef value, JavaScriptRuntime runtime) =>
+  public static TEnum Decode(JavaScriptValueRef value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
       FromNumber(value.AsDouble());
 
-  public static TEnum Decode(JavaScriptValue value, JavaScriptRuntime runtime) =>
+  public static TEnum Decode(JavaScriptValue value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
       FromNumber(value.AsDouble());
 
-  public static JavaScriptValue Encode(TEnum value, JavaScriptRuntime runtime) =>
+  public static JavaScriptValue Encode(TEnum value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
       runtime.CreateNumber(Convert.ToDouble(value, CultureInfo.InvariantCulture));
 
   private static TEnum FromNumber(double value)

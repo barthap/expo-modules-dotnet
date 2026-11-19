@@ -12,18 +12,18 @@ public readonly struct NullableReadOnlyListCodec<T, TCodec> : IJavaScriptCodec<I
     where TCodec : IJavaScriptCodec<T>
 {
   /// <summary>Decodes a scoped JavaScript value, mapping nullish input to <c>null</c>.</summary>
-  public static IReadOnlyList<T>? Decode(JavaScriptValueRef value, JavaScriptRuntime runtime) =>
-      value.IsNullish ? null : JavaScriptArrayCodec<T, TCodec>.DecodeToArray(value, runtime);
+  public static IReadOnlyList<T>? Decode(JavaScriptValueRef value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
+      value.IsNullish ? null : JavaScriptArrayCodec<T, TCodec>.DecodeToArray(value, runtime, context);
 
   /// <summary>Decodes an owned JavaScript value, mapping nullish input to <c>null</c>.</summary>
-  public static IReadOnlyList<T>? Decode(JavaScriptValue value, JavaScriptRuntime runtime) =>
-      value.IsNullish ? null : JavaScriptArrayCodec<T, TCodec>.DecodeToArray(value.Ref, runtime);
+  public static IReadOnlyList<T>? Decode(JavaScriptValue value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
+      value.IsNullish ? null : JavaScriptArrayCodec<T, TCodec>.DecodeToArray(value.Ref, runtime, context);
 
   /// <summary>Encodes a null container as JavaScript <c>null</c> and delegates every other value.</summary>
-  public static JavaScriptValue Encode(IReadOnlyList<T>? value, JavaScriptRuntime runtime) =>
+  public static JavaScriptValue Encode(IReadOnlyList<T>? value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
       value is null
           ? runtime.CreateNull()
-          : JavaScriptArrayCodec<T, TCodec>.Encode(value, runtime);
+          : JavaScriptArrayCodec<T, TCodec>.Encode(value, runtime, context);
 
   /// <summary>Releases every element of a non-null list.</summary>
   public static void Release(IReadOnlyList<T>? value)

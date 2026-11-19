@@ -23,7 +23,7 @@ public sealed class Uint8ArrayCodecTests
     fixture.Runtime.Execute(runtime =>
     {
       using var source = fixture.Evaluate("globalThis.v = new Uint8Array(4); v", "u8-share.js");
-      using var view = Uint8ArrayCodec.Decode(source.Ref, runtime);
+      using var view = Uint8ArrayCodec.Decode(source.Ref, runtime, CodecTestContext.Unused);
 
       Assert.Equal(0, view.ByteOffset);
       Assert.Equal(4, view.Length);
@@ -47,7 +47,7 @@ public sealed class Uint8ArrayCodecTests
     {
       fixture.Evaluate(Buffer16, "u8-sub-buffer.js").Dispose();
       using var source = fixture.Evaluate("globalThis.s = new Uint8Array(buf, 4, 8); s", "u8-sub.js");
-      using var view = Uint8ArrayCodec.Decode(source.Ref, runtime);
+      using var view = Uint8ArrayCodec.Decode(source.Ref, runtime, CodecTestContext.Unused);
 
       Assert.Equal(4, view.ByteOffset);
       Assert.Equal(8, view.Length);
@@ -74,7 +74,7 @@ public sealed class Uint8ArrayCodecTests
     {
       using (var emptySource = fixture.Evaluate("new Uint8Array(0)", "u8-empty.js"))
       {
-        using var empty = Uint8ArrayCodec.Decode(emptySource.Ref, runtime);
+        using var empty = Uint8ArrayCodec.Decode(emptySource.Ref, runtime, CodecTestContext.Unused);
         Assert.Equal(0, empty.ByteOffset);
         Assert.Equal(0, empty.Length);
         Assert.Empty(empty.ToArray());
@@ -82,13 +82,13 @@ public sealed class Uint8ArrayCodecTests
 
       fixture.Evaluate(Buffer16, "u8-empty-buffer.js").Dispose();
       using var endSource = fixture.Evaluate("new Uint8Array(buf, 16, 0)", "u8-empty-end.js");
-      using var end = Uint8ArrayCodec.Decode(endSource.Ref, runtime);
+      using var end = Uint8ArrayCodec.Decode(endSource.Ref, runtime, CodecTestContext.Unused);
       // Hermes's byteOffset getter returns 0 when the view length is 0, so offset 16 is not
       // observable from JavaScript; the codec passes the engine's value through unchanged.
       Assert.Equal(0, end.ByteOffset);
       Assert.Equal(0, end.Length);
 
-      using var encoded = Uint8ArrayCodec.Encode(end, runtime);
+      using var encoded = Uint8ArrayCodec.Encode(end, runtime, CodecTestContext.Unused);
       using var global = runtime.Global();
       global.SetProperty("r", encoded);
       Assert.Equal(
@@ -116,8 +116,8 @@ public sealed class Uint8ArrayCodecTests
     {
       fixture.Evaluate(Buffer16, "u8-encode-buffer.js").Dispose();
       using var source = fixture.Evaluate("globalThis.s = new Uint8Array(buf, 4, 8); s", "u8-encode.js");
-      using var view = Uint8ArrayCodec.Decode(source.Ref, runtime);
-      using var encoded = Uint8ArrayCodec.Encode(view, runtime);
+      using var view = Uint8ArrayCodec.Decode(source.Ref, runtime, CodecTestContext.Unused);
+      using var encoded = Uint8ArrayCodec.Encode(view, runtime, CodecTestContext.Unused);
       using var global = runtime.Global();
       global.SetProperty("r", encoded);
 
@@ -153,7 +153,7 @@ public sealed class Uint8ArrayCodecTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      using var encoded = Uint8ArrayCodec.Encode(copy, runtime);
+      using var encoded = Uint8ArrayCodec.Encode(copy, runtime, CodecTestContext.Unused);
       using var global = runtime.Global();
       global.SetProperty("r", encoded);
       Assert.Equal(
@@ -222,7 +222,7 @@ public sealed class Uint8ArrayCodecTests
     var view = fixture.Runtime.Execute(runtime =>
     {
       using var source = fixture.Evaluate("new Uint8Array(4)", "u8-dispose.js");
-      return Uint8ArrayCodec.Decode(source.Ref, runtime);
+      return Uint8ArrayCodec.Decode(source.Ref, runtime, CodecTestContext.Unused);
     });
 
     fixture.ResetCounters();
@@ -247,7 +247,7 @@ public sealed class Uint8ArrayCodecTests
     var decoded = fixture.Runtime.Execute(runtime =>
     {
       using var source = fixture.Evaluate("new Uint8Array(4)", "u8-release.js");
-      var decoded = Uint8ArrayCodec.Decode(source.Ref, runtime);
+      var decoded = Uint8ArrayCodec.Decode(source.Ref, runtime, CodecTestContext.Unused);
       Assert.Equal(4, decoded.Length);
       return decoded;
     });
@@ -271,9 +271,9 @@ public sealed class Uint8ArrayCodecTests
       Uint8ArrayCodec.Release(null!);
 
       using var source = fixture.Evaluate("new Uint8Array(2)", "u8-encode-usable.js");
-      var view = Uint8ArrayCodec.Decode(source.Ref, runtime);
-      Uint8ArrayCodec.Encode(view, runtime).Dispose();
-      Uint8ArrayCodec.Encode(view, runtime).Dispose();
+      var view = Uint8ArrayCodec.Decode(source.Ref, runtime, CodecTestContext.Unused);
+      Uint8ArrayCodec.Encode(view, runtime, CodecTestContext.Unused).Dispose();
+      Uint8ArrayCodec.Encode(view, runtime, CodecTestContext.Unused).Dispose();
       Assert.Equal(2, view.Length);
       return view;
     });
@@ -304,9 +304,9 @@ public sealed class Uint8ArrayCodecTests
       fixture.ResetCounters();
 
       AssertNotUint8Array(Assert.Throws<InvalidOperationException>(
-          () => Uint8ArrayCodec.Decode(source.Ref, runtime)));
+          () => Uint8ArrayCodec.Decode(source.Ref, runtime, CodecTestContext.Unused)));
       AssertNotUint8Array(Assert.Throws<InvalidOperationException>(
-          () => Uint8ArrayCodec.Decode(source, runtime)));
+          () => Uint8ArrayCodec.Decode(source, runtime, CodecTestContext.Unused)));
       return 0;
     });
 
@@ -323,7 +323,7 @@ public sealed class Uint8ArrayCodecTests
     fixture.Runtime.Execute(runtime =>
     {
       using var source = fixture.Evaluate("globalThis.v = " + Sub + "; v", "u8-subclass.js");
-      using var view = Uint8ArrayCodec.Decode(source.Ref, runtime);
+      using var view = Uint8ArrayCodec.Decode(source.Ref, runtime, CodecTestContext.Unused);
 
       Assert.Equal(0, view.ByteOffset);
       Assert.Equal(4, view.Length);
@@ -346,13 +346,13 @@ public sealed class Uint8ArrayCodecTests
     fixture.Runtime.Execute(runtime =>
     {
       using var accepted = fixture.Evaluate(Spoof(4), "u8-spoof-ok.js");
-      using var view = Uint8ArrayCodec.Decode(accepted.Ref, runtime);
+      using var view = Uint8ArrayCodec.Decode(accepted.Ref, runtime, CodecTestContext.Unused);
       Assert.Equal(2, view.ByteOffset);
       Assert.Equal(4, view.Length);
       Assert.Equal(new byte[] { 2, 3, 4, 5 }, view.ToArray());
 
       using var rejected = fixture.Evaluate(Spoof(9), "u8-spoof-bad.js");
-      Assert.Throws<ArgumentOutOfRangeException>(() => Uint8ArrayCodec.Decode(rejected.Ref, runtime));
+      Assert.Throws<ArgumentOutOfRangeException>(() => Uint8ArrayCodec.Decode(rejected.Ref, runtime, CodecTestContext.Unused));
       return 0;
     });
     fixture.WaitUntilIdle();
@@ -377,12 +377,12 @@ public sealed class Uint8ArrayCodecTests
           "u8-shadow.js");
       if (outOfRange)
       {
-        Assert.Throws<ArgumentOutOfRangeException>(() => Uint8ArrayCodec.Decode(source.Ref, runtime));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Uint8ArrayCodec.Decode(source.Ref, runtime, CodecTestContext.Unused));
       }
       else
       {
         AssertNotUint8Array(Assert.Throws<InvalidOperationException>(
-            () => Uint8ArrayCodec.Decode(source.Ref, runtime)));
+            () => Uint8ArrayCodec.Decode(source.Ref, runtime, CodecTestContext.Unused)));
       }
       return 0;
     });

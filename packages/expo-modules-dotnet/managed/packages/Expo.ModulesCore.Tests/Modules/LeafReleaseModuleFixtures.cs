@@ -120,6 +120,13 @@ public sealed partial class LeafReleaseModule : Module, IDisposable
   }
 
   [JS]
+  public async Task<int> HoldLengthAsync(ArrayBuffer value)
+  {
+    await Gate.Task;
+    return value.ByteLength;
+  }
+
+  [JS]
   public async Task<JavaScriptValue> HoldValueAsync(JavaScriptValue value)
   {
     await Gate.Task;

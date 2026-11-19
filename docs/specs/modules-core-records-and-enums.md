@@ -220,7 +220,7 @@ no code: JavaScript SHALL receive them as catchable `Error`s with no `code`
 property from sync members, and as rejected promises from async members.
 
 The generated enum codec SHALL compose in every codec position where an enum is
-accepted, SHALL hold no leaves, and SHALL need no runtime context. As a union
+accepted, SHALL hold no leaves, and SHALL ignore the runtime context. As a union
 payload, a string enum SHALL have the kind `String`; a string it does not
 declare SHALL fail that case's attempt, so decoding moves to the next case.
 

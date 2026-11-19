@@ -20,7 +20,8 @@ public readonly struct JavaScriptDictionaryCodec<T, TCodec>
   /// <summary>Decodes a scoped JavaScript object into a new dictionary.</summary>
   public static Dictionary<string, T> DecodeToDictionary(
       JavaScriptValueRef value,
-      JavaScriptRuntime runtime)
+      JavaScriptRuntime runtime,
+      DotnetRuntimeContext context)
   {
     var obj = value.AsObject();
     var result = new Dictionary<string, T>(StringComparer.Ordinal);
@@ -30,7 +31,7 @@ public readonly struct JavaScriptDictionaryCodec<T, TCodec>
       foreach (var name in obj.GetOwnPropertyNames())
       {
         var property = obj.GetProperty(name);
-        result[name] = TCodec.Decode(property, runtime);
+        result[name] = TCodec.Decode(property, runtime, context);
       }
     }
     catch
@@ -48,7 +49,8 @@ public readonly struct JavaScriptDictionaryCodec<T, TCodec>
   /// </summary>
   public static Dictionary<string, T> DecodeToDictionary(
       JavaScriptValue value,
-      JavaScriptRuntime runtime)
+      JavaScriptRuntime runtime,
+      DotnetRuntimeContext context)
   {
     using var obj = value.AsObject();
     var result = new Dictionary<string, T>(StringComparer.Ordinal);
@@ -58,7 +60,7 @@ public readonly struct JavaScriptDictionaryCodec<T, TCodec>
       foreach (var name in obj.GetOwnPropertyNames())
       {
         using var property = obj.GetProperty(name);
-        result[name] = TCodec.Decode(property, runtime);
+        result[name] = TCodec.Decode(property, runtime, context);
       }
     }
     catch
@@ -92,24 +94,25 @@ public readonly struct JavaScriptDictionaryCodec<T, TCodec>
   }
 
   /// <summary>Decodes a scoped JavaScript object into a new dictionary.</summary>
-  public static Dictionary<string, T> Decode(JavaScriptValueRef value, JavaScriptRuntime runtime) =>
-      DecodeToDictionary(value, runtime);
+  public static Dictionary<string, T> Decode(JavaScriptValueRef value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
+      DecodeToDictionary(value, runtime, context);
 
   /// <summary>Decodes an owned JavaScript object into a new dictionary.</summary>
-  public static Dictionary<string, T> Decode(JavaScriptValue value, JavaScriptRuntime runtime) =>
-      DecodeToDictionary(value, runtime);
+  public static Dictionary<string, T> Decode(JavaScriptValue value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
+      DecodeToDictionary(value, runtime, context);
 
   /// <summary>Encodes a string-keyed dictionary as a new JavaScript object.</summary>
   public static JavaScriptValue Encode(
       IReadOnlyDictionary<string, T> values,
-      JavaScriptRuntime runtime)
+      JavaScriptRuntime runtime,
+      DotnetRuntimeContext context)
   {
     ArgumentNullException.ThrowIfNull(values);
 
     using var obj = runtime.CreateObject();
     foreach (var pair in values)
     {
-      using var value = TCodec.Encode(pair.Value, runtime);
+      using var value = TCodec.Encode(pair.Value, runtime, context);
       obj.SetProperty(pair.Key, value);
     }
 
@@ -118,18 +121,21 @@ public readonly struct JavaScriptDictionaryCodec<T, TCodec>
 
   static IReadOnlyDictionary<string, T> IJavaScriptCodec<IReadOnlyDictionary<string, T>>.Decode(
       JavaScriptValueRef value,
-      JavaScriptRuntime runtime) =>
-      Decode(value, runtime);
+      JavaScriptRuntime runtime,
+      DotnetRuntimeContext context) =>
+      Decode(value, runtime, context);
 
   static IReadOnlyDictionary<string, T> IJavaScriptCodec<IReadOnlyDictionary<string, T>>.Decode(
       JavaScriptValue value,
-      JavaScriptRuntime runtime) =>
-      Decode(value, runtime);
+      JavaScriptRuntime runtime,
+      DotnetRuntimeContext context) =>
+      Decode(value, runtime, context);
 
   static JavaScriptValue IJavaScriptCodec<Dictionary<string, T>>.Encode(
       Dictionary<string, T> value,
-      JavaScriptRuntime runtime) =>
-      Encode(value, runtime);
+      JavaScriptRuntime runtime,
+      DotnetRuntimeContext context) =>
+      Encode(value, runtime, context);
 
   static void IJavaScriptCodec<Dictionary<string, T>>.Release(Dictionary<string, T> value) =>
       Release(value);

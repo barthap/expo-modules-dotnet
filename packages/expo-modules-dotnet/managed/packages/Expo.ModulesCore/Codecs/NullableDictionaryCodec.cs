@@ -12,18 +12,18 @@ public readonly struct NullableDictionaryCodec<T, TCodec> : IJavaScriptCodec<Dic
     where TCodec : IJavaScriptCodec<T>
 {
   /// <summary>Decodes a scoped JavaScript value, mapping nullish input to <c>null</c>.</summary>
-  public static Dictionary<string, T>? Decode(JavaScriptValueRef value, JavaScriptRuntime runtime) =>
-      value.IsNullish ? null : JavaScriptDictionaryCodec<T, TCodec>.DecodeToDictionary(value, runtime);
+  public static Dictionary<string, T>? Decode(JavaScriptValueRef value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
+      value.IsNullish ? null : JavaScriptDictionaryCodec<T, TCodec>.DecodeToDictionary(value, runtime, context);
 
   /// <summary>Decodes an owned JavaScript value, mapping nullish input to <c>null</c>.</summary>
-  public static Dictionary<string, T>? Decode(JavaScriptValue value, JavaScriptRuntime runtime) =>
-      value.IsNullish ? null : JavaScriptDictionaryCodec<T, TCodec>.DecodeToDictionary(value, runtime);
+  public static Dictionary<string, T>? Decode(JavaScriptValue value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
+      value.IsNullish ? null : JavaScriptDictionaryCodec<T, TCodec>.DecodeToDictionary(value, runtime, context);
 
   /// <summary>Encodes a null container as JavaScript <c>null</c> and delegates every other value.</summary>
-  public static JavaScriptValue Encode(Dictionary<string, T>? value, JavaScriptRuntime runtime) =>
+  public static JavaScriptValue Encode(Dictionary<string, T>? value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
       value is null
           ? runtime.CreateNull()
-          : JavaScriptDictionaryCodec<T, TCodec>.Encode(value, runtime);
+          : JavaScriptDictionaryCodec<T, TCodec>.Encode(value, runtime, context);
 
   /// <summary>Releases every value of a non-null dictionary.</summary>
   public static void Release(Dictionary<string, T>? value)

@@ -19,12 +19,12 @@ public sealed class JavaScriptCallback<TResult> : IDisposable
   public static JavaScriptCallback<TResult> FromFunction(
       DotnetRuntimeContext context,
       JavaScriptFunction function,
-      Func<JavaScriptValue, JavaScriptRuntime, TResult> decodeResult)
+      Func<JavaScriptValue, JavaScriptRuntime, DotnetRuntimeContext, TResult> decodeResult)
   {
     return new(JavaScriptCallback<ValueTuple, TResult>.FromFunction(
         context,
         function,
-        static (_, _) => [],
+        static (_, _, _) => [],
         decodeResult
     ));
   }
@@ -32,12 +32,12 @@ public sealed class JavaScriptCallback<TResult> : IDisposable
   internal static JavaScriptCallback<TResult> FromOwnedFunction(
       DotnetRuntimeContext context,
       JavaScriptFunction function,
-      Func<JavaScriptValue, JavaScriptRuntime, TResult> decodeResult)
+      Func<JavaScriptValue, JavaScriptRuntime, DotnetRuntimeContext, TResult> decodeResult)
   {
     return new(JavaScriptCallback<ValueTuple, TResult>.FromOwnedFunction(
         context,
         function,
-        static (_, _) => [],
+        static (_, _, _) => [],
         decodeResult
     ));
   }
@@ -55,16 +55,16 @@ public sealed class JavaScriptCallback<TArgs, TResult> : IDisposable, IRuntimeCo
 {
   private readonly DotnetRuntimeContext context;
   private readonly JavaScriptFunction function;
-  private readonly Func<TArgs, JavaScriptRuntime, JavaScriptValue[]> encodeArgs;
-  private readonly Func<JavaScriptValue, JavaScriptRuntime, TResult> decodeResult;
+  private readonly Func<TArgs, JavaScriptRuntime, DotnetRuntimeContext, JavaScriptValue[]> encodeArgs;
+  private readonly Func<JavaScriptValue, JavaScriptRuntime, DotnetRuntimeContext, TResult> decodeResult;
   private bool disposed;
   private bool runtimeContextDisposed;
 
   private JavaScriptCallback(
       DotnetRuntimeContext context,
       JavaScriptFunction function,
-      Func<TArgs, JavaScriptRuntime, JavaScriptValue[]> encodeArgs,
-      Func<JavaScriptValue, JavaScriptRuntime, TResult> decodeResult)
+      Func<TArgs, JavaScriptRuntime, DotnetRuntimeContext, JavaScriptValue[]> encodeArgs,
+      Func<JavaScriptValue, JavaScriptRuntime, DotnetRuntimeContext, TResult> decodeResult)
   {
     this.context = context;
     this.function = function;
@@ -75,8 +75,8 @@ public sealed class JavaScriptCallback<TArgs, TResult> : IDisposable, IRuntimeCo
   public static JavaScriptCallback<TArgs, TResult> FromFunction(
       DotnetRuntimeContext context,
       JavaScriptFunction function,
-      Func<TArgs, JavaScriptRuntime, JavaScriptValue[]> encodeArgs,
-      Func<JavaScriptValue, JavaScriptRuntime, TResult> decodeResult)
+      Func<TArgs, JavaScriptRuntime, DotnetRuntimeContext, JavaScriptValue[]> encodeArgs,
+      Func<JavaScriptValue, JavaScriptRuntime, DotnetRuntimeContext, TResult> decodeResult)
   {
     ArgumentNullException.ThrowIfNull(function);
     using var functionValue = function.AsValue();
@@ -86,8 +86,8 @@ public sealed class JavaScriptCallback<TArgs, TResult> : IDisposable, IRuntimeCo
   internal static JavaScriptCallback<TArgs, TResult> FromOwnedFunction(
       DotnetRuntimeContext context,
       JavaScriptFunction function,
-      Func<TArgs, JavaScriptRuntime, JavaScriptValue[]> encodeArgs,
-      Func<JavaScriptValue, JavaScriptRuntime, TResult> decodeResult)
+      Func<TArgs, JavaScriptRuntime, DotnetRuntimeContext, JavaScriptValue[]> encodeArgs,
+      Func<JavaScriptValue, JavaScriptRuntime, DotnetRuntimeContext, TResult> decodeResult)
   {
     ArgumentNullException.ThrowIfNull(context);
     ArgumentNullException.ThrowIfNull(function);
@@ -158,11 +158,11 @@ public sealed class JavaScriptCallback<TArgs, TResult> : IDisposable, IRuntimeCo
   private TResult InvokeCore(TArgs args, JavaScriptRuntime runtime)
   {
     ThrowIfDisposed();
-    var encodedArgs = encodeArgs(args, runtime);
+    var encodedArgs = encodeArgs(args, runtime, context);
     try
     {
       using var result = function.Call(encodedArgs);
-      return decodeResult(result, runtime);
+      return decodeResult(result, runtime, context);
     }
     finally
     {

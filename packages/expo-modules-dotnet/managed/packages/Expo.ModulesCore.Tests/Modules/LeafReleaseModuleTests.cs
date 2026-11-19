@@ -360,6 +360,29 @@ public sealed partial class LeafReleaseModuleTests
   }
 
   [Fact]
+  public void AbandonedAsyncLeafFreeResultReleasesInputOnce()
+  {
+    using var leaf = LeafReleaseFixture.Create();
+    leaf.Run("globalThis.b = new ArrayBuffer(4); true");
+
+    leaf.StartOutcome("m.holdLengthAsync(b)");
+    leaf.Fixture.DisableSyncExecutionForTesting();
+    leaf.Fixture.PauseRuntimeExecutor();
+    leaf.Fixture.ResetCounters();
+    leaf.Fixture.DropNextRuntimeTask(JavaScriptTaskPriority.Immediate);
+    leaf.Module.Gate.SetResult();
+    leaf.Fixture.WaitUntilRuntimeTaskQueued(JavaScriptTaskPriority.Immediate);
+    leaf.Fixture.ResumeRuntimeExecutor();
+    leaf.Fixture.WaitUntilIdle();
+    leaf.Fixture.SetSyncExecutionSupportedForTesting(true);
+    leaf.WaitForArrayBufferReleases(1u);
+
+    // The result is an int, so only the leaf-bearing argument is left for the abandon callback.
+    Assert.Equal(1u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
+    Assert.Equal("pending", leaf.ReadString("__outcome.status"));
+  }
+
+  [Fact]
   public async Task AsyncLeafMemberArgumentCountFailureRejects()
   {
     using var leaf = LeafReleaseFixture.Create();

@@ -241,10 +241,11 @@ public sealed class GeneratedMathAndTextModuleTests
     {
       GeneratedFunction.RequireArgumentCount("Math.add", arguments, 2);
 
+      var __expoRuntimeContext = GeneratedFunction.CurrentRuntimeContext;
       var module = (MathModule)context;
-      var value = DoubleCodec.Decode(arguments.GetValue(0), runtime);
-      var shouldAddOne = BoolCodec.Decode(arguments.GetValue(1), runtime);
-      return DoubleCodec.Encode(module.Add(value, shouldAddOne), runtime);
+      var value = DoubleCodec.Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);
+      var shouldAddOne = BoolCodec.Decode(arguments.GetValue(1), runtime, __expoRuntimeContext);
+      return DoubleCodec.Encode(module.Add(value, shouldAddOne), runtime, __expoRuntimeContext);
     }
 
     private static JavaScriptValue TextGreetHostFunction(
@@ -255,9 +256,10 @@ public sealed class GeneratedMathAndTextModuleTests
     {
       GeneratedFunction.RequireArgumentCount("Text.greet", arguments, 1);
 
+      var __expoRuntimeContext = GeneratedFunction.CurrentRuntimeContext;
       var module = (TextModule)context;
-      var name = StringCodec.Decode(arguments.GetValue(0), runtime);
-      return StringCodec.Encode(module.Greet(name), runtime);
+      var name = StringCodec.Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);
+      return StringCodec.Encode(module.Greet(name), runtime, __expoRuntimeContext);
     }
   }
 }

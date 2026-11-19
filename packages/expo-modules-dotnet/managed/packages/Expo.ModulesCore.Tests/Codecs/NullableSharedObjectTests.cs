@@ -5,10 +5,13 @@ using Expo.ModulesCore.Codecs;
 using Expo.ModulesCore.Tests.Fixtures;
 using Expo.ModulesCore.Tests.Modules;
 using Xunit;
+using NullableEntryCodec = Expo.ModulesCore.Codecs.NullableReferenceCodec<
+    Expo.ModulesCore.Tests.Modules.SnapshotEntry,
+    Expo.ModulesCore.Codecs.SharedObjectCodec<Expo.ModulesCore.Tests.Modules.SnapshotEntry>>;
 
 namespace Expo.ModulesCore.Tests.Codecs;
 
-public sealed class NullableSharedObjectCodecTests
+public sealed class NullableSharedObjectTests
 {
   private const string NotAnObjectMessage = "Value is not an object.";
 
@@ -26,8 +29,8 @@ public sealed class NullableSharedObjectCodecTests
       var steps = new List<SharedObjectPairingStep>();
       context.SharedObjects.PairingStepForTesting = steps.Add;
 
-      Assert.Null(NullableSharedObjectCodec<SnapshotEntry>.Decode(value.Ref, runtime, context));
-      Assert.Null(NullableSharedObjectCodec<SnapshotEntry>.Decode(value, runtime, context));
+      Assert.Null(NullableEntryCodec.Decode(value.Ref, runtime, context));
+      Assert.Null(NullableEntryCodec.Decode(value, runtime, context));
 
       // Control: the exact codec reaches AsObject on the same input and throws, so the nullable
       // codec must have returned before it.
@@ -41,7 +44,7 @@ public sealed class NullableSharedObjectCodecTests
       // Control: the hook does record steps once a class is installed and a non-null value is
       // encoded, so the empty list above is meaningful.
       Install<SnapshotEntry>(runtime, context, "NativeSnapshot");
-      using var paired = NullableSharedObjectCodec<SnapshotEntry>.Encode(new SnapshotEntry(), runtime, context);
+      using var paired = NullableEntryCodec.Encode(new SnapshotEntry(), runtime, context);
       Assert.NotEmpty(steps);
       return true;
     });
@@ -58,7 +61,7 @@ public sealed class NullableSharedObjectCodecTests
       var steps = new List<SharedObjectPairingStep>();
       context.SharedObjects.PairingStepForTesting = steps.Add;
 
-      using var encoded = NullableSharedObjectCodec<SnapshotEntry>.Encode(null, runtime, context);
+      using var encoded = NullableEntryCodec.Encode(null, runtime, context);
       Assert.Equal(JavaScriptValueKind.Null, encoded.Kind);
       Assert.Empty(steps);
       Assert.Equal(0, context.SharedObjects.Count);
@@ -72,7 +75,7 @@ public sealed class NullableSharedObjectCodecTests
       // Control: the hook does record steps once a class is installed and a non-null value is
       // encoded, so the empty list above is meaningful.
       Install<SnapshotEntry>(runtime, context, "NativeSnapshot");
-      using var paired = NullableSharedObjectCodec<SnapshotEntry>.Encode(new SnapshotEntry(), runtime, context);
+      using var paired = NullableEntryCodec.Encode(new SnapshotEntry(), runtime, context);
       Assert.NotEmpty(steps);
       return true;
     });
@@ -99,9 +102,9 @@ public sealed class NullableSharedObjectCodecTests
       // Only null and undefined map to C# null. Falsy primitives such as 0, false and '' must
       // still fail like the exact codec.
       var nullableRef = Assert.Throws<InvalidOperationException>(
-          () => NullableSharedObjectCodec<SnapshotEntry>.Decode(value.Ref, runtime, context));
+          () => NullableEntryCodec.Decode(value.Ref, runtime, context));
       var nullableOwned = Assert.Throws<InvalidOperationException>(
-          () => NullableSharedObjectCodec<SnapshotEntry>.Decode(value, runtime, context));
+          () => NullableEntryCodec.Decode(value, runtime, context));
       var exact = Assert.Throws<InvalidOperationException>(
           () => SharedObjectCodec<SnapshotEntry>.Decode(value.Ref, runtime, context));
 
@@ -126,7 +129,7 @@ public sealed class NullableSharedObjectCodecTests
       var steps = new List<SharedObjectPairingStep>();
       context.SharedObjects.PairingStepForTesting = steps.Add;
 
-      using var first = NullableSharedObjectCodec<SnapshotEntry>.Encode(instance, runtime, context);
+      using var first = NullableEntryCodec.Encode(instance, runtime, context);
       Assert.Equal(
           new[]
           {
@@ -137,12 +140,12 @@ public sealed class NullableSharedObjectCodecTests
           steps);
 
       steps.Clear();
-      using var second = NullableSharedObjectCodec<SnapshotEntry>.Encode(instance, runtime, context);
+      using var second = NullableEntryCodec.Encode(instance, runtime, context);
       Assert.Equal(new[] { SharedObjectPairingStep.ExistingWeakObjectLocked }, steps);
       Assert.True(runtime.StrictEquals(first, second));
 
-      Assert.Same(instance, NullableSharedObjectCodec<SnapshotEntry>.Decode(first.Ref, runtime, context));
-      Assert.Same(instance, NullableSharedObjectCodec<SnapshotEntry>.Decode(second, runtime, context));
+      Assert.Same(instance, NullableEntryCodec.Decode(first.Ref, runtime, context));
+      Assert.Same(instance, NullableEntryCodec.Decode(second, runtime, context));
       Assert.Same(instance, SharedObjectCodec<SnapshotEntry>.Decode(first.Ref, runtime, context));
       Assert.Equal(1, context.SharedObjects.Count);
       return true;
@@ -196,7 +199,7 @@ public sealed class NullableSharedObjectCodecTests
             context);
 
         var nullableEncode = Assert.Throws<InvalidOperationException>(
-            () => NullableSharedObjectCodec<SnapshotEntry>.Encode(releasedInstance, runtime, context));
+            () => NullableEntryCodec.Encode(releasedInstance, runtime, context));
         var exactEncode = Assert.Throws<InvalidOperationException>(
             () => SharedObjectCodec<SnapshotEntry>.Encode(releasedInstance, runtime, context));
         Assert.Equal(exactEncode.Message, nullableEncode.Message);
@@ -217,18 +220,75 @@ public sealed class NullableSharedObjectCodecTests
       DotnetRuntimeContext context)
   {
     var nullable = Assert.Throws<InvalidOperationException>(
-        () => NullableSharedObjectCodec<SnapshotEntry>.Decode(value.Ref, runtime, context));
+        () => NullableEntryCodec.Decode(value.Ref, runtime, context));
     var exact = Assert.Throws<InvalidOperationException>(
         () => SharedObjectCodec<SnapshotEntry>.Decode(value.Ref, runtime, context));
     Assert.Equal(exact.Message, nullable.Message);
     Assert.Contains(expected, nullable.Message);
 
     var nullableOwned = Assert.Throws<InvalidOperationException>(
-        () => NullableSharedObjectCodec<SnapshotEntry>.Decode(value, runtime, context));
+        () => NullableEntryCodec.Decode(value, runtime, context));
     var exactOwned = Assert.Throws<InvalidOperationException>(
         () => SharedObjectCodec<SnapshotEntry>.Decode(value, runtime, context));
     Assert.Equal(exactOwned.Message, nullableOwned.Message);
     Assert.Contains(expected, nullableOwned.Message);
+  }
+
+  [Fact]
+  public void SharedObjectCodecThrowsForNullContext()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var value = fixture.Evaluate("({})", "shared-object-null-context.js");
+
+      Assert.Equal(
+          "context",
+          Assert.Throws<ArgumentNullException>(
+              () => SharedObjectCodec<SnapshotEntry>.Decode(value.Ref, runtime, null!)).ParamName);
+      Assert.Equal(
+          "context",
+          Assert.Throws<ArgumentNullException>(
+              () => SharedObjectCodec<SnapshotEntry>.Decode(value, runtime, null!)).ParamName);
+      Assert.Equal(
+          "context",
+          Assert.Throws<ArgumentNullException>(
+              () => SharedObjectCodec<SnapshotEntry>.Encode(new SnapshotEntry(), runtime, null!)).ParamName);
+      return true;
+    });
+  }
+
+  [Fact]
+  public void SharedObjectCodecSatisfiesTheChildCodecConstraint()
+  {
+    using var fixture = HermesRuntimeFixture.Create();
+
+    fixture.Runtime.Execute(runtime =>
+    {
+      using var context = new DotnetRuntimeContext(runtime);
+      Install<SnapshotEntry>(runtime, context, "NativeSnapshot");
+      var a = new SnapshotEntry();
+      var b = new SnapshotEntry();
+
+      using var encoded = JavaScriptArrayCodec<SnapshotEntry, SharedObjectCodec<SnapshotEntry>>.Encode(
+          new[] { a, b, a }, runtime, context);
+      using var array = encoded.AsObject();
+      using var first = array.GetProperty("0");
+      using var second = array.GetProperty("1");
+      using var third = array.GetProperty("2");
+      Assert.True(runtime.StrictEquals(first, third));
+      Assert.False(runtime.StrictEquals(first, second));
+
+      var decoded = JavaScriptArrayCodec<SnapshotEntry, SharedObjectCodec<SnapshotEntry>>.Decode(
+          encoded.Ref, runtime, context);
+      Assert.Equal(3, decoded.Count);
+      Assert.Same(a, decoded[0]);
+      Assert.Same(b, decoded[1]);
+      Assert.Same(a, decoded[2]);
+      Assert.Equal(2, context.SharedObjects.Count);
+      return true;
+    });
   }
 
   private static void Install<T>(JavaScriptRuntime runtime, DotnetRuntimeContext context, string name)

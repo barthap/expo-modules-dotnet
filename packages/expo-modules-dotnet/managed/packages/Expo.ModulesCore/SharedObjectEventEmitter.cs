@@ -59,7 +59,7 @@ public static class GeneratedSharedObjectEvents
       where TCodec : struct, IJavaScriptCodec<T> =>
       ExecuteAsync(context, instance, eventName, (runtime, target, registration) =>
       {
-        using var value = TCodec.Encode(payload, runtime);
+        using var value = TCodec.Encode(payload, runtime, context);
         SharedObjectEventPrototype.Dispatch(runtime, target, registration, eventName, value);
       });
 

@@ -21,9 +21,9 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.Empty(GeneratorDiagnosticIds(result));
     AssertNoCompilerDiagnostics(result);
     var text = GeneratedText(result);
-    Assert.Contains($"{EnumCodecName("TypeMode", "global::Expo.TestModules.TypeMode")}.Decode(arguments.GetValue(0), runtime)", text, StringComparison.Ordinal);
-    Assert.Contains("NumberEnumCodec<global::Expo.TestModules.TypeMode>.Decode(modeValue, runtime)", text, StringComparison.Ordinal);
-    Assert.Contains("NullableCodec<global::Expo.TestModules.PlainMode, NumberEnumCodec<global::Expo.TestModules.PlainMode>>.Decode(arguments.GetValue(0), runtime)", text, StringComparison.Ordinal);
+    Assert.Contains($"{EnumCodecName("TypeMode", "global::Expo.TestModules.TypeMode")}.Decode(arguments.GetValue(0), runtime, __expoRuntimeContext)", text, StringComparison.Ordinal);
+    Assert.Contains("NumberEnumCodec<global::Expo.TestModules.TypeMode>.Decode(modeValue, runtime, context)", text, StringComparison.Ordinal);
+    Assert.Contains("NullableCodec<global::Expo.TestModules.PlainMode, NumberEnumCodec<global::Expo.TestModules.PlainMode>>.Decode(arguments.GetValue(0), runtime, __expoRuntimeContext)", text, StringComparison.Ordinal);
     Assert.Contains("NullableCodec<global::Expo.TestModules.PlainMode, NumberEnumCodec<global::Expo.TestModules.PlainMode>>.Encode(", text, StringComparison.Ordinal);
   }
 
@@ -115,7 +115,7 @@ public sealed partial class ExpoModulesGeneratorTests
 
     Assert.Empty(GeneratorDiagnosticIds(result));
     AssertNoCompilerDiagnostics(result);
-    Assert.Contains("NumberEnumCodec<global::Expo.TestModules.Level>.Decode(arguments.GetValue(0), runtime)", GeneratedText(result), StringComparison.Ordinal);
+    Assert.Contains("NumberEnumCodec<global::Expo.TestModules.Level>.Decode(arguments.GetValue(0), runtime, __expoRuntimeContext)", GeneratedText(result), StringComparison.Ordinal);
   }
 
   // Encode cannot pick one string for two members with one value. A pair with the same value and
@@ -277,11 +277,11 @@ public sealed partial class ExpoModulesGeneratorTests
         $$"""
         private readonly struct {{codecName}} : global::Expo.ModulesCore.Codecs.IJavaScriptCodec<global::Expo.TestModules.DigestAlgorithm>
           {
-            public static global::Expo.TestModules.DigestAlgorithm Decode(global::Expo.JSI.JavaScriptValueRef value, global::Expo.JSI.JavaScriptRuntime runtime) => FromJavaScriptString(value.AsString());
+            public static global::Expo.TestModules.DigestAlgorithm Decode(global::Expo.JSI.JavaScriptValueRef value, global::Expo.JSI.JavaScriptRuntime runtime, global::Expo.ModulesCore.DotnetRuntimeContext context) => FromJavaScriptString(value.AsString());
 
-            public static global::Expo.TestModules.DigestAlgorithm Decode(global::Expo.JSI.JavaScriptValue value, global::Expo.JSI.JavaScriptRuntime runtime) => FromJavaScriptString(value.AsString());
+            public static global::Expo.TestModules.DigestAlgorithm Decode(global::Expo.JSI.JavaScriptValue value, global::Expo.JSI.JavaScriptRuntime runtime, global::Expo.ModulesCore.DotnetRuntimeContext context) => FromJavaScriptString(value.AsString());
 
-            public static global::Expo.JSI.JavaScriptValue Encode(global::Expo.TestModules.DigestAlgorithm value, global::Expo.JSI.JavaScriptRuntime runtime) => runtime.CreateString(ToJavaScriptString(value));
+            public static global::Expo.JSI.JavaScriptValue Encode(global::Expo.TestModules.DigestAlgorithm value, global::Expo.JSI.JavaScriptRuntime runtime, global::Expo.ModulesCore.DotnetRuntimeContext context) => runtime.CreateString(ToJavaScriptString(value));
 
             private static global::Expo.TestModules.DigestAlgorithm FromJavaScriptString(string value) => value switch
             {
@@ -304,8 +304,8 @@ public sealed partial class ExpoModulesGeneratorTests
             };
         """,
         EnumCodecText(text, "DigestAlgorithm"));
-    Assert.Contains($"{codecName}.Decode(arguments.GetValue(0), runtime)", text, StringComparison.Ordinal);
-    Assert.Contains($"{codecName}.Encode(module.Echo(__expoArg0), runtime)", text, StringComparison.Ordinal);
+    Assert.Contains($"{codecName}.Decode(arguments.GetValue(0), runtime, __expoRuntimeContext)", text, StringComparison.Ordinal);
+    Assert.Contains($"{codecName}.Encode(module.Echo(__expoArg0), runtime, __expoRuntimeContext)", text, StringComparison.Ordinal);
   }
 
   // One codec per enum per provider, whatever the number of modules, shared objects, and positions;
@@ -480,7 +480,7 @@ public sealed partial class ExpoModulesGeneratorTests
     AssertNoCompilerDiagnostics(result);
     var codec = UnionCodecText(GeneratedText(result), "Choice");
     Assert.Equal(3, CountOccurrences(codec, "if (__expoKind == global::Expo.JSI.JavaScriptValueKind.String)"));
-    Assert.Contains($"__expoPayload0 = {DigestAlgorithmCodec}.Decode(value, runtime);", codec, StringComparison.Ordinal);
+    Assert.Contains($"__expoPayload0 = {DigestAlgorithmCodec}.Decode(value, runtime, context);", codec, StringComparison.Ordinal);
     Assert.Contains("new[] { \"DigestAlgorithm\", \"DigestEncoding\", \"string\" }", codec, StringComparison.Ordinal);
   }
 

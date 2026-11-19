@@ -203,9 +203,10 @@ payload is a leaf, a list, dictionary, record, or union payload holds the
 leaves it contains, and other payloads hold none. A failed case attempt during
 decode holds nothing after it fails. A nullable callback parameter that
 decodes to `null` holds nothing. A non-null one is context-retained by
-`DotnetRuntimeContext`, never a leaf holder. A nullable concrete
-`[ExpoSharedObject]` value that is `null` holds nothing; a non-null one stays a
-borrowed shared object owned by the registry, never a leaf holder.
+`DotnetRuntimeContext`, never a leaf holder. A concrete `[ExpoSharedObject]`
+value, in a direct position or inside a list, dictionary, record, or nullable,
+is a borrowed shared object owned by the registry, never a leaf holder; a
+`null` one holds nothing.
 
 Authored code SHALL follow four rules:
 

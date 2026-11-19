@@ -50,7 +50,7 @@ public sealed class CodecReleaseTests
     using var fixture = HermesRuntimeFixture.Create();
     using var source = fixture.Evaluate("({})", "codec-release-value-encode.js");
 
-    var encoded = fixture.Runtime.Execute(runtime => JavaScriptValueCodec.Encode(source, runtime));
+    var encoded = fixture.Runtime.Execute(runtime => JavaScriptValueCodec.Encode(source, runtime, CodecTestContext.Unused));
     Assert.NotSame(source, encoded);
     encoded.Dispose();
     Assert.Equal(JavaScriptValueKind.Object, fixture.Runtime.Execute(_ => source.Kind));
@@ -71,7 +71,7 @@ public sealed class CodecReleaseTests
     var decoded = fixture.Runtime.Execute(runtime =>
     {
       using var source = fixture.Evaluate("new ArrayBuffer(4)", "codec-release-array-buffer.js");
-      return ArrayBufferCodec.Decode(source.Ref, runtime);
+      return ArrayBufferCodec.Decode(source.Ref, runtime, CodecTestContext.Unused);
     });
 
     fixture.ResetCounters();
@@ -93,7 +93,7 @@ public sealed class CodecReleaseTests
     {
       Assert.Throws<InvalidOperationException>(() =>
           ValueTupleCodec<JavaScriptValue, JavaScriptValueCodec, string, ThrowingStringCodec>
-              .Encode((value, "x"), runtime));
+              .Encode((value, "x"), runtime, CodecTestContext.Unused));
       return 0;
     });
 
@@ -249,7 +249,7 @@ public sealed class CodecReleaseTests
     fixture.Runtime.Execute(runtime =>
     {
       Assert.Throws<InvalidOperationException>(() =>
-          JavaScriptArrayCodec<ArrayBuffer, ArrayBufferCodec>.DecodeToArray(source.Ref, runtime));
+          JavaScriptArrayCodec<ArrayBuffer, ArrayBufferCodec>.DecodeToArray(source.Ref, runtime, CodecTestContext.Unused));
       return 0;
     });
     fixture.WaitUntilIdle();
@@ -259,7 +259,7 @@ public sealed class CodecReleaseTests
     fixture.Runtime.Execute(runtime =>
     {
       Assert.Throws<InvalidOperationException>(() =>
-          JavaScriptArrayCodec<ArrayBuffer, ArrayBufferCodec>.DecodeToArray(source, runtime));
+          JavaScriptArrayCodec<ArrayBuffer, ArrayBufferCodec>.DecodeToArray(source, runtime, CodecTestContext.Unused));
       return 0;
     });
     fixture.WaitUntilIdle();
@@ -277,7 +277,7 @@ public sealed class CodecReleaseTests
     fixture.Runtime.Execute(runtime =>
     {
       Assert.Throws<InvalidOperationException>(() =>
-          JavaScriptDictionaryCodec<ArrayBuffer, ArrayBufferCodec>.DecodeToDictionary(source.Ref, runtime));
+          JavaScriptDictionaryCodec<ArrayBuffer, ArrayBufferCodec>.DecodeToDictionary(source.Ref, runtime, CodecTestContext.Unused));
       return 0;
     });
     fixture.WaitUntilIdle();
@@ -287,7 +287,7 @@ public sealed class CodecReleaseTests
     fixture.Runtime.Execute(runtime =>
     {
       Assert.Throws<InvalidOperationException>(() =>
-          JavaScriptDictionaryCodec<ArrayBuffer, ArrayBufferCodec>.DecodeToDictionary(source, runtime));
+          JavaScriptDictionaryCodec<ArrayBuffer, ArrayBufferCodec>.DecodeToDictionary(source, runtime, CodecTestContext.Unused));
       return 0;
     });
     fixture.WaitUntilIdle();
@@ -304,7 +304,7 @@ public sealed class CodecReleaseTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      using var encoded = JavaScriptArrayCodec<JavaScriptValue, JavaScriptValueCodec>.Encode(authored, runtime);
+      using var encoded = JavaScriptArrayCodec<JavaScriptValue, JavaScriptValueCodec>.Encode(authored, runtime, CodecTestContext.Unused);
       using var array = encoded.AsArray();
       using var encodedFirst = array.GetValue(0);
       using var encodedSecond = array.GetValue(1);
@@ -327,7 +327,7 @@ public sealed class CodecReleaseTests
 
     fixture.Runtime.Execute(runtime =>
     {
-      using var encoded = JavaScriptArrayCodec<ArrayBuffer, ArrayBufferCodec>.Encode(aliased, runtime);
+      using var encoded = JavaScriptArrayCodec<ArrayBuffer, ArrayBufferCodec>.Encode(aliased, runtime, CodecTestContext.Unused);
       using var array = encoded.AsArray();
       using var left = array.GetValue(0);
       using var right = array.GetValue(1);
@@ -343,7 +343,7 @@ public sealed class CodecReleaseTests
       fixture.Runtime.Execute(runtime =>
       {
         using var source = fixture.Evaluate(script, "codec-release-decode.js");
-        return TCodec.Decode(source.Ref, runtime);
+        return TCodec.Decode(source.Ref, runtime, CodecTestContext.Unused);
       });
 
   private static uint ReleaseAndCountBuffers<T, TCodec>(HermesRuntimeFixture fixture, T value)
@@ -375,13 +375,13 @@ public sealed class CodecReleaseTests
 
   private readonly struct RecordingLeafCodec : IJavaScriptCodec<RecordingLeaf>
   {
-    public static RecordingLeaf Decode(JavaScriptValueRef value, JavaScriptRuntime runtime) =>
+    public static RecordingLeaf Decode(JavaScriptValueRef value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
         throw new NotSupportedException();
 
-    public static RecordingLeaf Decode(JavaScriptValue value, JavaScriptRuntime runtime) =>
+    public static RecordingLeaf Decode(JavaScriptValue value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
         throw new NotSupportedException();
 
-    public static JavaScriptValue Encode(RecordingLeaf value, JavaScriptRuntime runtime) =>
+    public static JavaScriptValue Encode(RecordingLeaf value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
         throw new NotSupportedException();
 
     public static void Release(RecordingLeaf value) => value?.Dispose();
@@ -389,13 +389,13 @@ public sealed class CodecReleaseTests
 
   private readonly struct ThrowingStringCodec : IJavaScriptCodec<string>
   {
-    public static string Decode(JavaScriptValueRef value, JavaScriptRuntime runtime) =>
+    public static string Decode(JavaScriptValueRef value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
         throw new NotSupportedException();
 
-    public static string Decode(JavaScriptValue value, JavaScriptRuntime runtime) =>
+    public static string Decode(JavaScriptValue value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
         throw new NotSupportedException();
 
-    public static JavaScriptValue Encode(string value, JavaScriptRuntime runtime) =>
+    public static JavaScriptValue Encode(string value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
         throw new InvalidOperationException("encode failed");
   }
 
@@ -403,20 +403,20 @@ public sealed class CodecReleaseTests
 
   private readonly struct BufferSlotCodec : IJavaScriptCodec<BufferSlot>
   {
-    public static BufferSlot Decode(JavaScriptValueRef value, JavaScriptRuntime runtime)
+    public static BufferSlot Decode(JavaScriptValueRef value, JavaScriptRuntime runtime, DotnetRuntimeContext context)
     {
       var obj = value.AsObject();
       var property = obj.GetProperty("buffer");
-      return new BufferSlot(ArrayBufferCodec.Decode(property, runtime));
+      return new BufferSlot(ArrayBufferCodec.Decode(property, runtime, CodecTestContext.Unused));
     }
 
-    public static BufferSlot Decode(JavaScriptValue value, JavaScriptRuntime runtime) =>
-        Decode(value.Ref, runtime);
+    public static BufferSlot Decode(JavaScriptValue value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
+        Decode(value.Ref, runtime, CodecTestContext.Unused);
 
-    public static JavaScriptValue Encode(BufferSlot value, JavaScriptRuntime runtime)
+    public static JavaScriptValue Encode(BufferSlot value, JavaScriptRuntime runtime, DotnetRuntimeContext context)
     {
       using var obj = runtime.CreateObject();
-      using var buffer = ArrayBufferCodec.Encode(value.Buffer, runtime);
+      using var buffer = ArrayBufferCodec.Encode(value.Buffer, runtime, CodecTestContext.Unused);
       obj.SetProperty("buffer", buffer);
       return obj.AsValue();
     }

@@ -2,11 +2,17 @@ using Expo.JSI;
 
 namespace Expo.ModulesCore.Codecs;
 
+/// <summary>Converts between a managed <typeparamref name="T"/> and a JavaScript value.</summary>
+/// <remarks>
+/// Every call receives the <see cref="DotnetRuntimeContext"/> that owns the binding that runs. A
+/// composite codec passes <c>runtime</c> and <c>context</c> to each child unchanged. A leaf codec
+/// ignores the context and does not null-check it.
+/// </remarks>
 public interface IJavaScriptCodec<T>
 {
-  static abstract T Decode(JavaScriptValueRef value, JavaScriptRuntime runtime);
-  static abstract T Decode(JavaScriptValue value, JavaScriptRuntime runtime);
-  static abstract JavaScriptValue Encode(T value, JavaScriptRuntime runtime);
+  static abstract T Decode(JavaScriptValueRef value, JavaScriptRuntime runtime, DotnetRuntimeContext context);
+  static abstract T Decode(JavaScriptValue value, JavaScriptRuntime runtime, DotnetRuntimeContext context);
+  static abstract JavaScriptValue Encode(T value, JavaScriptRuntime runtime, DotnetRuntimeContext context);
 
   /// <summary>Releases every JavaScript-backed leaf that <paramref name="value"/> owns.</summary>
   /// <remarks>

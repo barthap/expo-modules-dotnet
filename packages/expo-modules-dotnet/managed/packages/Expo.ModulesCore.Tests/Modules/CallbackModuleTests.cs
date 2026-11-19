@@ -180,8 +180,8 @@ public sealed class GeneratedCallbackModuleTests
       using var callback = JavaScriptCallback<ValueTuple<string>, string>.FromFunction(
           context,
           function,
-          static (args, jsRuntime) => [StringCodec.Encode(args.Item1, jsRuntime)],
-          static (value, jsRuntime) => StringCodec.Decode(value, jsRuntime)
+          static (args, jsRuntime, jsContext) => [StringCodec.Encode(args.Item1, jsRuntime, jsContext)],
+          static (value, jsRuntime, jsContext) => StringCodec.Decode(value, jsRuntime, jsContext)
       );
 
       Assert.Equal("Hello JS", callback.Invoke(ValueTuple.Create("JS")));
@@ -226,8 +226,8 @@ public sealed class GeneratedCallbackModuleTests
       return JavaScriptCallback<ValueTuple<string>, string>.FromFunction(
           context,
           function,
-          static (args, jsRuntime) => [StringCodec.Encode(args.Item1, jsRuntime)],
-          static (value, jsRuntime) => StringCodec.Decode(value, jsRuntime)
+          static (args, jsRuntime, jsContext) => [StringCodec.Encode(args.Item1, jsRuntime, jsContext)],
+          static (value, jsRuntime, jsContext) => StringCodec.Decode(value, jsRuntime, jsContext)
       );
     });
 
@@ -261,12 +261,12 @@ public sealed class GeneratedCallbackModuleTests
       using var callback = JavaScriptCallback<(string, string), string>.FromFunction(
           context,
           function,
-          static (args, jsRuntime) =>
+          static (args, jsRuntime, jsContext) =>
               [
-                StringCodec.Encode(args.Item1, jsRuntime),
-                StringCodec.Encode(args.Item2, jsRuntime),
+                StringCodec.Encode(args.Item1, jsRuntime, jsContext),
+                StringCodec.Encode(args.Item2, jsRuntime, jsContext),
               ],
-          static (value, jsRuntime) => StringCodec.Decode(value, jsRuntime)
+          static (value, jsRuntime, jsContext) => StringCodec.Decode(value, jsRuntime, jsContext)
       );
 
       Assert.Equal("AB", callback.Invoke(("A", "B")));
@@ -287,8 +287,8 @@ public sealed class GeneratedCallbackModuleTests
       callback = JavaScriptCallback<ValueTuple<string>, string>.FromFunction(
           createdContext,
           function,
-          static (args, jsRuntime) => [StringCodec.Encode(args.Item1, jsRuntime)],
-          static (value, jsRuntime) => StringCodec.Decode(value, jsRuntime)
+          static (args, jsRuntime, jsContext) => [StringCodec.Encode(args.Item1, jsRuntime, jsContext)],
+          static (value, jsRuntime, jsContext) => StringCodec.Decode(value, jsRuntime, jsContext)
       );
       return createdContext;
     });

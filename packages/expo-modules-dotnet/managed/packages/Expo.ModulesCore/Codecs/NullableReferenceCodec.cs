@@ -14,16 +14,16 @@ public readonly struct NullableReferenceCodec<T, TCodec> : IJavaScriptCodec<T?>
     where TCodec : IJavaScriptCodec<T>
 {
   /// <summary>Decodes a scoped JavaScript value, mapping nullish input to <c>null</c>.</summary>
-  public static T? Decode(JavaScriptValueRef value, JavaScriptRuntime runtime) =>
-      value.IsNullish ? null : TCodec.Decode(value, runtime);
+  public static T? Decode(JavaScriptValueRef value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
+      value.IsNullish ? null : TCodec.Decode(value, runtime, context);
 
   /// <summary>Decodes an owned JavaScript value, mapping nullish input to <c>null</c>.</summary>
-  public static T? Decode(JavaScriptValue value, JavaScriptRuntime runtime) =>
-      value.IsNullish ? null : TCodec.Decode(value, runtime);
+  public static T? Decode(JavaScriptValue value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
+      value.IsNullish ? null : TCodec.Decode(value, runtime, context);
 
   /// <summary>Encodes <c>null</c> as JavaScript <c>null</c> and delegates every other value.</summary>
-  public static JavaScriptValue Encode(T? value, JavaScriptRuntime runtime) =>
-      value is null ? runtime.CreateNull() : TCodec.Encode(value, runtime);
+  public static JavaScriptValue Encode(T? value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
+      value is null ? runtime.CreateNull() : TCodec.Encode(value, runtime, context);
 
   /// <summary>Releases a non-null value through <typeparamref name="TCodec"/>.</summary>
   public static void Release(T? value)

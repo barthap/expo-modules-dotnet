@@ -15,7 +15,7 @@ public readonly struct JavaScriptArrayCodec<T, TCodec> : IJavaScriptCodec<IReadO
     where TCodec : IJavaScriptCodec<T>
 {
   /// <summary>Decodes a scoped JavaScript array into a new array.</summary>
-  public static T[] DecodeToArray(JavaScriptValueRef value, JavaScriptRuntime runtime)
+  public static T[] DecodeToArray(JavaScriptValueRef value, JavaScriptRuntime runtime, DotnetRuntimeContext context)
   {
     var array = value.AsArray();
     var length = checked((int)array.Length);
@@ -27,7 +27,7 @@ public readonly struct JavaScriptArrayCodec<T, TCodec> : IJavaScriptCodec<IReadO
       for (; index < length; index++)
       {
         var element = array.GetValue((uint)index);
-        result[index] = TCodec.Decode(element, runtime);
+        result[index] = TCodec.Decode(element, runtime, context);
       }
     }
     catch
@@ -43,7 +43,7 @@ public readonly struct JavaScriptArrayCodec<T, TCodec> : IJavaScriptCodec<IReadO
   /// Decodes an owned JavaScript array into a new array. The method disposes the array wrapper and
   /// each element wrapper it creates, and leaves <paramref name="value"/> to the caller.
   /// </summary>
-  public static T[] DecodeToArray(JavaScriptValue value, JavaScriptRuntime runtime)
+  public static T[] DecodeToArray(JavaScriptValue value, JavaScriptRuntime runtime, DotnetRuntimeContext context)
   {
     using var array = value.AsArray();
     var length = checked((int)array.Length);
@@ -55,7 +55,7 @@ public readonly struct JavaScriptArrayCodec<T, TCodec> : IJavaScriptCodec<IReadO
       for (; index < length; index++)
       {
         using var element = array.GetValue((uint)index);
-        result[index] = TCodec.Decode(element, runtime);
+        result[index] = TCodec.Decode(element, runtime, context);
       }
     }
     catch
@@ -89,22 +89,22 @@ public readonly struct JavaScriptArrayCodec<T, TCodec> : IJavaScriptCodec<IReadO
   }
 
   /// <summary>Decodes a scoped JavaScript array into a read-only list backed by a new array.</summary>
-  public static IReadOnlyList<T> Decode(JavaScriptValueRef value, JavaScriptRuntime runtime) =>
-      DecodeToArray(value, runtime);
+  public static IReadOnlyList<T> Decode(JavaScriptValueRef value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
+      DecodeToArray(value, runtime, context);
 
   /// <summary>Decodes an owned JavaScript array into a read-only list backed by a new array.</summary>
-  public static IReadOnlyList<T> Decode(JavaScriptValue value, JavaScriptRuntime runtime) =>
-      DecodeToArray(value, runtime);
+  public static IReadOnlyList<T> Decode(JavaScriptValue value, JavaScriptRuntime runtime, DotnetRuntimeContext context) =>
+      DecodeToArray(value, runtime, context);
 
   /// <summary>Encodes a read-only list as a new JavaScript array.</summary>
-  public static JavaScriptValue Encode(IReadOnlyList<T> values, JavaScriptRuntime runtime)
+  public static JavaScriptValue Encode(IReadOnlyList<T> values, JavaScriptRuntime runtime, DotnetRuntimeContext context)
   {
     ArgumentNullException.ThrowIfNull(values);
 
     using var array = runtime.CreateArray((uint)values.Count);
     for (var index = 0; index < values.Count; index++)
     {
-      using var element = TCodec.Encode(values[index], runtime);
+      using var element = TCodec.Encode(values[index], runtime, context);
       array.SetValue((uint)index, element);
     }
     return array.AsValue();
