@@ -394,7 +394,7 @@ public sealed partial class LeafReleaseModuleTests
 
     Assert.Equal(
         "rejected:Error:true",
-        leaf.ReadString("`${__outcome.status}:${__outcome.name}:${__outcome.message.includes('expects between 1 and 1 arguments')}`")
+        leaf.ReadString("`${__outcome.status}:${__outcome.name}:${__outcome.message.includes('expects 1 arguments')}`")
     );
     Assert.Equal(0u, leaf.Fixture.Counters.LongLivedArrayBuffersReleased);
   }
