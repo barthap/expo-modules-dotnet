@@ -1,3 +1,5 @@
+import { Asset } from 'expo-asset';
+import UpstreamConstants from 'expo-constants';
 import Constants from 'expo-constants-dotnet';
 import {
   add,
@@ -12,7 +14,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-type CapabilityKey = 'add' | 'async' | 'record' | 'callback' | 'event' | 'shared';
+type CapabilityKey = 'add' | 'async' | 'record' | 'callback' | 'event' | 'shared' | 'asset';
 
 type Capability = {
   key: CapabilityKey;
@@ -27,6 +29,7 @@ const capabilities: Capability[] = [
   { key: 'callback', label: 'Callback', button: 'Invoke callback' },
   { key: 'event', label: 'Event', button: 'Emit event' },
   { key: 'shared', label: 'Shared object', button: 'Run counter' },
+  { key: 'asset', label: 'Upstream expo-asset', button: 'Download asset' },
 ];
 
 const initialResults: Record<CapabilityKey, string> = {
@@ -36,7 +39,12 @@ const initialResults: Record<CapabilityKey, string> = {
   callback: 'Tap to let C# invoke a JS function',
   event: 'Tap to emit the status event from C#',
   shared: 'Tap to construct and release a shared counter',
+  asset: 'Tap to download a bundled image through upstream expo-asset',
 };
+
+// The bundled image that upstream expo-asset downloads. On Windows with the
+// withDotnetModules opt-in, the download runs in ExpoAssetDotnet.
+const sampleAsset = require('./assets/sample.png');
 
 export default function App() {
   const [results, setResults] = useState(initialResults);
@@ -134,6 +142,19 @@ export default function App() {
     }
   }
 
+  async function runAsset() {
+    setResult('asset', 'Downloading...');
+    try {
+      const asset = Asset.fromModule(sampleAsset);
+      await asset.downloadAsync();
+      console.log('[expo-asset] upstream downloadAsync returned', asset.localUri);
+      setResult('asset', asset.localUri ?? 'Downloaded, but localUri is null');
+    } catch (caught) {
+      console.error('[expo-asset] upstream downloadAsync failed', caught);
+      setResult('asset', caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
   function runCapability(key: CapabilityKey) {
     switch (key) {
       case 'add':
@@ -154,6 +175,9 @@ export default function App() {
       case 'shared':
         runSharedObject();
         return;
+      case 'asset':
+        void runAsset();
+        return;
     }
   }
 
@@ -169,6 +193,16 @@ export default function App() {
     }
 
     runAdd();
+    console.log(
+      '[expo-constants] upstream sessionId',
+      UpstreamConstants.sessionId,
+      UpstreamConstants.sessionId === Constants.sessionId ? 'matches .NET' : 'does not match .NET',
+      '| executionEnvironment',
+      UpstreamConstants.executionEnvironment,
+      '| expoConfig',
+      UpstreamConstants.expoConfig
+    );
+    void runAsset();
 
     return () => {
       removeStatusListener();
@@ -188,6 +222,17 @@ export default function App() {
               {Constants.nativeBuildVersion ?? 'null'}
             </Text>
             <Text style={styles.value}>session {Constants.sessionId}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.label}>Upstream expo-constants</Text>
+            <Text style={styles.value}>
+              session {UpstreamConstants.sessionId ?? 'undefined'} (
+              {UpstreamConstants.sessionId === Constants.sessionId ? 'from .NET' : 'not from .NET'})
+            </Text>
+            <Text style={styles.value}>
+              {UpstreamConstants.executionEnvironment} · expoConfig{' '}
+              {UpstreamConstants.expoConfig === null ? 'null' : 'present'}
+            </Text>
           </View>
           {capabilities.map(capability => (
             <View key={capability.key} style={styles.row}>

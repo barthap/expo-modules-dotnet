@@ -16,10 +16,17 @@ Promise<string>`. The generated module SHALL register as `ExpoAsset` only under
 `_expoDotnet.modules` through the existing dotnet autolinking path.
 
 The package SHALL NOT resolve or reuse the upstream `Asset` class, install a
-package alias, register under `globalThis.expo`, branch on the runtime operating
-system, or add a platform-specific dependency to the managed implementation.
-Filesystem I/O, HTTP, and hashing SHALL use .NET APIs and SHALL add no C ABI
-surface.
+package alias itself, register under `globalThis.expo`, branch on the runtime
+operating system, or add a platform-specific dependency to the managed
+implementation. Filesystem I/O, HTTP, and hashing SHALL use .NET APIs and SHALL
+add no C ABI surface.
+
+The package SHALL declare a substitution of `expo-asset` `build/ExpoAsset.js`
+by `src/index.ts`, for the range `~12.0.13`
+(`### Requirement: Dotnet Modules Declare Upstream Substitutions` in
+`dotnet-autolinking.md`). The named export `downloadAsync(url, md5Hash, type)`
+of `src/index.ts` matches the only export of that accessor file, which is the
+whole native shape upstream `expo-asset` uses.
 
 #### Scenario: JavaScript downloads through the dotnet module
 
@@ -35,6 +42,14 @@ surface.
 - **WHEN** the facade evaluates
 - **THEN** it SHALL NOT resolve an upstream native module or `Asset` class
 - **AND** its public function SHALL remain available through its own package
+
+#### Scenario: Upstream expo-asset downloads through the substitution
+
+- **GIVEN** a Windows app that opts in to `expo-asset`
+- **WHEN** upstream `Asset.downloadAsync()` runs for an asset that is not
+  cached
+- **THEN** it SHALL call `_expoDotnet.modules.ExpoAsset.downloadAsync` with
+  `url`, `md5Hash`, and `type` in that order
 
 ### Requirement: Expo Asset Dotnet Uses Strict App-Scoped Cache Inputs
 

@@ -380,6 +380,173 @@ always load the NativeAOT library.
 - **THEN** it SHALL throw, and the error SHALL name `loader` as an unknown
   option
 
+### Requirement: Dotnet Modules Declare Upstream Substitutions
+A dotnet Expo module package MAY declare a `dotnet.substitutions` list in
+`expo-module.config.json`. Each entry SHALL have exactly the string fields
+`package`, `versionRange`, `accessor`, and `replacement`:
+
+| Field | Meaning |
+| --- | --- |
+| `package` | The upstream npm package name. |
+| `versionRange` | A valid semver range of upstream versions. |
+| `accessor` | The upstream native-accessor file, relative to the upstream package root. |
+| `replacement` | The replacing entry point, relative to the declaring package root. It SHALL exist. |
+
+`accessor` and `replacement` SHALL be relative paths with forward slashes and
+no `.` or `..` segment. A module SHALL declare a substitution only for an
+upstream version range whose native module shape it implements in full.
+Discovery SHALL fail when an entry is invalid, when a package declares
+substitutions without `dotnet.projects`, when one module declares the same
+`package` twice, or when two installed modules declare the same `package`. The
+error SHALL name the module and the field or the conflicting modules. The
+discovery manifest SHALL include each module's substitutions with the absolute
+replacement path.
+
+The module declares what it can replace, and the app selects what to replace
+(`### Requirement: Windows Apps Opt In To Substitutions Through Metro`). A
+list of substitutions kept in `expo-modules-dotnet` would have to change for
+every new module, and a module author knows best which upstream versions the
+module matches.
+
+#### Scenario: Valid declaration
+- **GIVEN** `expo-asset-dotnet` declares a substitution for `expo-asset`
+- **WHEN** discovery runs
+- **THEN** the manifest entry for `expo-asset-dotnet` SHALL list the
+  substitution with the absolute path of its `replacement` file
+
+#### Scenario: Replacement file missing
+- **GIVEN** a declaration whose `replacement` file does not exist
+- **WHEN** discovery runs
+- **THEN** it SHALL fail with an error naming the package and the path
+
+#### Scenario: Two modules declare one package
+- **GIVEN** two installed dotnet modules each declare a substitution for
+  `expo-asset`
+- **WHEN** discovery runs
+- **THEN** it SHALL fail with an error naming both modules
+
+### Requirement: Windows Apps Opt In To Substitutions Through Metro
+`expo-modules-dotnet/metro` SHALL export `withDotnetModules(config, options)`.
+`options` SHALL be absent or an object with only a `substitute` key, whose
+value SHALL be a list of unique upstream package names. The wrapper SHALL throw
+synchronously for an unknown key, a wrong type, an empty name, or a repeated
+name. It SHALL return a `Promise` of a Metro config, and SHALL accept `config`
+as a config object or a `Promise` of one.
+
+When `options` is absent or `substitute` is empty, the result SHALL be the
+given config object, and the wrapper SHALL run no discovery. Otherwise the
+wrapper SHALL discover the app's dotnet modules with the autolinking discovery,
+loaded from `config.projectRoot`, and SHALL install a resolver that chains to
+the previous one: `config.resolver.resolveRequest` when set, otherwise
+Metro's default resolver. For the `windows` platform only, when the previous
+resolver returns a source file whose nearest named `package.json` names a
+selected upstream package and whose package-relative path equals the declared
+`accessor`, the resolver SHALL return the declared `replacement` file instead.
+Every other resolution SHALL be returned unchanged. The wrapper SHALL NOT write
+`globalThis.expo`, change native projects, or change resolution for any
+platform other than `windows`.
+
+The alias works only in the bundler. Upstream Expo code then reaches
+`_expoDotnet` modules through its own imports, and the expo-desktop stubs stay
+installed but unused. A native entry in `globalThis.expo.modules` would replace
+those stubs for every app, opted in or not. The opt-in lives in
+`metro.config.js`, not in the app config, because the bundler reads it there.
+`withDotnetModules` is asynchronous because it reuses the asynchronous
+autolinking discovery, so Metro and the native build see the same set of
+modules; Metro awaits a `Promise` exported from `metro.config.js`. The
+resolver matches a file by package name and package-relative path, not by
+absolute path, so it covers every installed copy of the upstream package.
+
+#### Scenario: Opt-in off
+- **GIVEN** an app that calls `withDotnetModules(config)` or passes
+  `substitute: []`
+- **WHEN** Metro loads the config
+- **THEN** the result SHALL be the same config object
+- **AND** on Windows the expo-desktop stubs SHALL serve `ExpoAsset` and
+  `ExponentConstants`
+
+#### Scenario: Windows resolves a selected accessor to the replacement
+- **GIVEN** the app selects `expo-asset` and `expo-constants`
+- **WHEN** Metro resolves `./ExpoAsset` from upstream
+  `expo-asset/build/Asset.js`, and `./ExponentConstants` from upstream
+  `expo-constants/build/Constants.js`, for `windows`
+- **THEN** the results SHALL be the `replacement` files of `expo-asset-dotnet`
+  and `expo-constants-dotnet`
+
+#### Scenario: Other platforms are unchanged
+- **GIVEN** the same opt-in
+- **WHEN** Metro resolves the same requests for `macos`, `ios`, or `android`
+- **THEN** each result SHALL equal the previous resolver's result
+
+#### Scenario: Unselected modules are unchanged
+- **GIVEN** the app selects only `expo-constants`
+- **WHEN** Metro resolves `./ExpoAsset` from upstream `expo-asset` for
+  `windows`
+- **THEN** the result SHALL equal the previous resolver's result
+
+### Requirement: Substitution Selection Is Checked When Metro Starts
+With the opt-in on, before it returns the config, `withDotnetModules` SHALL
+check each name in `substitute`. Exactly one installed dotnet module SHALL
+declare it. The upstream package SHALL resolve from the app root, or from the
+app's `expo` package when the app does not depend on it directly. The resolved
+version SHALL satisfy the declared `versionRange`, and the declared `accessor`
+file SHALL exist in it. A failed check SHALL reject the returned `Promise` with
+an error that names the upstream package and, as they apply, the installed
+version, the declared range, the accessor file, and the declaring module.
+
+Package lookup SHALL walk the enclosing `node_modules` folders from the
+starting directory and SHALL NOT use `NODE_PATH` or the global folders. pnpm
+sets `NODE_PATH` to its hoisted store, which can hold a copy of the upstream
+package that the app does not use. Upstream can rename a `build/` file in a
+patch release; without the accessor check, the alias would then stop matching
+without an error, and the stubs would run again.
+
+#### Scenario: Unknown name
+- **GIVEN** `substitute: ['expo-camera']` and no installed module declares
+  `expo-camera`
+- **WHEN** Metro loads the config
+- **THEN** it SHALL fail with an error naming `expo-camera` and the names that
+  installed modules declare
+
+#### Scenario: Accessor file missing
+- **GIVEN** the installed upstream package does not contain the declared
+  `accessor` file
+- **WHEN** Metro loads the config
+- **THEN** it SHALL fail with an error naming the package, its version, and
+  the file
+
+#### Scenario: Upstream version outside the range
+- **GIVEN** the installed upstream version does not satisfy the declared
+  `versionRange`
+- **WHEN** Metro loads the config
+- **THEN** it SHALL fail with an error naming the package, the installed
+  version, and the declared range
+
+### Requirement: Substituted Modules Load On Windows Cold Start
+On Windows, with the opt-in on, a cold start of the desktop app SHALL reach the
+.NET modules through the replacement entry points, before app code runs, with
+no change to the native installer. Upstream `expo-asset` SHALL download assets
+through `ExpoAssetDotnet`. Upstream `Constants` SHALL take `sessionId`,
+`executionEnvironment`, `platform`, `nativeAppVersion`, `nativeBuildVersion`,
+and `expoVersion` from `ExpoConstantsDotnet`. Upstream `Constants.expoConfig`
+SHALL be `null` until the module provides a manifest. When the app opts in and
+a selected module is not registered, startup SHALL fail with the
+`requireDotnetModule` error that names the module.
+
+A missing module fails startup instead of giving upstream a `null` module:
+the app opted in, so a missing module is a setup fault, and a `null` module
+would hide it behind upstream's "not linked" warning.
+
+#### Scenario: Cold start with the opt-in on
+- **GIVEN** the desktop app opts in to `expo-asset` and `expo-constants`
+- **WHEN** it cold-starts on Windows
+- **THEN** upstream `Constants.sessionId` SHALL equal `sessionId` of
+  `expo-constants-dotnet`
+- **AND** upstream `Constants.executionEnvironment` SHALL be `bare`
+- **AND** upstream `Constants.expoConfig` SHALL be `null`
+- **AND** upstream `Asset.downloadAsync()` SHALL return a local URI from the
+  `ExpoAssetDotnet` cache
+
 ### Requirement: Android Gradle Hook Runs Before Native Library Merges
 `packages/expo-modules-dotnet/android/build.gradle` SHALL expose an
 `expoDotnetLink` task that runs the autolinking CLI with

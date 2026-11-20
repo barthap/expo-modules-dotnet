@@ -40,6 +40,7 @@ describe('buildDotnetManifest', () => {
               assemblyName: 'ExampleModule',
             },
           ],
+          substitutions: [],
         },
       ],
     });
@@ -167,5 +168,149 @@ describe('buildDotnetManifest', () => {
       'Alpha',
       'Zeta',
     ]);
+  });
+
+  describe('substitutions', () => {
+    const csprojRel = 'dotnet/Sub/Sub.csproj';
+
+    function makeSubstitutingPackage(replacement = 'src/index.ts'): string {
+      const root = makeTempRoot();
+      makePackage(root, csprojRel);
+      const replacementPath = path.join(root, replacement);
+      fs.mkdirSync(path.dirname(replacementPath), { recursive: true });
+      fs.writeFileSync(replacementPath, 'export {};');
+      return root;
+    }
+
+    function validEntry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        package: 'expo-asset',
+        versionRange: '~12.0.13',
+        accessor: 'build/ExpoAsset.js',
+        replacement: 'src/index.ts',
+        ...overrides,
+      };
+    }
+
+    function build(root: string, substitutions: unknown, packageName = 'expo-asset-dotnet') {
+      return buildDotnetManifest([
+        {
+          packageName,
+          packageRoot: root,
+          dotnetConfig: { projects: [{ path: csprojRel }], substitutions } as never,
+        },
+      ]);
+    }
+
+    it('adds a valid declaration with the absolute replacement path', () => {
+      const root = makeSubstitutingPackage();
+
+      const manifest = build(root, [validEntry()]);
+
+      expect(manifest.modules[0]?.substitutions).toEqual([
+        {
+          package: 'expo-asset',
+          versionRange: '~12.0.13',
+          accessor: 'build/ExpoAsset.js',
+          replacementPath: path.join(root, 'src', 'index.ts'),
+        },
+      ]);
+    });
+
+    it('lists no substitutions when the module declares none', () => {
+      const root = makeSubstitutingPackage();
+
+      expect(build(root, undefined).modules[0]?.substitutions).toEqual([]);
+    });
+
+    it('rejects a substitutions value that is not a list', () => {
+      const root = makeSubstitutingPackage();
+
+      expect(() => build(root, { package: 'expo-asset' })).toThrow(
+        /expo-asset-dotnet.*dotnet\.substitutions.*list/s
+      );
+    });
+
+    it.each([
+      ['package', { package: undefined }],
+      ['package', { package: '' }],
+      ['versionRange', { versionRange: 12 }],
+      ['versionRange', { versionRange: 'not a range' }],
+      ['accessor', { accessor: '/abs/ExpoAsset.js' }],
+      ['accessor', { accessor: '../other/ExpoAsset.js' }],
+      ['accessor', { accessor: 'build\\ExpoAsset.js' }],
+      ['replacement', { replacement: 'C:/abs/index.ts' }],
+      ['replacement', { replacement: 'src/../../index.ts' }],
+    ])('rejects an invalid %s field', (field, overrides) => {
+      const root = makeSubstitutingPackage();
+
+      expect(() => build(root, [validEntry(overrides)])).toThrow(
+        new RegExp(String.raw`expo-asset-dotnet.*substitutions\[0\]\.` + field, 's')
+      );
+    });
+
+    it('rejects an unknown field', () => {
+      const root = makeSubstitutingPackage();
+
+      expect(() => build(root, [validEntry({ platform: 'windows' })])).toThrow(
+        /expo-asset-dotnet.*substitutions\[0\].*"platform"/s
+      );
+    });
+
+    it('rejects a replacement file that does not exist', () => {
+      const root = makeSubstitutingPackage();
+
+      expect(() => build(root, [validEntry({ replacement: 'src/missing.ts' })])).toThrow(
+        /expo-asset-dotnet.*src\/missing\.ts/s
+      );
+    });
+
+    it('rejects one package declared twice by one module', () => {
+      const root = makeSubstitutingPackage();
+
+      expect(() => build(root, [validEntry(), validEntry()])).toThrow(
+        /expo-asset-dotnet.*"expo-asset".*more than once/s
+      );
+    });
+
+    it('rejects substitutions on a package without dotnet projects', () => {
+      const root = makeSubstitutingPackage();
+
+      expect(() =>
+        buildDotnetManifest([
+          {
+            packageName: 'expo-asset-dotnet',
+            packageRoot: root,
+            dotnetConfig: { substitutions: [validEntry()] } as never,
+          },
+        ])
+      ).toThrow(/expo-asset-dotnet.*substitutions.*dotnet\.projects/s);
+    });
+
+    it('rejects two modules that declare the same package, naming both', () => {
+      const rootA = makeSubstitutingPackage();
+      const rootB = makeSubstitutingPackage();
+
+      expect(() =>
+        buildDotnetManifest([
+          {
+            packageName: 'first-dotnet',
+            packageRoot: rootA,
+            dotnetConfig: {
+              projects: [{ path: csprojRel, assemblyName: 'First' }],
+              substitutions: [validEntry()],
+            } as never,
+          },
+          {
+            packageName: 'second-dotnet',
+            packageRoot: rootB,
+            dotnetConfig: {
+              projects: [{ path: csprojRel, assemblyName: 'Second' }],
+              substitutions: [validEntry()],
+            } as never,
+          },
+        ])
+      ).toThrow(/first-dotnet.*second-dotnet.*"expo-asset"/s);
+    });
   });
 });

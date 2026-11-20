@@ -5,6 +5,14 @@ loads `example-module` and `expo-constants-dotnet` through
 `expo-modules-dotnet` and calls `ExampleModule.add(20, 22)` from shared
 JavaScript.
 
+On Windows, `metro.config.js` opts in to .NET substitutions with
+`withDotnetModules` from `expo-modules-dotnet/metro`. Upstream `expo-asset` and
+`expo-constants` then reach `expo-asset-dotnet` and `expo-constants-dotnet`
+instead of the expo-desktop stubs. macOS resolution does not change. Without
+the opt-in, the stubs run. At startup the app logs the upstream
+`Constants.sessionId` (it matches the .NET value with the opt-in) and the
+local URI that upstream `Asset.downloadAsync()` returns.
+
 The `macos/` and `windows/` folders are not committed.
 [expo-desktop](https://github.com/shirakaba/expo-desktop) prebuild creates them
 from the SDK 54 template (`expo-desktop-template-bare-minimum`, pinned as a dev
@@ -78,7 +86,9 @@ Use Visual Studio 2026 with:
 
 - MSVC x64/x86 platform toolset `v145`.
 - Windows SDK `10.0.22621.0` or newer.
-- Node 22 or newer. The Node 24 bundled with VS 2026 works.
+- Node 26 or newer. `expo-desktop` is an ES module that imports the CommonJS
+  `@expo/config-plugins`, and on Node 24 (such as the Node bundled with VS 2026)
+  prebuild fails with `does not provide an export named 'AndroidConfig'`.
 - pnpm 11.
 - Windows PowerShell for RNW Appx deployment.
 
