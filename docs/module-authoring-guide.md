@@ -25,8 +25,6 @@ Upstream Expo Modules API 2.0 is in beta from SDK 58. This guide follows the
 page order of the upstream docs. These parts of the C# API differ from
 upstream:
 
-- Default module name: `[ExpoModule]` strips a trailing `Module`. See
-  `### Declare a module` under `## Modules`.
 - Lower-camel `[JS]` names. See `### Functions` and `### Naming conventions`
   under `## Modules`.
 - Constants: a constant is a getter-only `[JS]` property. See `### Constants`
@@ -328,8 +326,8 @@ with the returned subscription's `remove()` method.
 
 <!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/modules.mdx -->
 `[ExpoModule("Name")]` on a `partial` class declares a module. `[ExpoModule]`
-without an argument strips a trailing `Module` from the class name, so
-`MathModule` registers as `Math`. Upstream uses the class name verbatim.
+without an argument registers the module under the class name, so `MathModule`
+registers as `MathModule`.
 
 The `Module` base class is optional. A module without it declares a
 parameterless constructor or a constructor that takes `DotnetRuntimeContext`.
@@ -1323,7 +1321,7 @@ subset works. `Not yet` means it is not built.
 <!-- upstream: expo/expo#53014 and expo/expo#53016 docs/components/plugins/modules-v2-support/data.ts -->
 | Feature | Swift macros (`expo-modules-macros` 0.33.0) | Kotlin (`expo-modules-v2-react` 0.2.7) | C# |
 | --- | --- | --- | --- |
-| Modules | Supported | Supported | Differs: `[ExpoModule]` without a name strips a trailing `Module` |
+| Modules | Supported | Supported | Supported |
 | Synchronous functions | Supported | Supported | Differs: a trailing nullable parameter without a default is required; overloads are build errors; the argument count is checked |
 | Asynchronous functions | Supported | Supported | Supported: `Task` and `Task<T>` |
 | Properties | Supported | Supported | Supported |

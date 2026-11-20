@@ -102,7 +102,8 @@ public sealed partial class MathModule
 }
 ```
 
-Explicit JavaScript names are supported through attributes:
+Without a name argument the module registers under the class name, here
+`MathModule`. Explicit JavaScript names are supported through attributes:
 
 ```csharp
 [ExpoModule("Math")]

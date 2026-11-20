@@ -88,7 +88,9 @@ non-generic, sealed, partial, and derived directly or indirectly from
 generic managed carrier base such as `SharedRef<T>`, but only the concrete
 sealed attributed class is generated. The attribute MAY accept one non-empty
 explicit JavaScript class name; otherwise the class name SHALL be the authored
-C# type name verbatim, matching current module-class naming.
+C# type name verbatim, matching module-class naming in
+`### Requirement: Default Module Name Is The Class Name`
+(`modules-core-boundary.md`).
 
 `SharedObject` SHALL hide its registry lifetime implementation from authors.
 Ordinary authored code SHALL NOT receive registry identifiers, NativeState
