@@ -20,7 +20,7 @@ public sealed partial class ExpoModulesGeneratorTests
 
       {{declarations}}
 
-      [ExpoModule({{classes}})]
+      [ExpoModule("Constants"{{(classes.Length == 0 ? "" : ", " + classes)}})]
       public sealed partial class ConstantsModule
       {
         {{members}}
