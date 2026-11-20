@@ -156,7 +156,8 @@ public sealed partial class ExpoModulesGenerator
           parameter.HasExplicitDefaultValue,
           parameter.HasExplicitDefaultValue
               ? GetDefaultValueExpression(parameter.Type, parameter.ExplicitDefaultValue)
-              : string.Empty
+              : string.Empty,
+          IsNullable: IsNullableParameterType(parameter.Type)
       ));
     }
 

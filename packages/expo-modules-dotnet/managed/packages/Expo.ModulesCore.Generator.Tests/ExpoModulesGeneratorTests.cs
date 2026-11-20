@@ -5650,10 +5650,10 @@ public sealed partial class ExpoModulesGeneratorTests
   [InlineData("", "[JS] public int M(Dictionary<string, JavaScriptValue> value) => 0;", "JavaScriptDictionaryCodec<global::Expo.JSI.JavaScriptValue, JavaScriptValueCodec>")]
   [InlineData("public sealed record Holder(IReadOnlyList<ArrayBuffer> Field);", "[JS] public int M(Holder holder) => 0;", "IJavaScriptCodec<global::Expo.TestModules.Holder>")]
   [InlineData("public sealed record Shelf(IReadOnlyList<Dictionary<string, ArrayBuffer>> Rows);", "[JS] public Shelf M(Shelf shelf) => shelf;", "CodecRelease.Release<global::System.Collections.Generic.IReadOnlyList<global::System.Collections.Generic.Dictionary<string, global::Expo.ModulesCore.ArrayBuffer>>, ")]
-  [InlineData("public readonly record struct Slot(JavaScriptValue Value);", "[JS] public int M(Slot? slot) => 0;", "__expoArg0 = NullableCodec<global::Expo.TestModules.Slot, ")]
+  [InlineData("public readonly record struct Slot(JavaScriptValue Value);", "[JS] public int M(Slot? slot) => 0;", "__expoArg0 = arguments.Count <= 0 ? default : NullableCodec<global::Expo.TestModules.Slot, ")]
   [InlineData("", "[JS] public int M(Dictionary<string, ArrayBuffer>? value) => 0;", "NullableDictionaryCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>.Decode(arguments.GetValue(0), runtime, __expoRuntimeContext)")]
   [InlineData("", "[JS] public IReadOnlyDictionary<string, JavaScriptValue>? M() => null;", "CodecRelease.Release<global::System.Collections.Generic.IReadOnlyDictionary<string, global::Expo.JSI.JavaScriptValue>?, NullableReadOnlyDictionaryCodec<global::Expo.JSI.JavaScriptValue, JavaScriptValueCodec>>(__expoResult, ref __expoReleaseFailures);")]
-  [InlineData("public sealed record Holder(ArrayBuffer Buffer);", "[JS] public int M(Holder? holder) => 0;", "__expoArg0 = NullableReferenceCodec<global::Expo.TestModules.Holder, HolderCodec_")]
+  [InlineData("public sealed record Holder(ArrayBuffer Buffer);", "[JS] public int M(Holder? holder) => 0;", "__expoArg0 = arguments.Count <= 0 ? default : NullableReferenceCodec<global::Expo.TestModules.Holder, HolderCodec_")]
   public void GeneratorCompilesLeafBearingCompositesAtBoundaryPositions(
       string declarations,
       string member,
@@ -5880,7 +5880,7 @@ public sealed partial class ExpoModulesGeneratorTests
   private const string NabcRelease = "CodecRelease.Release<global::Expo.ModulesCore.ArrayBuffer?, " + Nabc + ">(";
 
   [Theory]
-  [InlineData("[JS] public int M(ArrayBuffer? value) => 0;", "__expoArg0 = " + Nabc + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
+  [InlineData("[JS] public int M(ArrayBuffer? value) => 0;", "__expoArg0 = arguments.Count <= 0 ? default : " + Nabc + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
   [InlineData("[JS] public int M(ArrayBuffer? value = null) => 0;", "__expoArg0 = arguments.Count <= 0 || arguments.GetValue(0).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? null : " + Nabc + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
   [InlineData("[JS] public ArrayBuffer? M() => null;", NabcRelease + "__expoResult, ref __expoReleaseFailures);")]
   [InlineData("[JS] public ArrayBuffer? M(ArrayBuffer? value) => value;", "return " + Nabc + ".Encode(__expoResult, runtime, __expoRuntimeContext);")]
@@ -5936,8 +5936,8 @@ public sealed partial class ExpoModulesGeneratorTests
   }
 
   [Theory]
-  [InlineData("[JS] public Entry(ArrayBuffer? seed) { }", "__expoArg0 = " + Nabc + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
-  [InlineData("[JS] public int Measure(ArrayBuffer? value) => 0;", "__expoArg0 = " + Nabc + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
+  [InlineData("[JS] public Entry(ArrayBuffer? seed) { }", "__expoArg0 = arguments.Length <= 0 ? default : " + Nabc + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
+  [InlineData("[JS] public int Measure(ArrayBuffer? value) => 0;", "__expoArg0 = arguments.Count <= 0 ? default : " + Nabc + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
   [InlineData("[JS] public ArrayBuffer? Buffer { get; set; }", NabcRelease + "__expoResult, ref __expoReleaseFailures);")]
   public void GeneratorAcceptsNullableArrayBufferOnSharedObjectMembers(string member, string expectedFragment)
   {
@@ -5988,7 +5988,7 @@ public sealed partial class ExpoModulesGeneratorTests
   }
 
   [Theory]
-  [InlineData("", "[JS] public int M(Uint8Array? value) => 0;", "__expoArg0 = " + Nu8c + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
+  [InlineData("", "[JS] public int M(Uint8Array? value) => 0;", "__expoArg0 = arguments.Count <= 0 ? default : " + Nu8c + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
   [InlineData("", "[JS] public int M(Uint8Array? value = null) => 0;", "__expoArg0 = arguments.Count <= 0 || arguments.GetValue(0).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? null : " + Nu8c + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
   [InlineData("", "[JS] public Uint8Array? M() => null;", Nu8cRelease + "__expoResult, ref __expoReleaseFailures);")]
   [InlineData("", "[JS] public Uint8Array? M(Uint8Array? value) => value;", "return " + Nu8c + ".Encode(__expoResult, runtime, __expoRuntimeContext);")]
@@ -6081,15 +6081,15 @@ public sealed partial class ExpoModulesGeneratorTests
       "var __expoArg0 = arguments.Count <= 0 || arguments.GetValue(0).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? null : ";
 
   [Theory]
-  [InlineData("[JS] public int M(JavaScriptCallback<int>? callback) => 0;", "var __expoArg0 = " + Nc1 + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
-  [InlineData("[JS] public string M(JavaScriptCallback<ValueTuple<string>, string>? callback) => \"\";", "var __expoArg0 = " + Nc2 + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
-  [InlineData("[JS] public Task<int> M(JavaScriptCallback<int>? callback) => Task.FromResult(0);", "var __expoArg0 = " + Nc1 + ".Decode(arguments.GetValue(0), jsRuntime, __expoRuntimeContext);")]
-  [InlineData("[JS] public Task<string> M(JavaScriptCallback<ValueTuple<string>, string>? callback) => Task.FromResult(\"\");", "var __expoArg0 = " + Nc2 + ".Decode(arguments.GetValue(0), jsRuntime, __expoRuntimeContext);")]
+  [InlineData("[JS] public int M(JavaScriptCallback<int>? callback) => 0;", "var __expoArg0 = arguments.Count <= 0 ? default : " + Nc1 + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
+  [InlineData("[JS] public string M(JavaScriptCallback<ValueTuple<string>, string>? callback) => \"\";", "var __expoArg0 = arguments.Count <= 0 ? default : " + Nc2 + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
+  [InlineData("[JS] public Task<int> M(JavaScriptCallback<int>? callback) => Task.FromResult(0);", "var __expoArg0 = arguments.Count <= 0 ? default : " + Nc1 + ".Decode(arguments.GetValue(0), jsRuntime, __expoRuntimeContext);")]
+  [InlineData("[JS] public Task<string> M(JavaScriptCallback<ValueTuple<string>, string>? callback) => Task.FromResult(\"\");", "var __expoArg0 = arguments.Count <= 0 ? default : " + Nc2 + ".Decode(arguments.GetValue(0), jsRuntime, __expoRuntimeContext);")]
   [InlineData("[JS] public int M(JavaScriptCallback<int>? callback = null) => 0;", NullableCallbackDefaultPrefix + Nc1 + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
   [InlineData("[JS] public string M(JavaScriptCallback<ValueTuple<string>, string>? callback = null) => \"\";", NullableCallbackDefaultPrefix + Nc2 + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
   [InlineData("[JS] public Task<int> M(JavaScriptCallback<int>? callback = null) => Task.FromResult(0);", "? null : " + Nc1 + ".Decode(arguments.GetValue(0), jsRuntime, __expoRuntimeContext)")]
-  [InlineData("[JS] public int M(JavaScriptCallback<ArrayBuffer>? callback) => 0;", "var __expoArg0 = NullableJavaScriptCallbackCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>.Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
-  [InlineData("[JS] public int M(JavaScriptCallback<ValueTuple<JavaScriptValue>, int>? callback) => 0;", "var __expoArg0 = NullableJavaScriptCallbackCodec<global::System.ValueTuple<global::Expo.JSI.JavaScriptValue>, ValueTupleCodec<global::Expo.JSI.JavaScriptValue, JavaScriptValueCodec>, int, NumberCodec<int>>.Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
+  [InlineData("[JS] public int M(JavaScriptCallback<ArrayBuffer>? callback) => 0;", "var __expoArg0 = arguments.Count <= 0 ? default : NullableJavaScriptCallbackCodec<global::Expo.ModulesCore.ArrayBuffer, ArrayBufferCodec>.Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
+  [InlineData("[JS] public int M(JavaScriptCallback<ValueTuple<JavaScriptValue>, int>? callback) => 0;", "var __expoArg0 = arguments.Count <= 0 ? default : NullableJavaScriptCallbackCodec<global::System.ValueTuple<global::Expo.JSI.JavaScriptValue>, ValueTupleCodec<global::Expo.JSI.JavaScriptValue, JavaScriptValueCodec>, int, NumberCodec<int>>.Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);")]
   public void GeneratorAcceptsNullableCallbackParameters(string member, string expectedFragment)
   {
     var result = GeneratorTestHost.Run(ModuleSource(string.Empty, member));
@@ -6102,10 +6102,10 @@ public sealed partial class ExpoModulesGeneratorTests
   }
 
   [Theory]
-  [InlineData("[JS] public Entry(JavaScriptCallback<int>? callback) { }", "var __expoArg0 = " + Nc1 + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);", "ConstructSharedObject_")]
+  [InlineData("[JS] public Entry(JavaScriptCallback<int>? callback) { }", "var __expoArg0 = arguments.Length <= 0 ? default : " + Nc1 + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);", "ConstructSharedObject_")]
   [InlineData("[JS] public Entry(JavaScriptCallback<ValueTuple<string>, string>? callback = null) { }", "arguments.Length <= 0 || arguments.GetValue(0).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? null : " + Nc2 + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext)", "ConstructSharedObject_")]
-  [InlineData("[JS] public int Run(JavaScriptCallback<int>? callback) => 0;", "var __expoArg0 = " + Nc1 + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);", null)]
-  [InlineData("[JS] public Task<string> RunAsync(JavaScriptCallback<ValueTuple<string>, string>? callback) => Task.FromResult(\"\");", "var __expoArg0 = " + Nc2 + ".Decode(arguments.GetValue(0), jsRuntime, __expoRuntimeContext);", null)]
+  [InlineData("[JS] public int Run(JavaScriptCallback<int>? callback) => 0;", "var __expoArg0 = arguments.Count <= 0 ? default : " + Nc1 + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);", null)]
+  [InlineData("[JS] public Task<string> RunAsync(JavaScriptCallback<ValueTuple<string>, string>? callback) => Task.FromResult(\"\");", "var __expoArg0 = arguments.Count <= 0 ? default : " + Nc2 + ".Decode(arguments.GetValue(0), jsRuntime, __expoRuntimeContext);", null)]
   [InlineData("[JS] public int Run(JavaScriptCallback<int>? callback = null) => 0;", "arguments.Count <= 0 || arguments.GetValue(0).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? null : " + Nc1 + ".Decode(arguments.GetValue(0), runtime, __expoRuntimeContext)", null)]
   public void GeneratorAcceptsNullableCallbackParametersOnSharedObjects(
       string member,
@@ -6186,8 +6186,9 @@ public sealed partial class ExpoModulesGeneratorTests
   // The nullable shared-object codec text with the class name left as $T. A test replaces $C with
   // this text first and $T with Entry or Handle second.
   private const string NullableSharedObjectText = "NullableReferenceCodec<global::Expo.TestModules.$T, SharedObjectCodec<global::Expo.TestModules.$T>>";
-  private const string NullableSharedObjectArgDecode = "var __expoArg0 = $C.Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);";
-  private const string NullableSharedObjectArgDecodeAsync = "var __expoArg0 = $C.Decode(arguments.GetValue(0), jsRuntime, __expoRuntimeContext);";
+  private const string NullableSharedObjectArgDecode = "var __expoArg0 = arguments.Count <= 0 ? default : $C.Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);";
+  private const string NullableSharedObjectArgDecodeLength = "var __expoArg0 = arguments.Length <= 0 ? default : $C.Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);";
+  private const string NullableSharedObjectArgDecodeAsync = "var __expoArg0 = arguments.Count <= 0 ? default : $C.Decode(arguments.GetValue(0), jsRuntime, __expoRuntimeContext);";
   private const string NullableSharedObjectEncodeAsyncContext = "var __expoRuntimeContext = GeneratedFunction.CurrentRuntimeContext;";
   private const string NullableSharedObjectEncodeAsyncResult = "return $C.Encode(__expoState.Value.Item1, runtime, __expoState.Value.Item2);";
   private const string NullableSharedObjectPropertySetter = "var __expoValue = $C.Decode(arguments.GetValue(0), runtime, __expoRuntimeContext);";
@@ -6217,7 +6218,7 @@ public sealed partial class ExpoModulesGeneratorTests
   }
 
   [Theory]
-  [InlineData("[JS] public Entry($T? source) { }", new[] { NullableSharedObjectArgDecode, "ConstructSharedObject_" })]
+  [InlineData("[JS] public Entry($T? source) { }", new[] { NullableSharedObjectArgDecodeLength, "ConstructSharedObject_" })]
   [InlineData("[JS] public Entry($T? source = null) { }", new[] { NullableSharedObjectOptionalArgDecodeLength })]
   [InlineData("[JS] public int Take($T? value) => 0;", new[] { NullableSharedObjectArgDecode })]
   [InlineData("[JS] public $T? Give() => null;", new[] { "return $C.Encode(module.Give(), runtime, __expoRuntimeContext);" })]

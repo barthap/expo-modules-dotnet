@@ -553,20 +553,30 @@ public sealed partial class ExpoModulesGenerator
   private static string GetParameterExpression(
       ExpoParameterModel parameter,
       int index,
-      string runtimeParameterName)
+      string runtimeParameterName,
+      string argumentCountMember = "Count")
   {
     var decodeExpression = GetDecodeExpression(
         parameter.Codec!,
         index,
         runtimeParameterName
     );
-    if (!parameter.HasDefaultValue)
+    if (parameter.HasDefaultValue)
     {
-      return decodeExpression;
+      return $"arguments.{argumentCountMember} <= {index} || arguments.GetValue({index}).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? {parameter.DefaultValueExpression} : {decodeExpression}";
     }
 
-    return $"arguments.Count <= {index} || arguments.GetValue({index}).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? {parameter.DefaultValueExpression} : {decodeExpression}";
+    // @ref docs/specs/modules-core-functions-and-properties.md "Trailing Nullable Parameters Are Optional"
+    // An omitted nullable parameter is null without reading the missing argument, because an
+    // out-of-range GetValue throws. An explicit undefined or null still goes through the codec.
+    return parameter.IsNullable
+        ? $"arguments.{argumentCountMember} <= {index} ? default : {decodeExpression}"
+        : decodeExpression;
   }
+
+  private static bool IsNullableParameterType(ITypeSymbol type) =>
+      type is INamedTypeSymbol { ConstructedFrom.SpecialType: SpecialType.System_Nullable_T } ||
+      (type.IsReferenceType && type.NullableAnnotation == NullableAnnotation.Annotated);
 
   private static string GetDecodeExpression(
       ExpoCodecDescriptor codec,

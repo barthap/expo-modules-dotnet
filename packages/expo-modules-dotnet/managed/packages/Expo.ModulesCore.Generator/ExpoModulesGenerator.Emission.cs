@@ -323,7 +323,7 @@ public sealed partial class ExpoModulesGenerator
   {
     var constructor = sharedObject.Constructor!;
     var parameters = constructor.Parameters.Values;
-    var requiredCount = parameters.Count(parameter => !parameter.HasDefaultValue);
+    var requiredCount = GetRequiredParameterCount(parameters);
 
     builder.AppendLine();
     builder.AppendLine($"  private static global::Expo.ModulesCore.SharedObject {GetSharedObjectFactoryName(module, sharedObject)}(");
@@ -345,12 +345,7 @@ public sealed partial class ExpoModulesGenerator
       for (var index = 0; index < parameters.Count; index++)
       {
         var parameter = parameters[index];
-        var decodeExpression = GetDecodeExpression(parameter.Codec!, index, "runtime");
-        if (parameter.HasDefaultValue)
-        {
-          decodeExpression =
-              $"arguments.Length <= {index} || arguments.GetValue({index}).Kind == global::Expo.JSI.JavaScriptValueKind.Undefined ? {parameter.DefaultValueExpression} : {decodeExpression}";
-        }
+        var decodeExpression = GetParameterExpression(parameter, index, "runtime", "Length");
         builder.AppendLine($"{indent}{GetLocalDeclaration(parameter.Codec, GetParameterLocalName(index), decodeExpression)}");
       }
 
@@ -1710,8 +1705,22 @@ public sealed partial class ExpoModulesGenerator
   private static string GetRecordFieldPropertyLocalName(ExpoGeneratedRecordFieldModel field) =>
       $"{field.ParameterName}Value";
 
+  // @ref docs/specs/modules-core-functions-and-properties.md "Trailing Nullable Parameters Are Optional"
+  // The trailing run of defaulted or nullable parameters is optional. Counting every parameter
+  // without a default would make a nullable parameter required when JavaScript leaves it out.
   private static int GetRequiredParameterCount(ExpoFunctionModel function) =>
-      function.Parameters.Values.Count(parameter => !parameter.HasDefaultValue);
+      GetRequiredParameterCount(function.Parameters.Values);
+
+  private static int GetRequiredParameterCount(IReadOnlyList<ExpoParameterModel> parameters)
+  {
+    var required = parameters.Count;
+    while (required > 0 && (parameters[required - 1].HasDefaultValue || parameters[required - 1].IsNullable))
+    {
+      required--;
+    }
+
+    return required;
+  }
 
   private static string GetParameterLocalName(int index) =>
       $"__expoArg{index.ToString(CultureInfo.InvariantCulture)}";

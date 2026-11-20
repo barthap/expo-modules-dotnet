@@ -1512,7 +1512,7 @@ public sealed class GeneratedSharedObjectTests
   }
 
   [Fact]
-  public void RequiredNullableSharedObjectStillRequiresItsArgument()
+  public void OmittedTrailingNullableSharedObjectDecodesAsNull()
   {
     using var fixture = HermesRuntimeFixture.Create();
 
@@ -1521,25 +1521,19 @@ public sealed class GeneratedSharedObjectTests
       using var context = CreateNullableThingsContext(fixture, runtime);
       using var setup = fixture.Evaluate(
           "globalThis.e = new m.OptionalEntry('e'); m.echo(e); 'ready'",
-          "nullable-shared-object-required-setup.js"
+          "nullable-shared-object-omitted-setup.js"
       );
-      var sentinel = NullableSharedThingsModule.LastEntry;
-      Assert.NotNull(sentinel);
+      Assert.NotNull(NullableSharedThingsModule.LastEntry);
 
       using var result = fixture.Evaluate(
           JsErrHelper +
           "[err(() => m.echo()), err(() => m.echoRef()), err(() => globalThis.e.echoParent())].join('|')",
-          "nullable-shared-object-required.js"
+          "nullable-shared-object-omitted.js"
       );
 
-      var parts = result.AsString().Split('|');
-      Assert.Equal(3, parts.Length);
-      foreach (var part in parts)
-      {
-        Assert.Contains("got 0", part);
-      }
-      // The failing calls never reached authored code, so the sentinel is still the last entry.
-      Assert.Same(sentinel, NullableSharedThingsModule.LastEntry);
+      Assert.Equal("no error|no error|no error", result.AsString());
+      // The omitted argument reached authored code as null.
+      Assert.Null(NullableSharedThingsModule.LastEntry);
       return true;
     });
   }
