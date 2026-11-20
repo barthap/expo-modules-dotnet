@@ -352,7 +352,7 @@ public sealed class GeneratedAttributeModuleTests
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
-          "globalThis._expoDotnet.modules.GeneratedText.greet('Zoë\\u0000JS')",
+          "globalThis._expoDotnet.modules.GeneratedTextModule.greet('Zoë\\u0000JS')",
           "generated-attribute-text-greet.js"
       );
 
@@ -374,7 +374,7 @@ public sealed class GeneratedAttributeModuleTests
       ExpoModulesProvider_Expo_ModulesCore_Tests.Register(context, modules);
 
       using var result = fixture.Evaluate(
-          "const text = globalThis._expoDotnet.modules.GeneratedText; " +
+          "const text = globalThis._expoDotnet.modules.GeneratedTextModule; " +
           "const guid = text.roundTripGuid('46b59d07-31d0-4e6e-90fd-0f2979f2f5e7'); " +
           "const uri = text.roundTripUri('https://example.com/path?x=1'); " +
           "const instant = text.roundTripDateTimeOffset('2026-07-03T12:34:56.7890000+02:00'); " +
@@ -514,7 +514,7 @@ public sealed class GeneratedAttributeModuleTests
 
       using var result = fixture.Evaluate(
           "try { " +
-          "  globalThis._expoDotnet.modules.GeneratedText.roundTripUri('not a url'); " +
+          "  globalThis._expoDotnet.modules.GeneratedTextModule.roundTripUri('not a url'); " +
           "  'no error'; " +
           "} catch (e) { e.message; }",
           "generated-attribute-invalid-convertible.js"
