@@ -10,6 +10,7 @@ import {
   runDotnetBuildAsync,
   type LoaderMode,
 } from '../build';
+import { appConfigForPlatformAsync } from '../appConfig';
 import { generateAggregator } from '../codegen/generateAggregator';
 import { discoverDotnetManifestAsync, resolveAppRoot } from '../discovery';
 import { defaultGenerateOutputDir, findAdapterPackageRoot } from '../paths';
@@ -53,6 +54,9 @@ export function registerLinkCommand(program: Command): void {
 
       const manifest = await discoverDotnetManifestAsync(appRoot);
       console.log(`Resolved dotnet modules: ${formatCount(manifest.modules.length, 'module')}`);
+      // Computed before the build, so a broken app config fails fast and leaves
+      // the staging folder unchanged.
+      const appConfig = await appConfigForPlatformAsync(platform, appRoot, manifest);
 
       const generateResult = generateAggregator(manifest, { outputDir, adapterPackageRoot });
       console.log(
@@ -76,6 +80,7 @@ export function registerLinkCommand(program: Command): void {
         appRoot: destinationAppRoot,
         mode,
         builtOutputDir: buildOutputDir({ csprojPath, mode, configuration, rid }),
+        appConfig,
       });
       const destination = stageDestination(platform, destinationAppRoot);
       console.log(

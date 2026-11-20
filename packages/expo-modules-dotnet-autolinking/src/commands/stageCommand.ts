@@ -9,7 +9,8 @@ import {
   defaultRid,
   type LoaderMode,
 } from '../build';
-import { resolveAppRoot } from '../discovery';
+import { appConfigForPlatformAsync } from '../appConfig';
+import { discoverDotnetManifestAsync, resolveAppRoot } from '../discovery';
 import { defaultGenerateOutputDir } from '../paths';
 import { stageArtifactsAsync, stageDestination, type StagePlatform } from '../stage';
 
@@ -48,11 +49,21 @@ export function registerStageCommand(program: Command): void {
       const configuration = options.configuration ?? defaultConfiguration(mode);
       const rid = options.rid ?? defaultRid(platform, process.arch);
       const csprojPath = path.join(outputDir, 'ExpoDotnetHost.csproj');
+      // Only desktop staging can carry app.config, so only it discovers modules.
+      const appConfig =
+        platform === 'windows' || platform === 'macos'
+          ? await appConfigForPlatformAsync(
+              platform,
+              appRoot,
+              await discoverDotnetManifestAsync(appRoot)
+            )
+          : undefined;
       const result = await stageArtifactsAsync({
         platform,
         appRoot: destinationAppRoot,
         mode,
         builtOutputDir: buildOutputDir({ csprojPath, mode, configuration, rid }),
+        appConfig,
       });
       const destination = stageDestination(platform, destinationAppRoot);
 

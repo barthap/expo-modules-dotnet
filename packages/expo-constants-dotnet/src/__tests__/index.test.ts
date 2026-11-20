@@ -24,6 +24,7 @@ describe('Expo constants facade', () => {
       nativeAppVersion: '1.0',
       nativeBuildVersion: '1',
       expoVersion: null,
+      manifest: '{"name":"Example"}',
     };
     mockDotnet.requireDotnetModule.mockReturnValue(nativeConstants);
 
@@ -32,6 +33,7 @@ describe('Expo constants facade', () => {
     expect(mockDotnet.requireDotnetModule).toHaveBeenCalledExactlyOnceWith('ExponentConstants');
     expect(facade.default).toBe(nativeConstants);
     expect(facade.default.nativeBuildVersion).toBe('1');
+    expect(facade.default.manifest).toBe('{"name":"Example"}');
     expect((globalThis as { expo?: unknown }).expo).toBeUndefined();
   });
 });

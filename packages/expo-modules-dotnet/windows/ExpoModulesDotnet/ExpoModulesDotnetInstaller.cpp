@@ -7,6 +7,7 @@
 #include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.Storage.h>
 
+#include <filesystem>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -135,6 +136,29 @@ ResolvedAppDirectories resolveAppDirectories()
   return directories;
 }
 
+// The read-only directory of the managed host artifact this adapter loaded, as
+// UTF-8. Resource files such as app.config are staged next to it. It is the
+// location of the app's own binaries, not app-scoped storage, so it needs no app
+// identity and an unpackaged run supplies it too. An empty string means "not
+// configured": the managed side then sees null, never a guessed path.
+// @ref docs/specs/runtime-and-abi.md "Platform Adapters Follow A Defined App-Directory Policy"
+std::string resolveResourcesDirectory(const expo::modules::dotnet::ManagedModuleConfig &config)
+{
+  const auto &artifact = config.loaderKind == expo::modules::dotnet::ManagedLoaderKind::NativeAot
+                           ? config.nativeLibraryPath
+                           : config.assemblyPath;
+  std::error_code errorCode;
+  const auto directory = std::filesystem::path(artifact).parent_path();
+  const auto utf8 = toUtf8(directory.wstring());
+  if (artifact.empty() || !isFullyQualifiedPath(utf8) ||
+      !std::filesystem::is_directory(directory, errorCode) || errorCode) {
+    logMessage(L"[ExpoModulesDotnet] Managed resources directory is not an existing fully "
+               L"qualified directory, so it stays unconfigured.");
+    return {};
+  }
+  return utf8;
+}
+
 std::optional<std::string> resolveNativeBuildVersion()
 {
   // Package.Current is only valid in a packaged process. Check identity first
@@ -191,6 +215,7 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
     // they must live in this frame until the call returns.
     const auto appDirectories = resolveAppDirectories();
     const auto buildVersion = resolveNativeBuildVersion();
+    const auto resourcesDirectory = resolveResourcesDirectory(moduleConfig);
     expo::modules::dotnet::expo_dotnet_host_context hostContext{};
     hostContext.size = sizeof(hostContext);
     hostContext.version = EXPO_DOTNET_HOST_ABI_VERSION;
@@ -209,6 +234,11 @@ struct ExpoModulesDotnetInstaller::InstalledRuntime final
     if (buildVersion.has_value()) {
       hostContext.native_build_version = reinterpret_cast<const uint8_t *>(buildVersion->data());
       hostContext.native_build_version_length = static_cast<int32_t>(buildVersion->size());
+    }
+    if (!resourcesDirectory.empty()) {
+      hostContext.resources_directory =
+        reinterpret_cast<const uint8_t *>(resourcesDirectory.data());
+      hostContext.resources_directory_length = static_cast<int32_t>(resourcesDirectory.size());
     }
 
     expo::modules::dotnet::RuntimeContextResult result;

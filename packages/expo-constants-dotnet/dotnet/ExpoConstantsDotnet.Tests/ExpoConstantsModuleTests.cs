@@ -31,7 +31,7 @@ public sealed class ExpoConstantsModuleTests
       foreach (var property in new[]
                {
                  "platform", "executionEnvironment", "sessionId", "nativeAppVersion",
-                 "nativeBuildVersion", "expoVersion",
+                 "nativeBuildVersion", "expoVersion", "manifest",
                })
       {
         AssertUnsupportedPlatform(host, property);
@@ -45,7 +45,7 @@ public sealed class ExpoConstantsModuleTests
           "(() => { const c = globalThis._expoDotnet.modules.ExponentConstants; " +
           "return [Object.getOwnPropertyNames(c).sort().join(','), c.platform, " +
           "c.executionEnvironment, c.nativeAppVersion, c.nativeBuildVersion, " +
-          "String(c.expoVersion)].join('|'); })()",
+          "String(c.expoVersion), String(c.manifest)].join('|'); })()",
           "expo-constants-values.js"
       );
       return result.AsString();
@@ -53,8 +53,8 @@ public sealed class ExpoConstantsModuleTests
 
     var expectedPlatform = OperatingSystem.IsWindows() ? "windows" : "macos";
     Assert.Equal(
-        "executionEnvironment,expoVersion,nativeAppVersion,nativeBuildVersion,platform,sessionId" +
-        $"|{expectedPlatform}|bare|1.0|21|null",
+        "executionEnvironment,expoVersion,manifest,nativeAppVersion,nativeBuildVersion,platform,sessionId" +
+        $"|{expectedPlatform}|bare|1.0|21|null|null",
         values
     );
   }
@@ -115,6 +115,124 @@ public sealed class ExpoConstantsModuleTests
     Assert.True(Guid.TryParseExact(firstSession, "D", out _));
     Assert.True(Guid.TryParseExact(secondSession, "D", out _));
     Assert.NotEqual(firstSession, secondSession);
+  }
+
+  [Fact]
+  public void ManifestReturnsTheAppConfigAndReadsTheFileOnce()
+  {
+    using var directory = new ResourcesDirectory();
+    directory.Write("{\"name\":\"Example\",\"slug\":\"example\"}");
+    using var host = CreateHost(directory.Path);
+    if (!IsSupportedDesktop())
+    {
+      AssertUnsupportedPlatform(host, "manifest");
+      return;
+    }
+
+    var first = ReadManifest(host);
+    directory.Delete();
+    var second = ReadManifest(host);
+
+    Assert.Equal("{\"name\":\"Example\",\"slug\":\"example\"}", first);
+    Assert.Equal(first, second);
+  }
+
+  [Fact]
+  public void ManifestIsNullWithoutResourcesDirectoryOrFile()
+  {
+    using var directory = new ResourcesDirectory();
+    using var withoutFile = CreateHost(directory.Path);
+    using var withoutDirectory = CreateHost(null);
+    if (!IsSupportedDesktop())
+    {
+      return;
+    }
+
+    Assert.Equal("null", ReadManifest(withoutFile));
+    Assert.Equal("null", ReadManifest(withoutDirectory));
+  }
+
+  [Theory]
+  [InlineData(new byte[] { 0x7B, 0xFF, 0x7D }, "not valid UTF-8")]
+  [InlineData(new byte[] { 0xEF, 0xBB, 0xBF, 0x7B, 0x7D }, "byte-order mark")]
+  [InlineData(new byte[] { 0x5B, 0x5D }, "not a JSON object")]
+  [InlineData(new byte[] { 0x7B, 0x22 }, "not a JSON object")]
+  public void ManifestFailsWithAnErrorNamingTheFile(byte[] content, string reason)
+  {
+    using var directory = new ResourcesDirectory();
+    directory.WriteBytes(content);
+    using var host = CreateHost(directory.Path);
+    if (!IsSupportedDesktop())
+    {
+      return;
+    }
+
+    var message = ReadManifestError(host);
+
+    Assert.Contains(directory.FilePath, message);
+    Assert.Contains(reason, message);
+  }
+
+  [Fact]
+  public void ManifestRetriesAfterAFailedRead()
+  {
+    using var directory = new ResourcesDirectory();
+    directory.Write("[]");
+    using var host = CreateHost(directory.Path);
+    if (!IsSupportedDesktop())
+    {
+      return;
+    }
+
+    Assert.Contains("not a JSON object", ReadManifestError(host));
+    directory.Write("{\"name\":\"Fixed\"}");
+
+    Assert.Equal("{\"name\":\"Fixed\"}", ReadManifest(host));
+  }
+
+  private static ExpoModuleTestHost CreateHost(string? resourcesDirectory) => ExpoModuleTestHost.Create(
+      AppDirectories.Unconfigured,
+      new HostAppMetadata(null, null, resourcesDirectory),
+      ExpoModulesProvider_ExpoConstantsDotnet.Register
+  );
+
+  private static string ReadManifest(ExpoModuleTestHost host) => host.Runtime.Execute(_ =>
+  {
+    using var value = host.Evaluate(
+        "String(globalThis._expoDotnet.modules.ExponentConstants.manifest)",
+        "expo-constants-manifest.js"
+    );
+    return value.AsString();
+  });
+
+  private static string ReadManifestError(ExpoModuleTestHost host) => host.Runtime.Execute(_ =>
+  {
+    using var value = host.Evaluate(
+        "(() => { try { void globalThis._expoDotnet.modules.ExponentConstants.manifest; " +
+        "return 'no error'; } catch (error) { return String(error.message); } })()",
+        "expo-constants-manifest-error.js"
+    );
+    return value.AsString();
+  });
+
+  private sealed class ResourcesDirectory : IDisposable
+  {
+    public ResourcesDirectory()
+    {
+      Path = Directory.CreateTempSubdirectory("expo-constants-resources-").FullName;
+    }
+
+    public string Path { get; }
+
+    public string FilePath => System.IO.Path.Combine(Path, "app.config");
+
+    public void Write(string content) => File.WriteAllText(FilePath, content);
+
+    public void WriteBytes(byte[] content) => File.WriteAllBytes(FilePath, content);
+
+    public void Delete() => File.Delete(FilePath);
+
+    public void Dispose() => Directory.Delete(Path, recursive: true);
   }
 
   private static string ReadSession(ExpoModuleTestHost host) => host.Runtime.Execute(_ =>

@@ -329,6 +329,36 @@ public sealed class DotnetRuntimeContextTests
   }
 
   [Fact]
+  public void HostAppMetadataResourcesDirectoryIsOptional()
+  {
+    var directory = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "expo-resources"));
+
+    Assert.Null(HostAppMetadata.Unconfigured.ResourcesDirectory);
+    Assert.Null(new HostAppMetadata("1.0", "9").ResourcesDirectory);
+    Assert.Equal(directory, new HostAppMetadata(null, null, directory).ResourcesDirectory);
+  }
+
+  [Theory]
+  [InlineData("")]
+  [InlineData(" \t ")]
+  [InlineData("relative/resources")]
+  [InlineData("C:")]
+  public void HostAppMetadataRejectsMalformedResourcesDirectory(string invalid)
+  {
+    var error = Assert.Throws<ArgumentException>(() => new HostAppMetadata(null, null, invalid));
+    Assert.Equal("resourcesDirectory", error.ParamName);
+  }
+
+  [Fact]
+  public void HostAppMetadataRejectsResourcesDirectoryWithNul()
+  {
+    var invalid = Path.GetFullPath(Path.GetTempPath()) + "bad\0dir";
+
+    var error = Assert.Throws<ArgumentException>(() => new HostAppMetadata(null, null, invalid));
+    Assert.Equal("resourcesDirectory", error.ParamName);
+  }
+
+  [Fact]
   public void ContextExposesHostMetadataDuringLifetimeAndRejectsNullInput()
   {
     using var fixture = HermesRuntimeFixture.Create();

@@ -27,6 +27,13 @@ describe('dotnet autolinking metadata', () => {
     expect(existsSync(projectPath)).toBe(true);
   });
 
+  it('declares that it reads the app config', () => {
+    const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+    const config = JSON.parse(readFileSync(resolve(packageRoot, 'expo-module.config.json'), 'utf8'));
+
+    expect(config.dotnet.appConfig).toBe(true);
+  });
+
   it('declares that it can replace the expo-constants native-accessor file', () => {
     const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
     const config = JSON.parse(readFileSync(resolve(packageRoot, 'expo-module.config.json'), 'utf8'));

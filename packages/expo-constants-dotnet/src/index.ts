@@ -17,6 +17,11 @@ export interface ExpoConstants {
   readonly nativeBuildVersion: string | null;
   /** Always null because this host is not Expo Go. */
   readonly expoVersion: null;
+  /**
+   * The app's public Expo config as a JSON string, or null when the build staged none.
+   * Upstream expo-constants parses it into `Constants.expoConfig`.
+   */
+  readonly manifest: string | null;
 }
 
 declare class ExpoConstantsNativeModule extends DotnetModule implements ExpoConstants {
@@ -26,6 +31,7 @@ declare class ExpoConstantsNativeModule extends DotnetModule implements ExpoCons
   readonly nativeAppVersion: string | null;
   readonly nativeBuildVersion: string | null;
   readonly expoVersion: null;
+  readonly manifest: string | null;
 }
 
 const constants: ExpoConstants = requireDotnetModule<ExpoConstantsNativeModule>('ExponentConstants');

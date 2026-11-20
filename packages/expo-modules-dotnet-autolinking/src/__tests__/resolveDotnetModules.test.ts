@@ -41,6 +41,7 @@ describe('buildDotnetManifest', () => {
             },
           ],
           substitutions: [],
+          appConfig: false,
         },
       ],
     });
@@ -168,6 +169,30 @@ describe('buildDotnetManifest', () => {
       'Alpha',
       'Zeta',
     ]);
+  });
+
+  describe('appConfig', () => {
+    function buildWithAppConfig(appConfig: unknown) {
+      const root = makeTempRoot();
+      makePackage(root, 'dotnet/Constants/Constants.csproj');
+      return buildDotnetManifest([
+        {
+          packageName: 'expo-constants-dotnet',
+          packageRoot: root,
+          dotnetConfig: { projects: [{ path: 'dotnet/Constants/Constants.csproj' }], appConfig } as never,
+        },
+      ]);
+    }
+
+    it('records a declared appConfig', () => {
+      expect(buildWithAppConfig(true).modules[0]?.appConfig).toBe(true);
+      expect(buildWithAppConfig(false).modules[0]?.appConfig).toBe(false);
+      expect(buildWithAppConfig(undefined).modules[0]?.appConfig).toBe(false);
+    });
+
+    it('rejects an appConfig that is not a boolean', () => {
+      expect(() => buildWithAppConfig('yes')).toThrow(/expo-constants-dotnet.*dotnet\.appConfig.*boolean/s);
+    });
   });
 
   describe('substitutions', () => {

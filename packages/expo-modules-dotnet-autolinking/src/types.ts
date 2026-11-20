@@ -21,6 +21,8 @@ export interface DotnetModule {
   packageRoot: string;
   projects: DotnetProjectRef[];
   substitutions: DotnetSubstitution[];
+  /** True when the module reads the app config that staging writes as app.config. */
+  appConfig: boolean;
 }
 
 export interface DotnetLinkingManifest {
@@ -37,4 +39,5 @@ export interface RawDotnetSubstitution {
 export interface RawDotnetConfig {
   projects?: { path: string; assemblyName?: string }[];
   substitutions?: RawDotnetSubstitution[];
+  appConfig?: boolean;
 }
