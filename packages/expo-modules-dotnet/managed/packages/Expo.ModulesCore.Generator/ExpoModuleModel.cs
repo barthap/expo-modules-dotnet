@@ -132,7 +132,8 @@ internal sealed record ExpoParameterModel(
     ExpoCodecDescriptor? Codec,
     bool HasDefaultValue,
     string DefaultValueExpression,
-    ExpoParameterPassingKind PassingKind = ExpoParameterPassingKind.Codec);
+    ExpoParameterPassingKind PassingKind = ExpoParameterPassingKind.Codec,
+    bool IsNullable = false);
 
 internal sealed record ExpoDiagnosticModel(
     string DescriptorId,

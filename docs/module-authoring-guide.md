@@ -366,10 +366,21 @@ Omitting a parameter that has a C# default value, or passing `undefined`, uses
 the default value. A default can be any C# constant, including an enum member,
 `NaN` and `default`, for nullable and non-nullable parameters.
 
-The generated function checks the argument count. The minimum is the number of
-parameters without a default. The maximum is the number of parameters. A call
-outside that range throws, and an async function rejects its Promise. A
-trailing nullable parameter without a default is required.
+The generated function checks the argument count. The maximum is the number of
+parameters. The minimum is the number of parameters minus the trailing run of
+parameters that have a default or are nullable (`string?` or `int?`). A call
+outside that range throws, and an async function rejects its Promise. The same
+rule applies to shared-object methods and constructors.
+
+```csharp
+[JS]
+public string Greet(string name, string? greeting) => $"{greeting ?? "Hello"}, {name}";
+```
+
+JavaScript can call `greet("Ada")`, and `greeting` is `null`. A nullable
+parameter before a required parameter stays required, because an argument in the
+middle of a call cannot be skipped. The function's JavaScript `length` is the
+minimum.
 
 Unsupported parameter, return, constructor, method, and property shapes and
 duplicate exported names are reported as generator build diagnostics, not
@@ -1324,7 +1335,7 @@ subset works. `Not yet` means it is not built.
 | Feature | Swift macros (`expo-modules-macros` 0.33.0) | Kotlin (`expo-modules-v2-react` 0.2.7) | C# |
 | --- | --- | --- | --- |
 | Modules | Supported | Supported | Differs: `[ExpoModule]` without a name strips a trailing `Module` |
-| Synchronous functions | Supported | Supported | Differs: a trailing nullable parameter without a default is required; overloads are build errors; the argument count is checked |
+| Synchronous functions | Supported | Supported | Differs: overloads are build errors; the argument count is checked |
 | Asynchronous functions | Supported | Supported | Supported: `Task` and `Task<T>` |
 | Properties | Supported | Supported | Supported |
 | Constants | Supported | Supported | Differs: getter-only `[JS]` property, the getter runs on every read |

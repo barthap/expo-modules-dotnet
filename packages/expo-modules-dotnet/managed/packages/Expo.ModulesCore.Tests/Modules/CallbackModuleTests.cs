@@ -505,7 +505,7 @@ public sealed class GeneratedCallbackModuleTests
   }
 
   [Fact]
-  public void RequiredNullableCallbackStillRequiresItsArgument()
+  public void OmittedTrailingNullableCallbackDecodesAsNull()
   {
     using var fixture = HermesRuntimeFixture.Create();
     var context = CreateRegisteredContext(fixture);
@@ -514,8 +514,8 @@ public sealed class GeneratedCallbackModuleTests
     try
     {
       Assert.Equal(
-          "Error",
-          EvaluateString(fixture, NullableModulePrelude + CatchExpression("m.callOptional()"))
+          "-1",
+          EvaluateString(fixture, NullableModulePrelude + "String(m.callOptional())")
       );
       Assert.Equal(baseline, context.RetainedCallbackCount);
     }

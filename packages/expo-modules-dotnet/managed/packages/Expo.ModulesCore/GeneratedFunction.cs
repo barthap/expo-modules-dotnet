@@ -206,7 +206,9 @@ public static class GeneratedFunction
     if (arguments.Count < min || arguments.Count > max)
     {
       throw new ArgumentException(
-          $"{functionName} expects between {min} and {max} arguments, got {arguments.Count}."
+          min == max
+              ? $"{functionName} expects {min} arguments, got {arguments.Count}."
+              : $"{functionName} expects between {min} and {max} arguments, got {arguments.Count}."
       );
     }
   }
