@@ -325,6 +325,70 @@ or `this` refs across asynchronous continuations.
   host-function callback
 - **AND** pass only decoded managed values into the authored async method
 
+### Requirement: Trailing Nullable Parameters Are Optional
+
+Generated functions SHALL check the JavaScript argument count before they
+decode any argument. The check covers module sync functions, module async
+functions, functions with a byte-span parameter, shared-object methods, and
+shared-object constructors. The maximum count is the number of parameters. The
+minimum count, the required count, is the number of parameters minus the
+trailing run of parameters that have a C# default or a nullable type. A
+nullable type is a reference type with `?` or `Nullable<T>`. A nullable
+parameter before a required parameter is required.
+
+When the required count equals the maximum, the check SHALL be an exact count
+and the message SHALL read `<name> expects <n> arguments, got <count>.`
+Otherwise the check SHALL be a range and the message SHALL read
+`<name> expects between <min> and <max> arguments, got <count>.` A failing
+sync call throws and a failing async call rejects its Promise. A constructor
+message starts with `new <class>` instead of the function name.
+
+When JavaScript omits a trailing nullable parameter that has no default, the
+generated glue SHALL pass C# `null` without reading the missing argument.
+Explicit `undefined` and explicit `null` keep decoding through the parameter's
+codec. The JavaScript `length` of a module function or shared-object method
+SHALL be the required count.
+
+Both upstream platforms let a trailing nullable parameter be left out of a
+call, so a module written for them accepts the same calls. The required count is
+computed at build time from the parameter types and defaults, so the glue needs
+no reflection and no new ABI. A nullable parameter that comes before a required
+one stays required, because JavaScript has no way to skip an argument in the
+middle of a call.
+
+#### Scenario: Trailing nullable arguments are omitted
+- **GIVEN** a function `Describe(string first, string? second, int? third)`
+- **WHEN** JavaScript calls it with one argument, with two, and with three
+- **THEN** authored code SHALL receive `null` for each omitted parameter
+- **AND** the function's `length` SHALL be `1`
+
+#### Scenario: Required parameter cannot be omitted
+- **GIVEN** the same function and a function `RequiredOnly(string first)`
+- **WHEN** JavaScript calls `Describe()` and `RequiredOnly()`
+- **THEN** the first call SHALL fail with `expects between 1 and 3 arguments,
+  got 0.`
+- **AND** the second call SHALL fail with `expects 1 arguments, got 0.`
+
+#### Scenario: Extra arguments fail
+- **GIVEN** the same function
+- **WHEN** JavaScript calls it with four arguments
+- **THEN** a sync call SHALL throw and an async call SHALL reject, with
+  `expects between 1 and 3 arguments, got 4.`
+
+#### Scenario: Nullable parameter before a required parameter stays required
+- **GIVEN** a function `Run(string? first, string second)`
+- **WHEN** JavaScript calls it with no argument and with one argument
+- **THEN** both calls SHALL fail with `expects 2 arguments`
+- **AND** the function's `length` SHALL be `2`
+- **WHEN** JavaScript calls it with `undefined` or `null` and a string
+- **THEN** authored code SHALL receive `null` for `first`
+
+#### Scenario: Shared-object members use the same rule
+- **GIVEN** a shared-object constructor and an async method that each end in
+  nullable parameters
+- **WHEN** JavaScript omits those parameters
+- **THEN** the constructor and the method SHALL accept the call and pass `null`
+
 ### Requirement: Coded Exceptions
 
 `Expo.ModulesCore` SHALL expose a public, non-sealed

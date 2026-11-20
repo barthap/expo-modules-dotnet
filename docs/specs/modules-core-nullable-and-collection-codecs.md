@@ -499,9 +499,11 @@ glue SHALL NOT release or dispose it at invocation end.
 
 A generated optional nullable reference parameter SHALL use the authored C#
 default for omission or explicit JavaScript `undefined`. Explicit JavaScript
-`null` SHALL decode as C# `null`. A required nullable reference parameter SHALL
-decode explicit JavaScript `undefined` as C# `null`. This matches the existing
-optional nullable value-type behavior.
+`null` SHALL decode as C# `null`. A nullable reference parameter without a
+default SHALL decode explicit JavaScript `undefined` as C# `null`, and
+`### Requirement: Trailing Nullable Parameters Are Optional`
+(`modules-core-functions-and-properties.md`) says when it can be omitted. This
+matches the existing optional nullable value-type behavior.
 
 #### Scenario: Optional nullable reference is omitted
 - **GIVEN** a generated method declares an optional nullable reference parameter
@@ -516,8 +518,9 @@ optional nullable value-type behavior.
 - **THEN** generated dispatch SHALL pass C# `null`
 - **AND** it SHALL NOT substitute the authored default
 
-#### Scenario: Required nullable reference receives undefined
-- **GIVEN** a generated method declares a required nullable reference parameter
+#### Scenario: Nullable reference without a default receives undefined
+- **GIVEN** a generated method declares a nullable reference parameter without a
+  default
 - **WHEN** JavaScript passes explicit `undefined`
 - **THEN** generated dispatch SHALL pass C# `null`
 
