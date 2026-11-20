@@ -44,9 +44,9 @@ registered `ExponentConstants` module object, so that upstream
 `expo-constants` reads its properties: upstream copies them with an object
 spread, which reads own enumerable properties, and generated `[JS]` properties
 are own enumerable accessors. A cached constant is an own enumerable data
-property, so a spread taken after the first read still has the key. Upstream builds `Constants.expoConfig` from
-`manifest`. Upstream `Constants.platform` is the string `'windows'` instead of
-upstream's per-platform manifest object.
+property, so a spread taken after the first read still has the key. Upstream
+builds `Constants.expoConfig` from `manifest`. Upstream `Constants.platform` is
+the string `'windows'` instead of upstream's per-platform manifest object.
 
 The package SHALL declare `dotnet.appConfig: true`; an app that uses the app
 config needs `expo-constants` among its own dependencies
