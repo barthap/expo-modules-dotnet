@@ -20,7 +20,7 @@ public sealed partial class ExpoModulesGeneratorTests
 
         namespace Expo.TestModules;
 
-        [ExpoModule]
+        [ExpoModule("Optional")]
         public sealed partial class OptionalModule
         {
           [JS] public string Run({{parameters}}) => "";
@@ -50,7 +50,7 @@ public sealed partial class ExpoModulesGeneratorTests
 
         namespace Expo.TestModules;
 
-        [ExpoModule(Classes = new[] { typeof(OptionalThing) })]
+        [ExpoModule("Optional", Classes = new[] { typeof(OptionalThing) })]
         public sealed partial class OptionalModule
         {
         }
@@ -81,7 +81,7 @@ public sealed partial class ExpoModulesGeneratorTests
 
         namespace Expo.TestModules;
 
-        [ExpoModule]
+        [ExpoModule("Optional")]
         public sealed partial class OptionalModule
         {
           [JS] public string Run(string a, string? b) => "";
