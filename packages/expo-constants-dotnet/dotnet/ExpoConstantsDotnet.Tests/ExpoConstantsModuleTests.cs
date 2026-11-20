@@ -60,6 +60,55 @@ public sealed class ExpoConstantsModuleTests
   }
 
   [Fact]
+  public void ConstantsBecomeDataPropertiesAfterTheFirstRead()
+  {
+    using var host = ExpoModuleTestHost.Create(
+        AppDirectories.Unconfigured,
+        new HostAppMetadata("1.0", "21"),
+        ExpoModulesProvider_ExpoConstantsDotnet.Register
+    );
+
+    if (!IsSupportedDesktop())
+    {
+      return;
+    }
+
+    var shapes = host.Runtime.Execute(_ =>
+    {
+      using var result = host.Evaluate(
+          "(() => { const c = globalThis._expoDotnet.modules.ExponentConstants; " +
+          "const names = ['platform', 'executionEnvironment', 'sessionId', 'nativeAppVersion', " +
+          "'nativeBuildVersion', 'expoVersion', 'manifest']; " +
+          "const describe = () => names.map(n => { const d = Object.getOwnPropertyDescriptor(c, n); " +
+          "return n + ':' + ('value' in d ? 'data' : 'accessor') + ':' + d.enumerable + ':' + " +
+          "String(d.writable) + ':' + d.configurable; }).join('|'); " +
+          "const before = describe(); { const copy = { ...c }; } const after = describe(); " +
+          "return before + '\\n' + after; })()",
+          "expo-constants-shapes.js"
+      );
+      return result.AsString();
+    });
+
+    var lines = shapes.Split('\n');
+    Assert.Equal(
+        "platform:accessor:true:undefined:true|executionEnvironment:accessor:true:undefined:true|" +
+        "sessionId:accessor:true:undefined:true|nativeAppVersion:accessor:true:undefined:true|" +
+        "nativeBuildVersion:accessor:true:undefined:true|expoVersion:accessor:true:undefined:true|" +
+        "manifest:accessor:true:undefined:true",
+        lines[0]
+    );
+    // The upstream substitution spreads the module, which reads every property once. Each constant
+    // becomes a non-writable data property, and manifest keeps its accessor and its own cache.
+    Assert.Equal(
+        "platform:data:true:false:true|executionEnvironment:data:true:false:true|" +
+        "sessionId:data:true:false:true|nativeAppVersion:data:true:false:true|" +
+        "nativeBuildVersion:data:true:false:true|expoVersion:data:true:false:true|" +
+        "manifest:accessor:true:undefined:true",
+        lines[1]
+    );
+  }
+
+  [Fact]
   public void UnavailableVersionsStayNullAndStrictAssignmentFails()
   {
     using var host = ExpoModuleTestHost.Create(
@@ -246,19 +295,24 @@ public sealed class ExpoConstantsModuleTests
 
   private static bool IsSupportedDesktop() => OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
 
+  // The failure must be catchable, must repeat on the second read (a failed constant caches
+  // nothing), and must leave the property an accessor.
   private static void AssertUnsupportedPlatform(ExpoModuleTestHost host, string property)
   {
     var result = host.Runtime.Execute(_ =>
     {
       using var value = host.Evaluate(
-          $"(() => {{ try {{ void globalThis._expoDotnet.modules.ExponentConstants.{property}; " +
-          "return false; } catch (error) { return error instanceof Error && " +
-          "error.message.includes('supports only Windows and macOS'); } })()",
+          "(() => { const c = globalThis._expoDotnet.modules.ExponentConstants; const outcomes = []; " +
+          "for (let i = 0; i < 2; i++) { " +
+          $"try {{ void c.{property}; outcomes.push(false); }} " +
+          "catch (error) { outcomes.push(error instanceof Error && " +
+          "error.message.includes('supports only Windows and macOS')); } } " +
+          $"return outcomes.every(Boolean) && typeof Object.getOwnPropertyDescriptor(c, '{property}').get === 'function'; }})()",
           "expo-constants-unsupported.js"
       );
       return value.AsBool();
     });
 
-    Assert.True(result, $"Expected {property} to fail with a catchable unsupported-platform error.");
+    Assert.True(result, $"Expected {property} to fail twice with a catchable unsupported-platform error and stay an accessor.");
   }
 }

@@ -10,7 +10,10 @@ Define the behavior of the `packages/expo-constants-dotnet` authored module.
 
 `packages/expo-constants-dotnet` SHALL register `ExponentConstants` only under
 `_expoDotnet.modules` and export a read-only TypeScript facade through its own
-package. It SHALL expose exactly seven getter-only `[JS]` properties:
+package. It SHALL expose exactly seven getter-only `[JS]` properties. All
+except `manifest` SHALL be `[Constant]`: after one successful read, later reads
+do not call the module (`### Requirement: Constant Properties Read Their Getter
+Once` in `modules-core-functions-and-properties.md`):
 
 | Property | Type | Source |
 | --- | --- | --- |
@@ -21,6 +24,9 @@ package. It SHALL expose exactly seven getter-only `[JS]` properties:
 | `nativeBuildVersion` | nullable string | macOS main-bundle `CFBundleVersion` or Windows package identity's four-part version; null when unavailable. |
 | `expoVersion` | null | Expo Go version does not apply. |
 | `manifest` | nullable JSON string | `app.config` in `HostAppMetadata.ResourcesDirectory`, written by the autolinking CLI; null when the host supplies no directory or the file is absent. |
+
+`manifest` is not a constant because its getter can fail on a bad file and keeps
+its own cache, which reads the file once and does not cache a failure.
 
 The two native version properties SHALL remain available even though upstream
 `expo-constants@57.0.2` removed them. The package SHALL NOT export
@@ -37,7 +43,8 @@ The package SHALL declare a substitution of `expo-constants`
 registered `ExponentConstants` module object, so that upstream
 `expo-constants` reads its properties: upstream copies them with an object
 spread, which reads own enumerable properties, and generated `[JS]` properties
-are own enumerable accessors. Upstream builds `Constants.expoConfig` from
+are own enumerable accessors. A cached constant is an own enumerable data
+property, so a spread taken after the first read still has the key. Upstream builds `Constants.expoConfig` from
 `manifest`. Upstream `Constants.platform` is the string `'windows'` instead of
 upstream's per-platform manifest object.
 
@@ -66,17 +73,22 @@ rejected because `JsonDocument` accepts it and `JSON.parse` does not.
   value
 
 #### Scenario: Constants are read-only and runtime-scoped
-- **GIVEN** the module is registered in one runtime context
+- **GIVEN** the module is registered in one runtime context on a supported host
 - **WHEN** JavaScript reads its properties repeatedly and attempts strict-mode
   assignment
 - **THEN** the values and `sessionId` SHALL remain stable, and assignment
   SHALL fail with `TypeError`
+- **AND** after the first read the descriptor of each constant other than
+  `manifest` SHALL be an enumerable, non-writable data property of the module
+  object
 - **AND** a new runtime context SHALL receive a different `sessionId`
 
 #### Scenario: Unsupported host accesses constants
 - **GIVEN** the module is registered on a host other than Windows or macOS
-- **WHEN** JavaScript first accesses it
-- **THEN** it SHALL receive a catchable unsupported-platform error
+- **WHEN** JavaScript reads any of the seven properties, and reads it a second
+  time
+- **THEN** each read SHALL fail with a catchable unsupported-platform error
+- **AND** after the failures the property SHALL still be an accessor
 
 #### Scenario: Upstream expo-constants reads the module through the substitution
 - **GIVEN** a Windows app that opts in to `expo-constants`
