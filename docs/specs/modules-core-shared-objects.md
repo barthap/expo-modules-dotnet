@@ -300,7 +300,11 @@ members SHALL be rejected.
 Implicit method and property names SHALL lowercase only the first authored C#
 character invariantly. Explicit `[JS(name)]` member names SHALL be exported
 verbatim. Generated members SHALL be installed on the class prototype, not as
-per-instance own functions or accessors. `release`, `constructor`, and
+per-instance own functions or accessors. The one exception is the cached value
+of a `[Constant]` property, an own, non-enumerable data property of the
+instance that the first read defines
+(`### Requirement: Constant Properties Read Their Getter Once` in
+`modules-core-functions-and-properties.md`). `release`, `constructor`, and
 `__proto__` SHALL be reserved on generated shared-object prototypes. Authored
 members SHALL NOT replace or shadow those lifetime and prototype surfaces.
 
@@ -655,8 +659,12 @@ exception to escape through a native release callback.
 - **THEN** the first call SHALL terminally detach the managed pairing and call
   `OnRelease` once
 - **AND** later calls SHALL be no-ops
-- **AND** later generated method or property access SHALL fail before authored
-  member code runs
+- **AND** later generated method access and later access to a property that is
+  not a cached constant SHALL fail before authored member code runs
+- **AND** a constant that was read before the release SHALL stay readable as
+  plain data, while one that was not read SHALL fail like any property
+  (`### Requirement: Constant Properties Read Their Getter Once` in
+  `modules-core-functions-and-properties.md`)
 
 #### Scenario: JavaScript collection releases an object
 
@@ -752,7 +760,9 @@ property.
 The package and module authoring guide SHALL document `release()` as the only
 deterministic JavaScript cleanup API in this change. Examples SHALL use
 `try/finally` when deterministic cleanup is required. They SHALL state that
-release is idempotent and that any later native member access fails.
+release is idempotent, that any later method call or non-cached property access
+fails, and that a constant read before the release stays readable as plain
+data.
 
 #### Scenario: TypeScript facade declares a constructible class
 

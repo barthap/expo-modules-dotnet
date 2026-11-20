@@ -764,9 +764,24 @@ public sealed partial class ExpoModulesGenerator
     {
       var jsAttribute = member.GetAttributes().FirstOrDefault(attribute =>
           attribute.AttributeClass?.ToDisplayString() == JSAttributeMetadataName);
-      if (jsAttribute is null || member.GetAttributes().Any(attribute =>
-              attribute.AttributeClass?.ToDisplayString() == EventAttributeMetadataName))
+      var isConstant = member.GetAttributes().Any(attribute =>
+          attribute.AttributeClass?.ToDisplayString() == ConstantAttributeMetadataName);
+      var isEvent = member.GetAttributes().Any(attribute =>
+          attribute.AttributeClass?.ToDisplayString() == EventAttributeMetadataName);
+      if (jsAttribute is null || isEvent)
       {
+        if (isConstant)
+        {
+          diagnostics.Add(new ExpoDiagnosticModel(
+              ExpoModulesDiagnostics.ConstantNotExported.Id,
+              member.Locations.FirstOrDefault(),
+              new EquatableArray<string>(new[]
+              {
+                  member.Name,
+                  isEvent ? "it is an [Event] property" : "it has no [JS] attribute",
+              })
+          ));
+        }
         continue;
       }
 
@@ -777,6 +792,16 @@ public sealed partial class ExpoModulesGenerator
             ExpoModulesDiagnostics.UnsupportedJSPropertyShape.Id,
             member.Locations.FirstOrDefault(),
             new EquatableArray<string>(new[] { member.Name, unsupportedShape })
+        ));
+        continue;
+      }
+
+      if (isConstant && IsSupportedPropertySetter(member.SetMethod))
+      {
+        diagnostics.Add(new ExpoDiagnosticModel(
+            ExpoModulesDiagnostics.ConstantWithSetter.Id,
+            member.Locations.FirstOrDefault(),
+            new EquatableArray<string>(new[] { member.Name })
         ));
         continue;
       }
@@ -821,6 +846,29 @@ public sealed partial class ExpoModulesGenerator
         continue;
       }
 
+      // @ref docs/specs/modules-core-functions-and-properties.md "Constant Properties Read Their Getter Once"
+      // A constant is cached for the life of its JavaScript object, so it must not hold a leaf (a
+      // buffer or value that C# code can still change) and must not hold a shared object (the cache
+      // would return it after its release, where a plain getter fails loudly).
+      if (isConstant)
+      {
+        var constantTypeIssue = HoldsLeaves(codec)
+            ? "holds a leaf"
+            : IsSharedObjectRelatedType(member.Type) ||
+              TryFindNestedSharedObjectType(member.Type, includeValidClasses: true, out _)
+                ? "is or contains a shared object"
+                : null;
+        if (constantTypeIssue is not null)
+        {
+          diagnostics.Add(new ExpoDiagnosticModel(
+              ExpoModulesDiagnostics.UnsupportedConstantType.Id,
+              GetTypeLocationOrMember(member.Type, member),
+              new EquatableArray<string>(new[] { member.Name, GetDiagnosticTypeName(member.Type), constantTypeIssue })
+          ));
+          continue;
+        }
+      }
+
       var javaScriptName = GetJavaScriptName(member.Name, jsAttribute);
       if (reservedJavaScriptNames.Contains(javaScriptName))
       {
@@ -838,7 +886,8 @@ public sealed partial class ExpoModulesGenerator
           member.Locations.FirstOrDefault(),
           member.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
           codec,
-          IsSupportedPropertySetter(member.SetMethod)
+          IsSupportedPropertySetter(member.SetMethod),
+          isConstant
       ));
     }
 

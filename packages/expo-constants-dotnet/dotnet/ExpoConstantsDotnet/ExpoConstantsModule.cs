@@ -19,21 +19,27 @@ public sealed partial class ExpoConstantsModule : Module
   }
 
   [JS]
+  [Constant]
   public string Platform => RequireSupportedPlatform(OperatingSystem.IsWindows(), OperatingSystem.IsMacOS());
 
   [JS]
+  [Constant]
   public string ExecutionEnvironment => RequireSupportedHostValue("bare");
 
   [JS]
+  [Constant]
   public string SessionId => RequireSupportedHostValue(sessionId);
 
   [JS]
+  [Constant]
   public string? NativeAppVersion => RequireSupportedHostValue(metadata.NativeAppVersion);
 
   [JS]
+  [Constant]
   public string? NativeBuildVersion => RequireSupportedHostValue(metadata.NativeBuildVersion);
 
   [JS]
+  [Constant]
   public string? ExpoVersion => RequireSupportedHostValue<string?>(null);
 
   /// <summary>

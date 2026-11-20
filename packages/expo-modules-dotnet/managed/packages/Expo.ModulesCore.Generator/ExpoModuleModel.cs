@@ -100,7 +100,8 @@ internal sealed record ExpoPropertyModel(
     Location? Location,
     string TypeName,
     ExpoCodecDescriptor Codec,
-    bool HasSetter);
+    bool HasSetter,
+    bool IsConstant = false);
 
 internal enum ExpoParameterPassingKind
 {

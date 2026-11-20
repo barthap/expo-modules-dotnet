@@ -157,6 +157,9 @@ default and verbatim explicit-name rule as generated methods.
 Generated registration SHALL install the member as an own, enumerable,
 configurable accessor property. Its getter SHALL have arity zero. A writable
 setter SHALL have arity one; a read-only descriptor SHALL omit `set`.
+A property marked `[Constant]` SHALL be installed in this form too, and
+replaces its accessor with a cached data property on its first successful read
+(`### Requirement: Constant Properties Read Their Getter Once`).
 
 #### Scenario: Read-write property is installed
 - **GIVEN** a module declares `[JS] public bool Ready { get; set; }`
@@ -268,6 +271,213 @@ to the host-function call.
 - **THEN** teardown SHALL invalidate each accessor registration exactly once
 - **AND** later accessor use SHALL fail loudly without touching released state
 - **AND** later native release callbacks SHALL NOT double-free managed state
+
+### Requirement: Constant Properties Read Their Getter Once
+
+`[Constant]`, used together with `[JS]` on a getter-only instance property of
+an `[ExpoModule]` class or an `[ExpoSharedObject]` class, SHALL make the
+generated getter run the authored getter, encode the result through the
+property's compile-time codec, and define the encoded value on the JavaScript
+`this` as a non-writable, configurable data property under the `[JS]` property
+name. After one successful read on a receiver that can take the property,
+later reads on that receiver SHALL NOT call C#. A getter that throws, or an
+encode that fails, SHALL cache nothing and SHALL surface as a catchable
+JavaScript `Error`, and the next read SHALL call the getter again. When the
+define fails because `this` is frozen or sealed, or is non-extensible and
+lacks the own property, the read SHALL NOT fail: the accessor SHALL stay, the
+read SHALL return the value, and the next read SHALL call the getter again. A
+module object that is only non-extensible SHALL still get the data property. A
+module constant SHALL be an own, enumerable property. The first read SHALL
+return the value that it cached.
+
+The value SHALL be cached on the JavaScript `this` when `this` is an object. A
+derived object that reads an inherited accessor SHALL cache on itself. A
+non-object `this` SHALL cache nothing, and the read SHALL still return the
+value.
+
+A shared-object constant SHALL keep its accessor on the class prototype. Its
+first read through an instance SHALL resolve the receiver through the
+registry, run the authored getter on that instance, and define the value as an
+own, non-enumerable, non-writable, configurable data property of that
+instance. Each instance SHALL cache its own value. A constant that was read
+before the instance was released SHALL stay readable as plain data, without
+calling the authored getter. A constant that was not read before the release,
+a generated method, and a property that is not a constant SHALL fail after
+release before authored code runs.
+
+A cached module constant SHALL stay readable as plain data after its runtime
+context is torn down. A constant that was not read before the teardown SHALL
+fail loudly like any accessor. Registering the module on a new context SHALL
+replace a cached data property with a fresh accessor.
+
+Caching SHALL use `Reflect.defineProperty` through `Expo.JSI`, SHALL NOT use
+runtime reflection, and SHALL NOT change the C ABI. The cache SHALL hold no
+managed state: generated glue SHALL dispose each temporary wrapper it creates,
+SHALL NOT dispose the encoded value after a successful cache, and SHALL
+dispose it if caching throws.
+
+A type that holds a leaf, or is or contains a shared-object type, SHALL NOT
+back a constant (`EXPOJSI038`).
+
+A module constant is enumerable because upstream `expo-constants` copies the
+module object with a spread, which reads own enumerable properties. The
+property stays configurable so that registration on a new context can replace
+it. A throwing getter is not cached because the unsupported-platform failure
+of `expo-constants-dotnet` must stay catchable and retryable. Only an explicit
+`[Constant]` caches, because a plain getter may return a changing value and
+the upstream platforms do not agree on an implicit rule.
+`Reflect.defineProperty` is used instead of `Object.defineProperty` because it
+returns `false` instead of throwing on a frozen receiver. A shared-object
+constant is an own, non-enumerable property of the instance because a value on
+the prototype would be shared by every instance, and `Object.keys` and a
+spread of an instance stay free of constants, as on Kotlin.
+
+A constant is a plain value computed once. A leaf-bearing result needs the
+leaf release step, and its cached JavaScript value can alias a buffer or value
+that C# code still holds and can change. The rule is conservative: relaxing it
+needs tests that prove the lifetime for each leaf kind. A shared-object
+constant would hold the child object strongly and return it after its release,
+while a plain getter fails loudly then. A plain getter already returns the
+same JavaScript instance for the same managed object, so nothing is lost.
+
+#### Scenario: First read runs the getter, later reads do not
+- **GIVEN** a module declares `[JS] [Constant] public int Count => ++calls;`
+- **WHEN** JavaScript reads `module.count` three times
+- **THEN** the authored getter SHALL run once
+- **AND** each read SHALL return the first value
+
+#### Scenario: Descriptor changes after the first read
+- **GIVEN** a module constant that has not been read
+- **WHEN** JavaScript reads `Object.getOwnPropertyDescriptor(module, name)`
+  before and after the first read
+- **THEN** before it SHALL be an enumerable, configurable accessor with a
+  getter and no setter
+- **AND** after it SHALL be an enumerable, non-writable, configurable data
+  property that holds the value
+
+#### Scenario: Assignment to a cached constant fails
+- **GIVEN** a constant that has been read
+- **WHEN** strict-mode JavaScript assigns to it
+- **THEN** the assignment SHALL throw `TypeError`
+- **AND** the property SHALL keep its value
+- **AND** authored module code SHALL NOT run
+
+#### Scenario: A throwing getter is read again
+- **GIVEN** a constant getter that throws on its first call and returns a
+  value on its second
+- **WHEN** JavaScript reads the property twice, catching the first failure
+- **THEN** the first read SHALL throw a catchable `Error`
+- **AND** the property SHALL still be an accessor after it
+- **AND** the second read SHALL run the getter again, return its value, and
+  cache it
+
+#### Scenario: An object value keeps its identity
+- **GIVEN** a constant of a record or list type
+- **WHEN** JavaScript reads it twice
+- **THEN** both reads SHALL return the same JavaScript object
+
+#### Scenario: A frozen receiver keeps the accessor
+- **GIVEN** a constant read through a frozen object that inherits the module
+  accessor
+- **WHEN** JavaScript reads the property on the frozen object twice
+- **THEN** each read SHALL return the value and SHALL NOT throw
+- **AND** the frozen object SHALL have no own data property
+- **AND** each read SHALL run the authored getter
+
+#### Scenario: A non-extensible module object still caches
+- **GIVEN** the module object is under `Object.preventExtensions` and its
+  constant has not been read
+- **WHEN** JavaScript reads the constant twice
+- **THEN** the module object SHALL hold an own data property after the first
+  read
+- **AND** the authored getter SHALL run once
+
+#### Scenario: A define that throws fails the read and releases the value
+- **GIVEN** `Reflect.defineProperty` is replaced by a function that throws
+- **WHEN** JavaScript reads a constant for the first time
+- **THEN** the read SHALL throw a catchable `Error`
+- **AND** the property SHALL still be an accessor
+- **AND** every wrapper that glue created SHALL be released, with the encoded
+  value released by the failure path
+
+#### Scenario: A successful first read releases its temporary wrappers
+- **GIVEN** a constant is read for the first time
+- **WHEN** the read returns
+- **THEN** the testhost handle counters SHALL show that every owned value
+  created for the descriptor and the call was released
+- **AND** the encoded value SHALL be the returned handle that native code
+  takes
+
+#### Scenario: A derived object caches on itself
+- **GIVEN** `derived = Object.create(module)` and a constant that has not been
+  read
+- **WHEN** JavaScript reads `derived.x` twice
+- **THEN** `derived` SHALL have an own data property
+- **AND** the module object SHALL still hold the accessor
+
+#### Scenario: A detached getter caches on its receiver
+- **GIVEN** the accessor function of a constant, taken from its descriptor
+- **WHEN** JavaScript calls it with another object as `this`
+- **THEN** the call SHALL return the value
+- **AND** that object SHALL hold the data property
+
+#### Scenario: A non-object receiver caches nothing
+- **GIVEN** the accessor function of a constant
+- **WHEN** JavaScript calls it with `undefined` or a primitive as `this`
+- **THEN** the call SHALL return the value and SHALL NOT throw
+- **AND** the module object SHALL still hold the accessor
+
+#### Scenario: A plain getter-only property is not cached
+- **GIVEN** a module declares `[JS] public int Count => ++calls;` without
+  `[Constant]`
+- **WHEN** JavaScript reads it three times
+- **THEN** the authored getter SHALL run three times
+- **AND** the property SHALL stay an accessor
+
+#### Scenario: Two shared-object instances cache their own values
+- **GIVEN** a shared-object class with a `[JS] [Constant]` property whose
+  getter returns a per-instance value
+- **WHEN** JavaScript creates two instances and reads the property on each of
+  them twice
+- **THEN** each instance SHALL call its getter once
+- **AND** each SHALL return its own value on both reads
+
+#### Scenario: A shared-object constant is an own, non-enumerable property
+- **GIVEN** a shared-object constant that has been read on an instance
+- **WHEN** JavaScript reads `Object.getOwnPropertyDescriptor(instance, name)`
+  and `Object.keys(instance)`
+- **THEN** the descriptor SHALL be a non-enumerable, non-writable,
+  configurable data property
+- **AND** the key SHALL NOT be in `Object.keys(instance)`
+- **AND** the class prototype SHALL still hold the accessor
+
+#### Scenario: A shared-object constant read before release stays readable
+- **GIVEN** a constant that has been read on an instance
+- **WHEN** JavaScript calls `release()` and then reads the property
+- **THEN** the read SHALL return the cached value and SHALL NOT call the
+  authored getter
+- **AND** the release SHALL run exactly once
+
+#### Scenario: A shared-object constant not read before release fails
+- **GIVEN** a constant that has not been read on an instance
+- **WHEN** JavaScript releases the instance and then reads the property
+- **THEN** the read SHALL fail with the released-instance error before
+  authored code runs
+- **AND** a method call and a read of a non-constant property on that instance
+  SHALL fail the same way
+
+#### Scenario: A cached module constant survives context teardown
+- **GIVEN** a module constant that has been read, and one that has not
+- **WHEN** the runtime context is torn down and JavaScript reads both
+- **THEN** the cached one SHALL return its value
+- **AND** the other SHALL fail loudly
+
+#### Scenario: Registration on a new context replaces a cached constant
+- **GIVEN** a module constant that has been read through the first context
+- **WHEN** the module registers on a new context on the same runtime and
+  JavaScript reads the constant
+- **THEN** the property SHALL be a fresh accessor until the first read
+- **AND** the read SHALL run the getter of the new module instance
 
 ### Requirement: Async Function Generation Returns Promises
 
@@ -508,7 +718,14 @@ instead of silently skipping affected modules or emitting invalid generated C#.
 Invalid property shapes SHALL use `EXPOJSI014`; unsupported readable property
 types SHALL use `EXPOJSI015`; duplicate JavaScript names involving at least one
 property SHALL use `EXPOJSI016`; and property use of a reserved observing-hook
-name SHALL use `EXPOJSI017`. Method-only meanings SHALL remain stable:
+name SHALL use `EXPOJSI017`. `[Constant]` on a property that is not exported as
+a `[JS]` property, including a property without `[JS]` and an `[Event]`
+property, SHALL use `EXPOJSI036`. `[Constant]` on a property that has a public
+or internal ordinary setter SHALL use `EXPOJSI037`; a private or protected
+setter SHALL NOT, because `[JS]` does not see it. `[Constant]` on a property
+whose type holds a leaf, or is or contains a shared-object type, SHALL use
+`EXPOJSI038`. These three IDs SHALL be the same on modules and on shared-object
+classes. Method-only meanings SHALL remain stable:
 `EXPOJSI004` covers unsupported or reserved method shapes, and `EXPOJSI005`
 covers duplicate method names.
 
@@ -624,6 +841,54 @@ covers duplicate method names.
 - **WHEN** the project is compiled
 - **THEN** the generator SHALL report `EXPOJSI002` naming the method and type
 - **AND** the generator SHALL NOT fail or drop its other output
+
+#### Scenario: Constant without `[JS]`
+- **GIVEN** a module declares `[Constant] public int Count => 1;` without
+  `[JS]`
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report `EXPOJSI036` naming the property
+- **AND** generated source SHALL NOT export the property
+
+#### Scenario: Constant on an event property
+- **GIVEN** an `[Event]` property also has `[Constant]`
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report `EXPOJSI036` naming the property
+
+#### Scenario: Constant with a public or internal setter
+- **GIVEN** a `[JS] [Constant]` property has a `set` that is public or
+  internal
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report `EXPOJSI037` naming the property
+- **AND** the same SHALL hold on a shared-object class
+
+#### Scenario: Constant with a private setter
+- **GIVEN** a `[JS] [Constant]` property has a `private set`
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL accept it and SHALL emit a cached constant
+
+#### Scenario: Constant of a leaf-bearing type
+- **GIVEN** a `[JS] [Constant]` property returns `ArrayBuffer`, `Uint8Array`,
+  `JavaScriptValue`, or a list, record, or union that holds one
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report `EXPOJSI038` naming the property and
+  type
+- **AND** a `byte[]`, a `Memory<byte>`, and a `string` SHALL NOT report it
+
+#### Scenario: Constant of a shared-object type
+- **GIVEN** a `[JS] [Constant]` property whose type is a concrete shared
+  object, or a list, dictionary, nullable, or record that contains one
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL report `EXPOJSI038` naming the property and
+  type
+
+#### Scenario: A valid constant emits no reflection
+- **GIVEN** a valid `[JS] [Constant]` property
+- **WHEN** the generator emits its getter
+- **THEN** the source SHALL call `GeneratedProperty.CacheConstant` after the
+  codec `Encode`
+- **AND** it SHALL NOT contain a reflection, dynamic invocation, or
+  leaf-release call for the property
+- **AND** the generated text of a getter without `[Constant]` SHALL NOT change
 
 ### Requirement: Generated Bindings Avoid Hot-Path Reflection
 

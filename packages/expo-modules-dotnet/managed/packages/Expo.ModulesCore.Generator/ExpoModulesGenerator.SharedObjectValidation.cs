@@ -170,31 +170,35 @@ public sealed partial class ExpoModulesGenerator
   private static ExpoCodecDescriptor SharedObjectBaseCodec(string expression) => new(expression, ExpoCodecShape.StaticHelper, ExpoCodecCapabilities.DecodeOnly, ExpoDecodeOperation.Decode, ExpoResourceOwnership.Borrowed);
 
   // Finds the first shared-object type inside a composed type that cannot be a composite child.
-  private static bool TryFindNestedSharedObjectType(ITypeSymbol typeSymbol, out ITypeSymbol sharedObjectType) => TryFindNestedSharedObjectType(typeSymbol, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default), out sharedObjectType);
+  // With includeValidClasses, a valid concrete class is found too, so a caller can ask whether a type
+  // is or contains any shared object. A union case cannot hold one, so the walk skips unions.
+  private static bool TryFindNestedSharedObjectType(ITypeSymbol typeSymbol, out ITypeSymbol sharedObjectType) => TryFindNestedSharedObjectType(typeSymbol, includeValidClasses: false, out sharedObjectType);
 
-  private static bool TryFindNestedSharedObjectType(ITypeSymbol typeSymbol, HashSet<ITypeSymbol> visitedTypes, out ITypeSymbol sharedObjectType)
+  private static bool TryFindNestedSharedObjectType(ITypeSymbol typeSymbol, bool includeValidClasses, out ITypeSymbol sharedObjectType) => TryFindNestedSharedObjectType(typeSymbol, includeValidClasses, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default), out sharedObjectType);
+
+  private static bool TryFindNestedSharedObjectType(ITypeSymbol typeSymbol, bool includeValidClasses, HashSet<ITypeSymbol> visitedTypes, out ITypeSymbol sharedObjectType)
   {
     sharedObjectType = typeSymbol;
     if (!visitedTypes.Add(typeSymbol) || typeSymbol is not INamedTypeSymbol namedType) return false;
-    if (namedType.IsTupleType) return TryFindFirstNestedSharedObjectType(namedType.TupleElements.Select(element => element.Type), visitedTypes, out sharedObjectType);
-    if (IsJavaScriptCallbackType(namedType)) return TryFindFirstNestedSharedObjectType(namedType.TypeArguments, visitedTypes, out sharedObjectType);
-    if (namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T || namedType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "global::System.Collections.Generic.IReadOnlyList<T>") return TryFindFirstNestedSharedObjectType(namedType.TypeArguments, visitedTypes, out sharedObjectType);
+    if (namedType.IsTupleType) return TryFindFirstNestedSharedObjectType(namedType.TupleElements.Select(element => element.Type), includeValidClasses, visitedTypes, out sharedObjectType);
+    if (IsJavaScriptCallbackType(namedType)) return TryFindFirstNestedSharedObjectType(namedType.TypeArguments, includeValidClasses, visitedTypes, out sharedObjectType);
+    if (namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T || namedType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "global::System.Collections.Generic.IReadOnlyList<T>") return TryFindFirstNestedSharedObjectType(namedType.TypeArguments, includeValidClasses, visitedTypes, out sharedObjectType);
     var constructedType = namedType.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-    if (constructedType is "global::System.Collections.Generic.Dictionary<TKey, TValue>" or "global::System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>") return TryFindFirstNestedSharedObjectType(new[] { namedType.TypeArguments[1] }, visitedTypes, out sharedObjectType);
-    return namedType.IsRecord && GetRecordCodecConstructor(namedType) is { } constructor && TryFindFirstNestedSharedObjectType(constructor.Parameters.Select(parameter => parameter.Type), visitedTypes, out sharedObjectType);
+    if (constructedType is "global::System.Collections.Generic.Dictionary<TKey, TValue>" or "global::System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>") return TryFindFirstNestedSharedObjectType(new[] { namedType.TypeArguments[1] }, includeValidClasses, visitedTypes, out sharedObjectType);
+    return namedType.IsRecord && GetRecordCodecConstructor(namedType) is { } constructor && TryFindFirstNestedSharedObjectType(constructor.Parameters.Select(parameter => parameter.Type), includeValidClasses, visitedTypes, out sharedObjectType);
   }
 
-  private static bool TryFindFirstNestedSharedObjectType(IEnumerable<ITypeSymbol> typeSymbols, HashSet<ITypeSymbol> visitedTypes, out ITypeSymbol sharedObjectType)
+  private static bool TryFindFirstNestedSharedObjectType(IEnumerable<ITypeSymbol> typeSymbols, bool includeValidClasses, HashSet<ITypeSymbol> visitedTypes, out ITypeSymbol sharedObjectType)
   {
     foreach (var typeSymbol in typeSymbols)
     {
       if (IsSharedObjectRelatedType(typeSymbol))
       {
-        // A valid concrete class is a composite child; keep looking for a type that is not.
-        if (TryGetSharedObjectCodec(typeSymbol) is null) { sharedObjectType = typeSymbol; return true; }
+        // A valid concrete class is a composite child; keep looking for a type that is not, unless the caller wants any shared object.
+        if (includeValidClasses || TryGetSharedObjectCodec(typeSymbol) is null) { sharedObjectType = typeSymbol; return true; }
         continue;
       }
-      if (TryFindNestedSharedObjectType(typeSymbol, visitedTypes, out sharedObjectType)) return true;
+      if (TryFindNestedSharedObjectType(typeSymbol, includeValidClasses, visitedTypes, out sharedObjectType)) return true;
     }
     sharedObjectType = null!;
     return false;

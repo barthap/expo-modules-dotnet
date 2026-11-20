@@ -29,6 +29,7 @@ public sealed partial class ExampleMathModule : Module
   }
 
   [JS]
+  [Constant]
   public bool Ready => true;
 
   [JS]

@@ -29,8 +29,9 @@ upstream:
   `### Declare a module` under `## Modules`.
 - Lower-camel `[JS]` names. See `### Functions` and `### Naming conventions`
   under `## Modules`.
-- Constants: a constant is a getter-only `[JS]` property. See `### Constants`
-  under `## Modules`.
+- Constants: a constant is a getter-only `[JS]` property marked `[Constant]`.
+  C# has no implicit constant and rejects a constant whose type holds a leaf or
+  a shared object. See `### Constants` under `## Modules`.
 - Event names drop the `On` prefix as upstream does, but lowercase only the
   first character after it: `OnURLChange` sends `uRLChange`, as Kotlin does,
   where Swift sends `urlChange`. See `## Events`.
@@ -444,29 +445,52 @@ generated module codec today.
 ### Constants
 
 <!-- upstream: expo/expo#53016 docs/pages/modules/v2/reference/modules.mdx -->
-There is no `[Constant]` attribute. A constant is a getter-only `[JS]` property,
-and its getter runs on every JavaScript read. Upstream reads a constant once:
-Kotlin `@Constant` and a Swift `lazy var` store the value on the JavaScript
-object on the first read. `ExpoConstantsModule` exposes
-its values this way:
+Add `[Constant]` to a getter-only `[JS]` property. The first JavaScript read runs
+the getter and stores the value on the JavaScript object as a read-only data
+property, so later reads on that object do not call C#. Upstream does the same:
+Kotlin `@Constant` and a Swift `lazy var` store the value on the object on the
+first read. `ExpoConstantsModule` exposes its values this way:
 
 ```csharp
 // packages/expo-constants-dotnet/dotnet/ExpoConstantsDotnet/ExpoConstantsModule.cs
   [JS]
+  [Constant]
   public string Platform => RequireSupportedPlatform(OperatingSystem.IsWindows(), OperatingSystem.IsMacOS());
 
   [JS]
+  [Constant]
   public string ExecutionEnvironment => RequireSupportedHostValue("bare");
 
   [JS]
+  [Constant]
   public string SessionId => RequireSupportedHostValue(sessionId);
 
   [JS]
+  [Constant]
   public string? NativeAppVersion => RequireSupportedHostValue(metadata.NativeAppVersion);
 
   [JS]
+  [Constant]
   public string? NativeBuildVersion => RequireSupportedHostValue(metadata.NativeBuildVersion);
 ```
+
+- A getter that throws caches nothing. JavaScript receives a catchable `Error`,
+  and the next read runs the getter again.
+- The value is cached on the JavaScript `this`, as upstream iOS does. On a
+  module it is an own, enumerable, non-writable property. If `this` is frozen or
+  sealed, the read still returns the value and the getter runs again on the
+  next read.
+- A constant on a shared object is cached on each instance as a non-enumerable
+  property, so each instance runs its getter once. If you read it before
+  `release()`, it stays readable afterward. A constant that you did not read
+  before the release fails like any property.
+- There is no implicit constant. A getter-only `[JS]` property without
+  `[Constant]` runs its getter on every read, because a getter can return a
+  changing value.
+- `[Constant]` needs `[JS]` (`EXPOJSI036`), no public or internal setter
+  (`EXPOJSI037`), and a type that holds no leaf and no shared object
+  (`EXPOJSI038`). A leaf is a `JavaScriptValue`, an `ArrayBuffer`, or a
+  `Uint8Array`, or a list, record, or union that holds one.
 
 ### Naming conventions
 
@@ -799,8 +823,10 @@ Three cases stay unsupported, and the generator reports each one:
   whichever comes first. It runs synchronously and must be thread-agnostic:
   keep it short, idempotent, and free of JavaScript/runtime calls.
 - JavaScript `release()` is idempotent; repeated calls are no-ops.
-- Using a released instance from JavaScript throws a catchable error before
-  any authored code runs.
+- Calling a method on a released instance, or reading a property that is not a
+  cached constant, throws a catchable error before any authored code runs. A
+  constant that you read before the release stays readable. See `### Constants`
+  under `## Modules`.
 
 ### `SharedRef<T>`
 
@@ -1327,7 +1353,7 @@ subset works. `Not yet` means it is not built.
 | Synchronous functions | Supported | Supported | Differs: a trailing nullable parameter without a default is required; overloads are build errors; the argument count is checked |
 | Asynchronous functions | Supported | Supported | Supported: `Task` and `Task<T>` |
 | Properties | Supported | Supported | Supported |
-| Constants | Supported | Supported | Differs: getter-only `[JS]` property, the getter runs on every read |
+| Constants | Supported | Supported | Differs: `[JS] [Constant]` on a getter-only property; no implicit constants; a type that holds a leaf or a shared object is a build error |
 | Functions that run off the JavaScript thread | Supported | Supported | Differs: no option; `await Task.Run(...)` in a `Task` method moves the work, and the Promise settles on the runtime |
 | Asynchronous variants of synchronous functions | Supported | Not supported yet | Not yet |
 | Events | Supported | Supported | Differs: only the first character after the `On` prefix is lowercased, so `OnURLChange` sends `uRLChange` where Swift sends `urlChange` |
@@ -1356,7 +1382,7 @@ subset works. `Not yet` means it is not built.
 | Run off the JavaScript thread | `await Task.Run(...)` in a `Task` method | `@JS(.concurrent)` | `withContext(Dispatchers.IO)` in a `suspend fun` |
 | Async variant of a sync function | Not yet | `@JS("textSync", .withAsync("text"))` | Not supported yet |
 | Property | `[JS]` property | `@JS var` | `@JS val` or `@JS var` |
-| Constant | getter-only `[JS]` property | `@JS lazy var` | `@JS @Constant val` |
+| Constant | `[JS] [Constant]` getter-only property | `@JS lazy var` | `@JS @Constant val` |
 | Event | `[Event] public partial Func<T, Task> OnX { get; }` | `@Event var onX: (T) -> Void` | `@Event` on a property created with `event<T>()` |
 | First or last listener | `[OnStartObserving]`, `[OnStopObserving]` | `didStartListening(event:)`, `didStopListening(event:)` | `onStartObserving` and `onStopObserving` of `event<T>()` |
 | After create | `[OnCreate]` method | `didCreate()` | Not available, use `by lazy` properties |
