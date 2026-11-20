@@ -41,7 +41,8 @@ below:
 - `modules-core-boundary.md`: `Expo.ModulesCore` package boundary, module
   registry, runtime context, and module test ownership.
 - `modules-core-functions-and-properties.md`: Generated sync and async
-  functions, `[JS]` properties, module errors, and signature diagnostics.
+  functions, `[JS]` properties, `[Constant]` properties, module errors, and
+  signature diagnostics.
 - `modules-core-records-and-enums.md`: Record and string enum codecs.
 - `modules-core-codecs.md`: Typed conversion policy, leaf release protocol,
   binary codecs, and named unions.

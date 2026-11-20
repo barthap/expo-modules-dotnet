@@ -310,6 +310,33 @@ internal static class ExpoModulesDiagnostics
       isEnabledByDefault: true
   );
 
+  public static readonly DiagnosticDescriptor ConstantNotExported = new(
+      id: "EXPOJSI036",
+      title: "Constant property is not exported",
+      messageFormat: "Property '{0}' is marked [Constant] but is not exported as a [JS] property: {1}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor ConstantWithSetter = new(
+      id: "EXPOJSI037",
+      title: "Constant property has a setter",
+      messageFormat: "Property '{0}' is marked [Constant] but has a public or internal setter, so JavaScript could assign it",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
+  public static readonly DiagnosticDescriptor UnsupportedConstantType = new(
+      id: "EXPOJSI038",
+      title: "Unsupported constant property type",
+      messageFormat: "Property '{0}' is marked [Constant] but its type '{1}' {2}",
+      category: "Expo.ModulesCore",
+      defaultSeverity: DiagnosticSeverity.Error,
+      isEnabledByDefault: true
+  );
+
   public static readonly DiagnosticDescriptor AliasedStringEnumMember = new(
       id: "EXPOJSI035",
       title: "Aliased string enum member",

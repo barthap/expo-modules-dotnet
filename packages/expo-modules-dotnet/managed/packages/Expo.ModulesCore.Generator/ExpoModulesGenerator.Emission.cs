@@ -809,6 +809,9 @@ public sealed partial class ExpoModulesGenerator
       "EXPOJSI033" => ExpoModulesDiagnostics.InvalidEnumJavaScriptValue,
       "EXPOJSI034" => ExpoModulesDiagnostics.DuplicateEnumJavaScriptValue,
       "EXPOJSI035" => ExpoModulesDiagnostics.AliasedStringEnumMember,
+      "EXPOJSI036" => ExpoModulesDiagnostics.ConstantNotExported,
+      "EXPOJSI037" => ExpoModulesDiagnostics.ConstantWithSetter,
+      "EXPOJSI038" => ExpoModulesDiagnostics.UnsupportedConstantType,
       _ => throw new InvalidOperationException($"Unknown diagnostic descriptor: {model.DescriptorId}"),
     };
     return Diagnostic.Create(descriptor, model.Location, model.Arguments.Values.Cast<object>().ToArray());
@@ -1236,6 +1239,24 @@ public sealed partial class ExpoModulesGenerator
     builder.AppendLine($"    GeneratedFunction.RequireArgumentCount(\"{EscapeString(label)}.{EscapeString(property.JavaScriptName)}\", arguments, 0);");
     EmitRuntimeContextLocal(builder, "    ");
     builder.AppendLine($"    {targetDeclaration}");
+    if (property.IsConstant)
+    {
+      // A constant never holds a leaf or a shared object, so there is no release step. The encoded
+      // value is defined on `this` after the encode, so a failed getter or encode caches nothing.
+      builder.AppendLine($"    var __expoEncoded = {property.Codec.Expression}.Encode(module.{property.PropertyName}, runtime, __expoRuntimeContext);");
+      builder.AppendLine("    try");
+      builder.AppendLine("    {");
+      builder.AppendLine($"      GeneratedProperty.CacheConstant(runtime, thisValue, \"{EscapeString(property.JavaScriptName)}\", {(shared is null ? "true" : "false")}, __expoEncoded);");
+      builder.AppendLine("    }");
+      builder.AppendLine("    catch");
+      builder.AppendLine("    {");
+      builder.AppendLine("      __expoEncoded.Dispose();");
+      builder.AppendLine("      throw;");
+      builder.AppendLine("    }");
+      builder.AppendLine("    return __expoEncoded;");
+      builder.AppendLine("  }");
+      return;
+    }
     EmitLeafReleasingCall(
         builder,
         Array.Empty<LeafValue>(),

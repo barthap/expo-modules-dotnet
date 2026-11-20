@@ -20,6 +20,7 @@ public sealed partial class ExpoModulesGenerator : IIncrementalGenerator
   private const string JSEnumAttributeMetadataName = "Expo.ModulesCore.JSEnumAttribute";
   private const string EnumMemberAttributeMetadataName = "System.Runtime.Serialization.EnumMemberAttribute";
   private const string JSAttributeMetadataName = "Expo.ModulesCore.JSAttribute";
+  private const string ConstantAttributeMetadataName = "Expo.ModulesCore.ConstantAttribute";
   private const string DotnetRuntimeContextMetadataName = "Expo.ModulesCore.DotnetRuntimeContext";
   private const string JavaScriptValueMetadataName = "global::Expo.JSI.JavaScriptValue";
   private const string ArrayBufferMetadataName = "global::Expo.ModulesCore.ArrayBuffer";

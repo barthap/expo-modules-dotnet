@@ -88,4 +88,60 @@ public static class GeneratedProperty
 
     using var ignoredResult = defineProperty.CallWithThis(objectConstructor, module, propertyName, descriptor);
   }
+
+  /// <summary>
+  /// Caches a constant's encoded value on the JavaScript <c>this</c> as a non-writable, configurable
+  /// data property. Does nothing when <paramref name="thisValue" /> is not an object.
+  /// </summary>
+  /// <remarks>
+  /// A define that fails (a frozen or sealed receiver, or a non-extensible one without the own
+  /// property) returns <c>false</c> and leaves the accessor in place, so the read still returns
+  /// <paramref name="value" />. This method never disposes <paramref name="value" /> and keeps no
+  /// handle to it: the JavaScript property slot retains it. It disposes every wrapper it creates,
+  /// whether the call succeeds or throws.
+  /// </remarks>
+  /// <param name="runtime">The runtime that runs the current host-function call.</param>
+  /// <param name="thisValue">The callback <c>this</c>, which receives the property.</param>
+  /// <param name="name">The JavaScript property name.</param>
+  /// <param name="enumerable">Whether the cached property is enumerable.</param>
+  /// <param name="value">The encoded value that the getter also returns.</param>
+  // @ref docs/specs/modules-core-functions-and-properties.md "Constant Properties Read Their Getter Once"
+  // Reflect.defineProperty returns false for a frozen receiver where Object.defineProperty would
+  // throw, so do not swap them: a frozen receiver must still get the value.
+  public static void CacheConstant(
+      JavaScriptRuntime runtime,
+      JavaScriptValueRef thisValue,
+      string name,
+      bool enumerable,
+      JavaScriptValue value
+  )
+  {
+    ArgumentNullException.ThrowIfNull(runtime);
+    ArgumentException.ThrowIfNullOrWhiteSpace(name);
+    ArgumentNullException.ThrowIfNull(value);
+
+    if (!thisValue.IsObject)
+    {
+      return;
+    }
+
+    using var receiver = thisValue.Retain();
+    using var global = runtime.Global();
+    using var reflectValue = global.GetProperty("Reflect");
+    using var reflect = reflectValue.AsObject();
+    using var definePropertyValue = reflect.GetProperty("defineProperty");
+    using var defineProperty = definePropertyValue.AsFunction();
+    using var propertyName = runtime.CreateString(name);
+    using var descriptor = runtime.CreateObject();
+    using var writable = runtime.CreateBool(false);
+    using var enumerableValue = runtime.CreateBool(enumerable);
+    using var configurable = runtime.CreateBool(true);
+
+    descriptor.SetProperty("value", value);
+    descriptor.SetProperty("writable", writable);
+    descriptor.SetProperty("enumerable", enumerableValue);
+    descriptor.SetProperty("configurable", configurable);
+
+    using var ignoredResult = defineProperty.CallWithThis(reflect, receiver, propertyName, descriptor);
+  }
 }
