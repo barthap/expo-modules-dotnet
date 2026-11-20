@@ -545,9 +545,84 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.Contains("new global::Expo.ModulesCore.LazyModuleDefinition(", source);
     Assert.DoesNotContain("using var modules = context.ModuleRegistry.GetOrCreateDotnetModulesObject();", source);
     Assert.Contains("global::System.ArgumentNullException.ThrowIfNull(modules);", source);
-    Assert.Contains("context.ModuleRegistry.DefineModule(modules, \"Math\")", source);
-    Assert.Contains("context.ModuleRegistry.GetOrCreateModule(\"Math\", static () => new global::Expo.TestModules.MathModule())", source);
-    Assert.Contains("RegisterMath(context, modules)", source);
+    Assert.Contains("context.ModuleRegistry.DefineModule(modules, \"MathModule\")", source);
+    Assert.Contains("context.ModuleRegistry.GetOrCreateModule(\"MathModule\", static () => new global::Expo.TestModules.MathModule())", source);
+    Assert.Contains("RegisterMathModule(context, modules)", source);
+  }
+
+  [Theory]
+  [InlineData("FooModule")]
+  [InlineData("Foo")]
+  public void GeneratorUsesTheClassNameVerbatimAsTheDefaultModuleName(string className)
+  {
+    var result = GeneratorTestHost.Run(
+        $$"""
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class {{className}}
+        {
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains($"context.ModuleRegistry.DefineModule(modules, \"{className}\")", source);
+    Assert.Contains($"context.ModuleRegistry.GetOrCreateModule(\"{className}\", ", source);
+  }
+
+  [Fact]
+  public void GeneratorAllowsUnnamedModulesWithAndWithoutModuleSuffixToCoexist()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule]
+        public sealed partial class Foo
+        {
+        }
+
+        [ExpoModule]
+        public sealed partial class FooModule
+        {
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Id == "EXPOJSI006");
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains("context.ModuleRegistry.DefineModule(modules, \"Foo\")", source);
+    Assert.Contains("context.ModuleRegistry.DefineModule(modules, \"FooModule\")", source);
+  }
+
+  [Fact]
+  public void GeneratorKeepsTheExplicitModuleNameOverTheClassName()
+  {
+    var result = GeneratorTestHost.Run(
+        """
+        using Expo.ModulesCore;
+
+        namespace Expo.TestModules;
+
+        [ExpoModule("Named")]
+        public sealed partial class FooModule
+        {
+        }
+        """
+    );
+
+    Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    var source = Assert.Single(result.GeneratedSources).Text;
+    Assert.Contains("context.ModuleRegistry.DefineModule(modules, \"Named\")", source);
+    Assert.DoesNotContain("DefineModule(modules, \"FooModule\")", source);
+    Assert.DoesNotContain("DefineModule(modules, \"Foo\")", source);
   }
 
   [Fact]
@@ -966,7 +1041,7 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
     var source = Assert.Single(result.GeneratedSources).Text;
     Assert.Contains(
-        "context.ModuleRegistry.GetOrCreateModule(\"RuntimeAware\", () => new global::Expo.TestModules.RuntimeAwareModule(context))",
+        "context.ModuleRegistry.GetOrCreateModule(\"RuntimeAwareModule\", () => new global::Expo.TestModules.RuntimeAwareModule(context))",
         source
     );
   }
@@ -1000,7 +1075,7 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
     var source = Assert.Single(result.GeneratedSources).Text;
     Assert.Contains(
-        "context.ModuleRegistry.GetOrCreateModule(\"DualConstructor\", () => new global::Expo.TestModules.DualConstructorModule(context))",
+        "context.ModuleRegistry.GetOrCreateModule(\"DualConstructorModule\", () => new global::Expo.TestModules.DualConstructorModule(context))",
         source
     );
     Assert.DoesNotContain("new global::Expo.TestModules.DualConstructorModule())", source);
@@ -2678,8 +2753,8 @@ public sealed partial class ExpoModulesGeneratorTests
     Assert.DoesNotContain(result.Diagnostics, item => item.Severity == DiagnosticSeverity.Error);
     var provider = Assert.Single(result.GeneratedSources, source => source.HintName.Contains("Provider"));
     Assert.Contains("var module = new global::Expo.TestModules.DeviceModule();", provider.Text);
-    Assert.Contains("InitializeDeviceEvents(context, module);", provider.Text);
-    Assert.True(provider.Text.IndexOf("() => CreateDevice(context)", StringComparison.Ordinal) <
+    Assert.Contains("InitializeDeviceModuleEvents(context, module);", provider.Text);
+    Assert.True(provider.Text.IndexOf("() => CreateDeviceModule(context)", StringComparison.Ordinal) <
         provider.Text.IndexOf("static module => module.Initialize()", StringComparison.Ordinal));
   }
 

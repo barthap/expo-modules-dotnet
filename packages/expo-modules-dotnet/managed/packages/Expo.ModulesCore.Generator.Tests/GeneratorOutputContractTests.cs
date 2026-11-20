@@ -89,7 +89,7 @@ public sealed class GeneratorOutputContractTests
           [JS] public string Read() => Value;
         }
 
-        [ExpoModule(Classes = new[] { typeof(ContractEntry) })]
+        [ExpoModule("Contract", Classes = new[] { typeof(ContractEntry) })]
         public sealed partial class ContractModule
         {
           [JS] public ContractEntry Create(string value) => new(value);
@@ -116,7 +116,7 @@ public sealed class GeneratorOutputContractTests
 
         namespace Expo.TestModules;
 
-        [ExpoModule]
+        [ExpoModule("Invalid")]
         public sealed partial class InvalidModule
         {
           [JS] public static void Invalid() { }

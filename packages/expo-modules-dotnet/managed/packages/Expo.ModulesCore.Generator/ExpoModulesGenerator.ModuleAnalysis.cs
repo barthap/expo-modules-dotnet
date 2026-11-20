@@ -17,9 +17,8 @@ public sealed partial class ExpoModulesGenerator
       return null;
     }
 
-    var moduleName = typeSymbol.Name.EndsWith("Module", StringComparison.Ordinal)
-        ? typeSymbol.Name.Substring(0, typeSymbol.Name.Length - "Module".Length)
-        : typeSymbol.Name;
+    // @ref docs/specs/modules-core-boundary.md "Default Module Name Is The Class Name"
+    var moduleName = typeSymbol.Name;
 
     var sharedObjectClasses = new List<ExpoSharedObjectClassModel>();
     foreach (var attribute in context.Attributes)

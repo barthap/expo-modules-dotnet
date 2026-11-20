@@ -342,6 +342,37 @@ either member means the host supplied nothing for that directory.
 - **THEN** no public member SHALL change either configured value
 - **AND** the context SHALL keep serving the values it was constructed with
 
+### Requirement: Default Module Name Is The Class Name
+
+The generator SHALL register an `[ExpoModule]` class without a name argument
+under the authored class name verbatim, with no suffix removed. An explicit
+`[ExpoModule("Name")]` argument SHALL take precedence over the class name. Both
+upstream platforms (the Swift macro and the Kotlin compiler plugin) use the
+class name verbatim, so the same module has the same JavaScript name on every
+platform. A name that differs from the class needs the explicit argument.
+
+#### Scenario: Unnamed module class ends in Module
+- **GIVEN** `[ExpoModule] class FooModule`
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL register the module as `FooModule`
+
+#### Scenario: Unnamed module class does not end in Module
+- **GIVEN** `[ExpoModule] class Foo`
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL register the module as `Foo`
+
+#### Scenario: Unnamed classes that differ only by the Module suffix coexist
+- **GIVEN** `[ExpoModule] class Foo` and `[ExpoModule] class FooModule`
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL register `Foo` and `FooModule` as separate modules
+- **AND** it SHALL NOT report `EXPOJSI006`
+
+#### Scenario: Explicit name is given
+- **GIVEN** `[ExpoModule("Name")] class FooModule`
+- **WHEN** the project is compiled
+- **THEN** the generator SHALL register the module as `Name`
+- **AND** it SHALL NOT register `FooModule` or `Foo`
+
 ### Requirement: One-Stage Lazy Dotnet Module Registry
 
 `Expo.ModulesCore` SHALL install `globalThis._expoDotnet.modules` as a
